@@ -2,7 +2,7 @@
  * FileTreeNode - Individual file/folder row in the tree
  */
 
-import React, { memo, useCallback, useState } from 'react';
+import React, { memo, useCallback, useEffect, useState } from 'react';
 import {
   ChevronRight,
   ChevronDown,
@@ -96,6 +96,11 @@ export const FileTreeNode = memo(function FileTreeNode({
   onRenameCancel,
 }: FileTreeNodeProps) {
   const [renameValue, setRenameValue] = useState(entry.name);
+
+  // Sync rename value when entry name changes (e.g., after external rename)
+  useEffect(() => {
+    setRenameValue(entry.name);
+  }, [entry.name]);
 
   const handleRenameKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {

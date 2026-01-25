@@ -129,11 +129,13 @@ pub async fn read_directory(
 ) -> Result<DirectoryReadResponse, FileOperationError> {
     // Validate workspace is set (we check but allow reading any accessible path)
     let workspace = state.workspace_root.read().await;
-    let _workspace_path = workspace.as_ref().ok_or_else(|| FileOperationError {
-        code: FileErrorCode::InvalidPath,
-        message: "No workspace root set. Open a folder first.".to_string(),
-        path: request.path.clone(),
-    })?;
+    if workspace.is_none() {
+        return Err(FileOperationError {
+            code: FileErrorCode::InvalidPath,
+            message: "No workspace root set. Open a folder first.".to_string(),
+            path: request.path.clone(),
+        });
+    }
 
     let path = PathBuf::from(&request.path);
 
@@ -142,30 +144,13 @@ pub async fn read_directory(
     let entry = tree::read_directory(&path, request.depth)
         .map_err(|e| to_protocol_error(e, &request.path))?;
 
-    // Convert the internal FileTreeEntry to protocol FileTreeEntry
-    let protocol_entry = convert_tree_entry(&entry);
-
     // Count total entries for progress indication
     let total_count = tree::count_entries(&path).unwrap_or(0);
 
     Ok(DirectoryReadResponse {
-        entry: protocol_entry,
+        entry,
         total_count,
     })
-}
-
-/// Convert internal tree entry to protocol entry
-fn convert_tree_entry(entry: &solo_protocol::FileTreeEntry) -> FileTreeEntry {
-    FileTreeEntry {
-        name: entry.name.clone(),
-        path: entry.path.clone(),
-        is_dir: entry.is_dir,
-        children: entry.children.as_ref().map(|c| {
-            c.iter().map(|child| convert_tree_entry(child)).collect()
-        }),
-        size: entry.size,
-        modified: entry.modified,
-    }
 }
 
 /// Create a new file
@@ -206,6 +191,60 @@ pub async fn create_file(
         children: if request.is_dir { Some(vec![]) } else { None },
         size: None,
         modified: None,
+    })
+}
+
+/// Read file contents
+#[tauri::command]
+pub async fn read_file(
+    request: solo_protocol::FileReadRequest,
+    state: State<'_, FsState>,
+) -> Result<solo_protocol::FileReadResponse, FileOperationError> {
+    let workspace = state.workspace_root.read().await;
+    let workspace_path = workspace.as_ref().ok_or_else(|| FileOperationError {
+        code: FileErrorCode::InvalidPath,
+        message: "No workspace root set".to_string(),
+        path: request.path.clone(),
+    })?;
+
+    let path = PathBuf::from(&request.path);
+
+    // Validate path is within workspace
+    let canonical = path.canonicalize().map_err(|e| FileOperationError {
+        code: FileErrorCode::NotFound,
+        message: e.to_string(),
+        path: request.path.clone(),
+    })?;
+
+    let workspace_canonical = workspace_path.canonicalize().map_err(|e| FileOperationError {
+        code: FileErrorCode::IoError,
+        message: e.to_string(),
+        path: request.path.clone(),
+    })?;
+
+    if !canonical.starts_with(&workspace_canonical) {
+        return Err(FileOperationError {
+            code: FileErrorCode::PathOutsideWorkspace,
+            message: "Path is outside workspace".to_string(),
+            path: request.path.clone(),
+        });
+    }
+
+    debug!(path = %request.path, "Reading file");
+
+    let content = std::fs::read_to_string(&path).map_err(|e| FileOperationError {
+        code: if e.kind() == std::io::ErrorKind::NotFound {
+            FileErrorCode::NotFound
+        } else {
+            FileErrorCode::IoError
+        },
+        message: e.to_string(),
+        path: request.path.clone(),
+    })?;
+
+    Ok(solo_protocol::FileReadResponse {
+        content,
+        encoding: "utf-8".to_string(),
     })
 }
 
@@ -283,53 +322,91 @@ pub async fn start_watching(
 
     let mut watcher_lock = state.watcher.write().await;
 
+    // Track if this is a new watcher (we'll need to spawn the event forwarder)
+    let is_new_watcher = watcher_lock.is_none();
+
     // Create a new watcher if needed
-    if watcher_lock.is_none() {
+    if is_new_watcher {
         let watcher = FileWatcher::new().map_err(|e| e.to_string())?;
         *watcher_lock = Some(watcher);
     }
 
     let watcher = watcher_lock.as_ref().unwrap();
 
-    // Subscribe to events and forward to frontend
-    let mut rx = watcher.subscribe();
-    let app_handle = app.clone();
-
-    tokio::spawn(async move {
-        while let Ok(event) = rx.recv().await {
-            let backend_event = match event.event_type {
-                FileEventType::Created => BackendEvent::FileCreated {
-                    path: event.path.display().to_string(),
-                },
-                FileEventType::Modified => BackendEvent::FileChanged {
-                    path: event.path.display().to_string(),
-                },
-                FileEventType::Deleted => BackendEvent::FileDeleted {
-                    path: event.path.display().to_string(),
-                },
-                FileEventType::Renamed => {
-                    if let Some(new_path) = event.new_path {
-                        BackendEvent::FileRenamed {
-                            old_path: event.path.display().to_string(),
-                            new_path: new_path.display().to_string(),
-                        }
-                    } else {
-                        continue;
-                    }
-                }
-            };
-
-            if let Err(e) = app_handle.emit("backend-event", &backend_event) {
-                error!(error = %e, "Failed to emit file event");
-            }
-        }
-    });
-
-    // Start watching
+    // Start watching FIRST - if this fails, we don't spawn the event task
     let path_buf = PathBuf::from(&path);
     watcher.watch(&path_buf, recursive).await.map_err(|e| e.to_string())?;
 
+    // Only spawn the event forwarder task for new watchers, after watch succeeds
+    if is_new_watcher {
+        let mut rx = watcher.subscribe();
+        let app_handle = app.clone();
+
+        tokio::spawn(async move {
+            while let Ok(event) = rx.recv().await {
+                let backend_event = match event.event_type {
+                    FileEventType::Created => BackendEvent::FileCreated {
+                        path: event.path.display().to_string(),
+                    },
+                    FileEventType::Modified => BackendEvent::FileChanged {
+                        path: event.path.display().to_string(),
+                    },
+                    FileEventType::Deleted => BackendEvent::FileDeleted {
+                        path: event.path.display().to_string(),
+                    },
+                    FileEventType::Renamed => {
+                        if let Some(new_path) = event.new_path {
+                            BackendEvent::FileRenamed {
+                                old_path: event.path.display().to_string(),
+                                new_path: new_path.display().to_string(),
+                            }
+                        } else {
+                            continue;
+                        }
+                    }
+                };
+
+                if let Err(e) = app_handle.emit("backend-event", &backend_event) {
+                    error!(error = %e, "Failed to emit file event");
+                }
+            }
+        });
+    }
+
     Ok(())
+}
+
+/// Reveal a file or directory in Finder (macOS)
+#[tauri::command]
+pub async fn reveal_in_finder(path: String) -> Result<(), String> {
+    info!(path = %path, "Revealing in Finder");
+
+    #[cfg(target_os = "macos")]
+    {
+        use std::process::Command;
+
+        let path_buf = PathBuf::from(&path);
+        if path_buf.is_file() {
+            // For files, reveal and select the file
+            Command::new("open")
+                .args(["-R", &path])
+                .spawn()
+                .map_err(|e| e.to_string())?;
+        } else {
+            // For directories, open the directory
+            Command::new("open")
+                .arg(&path)
+                .spawn()
+                .map_err(|e| e.to_string())?;
+        }
+
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        Err("Reveal in Finder is only supported on macOS".to_string())
+    }
 }
 
 /// Stop watching for file changes

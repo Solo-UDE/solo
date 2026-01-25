@@ -24,5 +24,12 @@ notify = { version = "6.1", default-features = false, features = ["macos_fsevent
 # Directory traversal
 walkdir = "2.4"
 
+# Fast directory walking with gitignore support (used by ripgrep)
+ignore = "0.4"
+
+# Platform-specific error codes
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [dev-dependencies]
 tempfile = "3.14"

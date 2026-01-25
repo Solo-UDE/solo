@@ -2,7 +2,7 @@
  * FileExplorer - Main file explorer container component
  */
 
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import {
   FolderOpen,
@@ -12,8 +12,15 @@ import {
   X,
 } from 'lucide-react';
 import { FileTree } from './FileTree';
-import { useFileExplorerStore } from '../../stores/fileExplorerStore';
+import { InputDialog } from './InputDialog';
+import { useFileExplorerStore, getParentPath } from '../../stores/fileExplorerStore';
 import type { BackendEvent } from '../../bindings';
+
+interface InputDialogState {
+  isOpen: boolean;
+  type: 'file' | 'folder';
+  targetDir: string;
+}
 
 interface FileExplorerProps {
   onFileOpen?: (path: string) => void;
@@ -36,6 +43,13 @@ export function FileExplorer({ onFileOpen, className = '' }: FileExplorerProps) 
   const handleFileDeleted = useFileExplorerStore((s) => s.handleFileDeleted);
   const handleFileChanged = useFileExplorerStore((s) => s.handleFileChanged);
   const handleFileRenamed = useFileExplorerStore((s) => s.handleFileRenamed);
+
+  // Input dialog state for New File/Folder
+  const [inputDialog, setInputDialog] = useState<InputDialogState>({
+    isOpen: false,
+    type: 'file',
+    targetDir: '',
+  });
 
   // Subscribe to backend file events
   useEffect(() => {
@@ -72,58 +86,66 @@ export function FileExplorer({ onFileOpen, className = '' }: FileExplorerProps) 
     }
   }, [rootPath, setRootPath]);
 
-  const handleNewFile = useCallback(() => {
+  // Get the target directory for new file/folder operations
+  const getTargetDirectory = useCallback((): string | null => {
     const selectedPaths = Array.from(selected);
-    if (selectedPaths.length === 0 && rootPath) {
-      // Create in root
-      const name = prompt('Enter file name:');
-      if (name) {
-        createFile(rootPath, name);
-      }
-    } else if (selectedPaths.length > 0) {
-      // Create in selected directory or parent of selected file
+
+    if (selectedPaths.length > 0) {
       const entries = useFileExplorerStore.getState().entries;
       const entry = entries.get(selectedPaths[0]);
-      const parentPath = entry?.is_dir
-        ? selectedPaths[0]
-        : selectedPaths[0].substring(0, selectedPaths[0].lastIndexOf('/'));
-
-      const name = prompt('Enter file name:');
-      if (name) {
-        createFile(parentPath, name);
-      }
+      return entry?.is_dir ? selectedPaths[0] : getParentPath(selectedPaths[0]);
     }
-  }, [selected, rootPath, createFile]);
+
+    return rootPath;
+  }, [selected, rootPath]);
+
+  const handleNewFile = useCallback(() => {
+    const targetDir = getTargetDirectory();
+    if (!targetDir) return;
+
+    setInputDialog({
+      isOpen: true,
+      type: 'file',
+      targetDir,
+    });
+  }, [getTargetDirectory]);
 
   const handleNewFolder = useCallback(() => {
-    const selectedPaths = Array.from(selected);
-    if (selectedPaths.length === 0 && rootPath) {
-      // Create in root
-      const name = prompt('Enter folder name:');
-      if (name) {
-        createDirectory(rootPath, name);
-      }
-    } else if (selectedPaths.length > 0) {
-      // Create in selected directory or parent of selected file
-      const entries = useFileExplorerStore.getState().entries;
-      const entry = entries.get(selectedPaths[0]);
-      const parentPath = entry?.is_dir
-        ? selectedPaths[0]
-        : selectedPaths[0].substring(0, selectedPaths[0].lastIndexOf('/'));
+    const targetDir = getTargetDirectory();
+    if (!targetDir) return;
 
-      const name = prompt('Enter folder name:');
-      if (name) {
-        createDirectory(parentPath, name);
+    setInputDialog({
+      isOpen: true,
+      type: 'folder',
+      targetDir,
+    });
+  }, [getTargetDirectory]);
+
+  const handleInputDialogSubmit = useCallback(
+    (name: string) => {
+      if (inputDialog.type === 'file') {
+        createFile(inputDialog.targetDir, name);
+      } else {
+        createDirectory(inputDialog.targetDir, name);
       }
-    }
-  }, [selected, rootPath, createDirectory]);
+      setInputDialog((prev) => ({ ...prev, isOpen: false }));
+    },
+    [inputDialog.type, inputDialog.targetDir, createFile, createDirectory]
+  );
+
+  const handleInputDialogCancel = useCallback(() => {
+    setInputDialog((prev) => ({ ...prev, isOpen: false }));
+  }, []);
 
   const folderName = rootPath?.split('/').pop() ?? '';
 
   return (
     <div className={`flex flex-col h-full bg-card ${className}`}>
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-border">
+      <div
+        className="flex items-center justify-between px-3 py-2 border-b border-border"
+        data-tauri-drag-region="false"
+      >
         <div className="flex items-center gap-2 min-w-0">
           {rootPath ? (
             <>
@@ -135,19 +157,29 @@ export function FileExplorer({ onFileOpen, className = '' }: FileExplorerProps) 
           )}
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1" style={{ pointerEvents: 'auto' }}>
           {rootPath && (
             <>
               <button
-                onClick={handleNewFile}
-                className="p-1.5 rounded hover:bg-muted transition-colors"
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  console.log('New File button clicked');
+                  handleNewFile();
+                }}
+                className="p-1.5 rounded hover:bg-muted transition-colors cursor-pointer"
                 title="New File"
               >
                 <FilePlus className="w-4 h-4 text-muted-foreground" />
               </button>
               <button
-                onClick={handleNewFolder}
-                className="p-1.5 rounded hover:bg-muted transition-colors"
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  console.log('New Folder button clicked');
+                  handleNewFolder();
+                }}
+                className="p-1.5 rounded hover:bg-muted transition-colors cursor-pointer"
                 title="New Folder"
               >
                 <FolderPlus className="w-4 h-4 text-muted-foreground" />
@@ -203,6 +235,15 @@ export function FileExplorer({ onFileOpen, className = '' }: FileExplorerProps) 
           </div>
         )}
       </div>
+
+      {/* Input Dialog for New File/Folder */}
+      <InputDialog
+        isOpen={inputDialog.isOpen}
+        title={inputDialog.type === 'file' ? 'New File' : 'New Folder'}
+        placeholder={inputDialog.type === 'file' ? 'filename.txt' : 'folder-name'}
+        onSubmit={handleInputDialogSubmit}
+        onCancel={handleInputDialogCancel}
+      />
     </div>
   );
 }
