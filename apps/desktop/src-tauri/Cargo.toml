@@ -24,6 +24,7 @@ solo-fs = { path = "../../../crates/solo-fs" }
 tauri.workspace = true
 tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
+tauri-plugin-clipboard-manager = "2"
 
 tokio.workspace = true
 serde.workspace = true

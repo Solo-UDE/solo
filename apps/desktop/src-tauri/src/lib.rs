@@ -24,6 +24,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .manage(FsState::new())
         .invoke_handler(tauri::generate_handler![
             // Core commands
@@ -33,11 +34,13 @@ pub fn run() {
             fs_commands::open_folder_dialog,
             fs_commands::set_workspace_root,
             fs_commands::read_directory,
+            fs_commands::read_file,
             fs_commands::create_file,
             fs_commands::rename_file,
             fs_commands::delete_file,
             fs_commands::start_watching,
             fs_commands::stop_watching,
+            fs_commands::reveal_in_finder,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

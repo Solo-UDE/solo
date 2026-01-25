@@ -10,6 +10,8 @@ import type {
   FileCreateRequest,
   FileRenameRequest,
   FileDeleteRequest,
+  FileReadRequest,
+  FileReadResponse,
   FileTreeEntry,
   FileOperationError,
 } from '../../bindings';
@@ -41,6 +43,15 @@ export async function readDirectory(
 ): Promise<DirectoryReadResponse> {
   const request: DirectoryReadRequest = { path, depth };
   return invoke<DirectoryReadResponse>('read_directory', { request });
+}
+
+/**
+ * Read file contents
+ * @param path - Path to the file
+ */
+export async function readFile(path: string): Promise<FileReadResponse> {
+  const request: FileReadRequest = { path };
+  return invoke<FileReadResponse>('read_file', { request });
 }
 
 /**
@@ -119,6 +130,14 @@ export async function startWatching(
  */
 export async function stopWatching(): Promise<void> {
   return invoke('stop_watching');
+}
+
+/**
+ * Reveal a file or directory in Finder (macOS)
+ * @param path - Path to reveal
+ */
+export async function revealInFinder(path: string): Promise<void> {
+  return invoke('reveal_in_finder', { path });
 }
 
 /**

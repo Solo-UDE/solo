@@ -218,9 +218,19 @@ pub fn delete(path: &Path, recursive: bool, workspace_root: &Path) -> FsResult<(
             fs::remove_dir_all(&validated_path)
                 .map_err(|e| FsError::from_io_error(e, &path.display().to_string()))?;
         } else {
+            // Try to remove the directory directly and handle errors from the OS
+            // This avoids TOCTOU race conditions from pre-checking emptiness
             fs::remove_dir(&validated_path).map_err(|e| {
-                if e.kind() == std::io::ErrorKind::Other {
-                    // Directory not empty
+                // Convert "directory not empty" errors to our specific error type
+                // Note: ErrorKind::DirectoryNotEmpty is unstable, so we check the raw OS error
+                #[cfg(unix)]
+                let is_not_empty = e.raw_os_error() == Some(libc::ENOTEMPTY);
+                #[cfg(windows)]
+                let is_not_empty = e.raw_os_error() == Some(145); // ERROR_DIR_NOT_EMPTY
+                #[cfg(not(any(unix, windows)))]
+                let is_not_empty = false;
+
+                if is_not_empty {
                     FsError::DirectoryNotEmpty(path.display().to_string())
                 } else {
                     FsError::from_io_error(e, &path.display().to_string())

@@ -12,6 +12,39 @@ import * as fs from '../lib/tauri/fs';
 // Enable Map and Set support in Immer
 enableMapSet();
 
+/**
+ * Get the parent path of a given path.
+ * Handles both Unix (/) and Windows (\) path separators.
+ */
+export function getParentPath(path: string): string {
+  // Find the last path separator (either / or \)
+  const lastSlash = path.lastIndexOf('/');
+  const lastBackslash = path.lastIndexOf('\\');
+  const lastSeparator = Math.max(lastSlash, lastBackslash);
+
+  if (lastSeparator <= 0) {
+    return path; // No parent or root
+  }
+
+  return path.substring(0, lastSeparator);
+}
+
+/**
+ * Get the filename from a path.
+ * Handles both Unix (/) and Windows (\) path separators.
+ */
+export function getFileName(path: string): string {
+  const lastSlash = path.lastIndexOf('/');
+  const lastBackslash = path.lastIndexOf('\\');
+  const lastSeparator = Math.max(lastSlash, lastBackslash);
+
+  if (lastSeparator < 0) {
+    return path;
+  }
+
+  return path.substring(lastSeparator + 1);
+}
+
 interface FileTreeState {
   // Root workspace path
   rootPath: string | null;
@@ -100,8 +133,13 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
         // Set workspace root in backend
         await fs.setWorkspaceRoot(path);
 
-        // Start watching for changes
-        await fs.startWatching(path, true);
+        // Start watching for changes (non-blocking - folder can still be used without live updates)
+        try {
+          await fs.startWatching(path, true);
+        } catch (watchError) {
+          console.warn('Failed to start file watcher:', watchError);
+          // Continue without live updates - the folder is still usable
+        }
 
         // Read the root directory
         const response = await fs.readDirectory(path, 1);
@@ -282,8 +320,10 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
       const entry = get().entries.get(path);
       if (!entry) return;
 
-      const parentPath = path.substring(0, path.lastIndexOf('/'));
-      const newPath = `${parentPath}/${newName}`;
+      const parentPath = getParentPath(path);
+      // Use the same separator as the original path
+      const separator = path.includes('\\') ? '\\' : '/';
+      const newPath = `${parentPath}${separator}${newName}`;
 
       try {
         const updatedEntry = await fs.renameFile(path, newPath);
@@ -323,28 +363,55 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
     },
 
     delete: async (paths: string[]) => {
-      try {
-        for (const path of paths) {
-          const entry = get().entries.get(path);
-          await fs.deleteFile(path, entry?.is_dir ?? false);
+      // Use Promise.allSettled to attempt all deletions even if some fail
+      const deletePromises = paths.map(async (path) => {
+        const entry = get().entries.get(path);
+        // For directories, always use recursive=true to handle non-empty dirs
+        // If entry is not in our store (edge case), check filesystem via path heuristics
+        // but default to recursive=true to be safe
+        const isDirectory = entry?.is_dir ?? true;
+        await fs.deleteFile(path, isDirectory);
+        return path;
+      });
 
-          set((state) => {
+      const results = await Promise.allSettled(deletePromises);
+
+      // Process successful deletions
+      const successfulPaths: string[] = [];
+      const errors: string[] = [];
+
+      results.forEach((result, index) => {
+        if (result.status === 'fulfilled') {
+          successfulPaths.push(result.value);
+        } else {
+          const fileName = getFileName(paths[index]);
+          errors.push(`${fileName}: ${result.reason}`);
+        }
+      });
+
+      // Update state for successful deletions
+      if (successfulPaths.length > 0) {
+        set((state) => {
+          for (const path of successfulPaths) {
             // Remove from entries
             state.entries.delete(path);
             state.selected.delete(path);
             state.expanded.delete(path);
 
             // Remove from parent's children
-            const parentPath = path.substring(0, path.lastIndexOf('/'));
+            const parentPath = getParentPath(path);
             const parent = state.entries.get(parentPath);
             if (parent && parent.children) {
               parent.children = parent.children.filter((c) => c.path !== path);
             }
-          });
-        }
-      } catch (error) {
+          }
+        });
+      }
+
+      // Report errors if any
+      if (errors.length > 0) {
         set((state) => {
-          state.error = `Failed to delete: ${error}`;
+          state.error = `Failed to delete ${errors.length} item(s): ${errors.join('; ')}`;
         });
       }
     },
@@ -363,7 +430,7 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
 
     handleFileCreated: (path: string) => {
       // File was created externally - refresh parent directory
-      const parentPath = path.substring(0, path.lastIndexOf('/'));
+      const parentPath = getParentPath(path);
       const state = get();
 
       // Only refresh if parent is expanded
@@ -396,7 +463,7 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
         state.expanded.delete(path);
 
         // Remove from parent's children
-        const parentPath = path.substring(0, path.lastIndexOf('/'));
+        const parentPath = getParentPath(path);
         const parent = state.entries.get(parentPath);
         if (parent && parent.children) {
           parent.children = parent.children.filter((c) => c.path !== path);
@@ -405,10 +472,32 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
     },
 
     handleFileChanged: (path: string) => {
-      // File content changed - we might want to update metadata
+      // File content changed - refresh metadata from the backend
       const entry = get().entries.get(path);
       if (entry && !entry.is_dir) {
-        // Could refresh metadata here if needed
+        // Re-read the parent directory to get updated metadata
+        const parentPath = getParentPath(path);
+        fs.readDirectory(parentPath, 1)
+          .then((response) => {
+            set((state) => {
+              // Find and update the changed file's entry
+              const updatedChild = response.entry.children?.find(
+                (c) => c.path === path
+              );
+              if (updatedChild) {
+                state.entries.set(path, updatedChild);
+                // Also update in parent's children array
+                const parent = state.entries.get(parentPath);
+                if (parent?.children) {
+                  const idx = parent.children.findIndex((c) => c.path === path);
+                  if (idx !== -1) {
+                    parent.children[idx] = updatedChild;
+                  }
+                }
+              }
+            });
+          })
+          .catch(console.error);
       }
     },
 
@@ -418,7 +507,7 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
         if (entry) {
           // Update the entry's path and name
           entry.path = newPath;
-          entry.name = newPath.substring(newPath.lastIndexOf('/') + 1);
+          entry.name = getFileName(newPath);
 
           // Move in the map
           state.entries.delete(oldPath);
