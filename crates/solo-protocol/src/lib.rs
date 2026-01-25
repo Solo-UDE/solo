@@ -134,8 +134,117 @@ pub struct FileTreeEntry {
     pub path: String,
     /// Whether this is a directory
     pub is_dir: bool,
-    /// Children (for directories)
+    /// Children (for directories). None = not loaded, Some([]) = loaded but empty
     pub children: Option<Vec<FileTreeEntry>>,
+    /// File size in bytes (for files)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size: Option<u64>,
+    /// Last modified timestamp (Unix epoch seconds)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub modified: Option<u64>,
+}
+
+/// Request to read a directory with lazy loading support
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct DirectoryReadRequest {
+    /// Path to the directory
+    pub path: String,
+    /// Depth of children to include (0 = no children, 1 = immediate children only)
+    pub depth: u32,
+}
+
+/// Response with directory contents
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct DirectoryReadResponse {
+    /// Root entry with children
+    pub entry: FileTreeEntry,
+    /// Total file count (for progress indication)
+    pub total_count: u32,
+}
+
+/// Request to create a file or directory
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct FileCreateRequest {
+    /// Path where to create the file/directory
+    pub path: String,
+    /// Whether to create a directory
+    pub is_dir: bool,
+    /// Initial content (for files only)
+    pub content: Option<String>,
+}
+
+/// Request to rename/move a file or directory
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct FileRenameRequest {
+    /// Current path
+    pub old_path: String,
+    /// New path
+    pub new_path: String,
+}
+
+/// Request to delete a file or directory
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct FileDeleteRequest {
+    /// Path to delete
+    pub path: String,
+    /// Whether to recursively delete directories
+    pub recursive: bool,
+}
+
+/// Request to start watching a directory
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct WatchRequest {
+    /// Path to watch
+    pub path: String,
+    /// Whether to watch recursively
+    pub recursive: bool,
+}
+
+/// File metadata information
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct FileMetadata {
+    /// File size in bytes
+    pub size: u64,
+    /// Whether this is a directory
+    pub is_dir: bool,
+    /// Whether this is a regular file
+    pub is_file: bool,
+    /// Last modified timestamp (Unix epoch seconds)
+    pub modified: Option<u64>,
+}
+
+/// Error codes for file operations
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub enum FileErrorCode {
+    NotFound,
+    PermissionDenied,
+    AlreadyExists,
+    NotADirectory,
+    NotAFile,
+    DirectoryNotEmpty,
+    IoError,
+    InvalidPath,
+    PathOutsideWorkspace,
+}
+
+/// Error response for file operations
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct FileOperationError {
+    /// Error code for programmatic handling
+    pub code: FileErrorCode,
+    /// Human-readable message
+    pub message: String,
+    /// Path that caused the error
+    pub path: String,
 }
 
 // =============================================================================
@@ -202,6 +311,10 @@ pub enum BackendEvent {
     /// File deleted externally
     #[serde(rename = "file:deleted")]
     FileDeleted { path: String },
+
+    /// File renamed externally
+    #[serde(rename = "file:renamed")]
+    FileRenamed { old_path: String, new_path: String },
 }
 
 #[cfg(test)]
