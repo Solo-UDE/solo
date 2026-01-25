@@ -93,7 +93,11 @@ impl FileWatcher {
             let watcher = RecommendedWatcher::new(
                 move |res: Result<Event, notify::Error>| {
                     if let Ok(event) = res {
-                        let _ = tx.blocking_send(event);
+                        // Use try_send to avoid blocking if channel is full
+                        if tx.try_send(event).is_err() {
+                            // Channel full or closed - event will be dropped
+                            // This is acceptable as we're debouncing anyway
+                        }
                     }
                 },
                 Config::default().with_poll_interval(Duration::from_millis(100)),
@@ -233,6 +237,22 @@ impl Default for FileWatcher {
     }
 }
 
+/// Check if a path contains any of the ignored directory names as a component
+fn should_ignore_path(path: &Path) -> bool {
+    const IGNORED_DIRS: &[&str] = &[".git", "node_modules", "target", ".next", "dist", "__pycache__"];
+
+    for component in path.components() {
+        if let std::path::Component::Normal(name) = component {
+            if let Some(name_str) = name.to_str() {
+                if IGNORED_DIRS.contains(&name_str) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
 /// Process a notify event into our event type
 fn process_notify_event(event: &Event) -> Option<(PathBuf, FileEventType, Option<PathBuf>)> {
     let path = event.paths.first()?.clone();
@@ -243,26 +263,25 @@ fn process_notify_event(event: &Event) -> Option<(PathBuf, FileEventType, Option
         || path_str.ends_with(".swp")
         || path_str.ends_with(".swx")
         || path_str.ends_with(".tmp")
-        || path_str.contains(".git/")
-        || path_str.contains("node_modules/")
+        || should_ignore_path(&path)
     {
         return None;
     }
 
-    let event_type = match event.kind {
-        EventKind::Create(_) => FileEventType::Created,
-        EventKind::Modify(_) => FileEventType::Modified,
-        EventKind::Remove(_) => FileEventType::Deleted,
-        EventKind::Any => return None,
-        EventKind::Access(_) => return None, // Ignore access events
-        EventKind::Other => return None,
-    };
-
-    // For rename events, try to get the new path
-    let new_path = if matches!(event.kind, EventKind::Modify(_)) && event.paths.len() > 1 {
-        event.paths.get(1).cloned()
+    // For rename events, we get two paths - detect this first
+    let (event_type, new_path) = if event.paths.len() > 1 {
+        // Multiple paths indicates a rename event
+        (FileEventType::Renamed, event.paths.get(1).cloned())
     } else {
-        None
+        let event_type = match event.kind {
+            EventKind::Create(_) => FileEventType::Created,
+            EventKind::Modify(_) => FileEventType::Modified,
+            EventKind::Remove(_) => FileEventType::Deleted,
+            EventKind::Any => return None,
+            EventKind::Access(_) => return None, // Ignore access events
+            EventKind::Other => return None,
+        };
+        (event_type, None)
     };
 
     Some((path, event_type, new_path))

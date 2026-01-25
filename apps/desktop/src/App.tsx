@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { FileExplorer } from "./components/file-explorer";
+import { FileViewer } from "./components/editor";
 import { useFileExplorerStore } from "./stores/fileExplorerStore";
 
 function App() {
@@ -48,31 +49,8 @@ function App() {
         {/* Main editor area */}
         <div className="flex-1 flex flex-col overflow-hidden">
           {rootPath ? (
-            // Show editor placeholder when a folder is open
-            <div className="flex-1 flex items-center justify-center">
-              <div className="text-center space-y-4">
-                {selectedFile ? (
-                  <>
-                    <p className="text-sm text-muted-foreground">Selected file:</p>
-                    <p className="text-sm font-mono bg-muted px-3 py-2 rounded-lg break-all max-w-md">
-                      {selectedFile}
-                    </p>
-                    <p className="text-xs text-muted-foreground/60">
-                      Editor integration coming soon
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-muted-foreground">
-                      Select a file from the explorer to open it
-                    </p>
-                    <p className="text-xs text-muted-foreground/60">
-                      Double-click a file or press Enter
-                    </p>
-                  </>
-                )}
-              </div>
-            </div>
+            // Show file viewer when a folder is open
+            <FileViewer filePath={selectedFile} className="flex-1" />
           ) : (
             // Show welcome screen when no folder is open
             <div className="flex-1 flex items-center justify-center">
