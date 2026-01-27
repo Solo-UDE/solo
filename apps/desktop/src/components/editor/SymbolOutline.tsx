@@ -23,34 +23,34 @@ interface SymbolNodeProps {
 }
 
 /**
- * Get color for symbol kind
+ * Get color for symbol kind using design system syntax tokens
  */
 function getSymbolColor(kind: SymbolKind): string {
   switch (kind) {
     case 'function':
     case 'method':
-      return 'text-[#dcdcaa]';
+      return 'text-syntax-function';
     case 'class':
     case 'struct':
     case 'interface':
     case 'trait':
-      return 'text-[#4ec9b0]';
+      return 'text-syntax-type';
     case 'enum':
     case 'enum_member':
-      return 'text-[#b5cea8]';
+      return 'text-syntax-number';
     case 'constant':
-      return 'text-[#569cd6]';
+      return 'text-syntax-keyword';
     case 'variable':
     case 'property':
-      return 'text-[#9cdcfe]';
+      return 'text-syntax-variable';
     case 'module':
-      return 'text-[#c586c0]';
+      return 'text-syntax-control';
     case 'type_alias':
-      return 'text-[#4ec9b0]';
+      return 'text-syntax-type';
     case 'macro':
-      return 'text-[#569cd6]';
+      return 'text-syntax-keyword';
     default:
-      return 'text-[#d4d4d4]';
+      return 'text-foreground';
   }
 }
 
@@ -75,8 +75,8 @@ function SymbolNode({ symbol, depth, onSymbolClick }: SymbolNodeProps) {
       <div
         className={`
           flex items-center gap-1 py-0.5 px-2 cursor-pointer
-          hover:bg-[#2a2a2a] rounded
-          text-[13px]
+          hover:bg-muted/60 rounded-md
+          text-[13px] transition-colors duration-150
         `}
         style={{ paddingLeft: `${depth * 12 + 8}px` }}
         onClick={handleClick}
@@ -87,12 +87,12 @@ function SymbolNode({ symbol, depth, onSymbolClick }: SymbolNodeProps) {
           {hasChildren ? (
             <button
               onClick={handleToggle}
-              className="p-0.5 hover:bg-[#3c3c3c] rounded"
+              className="p-0.5 hover:bg-muted rounded-md transition-colors duration-150"
             >
               {expanded ? (
-                <ChevronDown className="w-3 h-3 text-[#8b8b8b]" />
+                <ChevronDown className="w-3 h-3 text-muted-foreground" />
               ) : (
-                <ChevronRight className="w-3 h-3 text-[#8b8b8b]" />
+                <ChevronRight className="w-3 h-3 text-muted-foreground" />
               )}
             </button>
           ) : null}
@@ -110,7 +110,7 @@ function SymbolNode({ symbol, depth, onSymbolClick }: SymbolNodeProps) {
 
         {/* Detail (e.g., function parameters) */}
         {symbol.detail && (
-          <span className="text-[#6e7681] truncate text-xs">{symbol.detail}</span>
+          <span className="text-muted-foreground truncate text-xs">{symbol.detail}</span>
         )}
       </div>
 
@@ -141,11 +141,11 @@ export function SymbolOutline({
   if (isLoading) {
     return (
       <div
-        className={`flex items-center justify-center h-full bg-[#1e1e1e] ${className}`}
+        className={`flex items-center justify-center h-full bg-background ${className}`}
       >
         <div className="text-center space-y-2">
-          <Loader2 className="w-5 h-5 text-[#007acc] animate-spin mx-auto" />
-          <p className="text-xs text-[#6e7681]">Parsing...</p>
+          <Loader2 className="w-5 h-5 text-primary animate-spin mx-auto" />
+          <p className="text-xs text-muted-foreground">Parsing...</p>
         </div>
       </div>
     );
@@ -154,10 +154,10 @@ export function SymbolOutline({
   if (error) {
     return (
       <div
-        className={`flex items-center justify-center h-full bg-[#1e1e1e] ${className}`}
+        className={`flex items-center justify-center h-full bg-background ${className}`}
       >
         <div className="text-center px-4">
-          <p className="text-xs text-[#f44747]">{error}</p>
+          <p className="text-xs text-destructive">{error}</p>
         </div>
       </div>
     );
@@ -166,15 +166,15 @@ export function SymbolOutline({
   if (symbols.length === 0) {
     return (
       <div
-        className={`flex items-center justify-center h-full bg-[#1e1e1e] ${className}`}
+        className={`flex items-center justify-center h-full bg-background ${className}`}
       >
-        <p className="text-xs text-[#6e7681]">No symbols</p>
+        <p className="text-xs text-muted-foreground">No symbols</p>
       </div>
     );
   }
 
   return (
-    <div className={`bg-[#1e1e1e] overflow-auto ${className}`}>
+    <div className={`bg-background overflow-auto ${className}`}>
       <div className="py-1">
         {symbols.map((symbol, i) => (
           <SymbolNode

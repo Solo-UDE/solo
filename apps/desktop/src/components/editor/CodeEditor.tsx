@@ -1,55 +1,19 @@
 /**
- * CodeEditor - CodeMirror 6 based code editor
+ * CodeEditor - Monaco Editor based code editor
  * Full-featured editor with syntax highlighting and editing capabilities
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { EditorState, Extension } from '@codemirror/state';
-import {
-  EditorView,
-  keymap,
-  lineNumbers,
-  highlightActiveLine,
-  highlightActiveLineGutter,
-  drawSelection,
-  dropCursor,
-  rectangularSelection,
-  crosshairCursor,
-  highlightSpecialChars,
-} from '@codemirror/view';
-import {
-  defaultKeymap,
-  history,
-  historyKeymap,
-  indentWithTab,
-} from '@codemirror/commands';
-import { searchKeymap, highlightSelectionMatches } from '@codemirror/search';
-import {
-  autocompletion,
-  completionKeymap,
-  closeBrackets,
-  closeBracketsKeymap,
-} from '@codemirror/autocomplete';
-import {
-  bracketMatching,
-  indentOnInput,
-  foldGutter,
-  foldKeymap,
-} from '@codemirror/language';
-import { javascript } from '@codemirror/lang-javascript';
-import { rust } from '@codemirror/lang-rust';
-import { python } from '@codemirror/lang-python';
-import { json } from '@codemirror/lang-json';
-import { html } from '@codemirror/lang-html';
-import { css } from '@codemirror/lang-css';
-import { markdown } from '@codemirror/lang-markdown';
+import Editor, { OnMount, BeforeMount } from '@monaco-editor/react';
+import type * as Monaco from 'monaco-editor';
 import { FileText, Loader2, AlertCircle } from 'lucide-react';
 import * as fs from '../../lib/tauri/fs';
-import { useEditorStore, useIsTabDirty } from '../../stores/editorStore';
+import { useEditorStore } from '../../stores/editorStore';
+import { useShallow } from 'zustand/react/shallow';
 import { useParseResults, getSymbolPath } from '../../hooks/useParseResults';
 import { EditorTabs } from './EditorTabs';
 import { Breadcrumbs } from './Breadcrumbs';
-import { soloTheme } from './theme';
+import { registerSoloTheme, SOLO_THEME_NAME } from './theme';
 import type { Symbol } from '../../lib/tauri/parse';
 
 interface CodeEditorProps {
@@ -57,237 +21,166 @@ interface CodeEditorProps {
   className?: string;
 }
 
-type LanguageSupport = Extension;
+const DEFAULT_CURSOR_POSITION = { line: 1, col: 1 };
 
 /**
- * Get CodeMirror language support from file extension
+ * Get Monaco language ID from file extension
  */
-function getLanguageExtension(path: string): LanguageSupport | null {
+function getMonacoLanguage(path: string): string {
   const ext = path.split('.').pop()?.toLowerCase() ?? '';
 
-  switch (ext) {
-    case 'ts':
-    case 'tsx':
-      return javascript({ jsx: true, typescript: true });
-    case 'js':
-    case 'jsx':
-    case 'mjs':
-    case 'cjs':
-      return javascript({ jsx: true });
-    case 'rs':
-      return rust();
-    case 'py':
-    case 'pyw':
-    case 'pyi':
-      return python();
-    case 'json':
-    case 'jsonc':
-      return json();
-    case 'html':
-    case 'htm':
-      return html();
-    case 'css':
-    case 'scss':
-    case 'less':
-      return css();
-    case 'md':
-    case 'markdown':
-      return markdown();
-    default:
-      return null;
-  }
-}
-
-/**
- * Get language display name from file extension
- */
-function getLanguageName(path: string): string {
-  const ext = path.split('.').pop()?.toLowerCase() ?? '';
   const langMap: Record<string, string> = {
-    ts: 'TypeScript',
-    tsx: 'TypeScript React',
-    js: 'JavaScript',
-    jsx: 'JavaScript React',
-    mjs: 'JavaScript',
-    cjs: 'JavaScript',
-    rs: 'Rust',
-    py: 'Python',
-    pyw: 'Python',
-    pyi: 'Python',
-    json: 'JSON',
-    jsonc: 'JSON with Comments',
-    html: 'HTML',
-    htm: 'HTML',
-    css: 'CSS',
-    scss: 'SCSS',
-    less: 'Less',
-    md: 'Markdown',
-    markdown: 'Markdown',
-    toml: 'TOML',
-    yaml: 'YAML',
-    yml: 'YAML',
-    xml: 'XML',
-    sql: 'SQL',
-    sh: 'Shell',
-    bash: 'Bash',
-    zsh: 'Zsh',
+    ts: 'typescript',
+    tsx: 'typescript',
+    js: 'javascript',
+    jsx: 'javascript',
+    mjs: 'javascript',
+    cjs: 'javascript',
+    rs: 'rust',
+    py: 'python',
+    pyw: 'python',
+    pyi: 'python',
+    json: 'json',
+    jsonc: 'json',
+    html: 'html',
+    htm: 'html',
+    css: 'css',
+    scss: 'scss',
+    less: 'less',
+    md: 'markdown',
+    markdown: 'markdown',
+    toml: 'ini',
+    yaml: 'yaml',
+    yml: 'yaml',
+    xml: 'xml',
+    sql: 'sql',
+    sh: 'shell',
+    bash: 'shell',
+    zsh: 'shell',
   };
-  return langMap[ext] ?? 'Plain Text';
+
+  return langMap[ext] ?? 'plaintext';
 }
 
 export function CodeEditor({ filePath, className = '' }: CodeEditorProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const editorViewRef = useRef<EditorView | null>(null);
+  const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
+  const monacoRef = useRef<typeof Monaco | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [cursorPosition, setCursorPosition] = useState({ line: 1, col: 1 });
-  const [lineCount, setLineCount] = useState(0);
-  const [saving, setSaving] = useState(false);
 
-  // Store actions
-  const openTab = useEditorStore((s) => s.openTab);
-  const updateContent = useEditorStore((s) => s.updateContent);
-  const markSaved = useEditorStore((s) => s.markSaved);
+  // Store state (reactive) - use specific selectors to avoid Map reference issues
   const activeTab = useEditorStore((s) => s.activeTab);
-  const tabs = useEditorStore((s) => s.tabs);
 
-  const isDirty = useIsTabDirty(activeTab);
+  // Get current tab content with a stable selector
+  const currentTabContent = useEditorStore((s) => {
+    if (!s.activeTab) return '';
+    return s.tabs.get(s.activeTab)?.currentContent ?? '';
+  });
 
-  // Get current content for parsing
-  const currentContent = activeTab ? tabs.get(activeTab)?.currentContent : undefined;
+  // Get cursor position from store for breadcrumbs (useShallow for stable reference)
+  const cursorPosition = useEditorStore(
+    useShallow((s) => {
+      if (!s.activeTab) return DEFAULT_CURSOR_POSITION;
+      return s.tabs.get(s.activeTab)?.cursorPosition ?? DEFAULT_CURSOR_POSITION;
+    })
+  );
+
+  // Check if a tab exists for the given path
+  const hasTab = useEditorStore((s) => (filePath ? s.tabs.has(filePath) : false));
+
+  // Store actions via ref to avoid re-render loops
+  const storeRef = useRef(useEditorStore.getState());
+  useEffect(() => {
+    storeRef.current = useEditorStore.getState();
+  });
 
   // Parse results for symbol outline and breadcrumbs
-  const parseResults = useParseResults(activeTab, currentContent);
+  const parseResults = useParseResults(activeTab, currentTabContent || undefined);
 
   // Get symbol path for breadcrumbs based on cursor position
-  const symbolPath = parseResults.symbols.length > 0
-    ? getSymbolPath(parseResults.symbols, cursorPosition.line - 1, cursorPosition.col - 1)
-    : [];
+  const symbolPath =
+    parseResults.symbols.length > 0
+      ? getSymbolPath(parseResults.symbols, cursorPosition.line - 1, cursorPosition.col - 1)
+      : [];
 
   // Navigate to a symbol's location in the editor
   const navigateToSymbol = useCallback((symbol: Symbol) => {
-    const view = editorViewRef.current;
-    if (!view) return;
+    const editor = editorRef.current;
+    if (!editor) return;
 
-    // Get position from symbol's selection range (0-indexed)
-    const line = symbol.selection_range.start_line + 1;
-    const lineInfo = view.state.doc.line(line);
-    const pos = lineInfo.from + symbol.selection_range.start_col;
+    const position = {
+      lineNumber: symbol.selection_range.start_line + 1,
+      column: symbol.selection_range.start_col + 1,
+    };
 
-    // Set selection and scroll into view
-    view.dispatch({
-      selection: { anchor: pos },
-      scrollIntoView: true,
-    });
-    view.focus();
+    editor.setPosition(position);
+    editor.revealPositionInCenter(position);
+    editor.focus();
   }, []);
 
   // Save file function
-  const saveFile = useCallback(
-    async (path: string) => {
-      const tab = tabs.get(path);
-      if (!tab) return;
+  const saveFile = useCallback(async (path: string) => {
+    const tab = storeRef.current.tabs.get(path);
+    if (!tab) return;
 
-      setSaving(true);
-      try {
-        await fs.writeFile(path, tab.currentContent);
-        markSaved(path);
-      } catch (err) {
-        console.error('Failed to save file:', err);
-        // Could show error toast here
-      } finally {
-        setSaving(false);
-      }
+    try {
+      await fs.writeFile(path, tab.currentContent);
+      storeRef.current.markSaved(path);
+    } catch (err) {
+      console.error('Failed to save file:', err);
+    }
+  }, []);
+
+  // Handle editor mount
+  const handleEditorMount: OnMount = useCallback(
+    (editor, monaco) => {
+      editorRef.current = editor;
+      monacoRef.current = monaco;
+
+      // Add save command (Cmd+S / Ctrl+S)
+      editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+        if (activeTab) {
+          saveFile(activeTab);
+        }
+      });
+
+      // Track cursor position changes
+      editor.onDidChangeCursorPosition((e) => {
+        if (activeTab) {
+          storeRef.current.updateCursorPosition(
+            activeTab,
+            e.position.lineNumber,
+            e.position.column
+          );
+        }
+      });
     },
-    [tabs, markSaved]
+    [activeTab, saveFile]
   );
 
-  // Build extensions for the editor
-  const buildExtensions = useCallback(
-    (path: string): Extension[] => {
-      const extensions: Extension[] = [
-        // Basic setup
-        lineNumbers(),
-        highlightActiveLineGutter(),
-        highlightSpecialChars(),
-        history(),
-        foldGutter(),
-        drawSelection(),
-        dropCursor(),
-        EditorState.allowMultipleSelections.of(true),
-        indentOnInput(),
-        bracketMatching(),
-        closeBrackets(),
-        autocompletion(),
-        rectangularSelection(),
-        crosshairCursor(),
-        highlightActiveLine(),
-        highlightSelectionMatches(),
+  // Handle before mount (register theme)
+  const handleBeforeMount: BeforeMount = useCallback((monaco) => {
+    registerSoloTheme(monaco);
+  }, []);
 
-        // Keymaps including custom save command
-        keymap.of([
-          // Save command (Cmd+S / Ctrl+S)
-          {
-            key: 'Mod-s',
-            run: () => {
-              saveFile(path);
-              return true;
-            },
-          },
-          ...closeBracketsKeymap,
-          ...defaultKeymap,
-          ...searchKeymap,
-          ...historyKeymap,
-          ...foldKeymap,
-          ...completionKeymap,
-          indentWithTab,
-        ]),
-
-        // Theme
-        soloTheme,
-
-        // Update listener for cursor position and content changes
-        EditorView.updateListener.of((update) => {
-          if (update.selectionSet) {
-            const pos = update.state.selection.main.head;
-            const line = update.state.doc.lineAt(pos);
-            setCursorPosition({
-              line: line.number,
-              col: pos - line.from + 1,
-            });
-          }
-          if (update.docChanged) {
-            setLineCount(update.state.doc.lines);
-            // Update store with new content
-            const newContent = update.state.doc.toString();
-            updateContent(path, newContent);
-          }
-        }),
-      ];
-
-      // Add language support if available
-      const langExt = getLanguageExtension(path);
-      if (langExt) {
-        extensions.push(langExt);
+  // Handle content changes
+  const handleEditorChange = useCallback(
+    (value: string | undefined) => {
+      if (activeTab && value !== undefined) {
+        storeRef.current.updateContent(activeTab, value);
+        // Update line count
+        const lineCount = value.split('\n').length;
+        storeRef.current.updateLineCount(activeTab, lineCount);
       }
-
-      return extensions;
     },
-    [saveFile, updateContent]
+    [activeTab]
   );
 
-  // Load file and create editor
+  // Load file when filePath changes
   useEffect(() => {
-    if (!filePath || !containerRef.current) {
-      // Cleanup existing editor
-      if (editorViewRef.current) {
-        editorViewRef.current.destroy();
-        editorViewRef.current = null;
-      }
+    if (!filePath) {
       setError(null);
-      setLineCount(0);
-      setCursorPosition({ line: 1, col: 1 });
       return;
     }
 
@@ -295,31 +188,7 @@ export function CodeEditor({ filePath, className = '' }: CodeEditorProps) {
 
     async function loadFile() {
       // Check if tab already exists with content
-      const existingTab = tabs.get(filePath!);
-      if (existingTab) {
-        // Use cached content
-        if (cancelled) return;
-
-        // Destroy previous editor
-        if (editorViewRef.current) {
-          editorViewRef.current.destroy();
-          editorViewRef.current = null;
-        }
-
-        // Create editor with cached content
-        const state = EditorState.create({
-          doc: existingTab.currentContent,
-          extensions: buildExtensions(filePath!),
-        });
-
-        const view = new EditorView({
-          state,
-          parent: containerRef.current!,
-        });
-
-        editorViewRef.current = view;
-        setLineCount(state.doc.lines);
-        setCursorPosition(existingTab.cursorPosition ?? { line: 1, col: 1 });
+      if (hasTab) {
         setLoading(false);
         return;
       }
@@ -333,29 +202,9 @@ export function CodeEditor({ filePath, className = '' }: CodeEditorProps) {
         if (cancelled) return;
 
         // Open tab with content
-        openTab(filePath!, response.content);
-
-        // Destroy previous editor
-        if (editorViewRef.current) {
-          editorViewRef.current.destroy();
-          editorViewRef.current = null;
-        }
-
-        // Create new editor state
-        const state = EditorState.create({
-          doc: response.content,
-          extensions: buildExtensions(filePath!),
-        });
-
-        // Create editor view
-        const view = new EditorView({
-          state,
-          parent: containerRef.current!,
-        });
-
-        editorViewRef.current = view;
-        setLineCount(state.doc.lines);
-        setCursorPosition({ line: 1, col: 1 });
+        storeRef.current.openTab(filePath!, response.content);
+        storeRef.current.updateLineCount(filePath!, response.content.split('\n').length);
+        storeRef.current.updateCursorPosition(filePath!, 1, 1);
         setLoading(false);
       } catch (err) {
         if (cancelled) return;
@@ -370,17 +219,7 @@ export function CodeEditor({ filePath, className = '' }: CodeEditorProps) {
     return () => {
       cancelled = true;
     };
-  }, [filePath, tabs, openTab, buildExtensions]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (editorViewRef.current) {
-        editorViewRef.current.destroy();
-        editorViewRef.current = null;
-      }
-    };
-  }, []);
+  }, [filePath, hasTab]);
 
   // Global keyboard shortcut for save (backup in case editor doesn't have focus)
   useEffect(() => {
@@ -400,30 +239,28 @@ export function CodeEditor({ filePath, className = '' }: CodeEditorProps) {
   // No file selected - show placeholder
   if (!filePath && !activeTab) {
     return (
-      <div className={`flex flex-col h-full bg-[#1e1e1e] ${className}`}>
+      <div className={`flex flex-col h-full bg-background ${className}`}>
         <EditorTabs />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center space-y-4">
-            <FileText className="w-12 h-12 text-[#6e7681] mx-auto" />
-            <p className="text-[#8b8b8b]">Select a file from the explorer to view it</p>
-            <p className="text-xs text-[#6e7681]">Double-click a file or press Enter</p>
+            <FileText className="w-12 h-12 text-muted-foreground/50 mx-auto" />
+            <p className="text-muted-foreground">Select a file from the explorer to view it</p>
+            <p className="text-xs text-muted-foreground/60">Double-click a file or press Enter</p>
           </div>
         </div>
       </div>
     );
   }
 
-  const displayPath = filePath ?? activeTab;
-
   // Loading state
   if (loading) {
     return (
-      <div className={`flex flex-col h-full bg-[#1e1e1e] ${className}`}>
+      <div className={`flex flex-col h-full bg-background ${className}`}>
         <EditorTabs />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center space-y-4">
-            <Loader2 className="w-8 h-8 text-[#007acc] animate-spin mx-auto" />
-            <p className="text-sm text-[#8b8b8b]">Loading file...</p>
+            <Loader2 className="w-8 h-8 text-primary animate-spin mx-auto" />
+            <p className="text-sm text-muted-foreground">Loading file...</p>
           </div>
         </div>
       </div>
@@ -433,56 +270,68 @@ export function CodeEditor({ filePath, className = '' }: CodeEditorProps) {
   // Error state
   if (error) {
     return (
-      <div className={`flex flex-col h-full bg-[#1e1e1e] ${className}`}>
+      <div className={`flex flex-col h-full bg-background ${className}`}>
         <EditorTabs />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center space-y-4 max-w-md px-4">
-            <AlertCircle className="w-8 h-8 text-[#f44747] mx-auto" />
-            <p className="text-sm text-[#f44747]">Failed to load file</p>
-            <p className="text-xs text-[#8b8b8b] break-all">{error}</p>
+            <AlertCircle className="w-8 h-8 text-destructive mx-auto" />
+            <p className="text-sm text-destructive">Failed to load file</p>
+            <p className="text-xs text-muted-foreground break-all">{error}</p>
           </div>
         </div>
       </div>
     );
   }
 
-  const language = displayPath ? getLanguageName(displayPath) : 'Plain Text';
-
   return (
-    <div className={`flex flex-col h-full bg-[#1e1e1e] ${className}`}>
+    <div className={`flex flex-col h-full bg-background ${className}`}>
       {/* Tab bar */}
       <EditorTabs />
 
       {/* Breadcrumb with symbol path */}
       <Breadcrumbs
-        filePath={displayPath}
+        filePath={filePath ?? activeTab}
         symbolPath={symbolPath}
         onSymbolClick={navigateToSymbol}
       />
 
-      {/* Editor container */}
-      <div ref={containerRef} className="flex-1 overflow-hidden" />
-
-      {/* Status bar */}
-      <div className="flex items-center justify-between h-6 px-3 bg-[#007acc] text-white text-[12px]">
-        <div className="flex items-center gap-4">
-          <span>{language}</span>
-          <span>UTF-8</span>
-          {isDirty && <span className="text-yellow-200">Modified</span>}
-          {saving && <span className="text-blue-200">Saving...</span>}
-          {parseResults.isLoading && <span className="text-blue-200">Parsing...</span>}
-        </div>
-        <div className="flex items-center gap-4">
-          <span>
-            Ln {cursorPosition.line}, Col {cursorPosition.col}
-          </span>
-          {lineCount > 0 && <span>{lineCount} lines</span>}
-          {parseResults.symbols.length > 0 && (
-            <span title={`Parsed in ${parseResults.parseTimeMs}ms`}>
-              {parseResults.symbols.length} symbols
-            </span>
-          )}
-        </div>
+      {/* Monaco Editor */}
+      <div className="flex-1 overflow-hidden">
+        <Editor
+          height="100%"
+          language={activeTab ? getMonacoLanguage(activeTab) : 'plaintext'}
+          value={currentTabContent}
+          theme={SOLO_THEME_NAME}
+          beforeMount={handleBeforeMount}
+          onMount={handleEditorMount}
+          onChange={handleEditorChange}
+          options={{
+            fontSize: 13,
+            lineHeight: 22,
+            fontFamily: 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+            minimap: { enabled: false },
+            scrollBeyondLastLine: false,
+            automaticLayout: true,
+            bracketPairColorization: { enabled: true },
+            folding: true,
+            lineNumbers: 'on',
+            renderLineHighlight: 'line',
+            cursorBlinking: 'smooth',
+            smoothScrolling: true,
+            tabSize: 2,
+            insertSpaces: true,
+            wordWrap: 'off',
+            padding: { top: 0, bottom: 0 },
+            scrollbar: {
+              useShadows: false,
+              verticalScrollbarSize: 8,
+              horizontalScrollbarSize: 8,
+            },
+            overviewRulerLanes: 0,
+            hideCursorInOverviewRuler: true,
+            overviewRulerBorder: false,
+          }}
+        />
       </div>
     </div>
   );

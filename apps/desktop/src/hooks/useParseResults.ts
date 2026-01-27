@@ -163,8 +163,11 @@ export function findSymbolAtPosition(
 
     if (inRange) {
       // Check children for more specific match
-      const childMatch = findSymbolAtPosition(symbol.children, line, col);
-      return childMatch ?? symbol;
+      if (symbol.children?.length) {
+        const childMatch = findSymbolAtPosition(symbol.children, line, col);
+        if (childMatch) return childMatch;
+      }
+      return symbol;
     }
   }
   return null;
@@ -191,7 +194,9 @@ export function getSymbolPath(
 
       if (inRange) {
         path.push(symbol);
-        findPath(symbol.children);
+        if (symbol.children?.length) {
+          findPath(symbol.children);
+        }
         return true;
       }
     }
