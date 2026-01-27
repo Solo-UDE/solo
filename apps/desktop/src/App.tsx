@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { FileExplorer } from "./components/file-explorer";
+import { PrimarySidebar } from "./components/sidebar";
 import { FileViewer } from "./components/editor";
 import { useFileExplorerStore } from "./stores/fileExplorerStore";
+import { useUIStore } from "./stores/uiStore";
 
 function App() {
   const [backendStatus, setBackendStatus] = useState<string>("Connecting...");
@@ -10,6 +11,7 @@ function App() {
 
   const rootPath = useFileExplorerStore((s) => s.rootPath);
   const openFolder = useFileExplorerStore((s) => s.openFolder);
+  const leftSidebarWidth = useUIStore((state) => state.leftSidebarWidth);
 
   useEffect(() => {
     // Test IPC connection with ping
@@ -41,10 +43,8 @@ function App() {
 
       {/* Main content */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Sidebar with File Explorer */}
-        <div className="w-64 min-w-48 max-w-96 border-r border-border/30 flex flex-col shrink-0">
-          <FileExplorer onFileOpen={handleFileOpen} className="flex-1" />
-        </div>
+        {/* Dynamic-width sidebar */}
+        <PrimarySidebar width={leftSidebarWidth} onFileOpen={handleFileOpen} />
 
         {/* Main editor area */}
         <div className="flex-1 flex flex-col overflow-hidden">
@@ -64,10 +64,10 @@ function App() {
                   <div
                     className={`w-2 h-2 rounded-full ${
                       backendStatus.includes("connected")
-                        ? "bg-green-500"
+                        ? "bg-status-success"
                         : backendStatus.includes("error")
-                          ? "bg-red-500"
-                          : "bg-yellow-500 animate-pulse"
+                          ? "bg-status-error"
+                          : "bg-status-warning animate-pulse"
                     }`}
                   />
                   <span className="text-sm text-muted-foreground">{backendStatus}</span>

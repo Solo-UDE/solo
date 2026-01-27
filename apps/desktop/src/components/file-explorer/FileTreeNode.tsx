@@ -37,9 +37,9 @@ interface FileTreeNodeProps {
 function getFileIcon(name: string, isDir: boolean, isExpanded: boolean) {
   if (isDir) {
     return isExpanded ? (
-      <FolderOpen className="w-4 h-4 text-amber-500" />
+      <FolderOpen className="w-4 h-4 text-file-folder" />
     ) : (
-      <Folder className="w-4 h-4 text-amber-500" />
+      <Folder className="w-4 h-4 text-file-folder" />
     );
   }
 
@@ -57,26 +57,26 @@ function getFileIcon(name: string, isDir: boolean, isExpanded: boolean) {
     case 'c':
     case 'cpp':
     case 'h':
-      return <FileCode className="w-4 h-4 text-blue-400" />;
+      return <FileCode className="w-4 h-4 text-file-code" />;
     case 'json':
     case 'yaml':
     case 'yml':
     case 'toml':
-      return <FileJson className="w-4 h-4 text-yellow-400" />;
+      return <FileJson className="w-4 h-4 text-file-config" />;
     case 'md':
     case 'txt':
     case 'doc':
     case 'docx':
-      return <FileText className="w-4 h-4 text-gray-400" />;
+      return <FileText className="w-4 h-4 text-file-text" />;
     case 'png':
     case 'jpg':
     case 'jpeg':
     case 'gif':
     case 'svg':
     case 'webp':
-      return <Image className="w-4 h-4 text-purple-400" />;
+      return <Image className="w-4 h-4 text-file-image" />;
     default:
-      return <File className="w-4 h-4 text-gray-400" />;
+      return <File className="w-4 h-4 text-file-text" />;
   }
 }
 
