@@ -248,6 +248,57 @@ pub async fn read_file(
     })
 }
 
+/// Write content to a file
+#[tauri::command]
+pub async fn write_file(
+    request: solo_protocol::FileWriteRequest,
+    state: State<'_, FsState>,
+) -> Result<(), FileOperationError> {
+    let workspace = state.workspace_root.read().await;
+    let workspace_path = workspace.as_ref().ok_or_else(|| FileOperationError {
+        code: FileErrorCode::InvalidPath,
+        message: "No workspace root set".to_string(),
+        path: request.path.clone(),
+    })?;
+
+    let path = PathBuf::from(&request.path);
+
+    // Validate path is within workspace
+    let canonical = path.canonicalize().map_err(|e| FileOperationError {
+        code: FileErrorCode::NotFound,
+        message: e.to_string(),
+        path: request.path.clone(),
+    })?;
+
+    let workspace_canonical = workspace_path.canonicalize().map_err(|e| FileOperationError {
+        code: FileErrorCode::IoError,
+        message: e.to_string(),
+        path: request.path.clone(),
+    })?;
+
+    if !canonical.starts_with(&workspace_canonical) {
+        return Err(FileOperationError {
+            code: FileErrorCode::PathOutsideWorkspace,
+            message: "Path is outside workspace".to_string(),
+            path: request.path.clone(),
+        });
+    }
+
+    debug!(path = %request.path, "Writing file");
+
+    std::fs::write(&path, &request.content).map_err(|e| FileOperationError {
+        code: if e.kind() == std::io::ErrorKind::PermissionDenied {
+            FileErrorCode::PermissionDenied
+        } else {
+            FileErrorCode::IoError
+        },
+        message: e.to_string(),
+        path: request.path.clone(),
+    })?;
+
+    Ok(())
+}
+
 /// Rename/move a file or directory
 #[tauri::command]
 pub async fn rename_file(
