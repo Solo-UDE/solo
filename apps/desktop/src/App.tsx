@@ -6,6 +6,7 @@ import { MosaicLayout } from "./components/panels";
 import { useUIStore } from "./stores/uiStore";
 import { usePanelTabsStore } from "./stores/panelTabsStore";
 import { useProviderStore } from "./stores/provider-store";
+import { useAgentStore } from "./stores/agentStore";
 import { registerBuiltinPanels, BUILTIN_PANEL_TYPES } from "./lib/panels";
 import { SettingsModal } from "./components/settings";
 import { useAutosave } from "./hooks/useAutosave";
@@ -19,6 +20,7 @@ function App() {
 
   const leftSidebarWidth = useUIStore((state) => state.leftSidebarWidth);
   const initializeProviders = useProviderStore((state) => state.initialize);
+  const loadPersistedSessions = useAgentStore((state) => state.loadPersistedSessions);
 
   // Get openPanel action directly from store to avoid selector subscription issues
   const openPanel = useMemo(() => usePanelTabsStore.getState().openPanel, []);
@@ -45,6 +47,11 @@ function App() {
       console.error("Failed to initialize providers:", err);
     });
   }, [initializeProviders]);
+
+  // Load persisted agent sessions on startup
+  useEffect(() => {
+    loadPersistedSessions();
+  }, [loadPersistedSessions]);
 
   // Open a file in the panel system
   const handleFileOpen = useCallback((path: string) => {

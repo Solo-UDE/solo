@@ -8,6 +8,10 @@ import { immer } from 'zustand/middleware/immer';
 import { enableMapSet } from 'immer';
 import type { AgentMessage, AgentToolCall } from '../bindings';
 import * as backend from '../lib/backend';
+import {
+	loadSessions,
+	createDebouncedSessionSave,
+} from '../lib/sessionPersistence';
 
 // Enable Map and Set support in Immer
 enableMapSet();
@@ -75,6 +79,7 @@ interface AgentActions {
 	// Session management
 	createSession: (model?: string) => Promise<string>;
 	setActiveSession: (sessionId: string) => void;
+	deleteSession: (sessionId: string) => void;
 
 	// Message handling
 	sendMessage: (content: string, mode: MessageMode) => Promise<void>;
@@ -86,6 +91,10 @@ interface AgentActions {
 	handleAgentToolEnd: (conversationId: string, toolCallId: string, result: string) => void;
 	handleAgentComplete: (conversationId: string, message: AgentMessage) => void;
 	handleAgentError: (conversationId: string, error: string) => void;
+
+	// Persistence
+	loadPersistedSessions: () => void;
+	persistSessions: () => void;
 
 	// Utilities
 	clearError: () => void;
@@ -109,6 +118,9 @@ const initialState: AgentState = {
 	error: null,
 };
 
+// Create debounced save function (saves 1 second after last change)
+const debouncedSave = createDebouncedSessionSave(1000);
+
 // =============================================================================
 // Store
 // =============================================================================
@@ -116,6 +128,21 @@ const initialState: AgentState = {
 export const useAgentStore = create<AgentStore>()(
 	immer((set, get) => ({
 		...initialState,
+
+		loadPersistedSessions: () => {
+			const persisted = loadSessions();
+			if (persisted) {
+				set((state) => {
+					state.sessions = persisted.sessions;
+					state.messages = persisted.messages;
+				});
+			}
+		},
+
+		persistSessions: () => {
+			const state = get();
+			debouncedSave.save(state.sessions, state.messages);
+		},
 
 		createSession: async (model?: string) => {
 			try {
@@ -130,6 +157,9 @@ export const useAgentStore = create<AgentStore>()(
 					state.messages.set(sessionId, []);
 					state.activeSessionId = sessionId;
 				});
+
+				// Persist after creating session
+				get().persistSessions();
 
 				return sessionId;
 			} catch (error) {
@@ -147,6 +177,20 @@ export const useAgentStore = create<AgentStore>()(
 					state.activeSessionId = sessionId;
 				}
 			});
+		},
+
+		deleteSession: (sessionId: string) => {
+			set((state) => {
+				state.sessions.delete(sessionId);
+				state.messages.delete(sessionId);
+				if (state.activeSessionId === sessionId) {
+					// Switch to another session or null
+					const remaining = Array.from(state.sessions.keys());
+					state.activeSessionId = remaining.length > 0 ? remaining[0] : null;
+				}
+			});
+			// Persist after deletion
+			get().persistSessions();
 		},
 
 		sendMessage: async (content: string, mode: MessageMode) => {
@@ -210,6 +254,9 @@ export const useAgentStore = create<AgentStore>()(
 				});
 				state.messages.set(sessionId, sessionMessages);
 			});
+
+			// Persist after adding user message (for title generation)
+			get().persistSessions();
 
 			return messageId;
 		},
@@ -305,6 +352,9 @@ export const useAgentStore = create<AgentStore>()(
 				state.activeToolCalls = new Map();
 				state.isAgentRunning = false;
 			});
+
+			// Persist after message completion
+			get().persistSessions();
 		},
 
 		handleAgentError: (conversationId: string, error: string) => {
