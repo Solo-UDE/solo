@@ -31,7 +31,7 @@ async function saveAllDirty(): Promise<void> {
  * Hook that manages autosave on window blur and tab switch
  */
 export function useAutosave(): void {
-  const autosaveDelay = useSettingsStore((s) => s.autosaveDelay);
+  const autosaveDelay = useSettingsStore((s) => s.files.autosaveDelay);
   const activeTab = useEditorStore((s) => s.activeTab);
 
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);

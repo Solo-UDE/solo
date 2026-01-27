@@ -1,49 +1,92 @@
 /**
- * SettingsModal - Modal dialog for user preferences
+ * SettingsModal - Modal dialog with vertical tabbed navigation
  */
 
-import { useCallback, useEffect, useRef } from 'react';
-import { Settings, X } from 'lucide-react';
-import { useSettingsStore, AUTOSAVE_OPTIONS, AutosaveDelay } from '../../stores/settingsStore';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Settings, X, Sun, Code, FolderOpen, Keyboard, Bot } from 'lucide-react';
+import { GeneralTab } from './tabs/GeneralTab';
+import { EditorTab } from './tabs/EditorTab';
+import { FilesTab } from './tabs/FilesTab';
+import { ShortcutsTab } from './tabs/ShortcutsTab';
+import { AITab } from './tabs/AITab';
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
-  const selectRef = useRef<HTMLSelectElement>(null);
-  const autosaveDelay = useSettingsStore((s) => s.autosaveDelay);
-  const setAutosaveDelay = useSettingsStore((s) => s.setAutosaveDelay);
+type TabId = 'general' | 'editor' | 'files' | 'shortcuts' | 'ai';
 
+interface Tab {
+  id: TabId;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+}
+
+const TABS: Tab[] = [
+  { id: 'general', label: 'General', icon: Sun },
+  { id: 'editor', label: 'Editor', icon: Code },
+  { id: 'files', label: 'Files', icon: FolderOpen },
+  { id: 'shortcuts', label: 'Shortcuts', icon: Keyboard },
+  { id: 'ai', label: 'AI', icon: Bot },
+];
+
+export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
+  const [activeTab, setActiveTab] = useState<TabId>('general');
+  const modalRef = useRef<HTMLDivElement>(null);
+  const firstTabRef = useRef<HTMLButtonElement>(null);
+
+  // Focus management
   useEffect(() => {
     if (isOpen) {
       setTimeout(() => {
-        selectRef.current?.focus();
+        firstTabRef.current?.focus();
       }, 50);
+    } else {
+      setActiveTab('general');
     }
   }, [isOpen]);
 
+  // Keyboard navigation
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
         onClose();
+        return;
+      }
+
+      // Tab navigation with arrow keys
+      const currentIndex = TABS.findIndex((t) => t.id === activeTab);
+
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const direction = e.key === 'ArrowDown' ? 1 : -1;
+        const nextIndex = (currentIndex + direction + TABS.length) % TABS.length;
+        setActiveTab(TABS[nextIndex].id);
       }
     },
-    [onClose]
-  );
-
-  const handleDelayChange = useCallback(
-    (e: React.ChangeEvent<HTMLSelectElement>) => {
-      const value = e.target.value;
-      const delay: AutosaveDelay = value === 'disabled' ? 'disabled' : (Number(value) as 0 | 5000 | 10000 | 30000);
-      setAutosaveDelay(delay);
-    },
-    [setAutosaveDelay]
+    [activeTab, onClose]
   );
 
   if (!isOpen) return null;
+
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case 'general':
+        return <GeneralTab />;
+      case 'editor':
+        return <EditorTab />;
+      case 'files':
+        return <FilesTab />;
+      case 'shortcuts':
+        return <ShortcutsTab />;
+      case 'ai':
+        return <AITab />;
+      default:
+        return null;
+    }
+  };
 
   return (
     <div
@@ -52,13 +95,15 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       onKeyDown={handleKeyDown}
     >
       <div
-        className="bg-card border border-border rounded-lg shadow-xl w-96 p-4"
+        ref={modalRef}
+        className="bg-card border border-border rounded-lg shadow-xl w-[680px] h-[520px] flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between mb-6">
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
           <div className="flex items-center gap-2">
             <Settings className="w-4 h-4 text-muted-foreground" />
-            <h3 className="text-sm font-medium text-foreground">Settings</h3>
+            <h2 className="text-sm font-medium text-foreground">Settings</h2>
           </div>
           <button
             type="button"
@@ -69,27 +114,39 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           </button>
         </div>
 
-        <div className="space-y-4">
-          <div>
-            <label htmlFor="autosave-delay" className="block text-sm font-medium text-foreground mb-2">
-              Autosave Delay
-            </label>
-            <select
-              ref={selectRef}
-              id="autosave-delay"
-              value={String(autosaveDelay)}
-              onChange={handleDelayChange}
-              className="w-full px-3 py-2 bg-background border border-border rounded-md text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
-            >
-              {AUTOSAVE_OPTIONS.map((option) => (
-                <option key={String(option.value)} value={String(option.value)}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Files are saved when you switch tabs or switch away from the app.
-            </p>
+        {/* Body */}
+        <div className="flex-1 flex min-h-0">
+          {/* Sidebar tabs */}
+          <nav className="w-40 border-r border-border bg-muted/30 py-2 shrink-0">
+            {TABS.map((tab, index) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+
+              return (
+                <button
+                  key={tab.id}
+                  ref={index === 0 ? firstTabRef : undefined}
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`
+                    w-full flex items-center gap-2 px-4 py-2 text-sm
+                    transition-colors text-left
+                    ${isActive
+                      ? 'bg-primary/10 text-primary border-r-2 border-primary'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                    }
+                  `}
+                >
+                  <Icon className="w-4 h-4" />
+                  {tab.label}
+                </button>
+              );
+            })}
+          </nav>
+
+          {/* Content */}
+          <div className="flex-1 overflow-y-auto p-6">
+            {renderTabContent()}
           </div>
         </div>
       </div>

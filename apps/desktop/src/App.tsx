@@ -8,6 +8,7 @@ import { useUIStore } from "./stores/uiStore";
 import { useEditorStore, useActiveTabStatus } from "./stores/editorStore";
 import { SettingsModal } from "./components/settings";
 import { useAutosave } from "./hooks/useAutosave";
+import { useColorScheme } from "./hooks/useColorScheme";
 
 function App() {
   const rootPath = useFileExplorerStore((s) => s.rootPath);
@@ -24,6 +25,9 @@ function App() {
 
   // Enable autosave on blur and tab switch
   useAutosave();
+
+  // Apply color scheme to document
+  useColorScheme();
 
   useEffect(() => {
     // Test IPC connection with ping
