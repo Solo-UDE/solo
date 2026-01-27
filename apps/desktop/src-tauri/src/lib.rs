@@ -4,6 +4,7 @@
 
 mod commands;
 mod fs_commands;
+mod parse_commands;
 
 use fs_commands::FsState;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -35,12 +36,17 @@ pub fn run() {
             fs_commands::set_workspace_root,
             fs_commands::read_directory,
             fs_commands::read_file,
+            fs_commands::write_file,
             fs_commands::create_file,
             fs_commands::rename_file,
             fs_commands::delete_file,
             fs_commands::start_watching,
             fs_commands::stop_watching,
             fs_commands::reveal_in_finder,
+            // Parse commands
+            parse_commands::parse_file,
+            parse_commands::parse_content,
+            parse_commands::is_parseable,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
