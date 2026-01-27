@@ -5,6 +5,7 @@
 mod commands;
 mod fs_commands;
 mod agent_commands;
+mod parse_commands;
 
 use fs_commands::FsState;
 use agent_commands::AgentState;
@@ -38,6 +39,7 @@ pub fn run() {
             fs_commands::set_workspace_root,
             fs_commands::read_directory,
             fs_commands::read_file,
+            fs_commands::write_file,
             fs_commands::create_file,
             fs_commands::rename_file,
             fs_commands::delete_file,
@@ -57,6 +59,10 @@ pub fn run() {
             agent_commands::agent_send_message,
             agent_commands::agent_get_history,
             agent_commands::agent_clear_history,
+            // Parse commands
+            parse_commands::parse_file,
+            parse_commands::parse_content,
+            parse_commands::is_parseable,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
