@@ -1,33 +1,37 @@
-import { useState, useEffect, useCallback } from "react";
+import { useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { PrimarySidebar } from "./components/sidebar";
-import { FileViewer } from "./components/editor";
+import { CodeEditor, EditorErrorBoundary } from "./components/editor";
 import { useFileExplorerStore } from "./stores/fileExplorerStore";
 import { useUIStore } from "./stores/uiStore";
+import { useEditorStore } from "./stores/editorStore";
 
 function App() {
-  const [backendStatus, setBackendStatus] = useState<string>("Connecting...");
-  const [selectedFile, setSelectedFile] = useState<string | null>(null);
-
   const rootPath = useFileExplorerStore((s) => s.rootPath);
   const openFolder = useFileExplorerStore((s) => s.openFolder);
   const leftSidebarWidth = useUIStore((state) => state.leftSidebarWidth);
+
+  const activeTab = useEditorStore((s) => s.activeTab);
+  const setActiveTab = useEditorStore((s) => s.setActiveTab);
 
   useEffect(() => {
     // Test IPC connection with ping
     invoke<string>("ping")
       .then((response) => {
-        setBackendStatus(`Backend connected: ${response}`);
+        console.log("Backend connected:", response);
       })
       .catch((err) => {
-        setBackendStatus(`Backend error: ${err}`);
+        console.error("Backend error:", err);
       });
   }, []);
 
-  const handleFileOpen = useCallback((path: string) => {
-    setSelectedFile(path);
-    console.log("File opened:", path);
-  }, []);
+  const handleFileOpen = useCallback(
+    (path: string) => {
+      // Set as active tab - CodeEditor will load it if needed
+      setActiveTab(path);
+    },
+    [setActiveTab]
+  );
 
   return (
     <div className="h-screen w-screen bg-background text-foreground flex flex-col overflow-hidden">
@@ -49,37 +53,25 @@ function App() {
         {/* Main editor area */}
         <div className="flex-1 flex flex-col overflow-hidden">
           {rootPath ? (
-            // Show file viewer when a folder is open
-            <FileViewer filePath={selectedFile} className="flex-1" />
+            <EditorErrorBoundary>
+              <CodeEditor filePath={activeTab} className="flex-1" />
+            </EditorErrorBoundary>
           ) : (
             // Show welcome screen when no folder is open
-            <div className="flex-1 flex items-center justify-center">
+            <div className="flex-1 flex items-center justify-center bg-[#1e1e1e]">
               <div className="text-center space-y-6">
                 <div className="space-y-2">
-                  <h1 className="text-4xl font-bold tracking-tight">Solo IDE</h1>
-                  <p className="text-muted-foreground">AI-native development environment</p>
-                </div>
-
-                <div className="inline-flex items-center gap-2 px-4 py-2 bg-card rounded-xl shadow-lg">
-                  <div
-                    className={`w-2 h-2 rounded-full ${
-                      backendStatus.includes("connected")
-                        ? "bg-status-success"
-                        : backendStatus.includes("error")
-                          ? "bg-status-error"
-                          : "bg-status-warning animate-pulse"
-                    }`}
-                  />
-                  <span className="text-sm text-muted-foreground">{backendStatus}</span>
+                  <h1 className="text-4xl font-bold tracking-tight text-white">Solo IDE</h1>
+                  <p className="text-[#8b8b8b]">AI-native development environment</p>
                 </div>
 
                 <div className="pt-8 flex gap-3 justify-center">
-                  <button className="h-10 px-5 bg-primary text-primary-foreground rounded-xl font-medium hover:brightness-110 active:scale-[0.97] transition-all duration-200">
+                  <button className="h-10 px-5 bg-[#007acc] text-white rounded font-medium hover:bg-[#1c8ad4] active:scale-[0.97] transition-all duration-200">
                     New Project
                   </button>
                   <button
                     onClick={openFolder}
-                    className="h-10 px-5 bg-muted/60 text-foreground rounded-xl font-medium hover:bg-muted active:scale-[0.97] transition-all duration-200"
+                    className="h-10 px-5 bg-[#3c3c3c] text-white rounded font-medium hover:bg-[#4c4c4c] active:scale-[0.97] transition-all duration-200"
                   >
                     Open Folder
                   </button>
@@ -91,8 +83,8 @@ function App() {
       </div>
 
       {/* Status bar */}
-      <div className="h-6 px-3 bg-card/60 border-t border-border/30 flex items-center shrink-0">
-        <span className="text-xs text-muted-foreground">
+      <div className="h-6 px-3 bg-[#007acc] border-t border-border/30 flex items-center shrink-0">
+        <span className="text-xs text-white">
           {rootPath ? `Workspace: ${rootPath}` : "Ready"}
         </span>
       </div>
