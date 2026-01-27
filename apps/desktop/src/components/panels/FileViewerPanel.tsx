@@ -1,19 +1,32 @@
 /**
  * FileViewerPanel - Panel implementation for viewing/editing file contents
  * Uses Monaco Editor for syntax highlighting and editing
+ * Includes markdown preview support
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Editor, { OnMount, BeforeMount } from '@monaco-editor/react';
 import type * as Monaco from 'monaco-editor';
 import { Loader2, AlertCircle } from 'lucide-react';
 import * as fs from '@/lib/tauri/fs';
 import { registerSoloTheme, SOLO_THEME_NAME } from '@/components/editor/theme';
+import { MarkdownPreview } from '@/components/editor/MarkdownPreview';
+import { MarkdownSplitPane } from '@/components/editor/MarkdownSplitPane';
+import { MarkdownToggle } from '@/components/editor/MarkdownToggle';
 import type { PanelProps } from '@/lib/panels/types';
 
 interface FileViewerData {
   filePath: string;
   fileName?: string;
+}
+
+/**
+ * Check if file is a markdown file
+ */
+function isMarkdownFile(path: string | undefined): boolean {
+  if (!path) return false;
+  const ext = path.split('.').pop()?.toLowerCase() ?? '';
+  return ext === 'md' || ext === 'markdown';
 }
 
 /**
@@ -23,40 +36,64 @@ function getMonacoLanguage(path: string): string {
   const ext = path.split('.').pop()?.toLowerCase() ?? '';
 
   const langMap: Record<string, string> = {
+    // TypeScript/JavaScript
     ts: 'typescript',
     tsx: 'typescript',
     js: 'javascript',
     jsx: 'javascript',
     mjs: 'javascript',
     cjs: 'javascript',
+    // Systems languages
     rs: 'rust',
+    go: 'go',
+    c: 'c',
+    cpp: 'cpp',
+    h: 'c',
+    hpp: 'cpp',
+    // Scripting
     py: 'python',
     pyw: 'python',
     pyi: 'python',
+    java: 'java',
+    // Config files
     json: 'json',
     jsonc: 'json',
+    toml: 'ini',
+    yaml: 'yaml',
+    yml: 'yaml',
+    xml: 'xml',
+    lock: 'ini', // Cargo.lock, package-lock.json, etc.
+    // Web
     html: 'html',
     htm: 'html',
     css: 'css',
     scss: 'scss',
     less: 'less',
+    // Documentation
     md: 'markdown',
     markdown: 'markdown',
-    toml: 'ini',
-    yaml: 'yaml',
-    yml: 'yaml',
-    xml: 'xml',
-    sql: 'sql',
+    // Shell
     sh: 'shell',
     bash: 'shell',
     zsh: 'shell',
-    go: 'go',
-    java: 'java',
-    c: 'c',
-    cpp: 'cpp',
-    h: 'c',
-    hpp: 'cpp',
+    // Database
+    sql: 'sql',
+    // Dotfiles and config
+    gitignore: 'ini',
+    gitattributes: 'ini',
+    dockerignore: 'ini',
+    editorconfig: 'ini',
+    env: 'shell',
+    // Other
+    makefile: 'makefile',
+    dockerfile: 'dockerfile',
   };
+
+  // Handle special filenames (without extension)
+  const fileName = path.split('/').pop()?.toLowerCase() ?? '';
+  if (fileName === 'dockerfile') return 'dockerfile';
+  if (fileName === 'makefile') return 'makefile';
+  if (fileName.startsWith('.env')) return 'shell';
 
   return langMap[ext] ?? 'plaintext';
 }
@@ -73,8 +110,15 @@ export function FileViewerPanel({
   const [error, setError] = useState<string | null>(null);
   const [cursorPosition, setCursorPosition] = useState({ line: 1, col: 1 });
 
+  // Markdown preview state
+  const [markdownPreviewEnabled, setMarkdownPreviewEnabled] = useState(false);
+  const [splitPosition, setSplitPosition] = useState(50);
+
   const filePath = data?.filePath;
   const fileName = data?.fileName ?? (filePath ? filePath.split('/').pop() : undefined) ?? 'Untitled';
+
+  // Check if current file is markdown
+  const isMarkdown = useMemo(() => isMarkdownFile(filePath), [filePath]);
 
   // Update title based on file name
   useEffect(() => {
@@ -179,6 +223,11 @@ export function FileViewerPanel({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [saveFile]);
 
+  // Toggle markdown preview
+  const handleToggleMarkdownPreview = useCallback(() => {
+    setMarkdownPreviewEnabled((prev) => !prev);
+  }, []);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full bg-background">
@@ -205,50 +254,70 @@ export function FileViewerPanel({
   const language = filePath ? getMonacoLanguage(filePath) : 'plaintext';
   const lineCount = content.split('\n').length;
 
+  // Monaco editor component
+  const monacoEditor = (
+    <Editor
+      height="100%"
+      language={language}
+      value={content}
+      theme={SOLO_THEME_NAME}
+      beforeMount={handleBeforeMount}
+      onMount={handleEditorMount}
+      onChange={handleEditorChange}
+      options={{
+        fontSize: 13,
+        lineHeight: 22,
+        fontFamily: 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+        minimap: { enabled: false },
+        scrollBeyondLastLine: false,
+        automaticLayout: true,
+        bracketPairColorization: { enabled: true },
+        folding: true,
+        lineNumbers: 'on',
+        renderLineHighlight: 'line',
+        cursorBlinking: 'smooth',
+        smoothScrolling: true,
+        tabSize: 2,
+        insertSpaces: true,
+        wordWrap: 'off',
+        padding: { top: 8, bottom: 8 },
+        scrollbar: {
+          useShadows: false,
+          verticalScrollbarSize: 8,
+          horizontalScrollbarSize: 8,
+        },
+        overviewRulerLanes: 0,
+        hideCursorInOverviewRuler: true,
+        overviewRulerBorder: false,
+      }}
+    />
+  );
+
   return (
     <div className="flex flex-col h-full bg-background">
-      {/* Breadcrumb */}
-      <div className="flex items-center h-6 px-3 bg-muted/30 border-b border-border/30 shrink-0">
-        <span className="text-[11px] text-muted-foreground truncate">{filePath}</span>
+      {/* Breadcrumb with markdown toggle */}
+      <div className="flex items-center justify-between h-6 px-3 bg-muted/30 border-b border-border/30 shrink-0">
+        <span className="text-[11px] text-muted-foreground truncate flex-1">{filePath}</span>
+        {isMarkdown && (
+          <MarkdownToggle
+            enabled={markdownPreviewEnabled}
+            onToggle={handleToggleMarkdownPreview}
+          />
+        )}
       </div>
 
-      {/* Monaco Editor */}
+      {/* Editor content - either split pane or Monaco only */}
       <div className="flex-1 overflow-hidden">
-        <Editor
-          height="100%"
-          language={language}
-          value={content}
-          theme={SOLO_THEME_NAME}
-          beforeMount={handleBeforeMount}
-          onMount={handleEditorMount}
-          onChange={handleEditorChange}
-          options={{
-            fontSize: 13,
-            lineHeight: 22,
-            fontFamily: 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-            minimap: { enabled: false },
-            scrollBeyondLastLine: false,
-            automaticLayout: true,
-            bracketPairColorization: { enabled: true },
-            folding: true,
-            lineNumbers: 'on',
-            renderLineHighlight: 'line',
-            cursorBlinking: 'smooth',
-            smoothScrolling: true,
-            tabSize: 2,
-            insertSpaces: true,
-            wordWrap: 'off',
-            padding: { top: 8, bottom: 8 },
-            scrollbar: {
-              useShadows: false,
-              verticalScrollbarSize: 8,
-              horizontalScrollbarSize: 8,
-            },
-            overviewRulerLanes: 0,
-            hideCursorInOverviewRuler: true,
-            overviewRulerBorder: false,
-          }}
-        />
+        {isMarkdown && markdownPreviewEnabled ? (
+          <MarkdownSplitPane
+            left={monacoEditor}
+            right={<MarkdownPreview content={content} />}
+            splitPosition={splitPosition}
+            onSplitChange={setSplitPosition}
+          />
+        ) : (
+          monacoEditor
+        )}
       </div>
 
       {/* Status bar */}

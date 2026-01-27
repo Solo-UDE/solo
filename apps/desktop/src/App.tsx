@@ -1,24 +1,28 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { GitBranch } from "lucide-react";
+import { Settings } from "lucide-react";
 import { PrimarySidebar } from "./components/sidebar";
 import { MosaicLayout } from "./components/panels";
-import { useFileExplorerStore } from "./stores/fileExplorerStore";
 import { useUIStore } from "./stores/uiStore";
 import { usePanelTabsStore } from "./stores/panelTabsStore";
 import { registerBuiltinPanels, BUILTIN_PANEL_TYPES } from "./lib/panels";
+import { SettingsModal } from "./components/settings";
+import { useAutosave } from "./hooks/useAutosave";
 
 // Register built-in panels on module load
 registerBuiltinPanels();
 
 function App() {
   const [backendStatus, setBackendStatus] = useState<string>("Connecting...");
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
-  const rootPath = useFileExplorerStore((s) => s.rootPath);
   const leftSidebarWidth = useUIStore((state) => state.leftSidebarWidth);
 
   // Get openPanel action directly from store to avoid selector subscription issues
   const openPanel = useMemo(() => usePanelTabsStore.getState().openPanel, []);
+
+  // Enable autosave on blur and tab switch
+  useAutosave();
 
   useEffect(() => {
     // Test IPC connection with ping
@@ -49,7 +53,7 @@ function App() {
         <div className="flex-1" data-tauri-drag-region>
           <span className="text-sm font-medium text-muted-foreground">Solo</span>
         </div>
-        {/* Backend status indicator */}
+        {/* Settings button and status indicator */}
         <div className="flex items-center gap-2">
           <div
             className={`w-2 h-2 rounded-full ${
@@ -60,6 +64,13 @@ function App() {
                   : "bg-status-warning animate-pulse"
             }`}
           />
+          <button
+            onClick={() => setIsSettingsOpen(true)}
+            className="p-1.5 rounded hover:bg-muted transition-colors"
+            title="Settings"
+          >
+            <Settings className="w-4 h-4 text-muted-foreground" />
+          </button>
         </div>
       </div>
 
@@ -74,24 +85,8 @@ function App() {
         </div>
       </div>
 
-      {/* Status bar */}
-      <div className="h-6 px-3 bg-primary border-t border-border/30 flex items-center justify-between shrink-0 text-xs text-primary-foreground">
-        {/* Left section: branch info */}
-        <div className="flex items-center gap-4">
-          {rootPath && (
-            <span className="flex items-center gap-1.5">
-              <GitBranch className="w-3.5 h-3.5" />
-              main
-            </span>
-          )}
-          {!rootPath && <span>Ready</span>}
-        </div>
-
-        {/* Right section */}
-        <div className="flex items-center gap-4">
-          <span>UTF-8</span>
-        </div>
-      </div>
+      {/* Settings modal */}
+      <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
     </div>
   );
 }

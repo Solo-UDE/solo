@@ -148,11 +148,11 @@ Following Orbit-web's warm aesthetic:
 4. **Generous spacing** - Breathing room between elements
 5. **Glassmorphism** - `backdrop-blur` on floating panels
 
-### Key Tokens
+### Key Tokensgiiuguiohuihohghyjgyi
 - Button height: 34-40px
 - Border radius: 8-14px
 - Transitions: 150-200ms
-- Hover scale: 1.02-1.05
+- Hover scale: 1.02-1.05jhkgliguigluglouoh'hp
 
 ---
 

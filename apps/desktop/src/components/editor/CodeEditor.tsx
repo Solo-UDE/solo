@@ -3,16 +3,19 @@
  * Full-featured editor with syntax highlighting and editing capabilities
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Editor, { OnMount, BeforeMount } from '@monaco-editor/react';
 import type * as Monaco from 'monaco-editor';
 import { FileText, Loader2, AlertCircle } from 'lucide-react';
 import * as fs from '../../lib/tauri/fs';
-import { useEditorStore } from '../../stores/editorStore';
+import { useEditorStore, isMarkdownFile, useMarkdownPreview } from '../../stores/editorStore';
 import { useShallow } from 'zustand/react/shallow';
 import { useParseResults, getSymbolPath } from '../../hooks/useParseResults';
 import { EditorTabs } from './EditorTabs';
 import { Breadcrumbs } from './Breadcrumbs';
+import { MarkdownPreview } from './MarkdownPreview';
+import { MarkdownSplitPane } from './MarkdownSplitPane';
+import { MarkdownToggle } from './MarkdownToggle';
 import { registerSoloTheme, SOLO_THEME_NAME } from './theme';
 import type { Symbol } from '../../lib/tauri/parse';
 
@@ -72,6 +75,12 @@ export function CodeEditor({ filePath, className = '' }: CodeEditorProps) {
   // Store state (reactive) - use specific selectors to avoid Map reference issues
   const activeTab = useEditorStore((s) => s.activeTab);
 
+  // Keep a ref to activeTab for use in Monaco callbacks (avoids stale closures)
+  const activeTabRef = useRef(activeTab);
+  useEffect(() => {
+    activeTabRef.current = activeTab;
+  }, [activeTab]);
+
   // Get current tab content with a stable selector
   const currentTabContent = useEditorStore((s) => {
     if (!s.activeTab) return '';
@@ -103,6 +112,26 @@ export function CodeEditor({ filePath, className = '' }: CodeEditorProps) {
     parseResults.symbols.length > 0
       ? getSymbolPath(parseResults.symbols, cursorPosition.line - 1, cursorPosition.col - 1)
       : [];
+
+  // Markdown preview state
+  const isMarkdown = useMemo(() => isMarkdownFile(activeTab), [activeTab]);
+  const { enabled: markdownPreviewEnabled, splitPosition } = useMarkdownPreview(activeTab);
+
+  // Markdown preview handlers
+  const handleToggleMarkdownPreview = useCallback(() => {
+    if (activeTab) {
+      storeRef.current.toggleMarkdownPreview(activeTab);
+    }
+  }, [activeTab]);
+
+  const handleSplitPositionChange = useCallback(
+    (position: number) => {
+      if (activeTab) {
+        storeRef.current.setMarkdownSplitPosition(activeTab, position);
+      }
+    },
+    [activeTab]
+  );
 
   // Navigate to a symbol's location in the editor
   const navigateToSymbol = useCallback((symbol: Symbol) => {
@@ -138,25 +167,27 @@ export function CodeEditor({ filePath, className = '' }: CodeEditorProps) {
       editorRef.current = editor;
       monacoRef.current = monaco;
 
-      // Add save command (Cmd+S / Ctrl+S)
+      // Add save command (Cmd+S / Ctrl+S) - use ref to avoid stale closure
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
-        if (activeTab) {
-          saveFile(activeTab);
+        const currentTab = activeTabRef.current;
+        if (currentTab) {
+          saveFile(currentTab);
         }
       });
 
-      // Track cursor position changes
+      // Track cursor position changes - use ref to avoid stale closure
       editor.onDidChangeCursorPosition((e) => {
-        if (activeTab) {
+        const currentTab = activeTabRef.current;
+        if (currentTab) {
           storeRef.current.updateCursorPosition(
-            activeTab,
+            currentTab,
             e.position.lineNumber,
             e.position.column
           );
         }
       });
     },
-    [activeTab, saveFile]
+    [saveFile]
   );
 
   // Handle before mount (register theme)
@@ -283,55 +314,73 @@ export function CodeEditor({ filePath, className = '' }: CodeEditorProps) {
     );
   }
 
+  const monacoEditor = (
+    <Editor
+      height="100%"
+      language={activeTab ? getMonacoLanguage(activeTab) : 'plaintext'}
+      value={currentTabContent}
+      theme={SOLO_THEME_NAME}
+      beforeMount={handleBeforeMount}
+      onMount={handleEditorMount}
+      onChange={handleEditorChange}
+      options={{
+        fontSize: 13,
+        lineHeight: 22,
+        fontFamily: 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+        minimap: { enabled: false },
+        scrollBeyondLastLine: false,
+        automaticLayout: true,
+        bracketPairColorization: { enabled: true },
+        folding: true,
+        lineNumbers: 'on',
+        renderLineHighlight: 'line',
+        cursorBlinking: 'smooth',
+        smoothScrolling: true,
+        tabSize: 2,
+        insertSpaces: true,
+        wordWrap: 'off',
+        padding: { top: 0, bottom: 0 },
+        scrollbar: {
+          useShadows: false,
+          verticalScrollbarSize: 8,
+          horizontalScrollbarSize: 8,
+        },
+        overviewRulerLanes: 0,
+        hideCursorInOverviewRuler: true,
+        overviewRulerBorder: false,
+      }}
+    />
+  );
+
   return (
     <div className={`flex flex-col h-full bg-background ${className}`}>
       {/* Tab bar */}
       <EditorTabs />
 
-      {/* Breadcrumb with symbol path */}
+      {/* Breadcrumb with symbol path and markdown toggle */}
       <Breadcrumbs
         filePath={filePath ?? activeTab}
         symbolPath={symbolPath}
         onSymbolClick={navigateToSymbol}
+        rightContent={
+          isMarkdown ? (
+            <MarkdownToggle enabled={markdownPreviewEnabled} onToggle={handleToggleMarkdownPreview} />
+          ) : null
+        }
       />
 
-      {/* Monaco Editor */}
+      {/* Editor content - either split pane or Monaco only */}
       <div className="flex-1 overflow-hidden">
-        <Editor
-          height="100%"
-          language={activeTab ? getMonacoLanguage(activeTab) : 'plaintext'}
-          value={currentTabContent}
-          theme={SOLO_THEME_NAME}
-          beforeMount={handleBeforeMount}
-          onMount={handleEditorMount}
-          onChange={handleEditorChange}
-          options={{
-            fontSize: 13,
-            lineHeight: 22,
-            fontFamily: 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-            minimap: { enabled: false },
-            scrollBeyondLastLine: false,
-            automaticLayout: true,
-            bracketPairColorization: { enabled: true },
-            folding: true,
-            lineNumbers: 'on',
-            renderLineHighlight: 'line',
-            cursorBlinking: 'smooth',
-            smoothScrolling: true,
-            tabSize: 2,
-            insertSpaces: true,
-            wordWrap: 'off',
-            padding: { top: 0, bottom: 0 },
-            scrollbar: {
-              useShadows: false,
-              verticalScrollbarSize: 8,
-              horizontalScrollbarSize: 8,
-            },
-            overviewRulerLanes: 0,
-            hideCursorInOverviewRuler: true,
-            overviewRulerBorder: false,
-          }}
-        />
+        {isMarkdown && markdownPreviewEnabled ? (
+          <MarkdownSplitPane
+            left={monacoEditor}
+            right={<MarkdownPreview content={currentTabContent} />}
+            splitPosition={splitPosition}
+            onSplitChange={handleSplitPositionChange}
+          />
+        ) : (
+          monacoEditor
+        )}
       </div>
     </div>
   );
