@@ -1,41 +1,43 @@
-import { useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { GitBranch } from "lucide-react";
 import { PrimarySidebar } from "./components/sidebar";
-import { CodeEditor, EditorErrorBoundary } from "./components/editor";
+import { MosaicLayout } from "./components/panels";
 import { useFileExplorerStore } from "./stores/fileExplorerStore";
 import { useUIStore } from "./stores/uiStore";
-import { useEditorStore, useActiveTabStatus } from "./stores/editorStore";
+import { usePanelTabsStore } from "./stores/panelTabsStore";
+import { registerBuiltinPanels, BUILTIN_PANEL_TYPES } from "./lib/panels";
+
+// Register built-in panels on module load
+registerBuiltinPanels();
 
 function App() {
+  const [backendStatus, setBackendStatus] = useState<string>("Connecting...");
+
   const rootPath = useFileExplorerStore((s) => s.rootPath);
-  const openFolder = useFileExplorerStore((s) => s.openFolder);
   const leftSidebarWidth = useUIStore((state) => state.leftSidebarWidth);
 
-  const activeTab = useEditorStore((s) => s.activeTab);
-  const setActiveTab = useEditorStore((s) => s.setActiveTab);
-
-  // Status bar info for active file
-  const tabStatus = useActiveTabStatus();
+  // Get openPanel action directly from store to avoid selector subscription issues
+  const openPanel = useMemo(() => usePanelTabsStore.getState().openPanel, []);
 
   useEffect(() => {
     // Test IPC connection with ping
     invoke<string>("ping")
       .then((response) => {
         console.log("Backend connected:", response);
+        setBackendStatus("connected");
       })
       .catch((err) => {
         console.error("Backend error:", err);
+        setBackendStatus("error");
       });
   }, []);
 
-  const handleFileOpen = useCallback(
-    (path: string) => {
-      // Set as active tab - CodeEditor will load it if needed
-      setActiveTab(path);
-    },
-    [setActiveTab]
-  );
+  // Open a file in the panel system
+  const handleFileOpen = useCallback((path: string) => {
+    const fileName = path.split('/').pop() ?? 'Untitled';
+    openPanel(BUILTIN_PANEL_TYPES.FILE_VIEWER, { filePath: path, fileName });
+  }, [openPanel]);
 
   return (
     <div className="h-screen w-screen bg-background text-foreground flex flex-col overflow-hidden">
@@ -47,6 +49,18 @@ function App() {
         <div className="flex-1" data-tauri-drag-region>
           <span className="text-sm font-medium text-muted-foreground">Solo</span>
         </div>
+        {/* Backend status indicator */}
+        <div className="flex items-center gap-2">
+          <div
+            className={`w-2 h-2 rounded-full ${
+              backendStatus.includes("connected")
+                ? "bg-status-success"
+                : backendStatus.includes("error")
+                  ? "bg-status-error"
+                  : "bg-status-warning animate-pulse"
+            }`}
+          />
+        </div>
       </div>
 
       {/* Main content */}
@@ -54,41 +68,15 @@ function App() {
         {/* Dynamic-width sidebar */}
         <PrimarySidebar width={leftSidebarWidth} onFileOpen={handleFileOpen} />
 
-        {/* Main editor area */}
-        <div className="flex-1 flex flex-col overflow-hidden">
-          {rootPath ? (
-            <EditorErrorBoundary>
-              <CodeEditor filePath={activeTab} className="flex-1" />
-            </EditorErrorBoundary>
-          ) : (
-            // Show welcome screen when no folder is open
-            <div className="flex-1 flex items-center justify-center bg-background">
-              <div className="text-center space-y-6">
-                <div className="space-y-2">
-                  <h1 className="text-4xl font-bold tracking-tight text-foreground">Solo IDE</h1>
-                  <p className="text-muted-foreground">AI-native development environment</p>
-                </div>
-
-                <div className="pt-8 flex gap-3 justify-center">
-                  <button className="h-10 px-5 bg-primary text-primary-foreground rounded-md font-medium hover:bg-primary/90 active:scale-[0.97] transition-all duration-200">
-                    New Project
-                  </button>
-                  <button
-                    onClick={openFolder}
-                    className="h-10 px-5 bg-secondary text-secondary-foreground rounded-md font-medium hover:bg-secondary/80 active:scale-[0.97] transition-all duration-200"
-                  >
-                    Open Folder
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
+        {/* Main editor area with panel system */}
+        <div className="flex-1 overflow-hidden">
+          <MosaicLayout />
         </div>
       </div>
 
-      {/* Unified status bar */}
+      {/* Status bar */}
       <div className="h-6 px-3 bg-primary border-t border-border/30 flex items-center justify-between shrink-0 text-xs text-primary-foreground">
-        {/* Left section: branch + file info */}
+        {/* Left section: branch info */}
         <div className="flex items-center gap-4">
           {rootPath && (
             <span className="flex items-center gap-1.5">
@@ -96,31 +84,12 @@ function App() {
               main
             </span>
           )}
-          {tabStatus && (
-            <>
-              <span>{tabStatus.language}</span>
-              <span>UTF-8</span>
-              {tabStatus.isDirty && (
-                <span className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-primary-foreground/80 animate-pulse" />
-                  Modified
-                </span>
-              )}
-            </>
-          )}
-          {!rootPath && !tabStatus && <span>Ready</span>}
+          {!rootPath && <span>Ready</span>}
         </div>
 
-        {/* Right section: cursor position + line count */}
+        {/* Right section */}
         <div className="flex items-center gap-4">
-          {tabStatus && (
-            <>
-              <span>
-                Ln {tabStatus.cursorPosition.line}, Col {tabStatus.cursorPosition.col}
-              </span>
-              {tabStatus.lineCount > 0 && <span>{tabStatus.lineCount} lines</span>}
-            </>
-          )}
+          <span>UTF-8</span>
         </div>
       </div>
     </div>
