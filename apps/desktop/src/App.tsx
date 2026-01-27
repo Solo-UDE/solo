@@ -1,10 +1,11 @@
 import { useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { GitBranch } from "lucide-react";
 import { PrimarySidebar } from "./components/sidebar";
 import { CodeEditor, EditorErrorBoundary } from "./components/editor";
 import { useFileExplorerStore } from "./stores/fileExplorerStore";
 import { useUIStore } from "./stores/uiStore";
-import { useEditorStore } from "./stores/editorStore";
+import { useEditorStore, useActiveTabStatus } from "./stores/editorStore";
 
 function App() {
   const rootPath = useFileExplorerStore((s) => s.rootPath);
@@ -13,6 +14,9 @@ function App() {
 
   const activeTab = useEditorStore((s) => s.activeTab);
   const setActiveTab = useEditorStore((s) => s.setActiveTab);
+
+  // Status bar info for active file
+  const tabStatus = useActiveTabStatus();
 
   useEffect(() => {
     // Test IPC connection with ping
@@ -58,20 +62,20 @@ function App() {
             </EditorErrorBoundary>
           ) : (
             // Show welcome screen when no folder is open
-            <div className="flex-1 flex items-center justify-center bg-[#1e1e1e]">
+            <div className="flex-1 flex items-center justify-center bg-background">
               <div className="text-center space-y-6">
                 <div className="space-y-2">
-                  <h1 className="text-4xl font-bold tracking-tight text-white">Solo IDE</h1>
-                  <p className="text-[#8b8b8b]">AI-native development environment</p>
+                  <h1 className="text-4xl font-bold tracking-tight text-foreground">Solo IDE</h1>
+                  <p className="text-muted-foreground">AI-native development environment</p>
                 </div>
 
                 <div className="pt-8 flex gap-3 justify-center">
-                  <button className="h-10 px-5 bg-[#007acc] text-white rounded font-medium hover:bg-[#1c8ad4] active:scale-[0.97] transition-all duration-200">
+                  <button className="h-10 px-5 bg-primary text-primary-foreground rounded-md font-medium hover:bg-primary/90 active:scale-[0.97] transition-all duration-200">
                     New Project
                   </button>
                   <button
                     onClick={openFolder}
-                    className="h-10 px-5 bg-[#3c3c3c] text-white rounded font-medium hover:bg-[#4c4c4c] active:scale-[0.97] transition-all duration-200"
+                    className="h-10 px-5 bg-secondary text-secondary-foreground rounded-md font-medium hover:bg-secondary/80 active:scale-[0.97] transition-all duration-200"
                   >
                     Open Folder
                   </button>
@@ -82,11 +86,42 @@ function App() {
         </div>
       </div>
 
-      {/* Status bar */}
-      <div className="h-6 px-3 bg-[#007acc] border-t border-border/30 flex items-center shrink-0">
-        <span className="text-xs text-white">
-          {rootPath ? `Workspace: ${rootPath}` : "Ready"}
-        </span>
+      {/* Unified status bar */}
+      <div className="h-6 px-3 bg-primary border-t border-border/30 flex items-center justify-between shrink-0 text-xs text-primary-foreground">
+        {/* Left section: branch + file info */}
+        <div className="flex items-center gap-4">
+          {rootPath && (
+            <span className="flex items-center gap-1.5">
+              <GitBranch className="w-3.5 h-3.5" />
+              main
+            </span>
+          )}
+          {tabStatus && (
+            <>
+              <span>{tabStatus.language}</span>
+              <span>UTF-8</span>
+              {tabStatus.isDirty && (
+                <span className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary-foreground/80 animate-pulse" />
+                  Modified
+                </span>
+              )}
+            </>
+          )}
+          {!rootPath && !tabStatus && <span>Ready</span>}
+        </div>
+
+        {/* Right section: cursor position + line count */}
+        <div className="flex items-center gap-4">
+          {tabStatus && (
+            <>
+              <span>
+                Ln {tabStatus.cursorPosition.line}, Col {tabStatus.cursorPosition.col}
+              </span>
+              {tabStatus.lineCount > 0 && <span>{tabStatus.lineCount} lines</span>}
+            </>
+          )}
+        </div>
       </div>
     </div>
   );

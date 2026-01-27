@@ -20,19 +20,19 @@ Solo's architecture splits into three distinct layers:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                     React Frontend (Webview)                     │
-│                     Zustand stores, UI components                │
+│                     React Frontend (Webview)                    │
+│                     Zustand stores, UI components               │
 └────────────────────────────────┬────────────────────────────────┘
                                  │ Tauri IPC (JSON)
                                  ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                     Tauri Bridge (Translator)                    │
-│                     Commands, Events, State                      │
+│                     Tauri Bridge (Translator)                   │
+│                     Commands, Events, State                     │
 └────────────────────────────────┬────────────────────────────────┘
                                  │ Rust function calls
                                  ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                     Rust Backend (Engine Room)                   │
+│                     Rust Backend (Engine Room)                  │
 │                     solo-fs, solo-protocol, solo-core           │
 └─────────────────────────────────────────────────────────────────┘
 ```

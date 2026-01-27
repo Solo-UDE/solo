@@ -14,6 +14,14 @@
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
 
+  /* Easing curves */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-smooth: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-snappy: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Monospace font */
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
   /* Base colors */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -64,6 +72,18 @@
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-border: var(--sidebar-border);
+
+  /* Syntax highlighting */
+  --color-syntax-keyword: var(--syntax-keyword);
+  --color-syntax-string: var(--syntax-string);
+  --color-syntax-type: var(--syntax-type);
+  --color-syntax-function: var(--syntax-function);
+  --color-syntax-variable: var(--syntax-variable);
+  --color-syntax-comment: var(--syntax-comment);
+  --color-syntax-number: var(--syntax-number);
+  --color-syntax-control: var(--syntax-control);
+  --color-syntax-operator: var(--syntax-operator);
+  --color-syntax-bracket: var(--syntax-bracket);
 }
 
 /* =============================================================================
@@ -127,6 +147,18 @@
   --sidebar: oklch(0.95 0.008 70);
   --sidebar-foreground: oklch(0.25 0.02 60);
   --sidebar-border: oklch(0.88 0.02 70);
+
+  /* Syntax highlighting tokens (light mode) */
+  --syntax-keyword: oklch(0.5 0.15 240);
+  --syntax-string: oklch(0.55 0.15 35);
+  --syntax-type: oklch(0.5 0.15 175);
+  --syntax-function: oklch(0.55 0.12 80);
+  --syntax-variable: oklch(0.45 0.1 220);
+  --syntax-comment: oklch(0.5 0.1 140);
+  --syntax-number: oklch(0.55 0.12 130);
+  --syntax-control: oklch(0.55 0.15 320);
+  --syntax-operator: oklch(0.35 0.02 60);
+  --syntax-bracket: oklch(0.6 0.15 85);
 }
 
 /* =============================================================================
@@ -139,6 +171,18 @@ html.dark {
   /* Base - warm dark, not pure black */
   --background: oklch(0.16 0.012 60);
   --foreground: oklch(0.93 0.01 75);
+
+  /* Syntax highlighting tokens */
+  --syntax-keyword: oklch(0.7 0.12 240);
+  --syntax-string: oklch(0.75 0.12 40);
+  --syntax-type: oklch(0.75 0.15 175);
+  --syntax-function: oklch(0.85 0.1 90);
+  --syntax-variable: oklch(0.8 0.08 220);
+  --syntax-comment: oklch(0.55 0.1 140);
+  --syntax-number: oklch(0.8 0.1 130);
+  --syntax-control: oklch(0.75 0.12 320);
+  --syntax-operator: oklch(0.85 0.02 60);
+  --syntax-bracket: oklch(0.85 0.15 85);
 
   /* Card - slightly elevated */
   --card: oklch(0.20 0.015 58);

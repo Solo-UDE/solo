@@ -3,6 +3,7 @@
  */
 
 import { create } from 'zustand';
+import { useShallow } from 'zustand/react/shallow';
 import { immer } from 'zustand/middleware/immer';
 import { enableMapSet } from 'immer';
 
@@ -22,6 +23,8 @@ export interface EditorTab {
   scrollTop?: number;
   /** Cursor position for restoration */
   cursorPosition?: { line: number; col: number };
+  /** Total line count in the document */
+  lineCount?: number;
 }
 
 interface EditorState {
@@ -48,6 +51,8 @@ interface EditorActions {
   updateScrollPosition: (path: string, scrollTop: number) => void;
   /** Update cursor position for a tab */
   updateCursorPosition: (path: string, line: number, col: number) => void;
+  /** Update line count for a tab */
+  updateLineCount: (path: string, lineCount: number) => void;
   /** Check if any tabs have unsaved changes */
   hasUnsavedChanges: () => boolean;
   /** Get all dirty tabs */
@@ -156,6 +161,15 @@ export const useEditorStore = create<EditorStore>()(
         const tab = state.tabs.get(path);
         if (tab) {
           tab.cursorPosition = { line, col };
+        }
+      });
+    },
+
+    updateLineCount: (path: string, lineCount: number) => {
+      set((state) => {
+        const tab = state.tabs.get(path);
+        if (tab) {
+          tab.lineCount = lineCount;
         }
       });
     },
@@ -278,4 +292,65 @@ export function useTab(path: string | null): EditorTab | null {
 export function getFileName(path: string): string {
   const lastSlash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
   return lastSlash >= 0 ? path.substring(lastSlash + 1) : path;
+}
+
+/**
+ * Get language display name from file extension
+ */
+export function getLanguageName(path: string): string {
+  const ext = path.split('.').pop()?.toLowerCase() ?? '';
+  const langMap: Record<string, string> = {
+    ts: 'TypeScript',
+    tsx: 'TypeScript React',
+    js: 'JavaScript',
+    jsx: 'JavaScript React',
+    mjs: 'JavaScript',
+    cjs: 'JavaScript',
+    rs: 'Rust',
+    py: 'Python',
+    pyw: 'Python',
+    pyi: 'Python',
+    json: 'JSON',
+    jsonc: 'JSON with Comments',
+    html: 'HTML',
+    htm: 'HTML',
+    css: 'CSS',
+    scss: 'SCSS',
+    less: 'Less',
+    md: 'Markdown',
+    markdown: 'Markdown',
+    toml: 'TOML',
+    yaml: 'YAML',
+    yml: 'YAML',
+    xml: 'XML',
+    sql: 'SQL',
+    sh: 'Shell',
+    bash: 'Bash',
+    zsh: 'Zsh',
+  };
+  return langMap[ext] ?? 'Plain Text';
+}
+
+const DEFAULT_TAB_STATUS_CURSOR = { line: 1, col: 1 };
+
+/**
+ * Hook to get active tab status info for the status bar
+ * Uses useShallow for stable object references
+ */
+export function useActiveTabStatus() {
+  return useEditorStore(
+    useShallow((state) => {
+      if (!state.activeTab) return null;
+      const tab = state.tabs.get(state.activeTab);
+      if (!tab) return null;
+
+      return {
+        path: tab.path,
+        isDirty: tab.currentContent !== tab.originalContent,
+        cursorPosition: tab.cursorPosition ?? DEFAULT_TAB_STATUS_CURSOR,
+        lineCount: tab.lineCount ?? 0,
+        language: getLanguageName(tab.path),
+      };
+    })
+  );
 }

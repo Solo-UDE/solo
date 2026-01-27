@@ -81,7 +81,7 @@ export function EditorTabs({ className = '' }: EditorTabsProps) {
   return (
     <>
       <div
-        className={`flex items-center h-9 bg-[#252526] border-b border-[#1e1e1e] overflow-x-auto ${className}`}
+        className={`flex items-center h-8 bg-card/80 backdrop-blur-sm border-b border-border/30 overflow-x-auto ${className}`}
       >
         {tabOrder.map((path) => {
           const tab = tabs.get(path);
@@ -98,14 +98,16 @@ export function EditorTabs({ className = '' }: EditorTabsProps) {
               onMouseDown={(e) => handleMouseDown(e, path)}
               className={`
                 group flex items-center gap-2 px-3 py-1.5 cursor-pointer
-                border-r border-[#1e1e1e] min-w-0 max-w-48
-                ${isActive ? 'bg-[#1e1e1e]' : 'hover:bg-[#2a2a2a]'}
+                min-w-0 max-w-48 rounded-t-lg transition-all duration-200
+                ${isActive
+                  ? 'bg-background shadow-sm'
+                  : 'hover:bg-muted/60 hover:scale-[1.01]'}
               `}
               title={path}
             >
-              <FileText className="w-4 h-4 text-[#8b8b8b] shrink-0" />
+              <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
               <span
-                className={`text-[13px] truncate ${isActive ? 'text-white' : 'text-[#969696]'}`}
+                className={`text-[13px] truncate transition-colors ${isActive ? 'text-foreground' : 'text-muted-foreground'}`}
               >
                 {fileName}
               </span>
@@ -114,7 +116,7 @@ export function EditorTabs({ className = '' }: EditorTabsProps) {
               <div className="w-4 h-4 shrink-0 flex items-center justify-center">
                 {isDirty ? (
                   <div
-                    className="w-2 h-2 rounded-full bg-white group-hover:hidden"
+                    className="w-2 h-2 rounded-full bg-primary animate-pulse group-hover:hidden"
                     title="Unsaved changes"
                   />
                 ) : null}
@@ -122,13 +124,13 @@ export function EditorTabs({ className = '' }: EditorTabsProps) {
                 <button
                   onClick={(e) => handleCloseClick(e, path)}
                   className={`
-                    w-4 h-4 rounded flex items-center justify-center
-                    hover:bg-[#404040] active:bg-[#505050]
+                    w-4 h-4 rounded-md flex items-center justify-center
+                    hover:bg-muted/60 hover:scale-105 active:scale-95 transition-all duration-150
                     ${isDirty ? 'hidden group-hover:flex' : 'opacity-0 group-hover:opacity-100'}
                   `}
                   title="Close"
                 >
-                  <X className="w-3 h-3 text-[#8b8b8b]" />
+                  <X className="w-3 h-3 text-muted-foreground" />
                 </button>
               </div>
             </div>
