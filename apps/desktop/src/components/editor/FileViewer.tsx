@@ -113,29 +113,29 @@ export function FileViewer({ filePath, className = '' }: FileViewerProps) {
   const lineNumberWidth = String(lines.length).length;
 
   return (
-    <div className={`flex flex-col h-full bg-[#1e1e1e] ${className}`}>
+    <div className={`flex flex-col h-full bg-background ${className}`}>
       {/* Tab bar */}
-      <div className="flex items-center h-9 bg-[#252526] border-b border-[#1e1e1e]">
-        <div className="flex items-center gap-2 px-4 py-1.5 bg-[#1e1e1e] border-r border-[#1e1e1e]">
-          <FileText className="w-4 h-4 text-[#8b8b8b]" />
-          <span className="text-[13px] text-[#ffffff]">{fileName}</span>
+      <div className="flex items-center h-8 bg-card/80 backdrop-blur-sm border-b border-border/30">
+        <div className="flex items-center gap-2 px-4 py-1.5 bg-background shadow-sm rounded-t-lg">
+          <FileText className="w-4 h-4 text-muted-foreground" />
+          <span className="text-[13px] text-foreground">{fileName}</span>
         </div>
       </div>
 
       {/* Breadcrumb */}
-      <div className="flex items-center h-6 px-3 bg-[#1e1e1e] border-b border-[#2d2d2d]">
-        <span className="text-[11px] text-[#8b8b8b] truncate">{filePath}</span>
+      <div className="flex items-center h-7 px-3 bg-background/80 backdrop-blur-sm border-b border-border/20">
+        <span className="text-[11px] text-muted-foreground truncate">{filePath}</span>
       </div>
 
       {/* Editor content */}
       <div className="flex-1 overflow-auto">
         <div className="flex min-h-full">
           {/* Line numbers gutter */}
-          <div className="flex-shrink-0 select-none bg-[#1e1e1e] border-r border-[#2d2d2d]">
+          <div className="flex-shrink-0 select-none bg-background border-r border-border">
             {lines.map((_, i) => (
               <div
                 key={i}
-                className="text-right text-[13px] text-[#6e7681] font-mono leading-[22px] pr-4 pl-4"
+                className="text-right text-[13px] text-muted-foreground font-mono leading-[22px] pr-4 pl-4"
                 style={{ minWidth: `${lineNumberWidth + 4}ch` }}
               >
                 {i + 1}
@@ -144,10 +144,10 @@ export function FileViewer({ filePath, className = '' }: FileViewerProps) {
           </div>
 
           {/* Code content */}
-          <pre className="flex-1 pl-4 overflow-x-auto bg-[#1e1e1e]">
-            <code className="text-[13px] font-mono leading-[22px] text-[#d4d4d4]">
+          <pre className="flex-1 pl-4 overflow-x-auto bg-background">
+            <code className="text-[13px] font-mono leading-[22px] text-foreground">
               {lines.map((line, i) => (
-                <div key={i} className="whitespace-pre hover:bg-[#2a2a2a]">
+                <div key={i} className="whitespace-pre hover:bg-muted/60 transition-colors duration-150">
                   {line || '\u00A0'}
                 </div>
               ))}
@@ -157,7 +157,7 @@ export function FileViewer({ filePath, className = '' }: FileViewerProps) {
       </div>
 
       {/* Status bar */}
-      <div className="flex items-center justify-between h-6 px-3 bg-[#007acc] text-white text-[12px]">
+      <div className="flex items-center justify-between h-6 px-3 bg-primary text-primary-foreground text-[12px]">
         <div className="flex items-center gap-4">
           <span>{language}</span>
           <span>UTF-8</span>

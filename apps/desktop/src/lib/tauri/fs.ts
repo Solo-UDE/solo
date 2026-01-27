@@ -55,6 +55,16 @@ export async function readFile(path: string): Promise<FileReadResponse> {
 }
 
 /**
+ * Write content to a file
+ * @param path - Path to the file
+ * @param content - Content to write
+ */
+export async function writeFile(path: string, content: string): Promise<void> {
+  const request = { path, content };
+  return invoke('write_file', { request });
+}
+
+/**
  * Create a new file
  * @param path - Path where to create the file
  * @param content - Optional initial content
