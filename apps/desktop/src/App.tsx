@@ -1,11 +1,13 @@
-import { useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { GitBranch } from "lucide-react";
+import { GitBranch, Settings } from "lucide-react";
 import { PrimarySidebar } from "./components/sidebar";
 import { CodeEditor, EditorErrorBoundary } from "./components/editor";
 import { useFileExplorerStore } from "./stores/fileExplorerStore";
 import { useUIStore } from "./stores/uiStore";
 import { useEditorStore, useActiveTabStatus } from "./stores/editorStore";
+import { SettingsModal } from "./components/settings";
+import { useAutosave } from "./hooks/useAutosave";
 
 function App() {
   const rootPath = useFileExplorerStore((s) => s.rootPath);
@@ -15,8 +17,13 @@ function App() {
   const activeTab = useEditorStore((s) => s.activeTab);
   const setActiveTab = useEditorStore((s) => s.setActiveTab);
 
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
   // Status bar info for active file
   const tabStatus = useActiveTabStatus();
+
+  // Enable autosave on blur and tab switch
+  useAutosave();
 
   useEffect(() => {
     // Test IPC connection with ping
@@ -47,6 +54,13 @@ function App() {
         <div className="flex-1" data-tauri-drag-region>
           <span className="text-sm font-medium text-muted-foreground">Solo</span>
         </div>
+        <button
+          onClick={() => setIsSettingsOpen(true)}
+          className="p-1.5 rounded hover:bg-muted transition-colors"
+          title="Settings"
+        >
+          <Settings className="w-4 h-4 text-muted-foreground" />
+        </button>
       </div>
 
       {/* Main content */}
@@ -123,6 +137,8 @@ function App() {
           )}
         </div>
       </div>
+
+      <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
     </div>
   );
 }
