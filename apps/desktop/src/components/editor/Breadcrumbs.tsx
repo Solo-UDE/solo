@@ -3,7 +3,7 @@
  * Displays file path and symbol hierarchy
  */
 
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { ChevronRight, FileText } from 'lucide-react';
 import type { Symbol } from '../../lib/tauri/parse';
 import { getSymbolIcon } from '../../lib/tauri/parse';
@@ -13,6 +13,7 @@ interface BreadcrumbsProps {
   symbolPath: Symbol[];
   onSymbolClick?: (symbol: Symbol) => void;
   className?: string;
+  rightContent?: ReactNode;
 }
 
 /**
@@ -36,6 +37,7 @@ export function Breadcrumbs({
   symbolPath,
   onSymbolClick,
   className = '',
+  rightContent,
 }: BreadcrumbsProps) {
   const fileName = useMemo(() => (filePath ? getFileName(filePath) : null), [filePath]);
   const dirPath = useMemo(() => (filePath ? getDirectoryPath(filePath) : null), [filePath]);
@@ -46,9 +48,9 @@ export function Breadcrumbs({
 
   return (
     <div
-      className={`flex items-center h-7 px-3 bg-background/80 backdrop-blur-sm border-b border-border/20 overflow-x-auto ${className}`}
+      className={`flex items-center justify-between h-7 px-3 bg-background/80 backdrop-blur-sm border-b border-border/20 ${className}`}
     >
-      <div className="flex items-center gap-1 text-[11px] whitespace-nowrap">
+      <div className="flex items-center gap-1 text-[11px] whitespace-nowrap overflow-x-auto">
         {/* Directory path */}
         {dirPath && (
           <>
@@ -81,6 +83,9 @@ export function Breadcrumbs({
           </div>
         ))}
       </div>
+
+      {/* Right content slot */}
+      {rightContent && <div className="flex items-center shrink-0 ml-2">{rightContent}</div>}
     </div>
   );
 }

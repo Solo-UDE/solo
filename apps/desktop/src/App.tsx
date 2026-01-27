@@ -1,41 +1,67 @@
-import { useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { GitBranch } from "lucide-react";
+import { Settings } from "lucide-react";
 import { PrimarySidebar } from "./components/sidebar";
-import { CodeEditor, EditorErrorBoundary } from "./components/editor";
-import { useFileExplorerStore } from "./stores/fileExplorerStore";
+import { MosaicLayout } from "./components/panels";
 import { useUIStore } from "./stores/uiStore";
-import { useEditorStore, useActiveTabStatus } from "./stores/editorStore";
+import { usePanelTabsStore } from "./stores/panelTabsStore";
+import { useProviderStore } from "./stores/provider-store";
+import { useAgentStore } from "./stores/agentStore";
+import { registerBuiltinPanels, BUILTIN_PANEL_TYPES } from "./lib/panels";
+import { SettingsModal } from "./components/settings";
+import { useAutosave } from "./hooks/useAutosave";
+import { useColorScheme } from "./hooks/useColorScheme";
+
+// Register built-in panels on module load
+registerBuiltinPanels();
 
 function App() {
-  const rootPath = useFileExplorerStore((s) => s.rootPath);
-  const openFolder = useFileExplorerStore((s) => s.openFolder);
+  const [backendStatus, setBackendStatus] = useState<string>("Connecting...");
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
   const leftSidebarWidth = useUIStore((state) => state.leftSidebarWidth);
+  const initializeProviders = useProviderStore((state) => state.initialize);
+  const loadPersistedSessions = useAgentStore((state) => state.loadPersistedSessions);
 
-  const activeTab = useEditorStore((s) => s.activeTab);
-  const setActiveTab = useEditorStore((s) => s.setActiveTab);
+  // Get openPanel action directly from store to avoid selector subscription issues
+  const openPanel = useMemo(() => usePanelTabsStore.getState().openPanel, []);
 
-  // Status bar info for active file
-  const tabStatus = useActiveTabStatus();
+  // Enable autosave on blur and tab switch
+  useAutosave();
+
+  // Apply color scheme to document
+  useColorScheme();
 
   useEffect(() => {
     // Test IPC connection with ping
     invoke<string>("ping")
       .then((response) => {
         console.log("Backend connected:", response);
+        setBackendStatus("connected");
       })
       .catch((err) => {
         console.error("Backend error:", err);
+        setBackendStatus("error");
       });
   }, []);
 
-  const handleFileOpen = useCallback(
-    (path: string) => {
-      // Set as active tab - CodeEditor will load it if needed
-      setActiveTab(path);
-    },
-    [setActiveTab]
-  );
+  // Initialize provider store on startup
+  useEffect(() => {
+    initializeProviders().catch((err) => {
+      console.error("Failed to initialize providers:", err);
+    });
+  }, [initializeProviders]);
+
+  // Load persisted agent sessions on startup
+  useEffect(() => {
+    loadPersistedSessions();
+  }, [loadPersistedSessions]);
+
+  // Open a file in the panel system
+  const handleFileOpen = useCallback((path: string) => {
+    const fileName = path.split('/').pop() ?? 'Untitled';
+    openPanel(BUILTIN_PANEL_TYPES.FILE_VIEWER, { filePath: path, fileName });
+  }, [openPanel]);
 
   return (
     <div className="h-screen w-screen bg-background text-foreground flex flex-col overflow-hidden">
@@ -47,6 +73,25 @@ function App() {
         <div className="flex-1" data-tauri-drag-region>
           <span className="text-sm font-medium text-muted-foreground">Solo</span>
         </div>
+        {/* Settings button and status indicator */}
+        <div className="flex items-center gap-2">
+          <div
+            className={`w-2 h-2 rounded-full ${
+              backendStatus.includes("connected")
+                ? "bg-status-success"
+                : backendStatus.includes("error")
+                  ? "bg-status-error"
+                  : "bg-status-warning animate-pulse"
+            }`}
+          />
+          <button
+            onClick={() => setIsSettingsOpen(true)}
+            className="p-1.5 rounded hover:bg-muted transition-colors"
+            title="Settings"
+          >
+            <Settings className="w-4 h-4 text-muted-foreground" />
+          </button>
+        </div>
       </div>
 
       {/* Main content */}
@@ -54,75 +99,14 @@ function App() {
         {/* Dynamic-width sidebar */}
         <PrimarySidebar width={leftSidebarWidth} onFileOpen={handleFileOpen} />
 
-        {/* Main editor area */}
-        <div className="flex-1 flex flex-col overflow-hidden">
-          {rootPath ? (
-            <EditorErrorBoundary>
-              <CodeEditor filePath={activeTab} className="flex-1" />
-            </EditorErrorBoundary>
-          ) : (
-            // Show welcome screen when no folder is open
-            <div className="flex-1 flex items-center justify-center bg-background">
-              <div className="text-center space-y-6">
-                <div className="space-y-2">
-                  <h1 className="text-4xl font-bold tracking-tight text-foreground">Solo IDE</h1>
-                  <p className="text-muted-foreground">AI-native development environment</p>
-                </div>
-
-                <div className="pt-8 flex gap-3 justify-center">
-                  <button className="h-10 px-5 bg-primary text-primary-foreground rounded-md font-medium hover:bg-primary/90 active:scale-[0.97] transition-all duration-200">
-                    New Project
-                  </button>
-                  <button
-                    onClick={openFolder}
-                    className="h-10 px-5 bg-secondary text-secondary-foreground rounded-md font-medium hover:bg-secondary/80 active:scale-[0.97] transition-all duration-200"
-                  >
-                    Open Folder
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
+        {/* Main editor area with panel system */}
+        <div className="flex-1 overflow-hidden">
+          <MosaicLayout />
         </div>
       </div>
 
-      {/* Unified status bar */}
-      <div className="h-6 px-3 bg-primary border-t border-border/30 flex items-center justify-between shrink-0 text-xs text-primary-foreground">
-        {/* Left section: branch + file info */}
-        <div className="flex items-center gap-4">
-          {rootPath && (
-            <span className="flex items-center gap-1.5">
-              <GitBranch className="w-3.5 h-3.5" />
-              main
-            </span>
-          )}
-          {tabStatus && (
-            <>
-              <span>{tabStatus.language}</span>
-              <span>UTF-8</span>
-              {tabStatus.isDirty && (
-                <span className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-primary-foreground/80 animate-pulse" />
-                  Modified
-                </span>
-              )}
-            </>
-          )}
-          {!rootPath && !tabStatus && <span>Ready</span>}
-        </div>
-
-        {/* Right section: cursor position + line count */}
-        <div className="flex items-center gap-4">
-          {tabStatus && (
-            <>
-              <span>
-                Ln {tabStatus.cursorPosition.line}, Col {tabStatus.cursorPosition.col}
-              </span>
-              {tabStatus.lineCount > 0 && <span>{tabStatus.lineCount} lines</span>}
-            </>
-          )}
-        </div>
-      </div>
+      {/* Settings modal */}
+      <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
     </div>
   );
 }
