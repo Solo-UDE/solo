@@ -1,57 +1,219 @@
 @import "tailwindcss";
+@import "tw-animate-css";
 
-/* Solo IDE - Warm dark theme inspired by Orbit */
-@theme {
-  /* Colors - Warm stone palette */
-  --color-background: #1c1917;
-  --color-foreground: #fafaf9;
-  --color-card: #292524;
-  --color-card-foreground: #fafaf9;
-  --color-muted: #44403c;
-  --color-muted-foreground: #a8a29e;
-  --color-border: #57534e;
-  --color-primary: #f97316;
-  --color-primary-foreground: #fff7ed;
-  --color-secondary: #78716c;
-  --color-secondary-foreground: #fafaf9;
-  --color-destructive: #ef4444;
-  --color-destructive-foreground: #fef2f2;
-  --color-ring: #f97316;
+/* CRITICAL: Tell Tailwind v4 how to handle dark mode */
+@custom-variant dark (&:is(.dark *));
 
-  /* Easing curves */
-  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
-  --ease-smooth: cubic-bezier(0.16, 1, 0.3, 1);
-  --ease-snappy: cubic-bezier(0.4, 0, 0.2, 1);
-
-  /* Shadows */
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.3), 0 2px 4px -2px rgb(0 0 0 / 0.3);
-  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.3), 0 4px 6px -4px rgb(0 0 0 / 0.3);
-  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.3), 0 8px 10px -6px rgb(0 0 0 / 0.3);
-
+/* =============================================================================
+   TAILWIND THEME MAPPING (must come before :root)
+   ============================================================================= */
+@theme inline {
   /* Radii */
-  --radius-sm: 0.375rem;
-  --radius-md: 0.5rem;
-  --radius-lg: 0.75rem;
-  --radius-xl: 1rem;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  /* Base colors */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  /* Card */
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+
+  /* Popover */
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+
+  /* Primary */
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+
+  /* Secondary */
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+
+  /* Muted */
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+
+  /* Accent */
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+
+  /* Destructive */
+  --color-destructive: var(--destructive);
+
+  /* Borders & Input */
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Semantic colors */
+  --color-status-success: var(--status-success);
+  --color-status-warning: var(--status-warning);
+  --color-status-error: var(--status-error);
+  --color-file-folder: var(--file-folder);
+  --color-file-code: var(--file-code);
+  --color-file-config: var(--file-config);
+  --color-file-text: var(--file-text);
+  --color-file-image: var(--file-image);
+
+  /* Sidebar */
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-border: var(--sidebar-border);
 }
 
-/* Base styles */
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
+/* =============================================================================
+   LIGHT MODE (default)
+   ============================================================================= */
+:root {
+  /* Enable system color scheme for proper scrollbar colors */
+  color-scheme: light dark;
+
+  --radius: 0.625rem;
+
+  /* Base */
+  --background: oklch(0.98 0.005 75);
+  --foreground: oklch(0.25 0.02 60);
+
+  /* Card */
+  --card: oklch(0.96 0.008 70);
+  --card-foreground: oklch(0.25 0.02 60);
+
+  /* Popover */
+  --popover: oklch(0.98 0.005 75);
+  --popover-foreground: oklch(0.25 0.02 60);
+
+  /* Primary (Orange) */
+  --primary: oklch(0.65 0.2 41);
+  --primary-foreground: oklch(0.98 0.01 75);
+
+  /* Secondary */
+  --secondary: oklch(0.80 0.05 65);
+  --secondary-foreground: oklch(0.30 0.02 60);
+
+  /* Muted */
+  --muted: oklch(0.92 0.01 70);
+  --muted-foreground: oklch(0.50 0.03 60);
+
+  /* Accent */
+  --accent: oklch(0.85 0.04 65);
+  --accent-foreground: oklch(0.25 0.02 60);
+
+  /* Destructive */
+  --destructive: oklch(0.55 0.22 25);
+
+  /* Borders & Input */
+  --border: oklch(0.88 0.02 70);
+  --input: oklch(0.90 0.015 70);
+  --ring: oklch(0.65 0.2 41);
+
+  /* Semantic status colors */
+  --status-success: oklch(0.65 0.18 155);
+  --status-warning: oklch(0.75 0.18 85);
+  --status-error: oklch(0.55 0.22 25);
+
+  /* Semantic file type colors */
+  --file-folder: oklch(0.75 0.15 85);
+  --file-code: oklch(0.60 0.15 240);
+  --file-config: oklch(0.75 0.18 90);
+  --file-text: oklch(0.50 0.03 60);
+  --file-image: oklch(0.65 0.18 300);
+
+  /* Sidebar */
+  --sidebar: oklch(0.95 0.008 70);
+  --sidebar-foreground: oklch(0.25 0.02 60);
+  --sidebar-border: oklch(0.88 0.02 70);
 }
 
-html,
-body {
-  height: 100%;
-  overflow: hidden;
-  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  background-color: var(--color-background);
-  color: var(--color-foreground);
+/* =============================================================================
+   DARK MODE
+   ============================================================================= */
+html.dark {
+  /* Force dark color scheme for scrollbars */
+  color-scheme: dark;
+
+  /* Base - warm dark, not pure black */
+  --background: oklch(0.16 0.012 60);
+  --foreground: oklch(0.93 0.01 75);
+
+  /* Card - slightly elevated */
+  --card: oklch(0.20 0.015 58);
+  --card-foreground: oklch(0.93 0.01 75);
+
+  /* Popover */
+  --popover: oklch(0.22 0.015 58);
+  --popover-foreground: oklch(0.93 0.01 75);
+
+  /* Primary (Orange) - brighter for dark */
+  --primary: oklch(0.68 0.19 40);
+  --primary-foreground: oklch(0.15 0.01 60);
+
+  /* Secondary */
+  --secondary: oklch(0.28 0.02 58);
+  --secondary-foreground: oklch(0.90 0.01 75);
+
+  /* Muted */
+  --muted: oklch(0.25 0.015 58);
+  --muted-foreground: oklch(0.65 0.03 60);
+
+  /* Accent */
+  --accent: oklch(0.30 0.02 55);
+  --accent-foreground: oklch(0.93 0.01 75);
+
+  /* Destructive */
+  --destructive: oklch(0.65 0.20 25);
+
+  /* Borders & Input - subtle white overlay */
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 12%);
+  --ring: oklch(0.55 0.15 38);
+
+  /* Semantic status colors (dark mode) */
+  --status-success: oklch(0.70 0.18 155);
+  --status-warning: oklch(0.80 0.18 85);
+  --status-error: oklch(0.65 0.20 25);
+
+  /* Semantic file type colors (dark mode) */
+  --file-folder: oklch(0.80 0.18 90);
+  --file-code: oklch(0.65 0.15 240);
+  --file-config: oklch(0.80 0.18 90);
+  --file-text: oklch(0.65 0.03 60);
+  --file-image: oklch(0.60 0.18 300);
+
+  /* Sidebar - warm dark */
+  --sidebar: oklch(0.18 0.012 58);
+  --sidebar-foreground: oklch(0.93 0.01 75);
+  --sidebar-border: oklch(1 0 0 / 10%);
+}
+
+/* =============================================================================
+   BASE STYLES (Critical for shadcn/ui)
+   ============================================================================= */
+@layer base {
+  *, *::before, *::after {
+    box-sizing: border-box;
+    @apply border-border;
+  }
+
+  html, body, #root {
+    height: 100%;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+      "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
 }
 
 /* Disable text selection on UI elements */
@@ -61,10 +223,13 @@ button,
   -webkit-user-select: none;
 }
 
-/* Scrollbar styling */
+/* =============================================================================
+   SCROLLBAR STYLING
+   ============================================================================= */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-track {
@@ -72,15 +237,35 @@ button,
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--color-muted);
+  background: oklch(0.55 0.02 60 / 50%);
   border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-secondary);
+  background: oklch(0.55 0.02 60 / 70%);
+  background-clip: padding-box;
 }
 
-/* Respect reduced motion */
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Dark mode scrollbar */
+html.dark ::-webkit-scrollbar-thumb {
+  background: oklch(0.65 0.02 60 / 40%);
+  background-clip: padding-box;
+}
+
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: oklch(0.65 0.02 60 / 60%);
+  background-clip: padding-box;
+}
+
+/* =============================================================================
+   ACCESSIBILITY
+   ============================================================================= */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

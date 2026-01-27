@@ -1,0 +1,45 @@
+[package]
+name = "solo-agent"
+version = "0.1.0"
+edition = "2021"
+description = "Multi-provider AI agent for Solo IDE"
+license = "MIT"
+
+[dependencies]
+# Core crates
+solo-core = { path = "../solo-core" }
+solo-protocol = { path = "../solo-protocol" }
+
+# Async runtime
+tokio = { version = "1.43", features = ["full"] }
+tokio-stream = "0.1"
+futures = "0.3"
+
+# HTTP client
+reqwest = { version = "0.12", features = ["json", "stream"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+thiserror = "2.0"
+anyhow = "1.0"
+
+# Async trait support
+async-trait = "0.1"
+
+# Logging
+tracing = "0.1"
+
+# UUID for message/tool IDs
+uuid = { version = "1.0", features = ["v4"] }
+
+# Event streaming (SSE)
+eventsource-stream = "0.2"
+
+# Lazy static for model registry
+lazy_static = "1.5"
+
+# TypeScript bindings
+ts-rs = { version = "10.1", features = ["serde-compat"] }

@@ -489,7 +489,7 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
                 // Also update in parent's children array
                 const parent = state.entries.get(parentPath);
                 if (parent?.children) {
-                  const idx = parent.children.findIndex((c) => c.path === path);
+                  const idx = parent.children.findIndex((c: FileTreeEntry) => c.path === path);
                   if (idx !== -1) {
                     parent.children[idx] = updatedChild;
                   }
