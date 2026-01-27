@@ -17,7 +17,7 @@ const ANTHROPIC_VERSION: &str = "2023-06-01";
 pub struct AnthropicProvider {
     api_key: String,
     client: Client,
-    tools: Vec<ToolDefinition>,qjklfnwlfnwkfnwfmpf
+    tools: Vec<ToolDefinition>,
 }
 
 impl AnthropicProvider {

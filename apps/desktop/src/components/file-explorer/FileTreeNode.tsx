@@ -3,18 +3,10 @@
  */
 
 import React, { memo, useCallback, useEffect, useState } from 'react';
-import {
-  ChevronRight,
-  ChevronDown,
-  Folder,
-  FolderOpen,
-  File,
-  FileText,
-  FileCode,
-  FileJson,
-  Image,
-  Loader2,
-} from 'lucide-react';
+import { ChevronRight, ChevronDown, Loader2 } from 'lucide-react';
+import { FileIcon, FolderIcon } from '@react-symbols/icons/utils';
+import { Git } from '@react-symbols/icons/files';
+import { FolderGray, FolderGithub } from '@react-symbols/icons/folders';
 import type { FileTreeEntry } from '../../bindings';
 
 interface FileTreeNodeProps {
@@ -33,51 +25,57 @@ interface FileTreeNodeProps {
   onRenameCancel: () => void;
 }
 
-// File extension to icon mapping
-function getFileIcon(name: string, isDir: boolean, isExpanded: boolean) {
+// Custom mappings for files without extensions (git internals)
+const customFileNameMappings = {
+  COMMIT_EDITMSG: Git,
+  HEAD: Git,
+  FETCH_HEAD: Git,
+  ORIG_HEAD: Git,
+  config: Git,
+  description: Git,
+  index: Git,
+  stash: Git,
+  'packed-refs': Git,
+  MERGE_HEAD: Git,
+  MERGE_MSG: Git,
+  REBASE_HEAD: Git,
+  BISECT_LOG: Git,
+};
+
+// Custom mappings for git internal folders (only those without library defaults)
+// Note: 'hooks' is intentionally omitted - the library provides FolderHooks by default
+// which is semantically appropriate for both .git/hooks and React hooks folders
+const customFolderMappings = {
+  info: FolderGray,
+  logs: FolderGray,
+  objects: FolderGray,
+  refs: FolderGithub,
+  worktrees: FolderGithub,
+  heads: FolderGithub,
+  remotes: FolderGithub,
+  tags: FolderGithub,
+};
+
+// File/folder icon using react-symbols (auto-assigns based on filename)
+function getFileIcon(name: string, isDir: boolean, _isExpanded: boolean) {
   if (isDir) {
-    return isExpanded ? (
-      <FolderOpen className="w-4 h-4 text-file-folder" />
-    ) : (
-      <Folder className="w-4 h-4 text-file-folder" />
+    return (
+      <FolderIcon
+        folderName={name}
+        editFolderNameData={customFolderMappings}
+        className="w-4 h-4"
+      />
     );
   }
-
-  const ext = name.split('.').pop()?.toLowerCase() ?? '';
-
-  switch (ext) {
-    case 'ts':
-    case 'tsx':
-    case 'js':
-    case 'jsx':
-    case 'rs':
-    case 'py':
-    case 'go':
-    case 'java':
-    case 'c':
-    case 'cpp':
-    case 'h':
-      return <FileCode className="w-4 h-4 text-file-code" />;
-    case 'json':
-    case 'yaml':
-    case 'yml':
-    case 'toml':
-      return <FileJson className="w-4 h-4 text-file-config" />;
-    case 'md':
-    case 'txt':
-    case 'doc':
-    case 'docx':
-      return <FileText className="w-4 h-4 text-file-text" />;
-    case 'png':
-    case 'jpg':
-    case 'jpeg':
-    case 'gif':
-    case 'svg':
-    case 'webp':
-      return <Image className="w-4 h-4 text-file-image" />;
-    default:
-      return <File className="w-4 h-4 text-file-text" />;
-  }
+  // autoAssign enables special icon matching for files like vite.config.ts, tsconfig.json, etc.
+  return (
+    <FileIcon
+      fileName={name}
+      autoAssign
+      editFileNameData={customFileNameMappings}
+      className="w-4 h-4"
+    />
+  );
 }
 
 export const FileTreeNode = memo(function FileTreeNode({
