@@ -10,7 +10,8 @@
     "build:vite": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf node_modules/.vite dist"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.6.0",
