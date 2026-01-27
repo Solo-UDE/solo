@@ -6,6 +6,7 @@
 import { panelRegistry } from './registry';
 import { FileViewerPanel } from '@/components/panels/FileViewerPanel';
 import { WelcomePanel } from '@/components/panels/WelcomePanel';
+import { AgentPanel } from '@/components/panels/AgentPanel';
 
 /**
  * Register all built-in panel types
@@ -41,6 +42,24 @@ export function registerBuiltinPanels(): void {
     allowMultiple: false,
     preferredRegion: 'editor',
   });
+
+  // Agent Panel (AI chat session)
+  panelRegistry.register({
+    id: 'agent',
+    displayName: 'Agent Session',
+    defaultIcon: 'message-square',
+    component: AgentPanel,
+    getDefaultTitle: (data) => {
+      const sessionId = data.sessionId as string | undefined;
+      if (!sessionId) return 'New Session';
+      // Will be updated dynamically by the panel
+      return 'New Session';
+    },
+    allowMultiple: true,
+    preferredRegion: 'editor',
+    serializeData: (data) => ({ sessionId: data.sessionId }),
+    deserializeData: (raw) => ({ sessionId: raw.sessionId as string | undefined }),
+  });
 }
 
 /**
@@ -49,4 +68,5 @@ export function registerBuiltinPanels(): void {
 export const BUILTIN_PANEL_TYPES = {
   FILE_VIEWER: 'file-viewer',
   WELCOME: 'welcome',
+  AGENT: 'agent',
 } as const;

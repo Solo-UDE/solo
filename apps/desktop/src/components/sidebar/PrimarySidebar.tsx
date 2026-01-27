@@ -2,7 +2,7 @@
  * PrimarySidebar - Main collapsible sidebar with tab navigation
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import type { FC } from 'react';
 import { FileExplorer } from '@/components/file-explorer';
 import { SessionList, ApiKeyDialog } from '@/components/agent';
@@ -11,7 +11,9 @@ import { TabButton } from './TabButton';
 import { TRANSITIONS } from '@/lib/constants';
 import { useUIStore, useIsLeftSidebarCollapsed } from '@/stores/uiStore';
 import { useAgentStore } from '@/stores/agentStore';
+import { usePanelTabsStore } from '@/stores/panelTabsStore';
 import { useHasCredentials, useActiveProvider } from '@/stores/provider-store';
+import { BUILTIN_PANEL_TYPES } from '@/lib/panels';
 import { cn } from '@/lib/utils';
 
 interface PrimarySidebarProps {
@@ -23,28 +25,33 @@ export const PrimarySidebar: FC<PrimarySidebarProps> = ({ width, onFileOpen }) =
   const isCollapsed = useIsLeftSidebarCollapsed();
   const activeTab = useUIStore((state) => state.activeTab);
   const setActiveTab = useUIStore((state) => state.setActiveTab);
-  const setMainPanelType = useUIStore((state) => state.setMainPanelType);
   const setActiveSession = useAgentStore((state) => state.setActiveSession);
   const createSession = useAgentStore((state) => state.createSession);
+
+  // Get openPanel action directly from store to avoid selector subscription issues
+  const openPanel = useMemo(() => usePanelTabsStore.getState().openPanel, []);
 
   // Provider/credentials state
   const activeProvider = useActiveProvider();
   const hasCredentials = useHasCredentials(activeProvider ?? 'anthropic');
   const [showApiKeyDialog, setShowApiKeyDialog] = useState(false);
 
-  const handleSessionSelect = (sessionId: string): void => {
+  // Open a session as a tab in the panel system
+  const handleSessionSelect = useCallback((sessionId: string): void => {
     setActiveSession(sessionId);
-    setMainPanelType('agent');
-  };
+    openPanel(BUILTIN_PANEL_TYPES.AGENT, { sessionId });
+  }, [setActiveSession, openPanel]);
 
-  // Create session after successful API key save
+  // Create session and open as tab
   const createSessionAndShow = useCallback((): void => {
-    createSession().then(() => {
-      setMainPanelType('agent');
+    createSession().then((sessionId) => {
+      if (sessionId) {
+        openPanel(BUILTIN_PANEL_TYPES.AGENT, { sessionId });
+      }
     }).catch((err) => {
       console.error('Failed to create session:', err);
     });
-  }, [createSession, setMainPanelType]);
+  }, [createSession, openPanel]);
 
   const handleNewSession = useCallback((): void => {
     // Check if credentials exist before creating session

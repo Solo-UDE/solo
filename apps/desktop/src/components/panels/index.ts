@@ -8,3 +8,4 @@ export { TabbedContainer } from './TabbedContainer';
 export { TabBar } from './TabBar';
 export { Tab } from './Tab';
 export { PanelWrapper } from './PanelWrapper';
+export { AgentPanel } from './AgentPanel';
