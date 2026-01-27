@@ -2,12 +2,16 @@
  * PrimarySidebar - Main collapsible sidebar with tab navigation
  */
 
+import { useState, useCallback } from 'react';
 import type { FC } from 'react';
 import { FileExplorer } from '@/components/file-explorer';
+import { SessionList, ApiKeyDialog } from '@/components/agent';
 import { SidebarToggle } from './SidebarToggle';
 import { TabButton } from './TabButton';
 import { TRANSITIONS } from '@/lib/constants';
 import { useUIStore, useIsLeftSidebarCollapsed } from '@/stores/uiStore';
+import { useAgentStore } from '@/stores/agentStore';
+import { useHasCredentials, useActiveProvider } from '@/stores/provider-store';
 import { cn } from '@/lib/utils';
 
 interface PrimarySidebarProps {
@@ -19,6 +23,52 @@ export const PrimarySidebar: FC<PrimarySidebarProps> = ({ width, onFileOpen }) =
   const isCollapsed = useIsLeftSidebarCollapsed();
   const activeTab = useUIStore((state) => state.activeTab);
   const setActiveTab = useUIStore((state) => state.setActiveTab);
+  const setMainPanelType = useUIStore((state) => state.setMainPanelType);
+  const setActiveSession = useAgentStore((state) => state.setActiveSession);
+  const createSession = useAgentStore((state) => state.createSession);
+
+  // Provider/credentials state
+  const activeProvider = useActiveProvider();
+  const hasCredentials = useHasCredentials(activeProvider ?? 'anthropic');
+  const [showApiKeyDialog, setShowApiKeyDialog] = useState(false);
+
+  const handleSessionSelect = (sessionId: string): void => {
+    setActiveSession(sessionId);
+    setMainPanelType('agent');
+  };
+
+  // Create session after successful API key save
+  const createSessionAndShow = useCallback((): void => {
+    createSession().then(() => {
+      setMainPanelType('agent');
+    }).catch((err) => {
+      console.error('Failed to create session:', err);
+    });
+  }, [createSession, setMainPanelType]);
+
+  const handleNewSession = useCallback((): void => {
+    // Check if credentials exist before creating session
+    if (!hasCredentials) {
+      // Show API key dialog first
+      setShowApiKeyDialog(true);
+      return;
+    }
+    // Credentials exist, create session directly
+    createSessionAndShow();
+  }, [hasCredentials, createSessionAndShow]);
+
+  const handleApiKeyDialogClose = useCallback((): void => {
+    setShowApiKeyDialog(false);
+  }, []);
+
+  // Called after successful API key save
+  const handleApiKeySaved = useCallback((): void => {
+    setShowApiKeyDialog(false);
+    // Small delay to ensure provider store is fully updated
+    setTimeout(() => {
+      createSessionAndShow();
+    }, 100);
+  }, [createSessionAndShow]);
 
   return (
     <aside
@@ -66,15 +116,22 @@ export const PrimarySidebar: FC<PrimarySidebarProps> = ({ width, onFileOpen }) =
             )}
           />
         )}
-        {activeTab === 'sessions' && (
-          <div className={cn(
-            'p-3 text-sm text-muted-foreground transition-opacity duration-150',
-            isCollapsed ? 'opacity-0 pointer-events-none' : 'opacity-100'
-          )}>
-            Sessions coming soon...
-          </div>
+        {activeTab === 'sessions' && !isCollapsed && (
+          <SessionList
+            onSessionSelect={handleSessionSelect}
+            onNewSession={handleNewSession}
+            className="h-full"
+          />
         )}
       </div>
+
+      {/* API Key Dialog for onboarding */}
+      <ApiKeyDialog
+        isOpen={showApiKeyDialog}
+        onClose={handleApiKeyDialogClose}
+        onSuccess={handleApiKeySaved}
+        provider="Anthropic"
+      />
     </aside>
   );
 };

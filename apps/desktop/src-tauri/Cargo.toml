@@ -20,8 +20,10 @@ tauri-build.workspace = true
 solo-core = { path = "../../../crates/solo-core" }
 solo-protocol = { path = "../../../crates/solo-protocol" }
 solo-fs = { path = "../../../crates/solo-fs" }
+solo-agent = { path = "../../../crates/solo-agent" }
 
 tauri.workspace = true
+uuid = { version = "1.11", features = ["v4"] }
 tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-clipboard-manager = "2"

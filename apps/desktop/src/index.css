@@ -64,6 +64,12 @@
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-border: var(--sidebar-border);
+
+  /* Agent-specific colors */
+  --color-agent-user-bg: var(--agent-user-bg);
+  --color-agent-assistant-bg: var(--agent-assistant-bg);
+  --color-agent-tool-bg: var(--agent-tool-bg);
+  --color-agent-streaming: var(--agent-streaming);
 }
 
 /* =============================================================================
@@ -87,8 +93,8 @@
   --popover: oklch(0.98 0.005 75);
   --popover-foreground: oklch(0.25 0.02 60);
 
-  /* Primary (Orange) */
-  --primary: oklch(0.65 0.2 41);
+  /* Primary (Solo Green) */
+  --primary: oklch(0.68 0.17 140);
   --primary-foreground: oklch(0.98 0.01 75);
 
   /* Secondary */
@@ -109,7 +115,7 @@
   /* Borders & Input */
   --border: oklch(0.88 0.02 70);
   --input: oklch(0.90 0.015 70);
-  --ring: oklch(0.65 0.2 41);
+  --ring: oklch(0.68 0.17 140);
 
   /* Semantic status colors */
   --status-success: oklch(0.65 0.18 155);
@@ -127,6 +133,12 @@
   --sidebar: oklch(0.95 0.008 70);
   --sidebar-foreground: oklch(0.25 0.02 60);
   --sidebar-border: oklch(0.88 0.02 70);
+
+  /* Agent-specific */
+  --agent-user-bg: oklch(0.95 0.02 140 / 10%);
+  --agent-assistant-bg: oklch(0.96 0.008 70);
+  --agent-tool-bg: oklch(0.94 0.01 70);
+  --agent-streaming: oklch(0.68 0.17 140);
 }
 
 /* =============================================================================
@@ -148,8 +160,8 @@ html.dark {
   --popover: oklch(0.22 0.015 58);
   --popover-foreground: oklch(0.93 0.01 75);
 
-  /* Primary (Orange) - brighter for dark */
-  --primary: oklch(0.68 0.19 40);
+  /* Primary (Solo Mint) - soft neon green for dark */
+  --primary: oklch(0.86 0.14 135);
   --primary-foreground: oklch(0.15 0.01 60);
 
   /* Secondary */
@@ -170,7 +182,7 @@ html.dark {
   /* Borders & Input - subtle white overlay */
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 12%);
-  --ring: oklch(0.55 0.15 38);
+  --ring: oklch(0.86 0.14 135);
 
   /* Semantic status colors (dark mode) */
   --status-success: oklch(0.70 0.18 155);
@@ -188,6 +200,12 @@ html.dark {
   --sidebar: oklch(0.18 0.012 58);
   --sidebar-foreground: oklch(0.93 0.01 75);
   --sidebar-border: oklch(1 0 0 / 10%);
+
+  /* Agent-specific (dark mode) */
+  --agent-user-bg: oklch(0.86 0.14 135 / 10%);
+  --agent-assistant-bg: oklch(0.22 0.015 58);
+  --agent-tool-bg: oklch(0.25 0.015 58);
+  --agent-streaming: oklch(0.86 0.14 135);
 }
 
 /* =============================================================================

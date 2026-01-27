@@ -9,9 +9,13 @@ import { SIDEBAR } from '@/lib/constants';
 // Sidebar tab types
 export type SidebarTab = 'explorer' | 'sessions';
 
+// Main panel content types
+export type MainPanelType = 'file' | 'agent' | 'empty';
+
 interface UIState {
   leftSidebarWidth: number;
   activeTab: SidebarTab;
+  mainPanelType: MainPanelType;
 }
 
 interface UIActions {
@@ -19,6 +23,7 @@ interface UIActions {
   expandLeftSidebar: () => void;
   collapseLeftSidebar: () => void;
   setActiveTab: (tab: SidebarTab) => void;
+  setMainPanelType: (type: MainPanelType) => void;
 }
 
 type UIStore = UIState & UIActions;
@@ -27,6 +32,7 @@ export const useUIStore = create<UIStore>()(
   immer((set) => ({
     leftSidebarWidth: SIDEBAR.expanded,
     activeTab: 'explorer' as SidebarTab,
+    mainPanelType: 'empty' as MainPanelType,
 
     toggleLeftSidebar: (): void => {
       set((state) => {
@@ -51,6 +57,12 @@ export const useUIStore = create<UIStore>()(
     setActiveTab: (tab: SidebarTab): void => {
       set((state) => {
         state.activeTab = tab;
+      });
+    },
+
+    setMainPanelType: (type: MainPanelType): void => {
+      set((state) => {
+        state.mainPanelType = type;
       });
     },
   }))
