@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@monaco-editor/react": "^4.6.0",
     "@react-symbols/icons": "1.3.0",
     "@solo/ui": "workspace:*",
     "@tanstack/react-virtual": "3.13.18",
@@ -23,6 +24,7 @@
     "clsx": "^2.1.1",
     "immer": "11.1.3",
     "lucide-react": "0.563.0",
+    "monaco-editor": "^0.52.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tailwind-merge": "^3.0.0",

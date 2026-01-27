@@ -20,6 +20,7 @@ tauri-build.workspace = true
 solo-core = { path = "../../../crates/solo-core" }
 solo-protocol = { path = "../../../crates/solo-protocol" }
 solo-fs = { path = "../../../crates/solo-fs" }
+solo-parse = { path = "../../../crates/solo-parse" }
 
 tauri.workspace = true
 tauri-plugin-shell = "2"

@@ -315,6 +315,105 @@ pub enum BackendEvent {
     /// File renamed externally
     #[serde(rename = "file:renamed")]
     FileRenamed { old_path: String, new_path: String },
+
+    /// Parse completed for a file
+    #[serde(rename = "parse:complete")]
+    ParseComplete { path: String, symbol_count: u32 },
+}
+
+// =============================================================================
+// Parse Protocol
+// =============================================================================
+
+/// Request to parse a file
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct ParseRequest {
+    /// Path to the file
+    pub path: String,
+    /// Optional content to parse (if not provided, reads from disk)
+    pub content: Option<String>,
+}
+
+/// Response with parse results
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct ParseResponse {
+    /// Extracted symbols
+    pub symbols: Vec<Symbol>,
+    /// Parse errors found
+    pub errors: Vec<ParseErrorInfo>,
+    /// Time taken to parse (milliseconds)
+    pub parse_time_ms: u64,
+    /// Whether the tree has syntax errors
+    pub has_errors: bool,
+}
+
+/// A symbol extracted from source code
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct Symbol {
+    /// Symbol name
+    pub name: String,
+    /// Kind of symbol
+    pub kind: SymbolKind,
+    /// Range in the source file
+    pub range: SymbolRange,
+    /// Range of just the symbol name
+    pub selection_range: SymbolRange,
+    /// Nested symbols
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub children: Vec<Symbol>,
+    /// Additional details
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+/// Kind of symbol
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "snake_case")]
+pub enum SymbolKind {
+    Function,
+    Method,
+    Class,
+    Struct,
+    Enum,
+    Interface,
+    TypeAlias,
+    Constant,
+    Variable,
+    Module,
+    Property,
+    EnumMember,
+    Trait,
+    Impl,
+    Macro,
+    Unknown,
+}
+
+/// A range in source code (0-indexed)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct SymbolRange {
+    /// Start line (0-indexed)
+    pub start_line: u32,
+    /// Start column (0-indexed)
+    pub start_col: u32,
+    /// End line (0-indexed)
+    pub end_line: u32,
+    /// End column (0-indexed)
+    pub end_col: u32,
+}
+
+/// Parse error information
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct ParseErrorInfo {
+    /// Error message
+    pub message: String,
+    /// Location of the error
+    pub range: SymbolRange,
 }
 
 #[cfg(test)]
