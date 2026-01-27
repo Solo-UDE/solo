@@ -1,0 +1,93 @@
+/**
+ * NumberInput - Numeric value input with min/max bounds
+ */
+
+import { useCallback } from 'react';
+import { Minus, Plus } from 'lucide-react';
+
+interface NumberInputProps {
+  value: number;
+  min?: number;
+  max?: number;
+  step?: number;
+  onChange: (value: number) => void;
+  disabled?: boolean;
+}
+
+export function NumberInput({
+  value,
+  min = 0,
+  max = 100,
+  step = 1,
+  onChange,
+  disabled = false,
+}: NumberInputProps) {
+  const handleIncrement = useCallback(() => {
+    const newValue = Math.min(max, value + step);
+    onChange(newValue);
+  }, [value, max, step, onChange]);
+
+  const handleDecrement = useCallback(() => {
+    const newValue = Math.max(min, value - step);
+    onChange(newValue);
+  }, [value, min, step, onChange]);
+
+  const handleChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const raw = e.target.value;
+      const parsed = parseInt(raw, 10);
+      if (!isNaN(parsed)) {
+        const clamped = Math.max(min, Math.min(max, parsed));
+        onChange(clamped);
+      }
+    },
+    [min, max, onChange]
+  );
+
+  return (
+    <div className="inline-flex items-center">
+      <button
+        type="button"
+        onClick={handleDecrement}
+        disabled={disabled || value <= min}
+        className={`
+          p-1.5 rounded-l-md border border-r-0 border-border
+          bg-muted hover:bg-muted/80
+          disabled:cursor-not-allowed disabled:opacity-50
+          transition-colors
+        `}
+      >
+        <Minus className="w-3 h-3" />
+      </button>
+      <input
+        type="number"
+        value={value}
+        onChange={handleChange}
+        min={min}
+        max={max}
+        step={step}
+        disabled={disabled}
+        className={`
+          w-14 px-2 py-1 text-center text-sm
+          border-y border-border bg-background text-foreground
+          focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-inset
+          disabled:cursor-not-allowed disabled:opacity-50
+          [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none
+        `}
+      />
+      <button
+        type="button"
+        onClick={handleIncrement}
+        disabled={disabled || value >= max}
+        className={`
+          p-1.5 rounded-r-md border border-l-0 border-border
+          bg-muted hover:bg-muted/80
+          disabled:cursor-not-allowed disabled:opacity-50
+          transition-colors
+        `}
+      >
+        <Plus className="w-3 h-3" />
+      </button>
+    </div>
+  );
+}

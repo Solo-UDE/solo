@@ -1,0 +1,169 @@
+/**
+ * KeybindingInput - Keyboard shortcut capture control
+ */
+
+import { useState, useCallback, useRef, useEffect } from 'react';
+import { Keyboard, RotateCcw, X } from 'lucide-react';
+
+interface KeybindingInputProps {
+  value: string;
+  defaultValue?: string;
+  onChange: (value: string) => void;
+  onReset?: () => void;
+  hasConflict?: boolean;
+  conflictMessage?: string;
+}
+
+function formatKeyEvent(e: KeyboardEvent): string {
+  const parts: string[] = [];
+
+  if (e.metaKey) parts.push('Cmd');
+  if (e.ctrlKey) parts.push('Ctrl');
+  if (e.altKey) parts.push('Alt');
+  if (e.shiftKey) parts.push('Shift');
+
+  // Add the key if it's not a modifier
+  const key = e.key;
+  if (!['Meta', 'Control', 'Alt', 'Shift'].includes(key)) {
+    if (key === ' ') {
+      parts.push('Space');
+    } else if (key.length === 1) {
+      parts.push(key.toUpperCase());
+    } else {
+      parts.push(key);
+    }
+  }
+
+  return parts.join('+');
+}
+
+export function KeybindingInput({
+  value,
+  defaultValue,
+  onChange,
+  onReset,
+  hasConflict = false,
+  conflictMessage,
+}: KeybindingInputProps) {
+  const [isRecording, setIsRecording] = useState(false);
+  const inputRef = useRef<HTMLButtonElement>(null);
+
+  const handleStartRecording = useCallback(() => {
+    setIsRecording(true);
+  }, []);
+
+  const handleClear = useCallback(() => {
+    onChange('');
+    setIsRecording(false);
+  }, [onChange]);
+
+  const handleReset = useCallback(() => {
+    if (defaultValue !== undefined) {
+      onChange(defaultValue);
+    }
+    onReset?.();
+    setIsRecording(false);
+  }, [defaultValue, onChange, onReset]);
+
+  useEffect(() => {
+    if (!isRecording) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      // Escape cancels recording
+      if (e.key === 'Escape') {
+        setIsRecording(false);
+        return;
+      }
+
+      // Only accept if there's at least one modifier + a key
+      const hasModifier = e.metaKey || e.ctrlKey || e.altKey;
+      const isModifierOnly = ['Meta', 'Control', 'Alt', 'Shift'].includes(e.key);
+
+      if (hasModifier && !isModifierOnly) {
+        const formatted = formatKeyEvent(e);
+        onChange(formatted);
+        setIsRecording(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isRecording, onChange]);
+
+  // Click outside to cancel
+  useEffect(() => {
+    if (!isRecording) return;
+
+    const handleClickOutside = (e: MouseEvent) => {
+      if (inputRef.current && !inputRef.current.contains(e.target as Node)) {
+        setIsRecording(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isRecording]);
+
+  const isModified = defaultValue !== undefined && value !== defaultValue;
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-1">
+        <button
+          ref={inputRef}
+          type="button"
+          onClick={handleStartRecording}
+          className={`
+            inline-flex items-center gap-2 px-3 py-1.5 min-w-[140px]
+            border rounded-md text-sm font-mono
+            transition-colors
+            ${isRecording
+              ? 'bg-primary/10 border-primary text-primary'
+              : hasConflict
+                ? 'bg-destructive/10 border-destructive text-destructive'
+                : 'bg-background border-border text-foreground hover:bg-muted'
+            }
+          `}
+        >
+          <Keyboard className="w-3.5 h-3.5" />
+          {isRecording ? (
+            <span className="text-xs">Press keys...</span>
+          ) : value ? (
+            <span>{value}</span>
+          ) : (
+            <span className="text-muted-foreground">Not set</span>
+          )}
+        </button>
+
+        {value && (
+          <button
+            type="button"
+            onClick={handleClear}
+            className="p-1.5 rounded hover:bg-muted transition-colors"
+            title="Clear"
+          >
+            <X className="w-3.5 h-3.5 text-muted-foreground" />
+          </button>
+        )}
+
+        {isModified && (
+          <button
+            type="button"
+            onClick={handleReset}
+            className="p-1.5 rounded hover:bg-muted transition-colors"
+            title="Reset to default"
+          >
+            <RotateCcw className="w-3.5 h-3.5 text-muted-foreground" />
+          </button>
+        )}
+      </div>
+
+      {hasConflict && conflictMessage && (
+        <span className="text-xs text-destructive">{conflictMessage}</span>
+      )}
+    </div>
+  );
+}

@@ -9,6 +9,7 @@ import type * as Monaco from 'monaco-editor';
 import { FileText, Loader2, AlertCircle } from 'lucide-react';
 import * as fs from '../../lib/tauri/fs';
 import { useEditorStore, isMarkdownFile, useMarkdownPreview } from '../../stores/editorStore';
+import { useSettingsStore } from '../../stores/settingsStore';
 import { useShallow } from 'zustand/react/shallow';
 import { useParseResults, getSymbolPath } from '../../hooks/useParseResults';
 import { EditorTabs } from './EditorTabs';
@@ -97,6 +98,19 @@ export function CodeEditor({ filePath, className = '' }: CodeEditorProps) {
 
   // Check if a tab exists for the given path
   const hasTab = useEditorStore((s) => (filePath ? s.tabs.has(filePath) : false));
+
+  // Editor settings from settings store
+  const editorSettings = useSettingsStore(
+    useShallow((s) => ({
+      fontSize: s.general.editorFontSize,
+      fontFamily: s.general.editorFontFamily,
+      tabSize: s.editor.tabSize,
+      wordWrap: s.editor.wordWrap,
+      minimap: s.editor.minimap,
+      lineNumbers: s.editor.lineNumbers,
+      bracketColorization: s.editor.bracketColorization,
+    }))
+  );
 
   // Store actions via ref to avoid re-render loops
   const storeRef = useRef(useEditorStore.getState());
@@ -267,6 +281,25 @@ export function CodeEditor({ filePath, className = '' }: CodeEditorProps) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeTab, saveFile]);
 
+  // Update Monaco options when settings change
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    editor.updateOptions({
+      fontSize: editorSettings.fontSize,
+      lineHeight: Math.round(editorSettings.fontSize * 1.7),
+      fontFamily: editorSettings.fontFamily === 'system-ui'
+        ? 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, Consolas, monospace'
+        : `${editorSettings.fontFamily}, ui-monospace, monospace`,
+      minimap: { enabled: editorSettings.minimap },
+      bracketPairColorization: { enabled: editorSettings.bracketColorization },
+      lineNumbers: editorSettings.lineNumbers,
+      tabSize: editorSettings.tabSize,
+      wordWrap: editorSettings.wordWrap ? 'on' : 'off',
+    });
+  }, [editorSettings]);
+
   // No file selected - show placeholder
   if (!filePath && !activeTab) {
     return (
@@ -324,21 +357,23 @@ export function CodeEditor({ filePath, className = '' }: CodeEditorProps) {
       onMount={handleEditorMount}
       onChange={handleEditorChange}
       options={{
-        fontSize: 13,
-        lineHeight: 22,
-        fontFamily: 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-        minimap: { enabled: false },
+        fontSize: editorSettings.fontSize,
+        lineHeight: Math.round(editorSettings.fontSize * 1.7),
+        fontFamily: editorSettings.fontFamily === 'system-ui'
+          ? 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, Consolas, monospace'
+          : `${editorSettings.fontFamily}, ui-monospace, monospace`,
+        minimap: { enabled: editorSettings.minimap },
         scrollBeyondLastLine: false,
         automaticLayout: true,
-        bracketPairColorization: { enabled: true },
+        bracketPairColorization: { enabled: editorSettings.bracketColorization },
         folding: true,
-        lineNumbers: 'on',
+        lineNumbers: editorSettings.lineNumbers,
         renderLineHighlight: 'line',
         cursorBlinking: 'smooth',
         smoothScrolling: true,
-        tabSize: 2,
+        tabSize: editorSettings.tabSize,
         insertSpaces: true,
-        wordWrap: 'off',
+        wordWrap: editorSettings.wordWrap ? 'on' : 'off',
         padding: { top: 0, bottom: 0 },
         scrollbar: {
           useShadows: false,

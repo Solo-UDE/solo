@@ -10,6 +10,7 @@ import { useAgentStore } from "./stores/agentStore";
 import { registerBuiltinPanels, BUILTIN_PANEL_TYPES } from "./lib/panels";
 import { SettingsModal } from "./components/settings";
 import { useAutosave } from "./hooks/useAutosave";
+import { useColorScheme } from "./hooks/useColorScheme";
 
 // Register built-in panels on module load
 registerBuiltinPanels();
@@ -27,6 +28,9 @@ function App() {
 
   // Enable autosave on blur and tab switch
   useAutosave();
+
+  // Apply color scheme to document
+  useColorScheme();
 
   useEffect(() => {
     // Test IPC connection with ping
