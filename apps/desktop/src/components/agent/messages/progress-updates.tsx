@@ -1,0 +1,66 @@
+import { ChevronDown, ChevronRight } from 'lucide-react';
+import { useState } from 'react';
+
+import { ProgressStep } from './progress-step';
+
+import type { FC } from 'react';
+
+export interface ProgressUpdate {
+  step: number;
+  description: string;
+  status: 'pending' | 'in_progress' | 'completed' | 'failed';
+}
+
+export interface ProgressUpdatesProps {
+  updates: ProgressUpdate[];
+  defaultExpanded?: boolean;
+  className?: string;
+}
+
+export const ProgressUpdates: FC<ProgressUpdatesProps> = ({
+  updates,
+  defaultExpanded = true,
+  className = '',
+}) => {
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
+
+  const completedCount = updates.filter(
+    (u) => u.status === 'completed'
+  ).length;
+  const totalCount = updates.length;
+
+  return (
+    <div className={`space-y-2 ${className}`}>
+      {/* Header */}
+      <button
+        onClick={() => {
+          setIsExpanded(!isExpanded);
+        }}
+        className="flex items-center gap-2 text-xs font-medium text-muted-foreground uppercase tracking-wide hover:text-foreground transition-colors w-full"
+      >
+        {isExpanded ? (
+          <ChevronDown className="w-3 h-3" />
+        ) : (
+          <ChevronRight className="w-3 h-3" />
+        )}
+        <span>
+          Progress Updates ({completedCount}/{totalCount})
+        </span>
+      </button>
+
+      {/* Progress Steps */}
+      {isExpanded ? (
+        <div className="space-y-2 pl-2">
+          {updates.map((update) => (
+            <ProgressStep
+              key={update.step}
+              step={update.step}
+              description={update.description}
+              status={update.status}
+            />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+};

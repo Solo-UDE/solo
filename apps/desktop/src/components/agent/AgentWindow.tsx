@@ -1,8 +1,9 @@
-import { useEffect, useCallback, useState } from 'react';
+import { useEffect, useCallback, useMemo } from 'react';
 
 import { AgentWindowHeader } from './AgentWindowHeader';
-import { MessageFeed } from './messages/MessageFeed';
-import { ChatInput } from './input/ChatInput';
+import { MessageFeed } from './messages';
+import { ChatInputContainer } from './input';
+import { convertToMessageGroups } from './messageAdapter';
 import { useAgentSession } from '../../hooks/useAgentSession';
 import { useAgentStream } from '../../hooks/useAgentStream';
 import { useProviderStore } from '../../stores/provider-store';
@@ -73,8 +74,6 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 }) => {
 	const {
 		showHeader = true,
-		showModelSelector = true,
-		showModeSelector = true,
 		agentName = 'Claude',
 	} = ui;
 
@@ -97,10 +96,12 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 
 	// Provider state for model selection
 	const selectedModel = useProviderStore((state) => state.selectedModel);
-	const setSelectedModel = useProviderStore((state) => state.setSelectedModel);
 
-	// Local state
-	const [mode, setMode] = useState<MessageMode>('planning');
+	// Convert messages to message groups for the new MessageFeed
+	const messageGroups = useMemo(
+		() => convertToMessageGroups(messages),
+		[messages]
+	);
 
 	// Notify parent of session changes
 	useEffect(() => {
@@ -109,18 +110,67 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 		}
 	}, [sessionId, callbacks]);
 
-	// Handle message submission
+	// Handle message submission from new ChatInputContainer
 	const handleSubmit = useCallback(
-		async (content: string) => {
-			await sendMessage(content, mode);
+		async (content: string, mode: 'planning' | 'fast', _model: string) => {
+			await sendMessage(content, mode as MessageMode);
 		},
-		[sendMessage, mode]
+		[sendMessage]
 	);
 
 	// Handle new session
 	const handleNewSession = useCallback(() => {
 		createSession(selectedModel || undefined);
 	}, [createSession, selectedModel]);
+
+	// Empty state for no messages
+	if (messages.length === 0) {
+		return (
+			<div
+				className={`flex flex-col h-full bg-background ${className}`}
+				data-instance-id={instanceId}
+			>
+				{/* Header */}
+				{showHeader && (
+					<AgentWindowHeader
+						sessionId={sessionId}
+						agentName={agentName}
+						model={selectedModel || session?.model}
+						onNewSession={handleNewSession}
+					/>
+				)}
+
+				{/* Empty state */}
+				<div className="flex-1 flex items-center justify-center">
+					<div className="text-center text-muted-foreground">
+						<p className="text-sm">No messages yet</p>
+						<p className="text-xs mt-1">Start a conversation by typing below</p>
+					</div>
+				</div>
+
+				{/* Error display */}
+				{error && (
+					<div className="px-4 py-2 bg-destructive/10 border-t border-destructive/20">
+						<div className="flex items-center justify-between">
+							<span className="text-sm text-destructive">{error}</span>
+							<button
+								onClick={clearError}
+								className="text-xs text-destructive hover:underline"
+							>
+								Dismiss
+							</button>
+						</div>
+					</div>
+				)}
+
+				{/* Chat input */}
+				<ChatInputContainer
+					onSubmit={handleSubmit}
+					isAgentRunning={isRunning}
+				/>
+			</div>
+		);
+	}
 
 	return (
 		<div
@@ -139,7 +189,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 
 			{/* Message feed */}
 			<MessageFeed
-				messages={messages}
+				messageGroups={messageGroups}
 				autoScroll={true}
 				className="flex-1"
 			/>
@@ -160,13 +210,9 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 			)}
 
 			{/* Chat input */}
-			<ChatInput
+			<ChatInputContainer
 				onSubmit={handleSubmit}
-				isDisabled={isRunning}
-				mode={mode}
-				onModeChange={showModeSelector ? setMode : undefined}
-				selectedModel={selectedModel}
-				onModelChange={showModelSelector ? setSelectedModel : undefined}
+				isAgentRunning={isRunning}
 			/>
 		</div>
 	);

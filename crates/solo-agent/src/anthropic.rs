@@ -6,6 +6,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use solo_protocol::{AgentMessage, AgentToolCall, BackendEvent};
 use tokio::sync::mpsc;
+use tracing::{debug, info, error};
 
 use crate::models::ANTHROPIC_MODELS;
 use crate::provider::{AIProvider, ProviderError, ProviderResult, ProviderType, ToolDefinition};
@@ -218,6 +219,8 @@ async fn stream_anthropic_response(
     conversation_id: String,
     tx: mpsc::Sender<BackendEvent>,
 ) -> ProviderResult<()> {
+    info!(conversation_id = %conversation_id, model = %request.model, "Starting Anthropic streaming request");
+
     let response = client
         .post(ANTHROPIC_API_URL)
         .header("x-api-key", &api_key)
@@ -227,9 +230,12 @@ async fn stream_anthropic_response(
         .send()
         .await?;
 
+    info!(conversation_id = %conversation_id, status = %response.status(), "Got Anthropic response");
+
     if !response.status().is_success() {
         let status = response.status();
         let error_text = response.text().await.unwrap_or_default();
+        error!(conversation_id = %conversation_id, status = %status, error = %error_text, "Anthropic API error");
         return Err(ProviderError::ApiError(format!(
             "HTTP {}: {}",
             status, error_text
@@ -240,10 +246,14 @@ async fn stream_anthropic_response(
     let mut buffer = String::new();
     let mut accumulated_text = String::new();
     let mut current_tool_call: Option<(String, String, String)> = None; // (id, name, input_json)
+    let mut chunk_count = 0u32;
 
     while let Some(chunk) = stream.next().await {
         let chunk = chunk?;
-        buffer.push_str(&String::from_utf8_lossy(&chunk));
+        chunk_count += 1;
+        let chunk_str = String::from_utf8_lossy(&chunk);
+        debug!(conversation_id = %conversation_id, chunk_count = chunk_count, chunk_len = chunk_str.len(), "Received SSE chunk");
+        buffer.push_str(&chunk_str);
 
         // Process SSE events
         while let Some(event_end) = buffer.find("\n\n") {
@@ -273,6 +283,7 @@ async fn stream_anthropic_response(
                                     // Text delta
                                     if let Some(text) = delta.text {
                                         accumulated_text.push_str(&text);
+                                        debug!(conversation_id = %conversation_id, text_len = text.len(), "Sending AgentChunk");
                                         let _ = tx
                                             .send(BackendEvent::AgentChunk {
                                                 conversation_id: conversation_id.clone(),
@@ -306,6 +317,7 @@ async fn stream_anthropic_response(
                             }
                             "message_stop" => {
                                 // Message complete
+                                info!(conversation_id = %conversation_id, content_len = accumulated_text.len(), "Sending AgentComplete");
                                 let _ = tx
                                     .send(BackendEvent::AgentComplete {
                                         conversation_id: conversation_id.clone(),
@@ -319,6 +331,7 @@ async fn stream_anthropic_response(
                             }
                             "error" => {
                                 if let Some(error) = event.error {
+                                    error!(conversation_id = %conversation_id, error_type = %error.error_type, message = %error.message, "Anthropic API returned error");
                                     let _ = tx
                                         .send(BackendEvent::AgentError {
                                             conversation_id: conversation_id.clone(),
@@ -327,7 +340,9 @@ async fn stream_anthropic_response(
                                         .await;
                                 }
                             }
-                            _ => {}
+                            _ => {
+                                debug!(conversation_id = %conversation_id, event_type = %event.event_type, "Unhandled event type");
+                            }
                         }
                     }
                 }
@@ -335,6 +350,7 @@ async fn stream_anthropic_response(
         }
     }
 
+    info!(conversation_id = %conversation_id, total_chunks = chunk_count, accumulated_len = accumulated_text.len(), "Streaming complete");
     Ok(())
 }
 

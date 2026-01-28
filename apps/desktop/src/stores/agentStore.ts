@@ -194,19 +194,23 @@ export const useAgentStore = create<AgentStore>()(
 		},
 
 		sendMessage: async (content: string, mode: MessageMode) => {
+			console.log('[Store SEND] content:', content, 'mode:', mode);
 			const sessionId = get().activeSessionId;
 			if (!sessionId) {
+				console.error('[Store] No active session!');
 				set((state) => {
 					state.error = 'No active session';
 				});
 				return;
 			}
+			console.log('[Store] Active sessionId:', sessionId);
 
 			// Add user message
 			get().addUserMessage(sessionId, content, mode);
 
 			// Create placeholder for assistant response
 			const assistantMessageId = `msg-${Date.now()}-assistant`;
+			console.log('[Store] Created assistant placeholder:', assistantMessageId);
 
 			set((state) => {
 				const sessionMessages = state.messages.get(sessionId) || [];
@@ -229,9 +233,12 @@ export const useAgentStore = create<AgentStore>()(
 					? 'You are a thoughtful assistant. Take your time to think through problems step by step before providing solutions.'
 					: undefined;
 
+				console.log('[Store] Calling backend.sendAgentMessage sessionId:', sessionId, 'systemPrompt:', systemPrompt);
 				await backend.sendAgentMessage(sessionId, content, systemPrompt);
+				console.log('[Store] backend.sendAgentMessage returned (streaming should start via events)');
 			} catch (error) {
 				const errorMsg = error instanceof Error ? error.message : String(error);
+				console.error('[Store] sendAgentMessage failed:', errorMsg);
 				set((state) => {
 					state.error = `Failed to send message: ${errorMsg}`;
 					state.isAgentRunning = false;
@@ -262,8 +269,10 @@ export const useAgentStore = create<AgentStore>()(
 		},
 
 		handleAgentChunk: (conversationId: string, content: string) => {
+			console.log('[Store CHUNK] conversationId:', conversationId, 'content:', content);
 			set((state) => {
 				state.streamingContent += content;
+				console.log('[Store] streamingContent now:', state.streamingContent.length, 'chars');
 
 				// Update the streaming message
 				const messages = state.messages.get(conversationId);
@@ -271,7 +280,12 @@ export const useAgentStore = create<AgentStore>()(
 					const msg = messages.find((m) => m.id === state.streamingMessageId);
 					if (msg) {
 						msg.content = state.streamingContent;
+						console.log('[Store] Updated message content');
+					} else {
+						console.warn('[Store] Could not find streaming message:', state.streamingMessageId);
 					}
+				} else {
+					console.warn('[Store] No messages for conversationId:', conversationId, 'or no streamingMessageId:', state.streamingMessageId);
 				}
 			});
 		},
@@ -326,12 +340,14 @@ export const useAgentStore = create<AgentStore>()(
 		},
 
 		handleAgentComplete: (conversationId: string, message: AgentMessage) => {
+			console.log('[Store COMPLETE] conversationId:', conversationId, 'message:', message);
 			set((state) => {
 				// Finalize the streaming message
 				const messages = state.messages.get(conversationId);
 				if (messages && state.streamingMessageId) {
 					const msg = messages.find((m) => m.id === state.streamingMessageId);
 					if (msg) {
+						console.log('[Store] Finalizing message, content length:', message.content.length);
 						msg.content = message.content;
 						msg.isStreaming = false;
 						if (message.tool_calls) {
@@ -358,6 +374,7 @@ export const useAgentStore = create<AgentStore>()(
 		},
 
 		handleAgentError: (conversationId: string, error: string) => {
+			console.error('[Store ERROR] conversationId:', conversationId, 'error:', error);
 			set((state) => {
 				state.error = error;
 				state.isAgentRunning = false;
