@@ -3,7 +3,7 @@
  * Uses react-markdown with remark-gfm for GitHub Flavored Markdown
  */
 
-import { useMemo } from 'react';
+import { useMemo, forwardRef } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
@@ -15,23 +15,25 @@ interface MarkdownPreviewProps {
   className?: string;
 }
 
-export function MarkdownPreview({ content, className = '' }: MarkdownPreviewProps) {
-  const remarkPlugins = useMemo(() => [remarkGfm], []);
-  const rehypePlugins = useMemo(() => [rehypeHighlight], []);
+export const MarkdownPreview = forwardRef<HTMLDivElement, MarkdownPreviewProps>(
+  function MarkdownPreview({ content, className = '' }, ref) {
+    const remarkPlugins = useMemo(() => [remarkGfm], []);
+    const rehypePlugins = useMemo(() => [rehypeHighlight], []);
 
-  return (
-    <div className={`markdown-preview ${className}`}>
-      <div className="markdown-body">
-        <Markdown
-          remarkPlugins={remarkPlugins}
-          rehypePlugins={rehypePlugins}
-          components={{
-            code: MarkdownCode,
-          }}
-        >
-          {content}
-        </Markdown>
+    return (
+      <div ref={ref} className={`markdown-preview ${className}`}>
+        <div className="markdown-body">
+          <Markdown
+            remarkPlugins={remarkPlugins}
+            rehypePlugins={rehypePlugins}
+            components={{
+              code: MarkdownCode,
+            }}
+          >
+            {content}
+          </Markdown>
+        </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
+);

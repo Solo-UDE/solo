@@ -12,6 +12,8 @@ import { useEditorStore, isMarkdownFile, useMarkdownPreview } from '../../stores
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useShallow } from 'zustand/react/shallow';
 import { useParseResults, getSymbolPath } from '../../hooks/useParseResults';
+import { useSyncedScroll } from '../../hooks/useSyncedScroll';
+import { useSyncedSelection } from '../../hooks/useSyncedSelection';
 import { EditorTabs } from './EditorTabs';
 import { Breadcrumbs } from './Breadcrumbs';
 import { MarkdownPreview } from './MarkdownPreview';
@@ -69,6 +71,7 @@ function getMonacoLanguage(path: string): string {
 export function CodeEditor({ filePath, className = '' }: CodeEditorProps) {
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<typeof Monaco | null>(null);
+  const previewRef = useRef<HTMLDivElement | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -130,6 +133,20 @@ export function CodeEditor({ filePath, className = '' }: CodeEditorProps) {
   // Markdown preview state
   const isMarkdown = useMemo(() => isMarkdownFile(activeTab), [activeTab]);
   const { enabled: markdownPreviewEnabled, splitPosition } = useMarkdownPreview(activeTab);
+
+  // Synchronized scrolling between editor and preview
+  useSyncedScroll({
+    editorRef,
+    previewRef,
+    enabled: isMarkdown && markdownPreviewEnabled,
+  });
+
+  // Sync selection from preview to editor
+  useSyncedSelection({
+    editorRef,
+    previewRef,
+    enabled: isMarkdown && markdownPreviewEnabled,
+  });
 
   // Markdown preview handlers
   const handleToggleMarkdownPreview = useCallback(() => {
@@ -409,7 +426,7 @@ export function CodeEditor({ filePath, className = '' }: CodeEditorProps) {
         {isMarkdown && markdownPreviewEnabled ? (
           <MarkdownSplitPane
             left={monacoEditor}
-            right={<MarkdownPreview content={currentTabContent} />}
+            right={<MarkdownPreview ref={previewRef} content={currentTabContent} />}
             splitPosition={splitPosition}
             onSplitChange={handleSplitPositionChange}
           />

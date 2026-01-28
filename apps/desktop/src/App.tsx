@@ -9,6 +9,7 @@ import { useEditorStore, useActiveTabStatus } from "./stores/editorStore";
 import { SettingsModal } from "./components/settings";
 import { useAutosave } from "./hooks/useAutosave";
 import { useColorScheme } from "./hooks/useColorScheme";
+import { useTitlebarStyle } from "./hooks/usePlatform";
 
 function App() {
   const rootPath = useFileExplorerStore((s) => s.rootPath);
@@ -28,6 +29,9 @@ function App() {
 
   // Apply color scheme to document
   useColorScheme();
+
+  // Platform-aware titlebar padding
+  const titlebarStyle = useTitlebarStyle();
 
   useEffect(() => {
     // Test IPC connection with ping
@@ -50,10 +54,11 @@ function App() {
 
   return (
     <div className="h-screen w-screen bg-background text-foreground flex flex-col overflow-hidden">
-      {/* Titlebar drag region */}
+      {/* Titlebar drag region - padding adjusts for platform window controls */}
       <div
         data-tauri-drag-region
-        className="h-12 flex items-center px-4 bg-card/80 backdrop-blur-sm border-b border-border/30 shrink-0"
+        style={titlebarStyle}
+        className="h-12 flex items-center bg-card/80 backdrop-blur-sm border-b border-border/30 shrink-0"
       >
         <div className="flex-1" data-tauri-drag-region>
           <span className="text-sm font-medium text-muted-foreground">Solo</span>
