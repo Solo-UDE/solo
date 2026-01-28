@@ -9,13 +9,13 @@
   height: 100%;
   overflow-y: auto;
   background-color: var(--background);
-  animation: fadeSlideIn 250ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: fadeSlideIn 300ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 @keyframes fadeSlideIn {
   from {
     opacity: 0;
-    transform: translateX(12px);
+    transform: translateX(40px);
   }
   to {
     opacity: 1;

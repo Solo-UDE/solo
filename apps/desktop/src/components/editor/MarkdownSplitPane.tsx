@@ -11,6 +11,7 @@ interface MarkdownSplitPaneProps {
   right: ReactNode;
   splitPosition: number;
   onSplitChange: (position: number) => void;
+  isOpen?: boolean;
   className?: string;
 }
 
@@ -23,17 +24,49 @@ export function MarkdownSplitPane({
   right,
   splitPosition,
   onSplitChange,
+  isOpen = true,
   className = '',
 }: MarkdownSplitPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [isAnimating, setIsAnimating] = useState(true);
+  const [isAnimating, setIsAnimating] = useState(false);
+  // Start at 100 (fully closed) and animate to target position
+  const [animatedPosition, setAnimatedPosition] = useState(100);
+  const initializedRef = useRef(false);
 
-  // Trigger animation on mount, disable after transition completes
+  // Animate on open/close: transition between 100% (editor full) and splitPosition
   useEffect(() => {
-    const timer = setTimeout(() => setIsAnimating(false), 300);
-    return () => clearTimeout(timer);
-  }, []);
+    if (!isOpen) {
+      // Closing: animate to 100% (full editor)
+      if (initializedRef.current) {
+        setIsAnimating(true);
+        setAnimatedPosition(100);
+        const timer = setTimeout(() => setIsAnimating(false), 300);
+        return () => clearTimeout(timer);
+      }
+      return;
+    }
+
+    if (!initializedRef.current) {
+      // First render: start animation from closed state
+      initializedRef.current = true;
+      setIsAnimating(true);
+      // Use rAF to ensure the initial 100% position is rendered before animating
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setAnimatedPosition(splitPosition);
+        });
+      });
+      const timer = setTimeout(() => setIsAnimating(false), 300);
+      return () => clearTimeout(timer);
+    } else {
+      // Subsequent updates: animate to new position
+      setIsAnimating(true);
+      setAnimatedPosition(splitPosition);
+      const timer = setTimeout(() => setIsAnimating(false), 300);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen, splitPosition]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -58,7 +91,9 @@ export function MarkdownSplitPane({
 
   const handleMouseUp = useCallback(() => {
     setIsDragging(false);
-  }, []);
+    // Sync animated position with actual position after drag ends
+    setAnimatedPosition(splitPosition);
+  }, [splitPosition]);
 
   useEffect(() => {
     if (isDragging) {
@@ -79,33 +114,42 @@ export function MarkdownSplitPane({
   // Apply transition only during animation and not while dragging
   const paneTransitionClass = isAnimating && !isDragging ? 'split-pane-animated' : '';
 
+  // Use animated position for rendering, but update the store with the actual position during drag
+  const displayPosition = isDragging ? splitPosition : animatedPosition;
+
+  const showPreview = isOpen || isAnimating;
+
   return (
     <div ref={containerRef} className={cn('flex h-full', className)}>
       <div
         className={cn('overflow-hidden', paneTransitionClass)}
-        style={{ width: `${splitPosition}%` }}
+        style={{ width: `${displayPosition}%` }}
       >
         {left}
       </div>
 
-      <div
-        className={cn('split-divider', isDragging && 'dragging')}
-        onMouseDown={handleMouseDown}
-        onDoubleClick={handleDoubleClick}
-      >
-        <div className="split-divider-grip">
-          <span />
-          <span />
-          <span />
-        </div>
-      </div>
+      {showPreview && (
+        <>
+          <div
+            className={cn('split-divider', isDragging && 'dragging')}
+            onMouseDown={handleMouseDown}
+            onDoubleClick={handleDoubleClick}
+          >
+            <div className="split-divider-grip">
+              <span />
+              <span />
+              <span />
+            </div>
+          </div>
 
-      <div
-        className={cn('overflow-hidden', paneTransitionClass)}
-        style={{ width: `${100 - splitPosition}%` }}
-      >
-        {right}
-      </div>
+          <div
+            className={cn('overflow-hidden', paneTransitionClass)}
+            style={{ width: `${100 - displayPosition}%` }}
+          >
+            {right}
+          </div>
+        </>
+      )}
     </div>
   );
 }

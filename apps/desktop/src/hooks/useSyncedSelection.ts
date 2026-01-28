@@ -3,26 +3,25 @@
  * When text is selected in the preview, finds and selects matching text in the source.
  */
 
-import { useEffect, useCallback, type RefObject } from 'react';
+import { useEffect, useCallback } from 'react';
 import type * as Monaco from 'monaco-editor';
 
 interface UseSyncedSelectionOptions {
-  editorRef: RefObject<Monaco.editor.IStandaloneCodeEditor | null>;
-  previewRef: RefObject<HTMLDivElement | null>;
+  editor: Monaco.editor.IStandaloneCodeEditor | null;
+  previewElement: HTMLDivElement | null;
   enabled: boolean;
 }
 
 export function useSyncedSelection({
-  editorRef,
-  previewRef,
+  editor,
+  previewElement,
   enabled,
 }: UseSyncedSelectionOptions) {
   const syncSelectionToEditor = useCallback(() => {
     if (!enabled) return;
+    if (!editor || !previewElement) return;
 
-    const editor = editorRef.current;
-    const preview = previewRef.current;
-    if (!editor || !preview) return;
+    const preview = previewElement;
 
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed || selection.rangeCount === 0) return;
@@ -91,23 +90,20 @@ export function useSyncedSelection({
 
     // Focus the editor so the selection is visible
     editor.focus();
-  }, [enabled, editorRef, previewRef]);
+  }, [enabled, editor, previewElement]);
 
   // Handle click to position cursor (when no selection is made)
   const handleClickToCursor = useCallback(
     (e: MouseEvent) => {
       if (!enabled) return;
-
-      const editor = editorRef.current;
-      const preview = previewRef.current;
-      if (!editor || !preview) return;
+      if (!editor || !previewElement) return;
 
       // Only process clicks directly on the preview (not selection drags)
       const selection = window.getSelection();
       if (selection && !selection.isCollapsed) return;
 
       const target = e.target as HTMLElement;
-      if (!target || !preview.contains(target)) return;
+      if (!target || !previewElement.contains(target)) return;
 
       // Get the clicked element's text content
       const clickedText = target.textContent?.trim();
@@ -127,12 +123,11 @@ export function useSyncedSelection({
         editor.focus();
       }
     },
-    [enabled, editorRef, previewRef]
+    [enabled, editor, previewElement]
   );
 
   useEffect(() => {
-    const preview = previewRef.current;
-    if (!preview || !enabled) return;
+    if (!previewElement || !enabled) return;
 
     // Use mouseup to detect when selection is complete
     const handleMouseUp = () => {
@@ -150,12 +145,12 @@ export function useSyncedSelection({
       });
     };
 
-    preview.addEventListener('mouseup', handleMouseUp);
-    preview.addEventListener('click', handleClick);
+    previewElement.addEventListener('mouseup', handleMouseUp);
+    previewElement.addEventListener('click', handleClick);
 
     return () => {
-      preview.removeEventListener('mouseup', handleMouseUp);
-      preview.removeEventListener('click', handleClick);
+      previewElement.removeEventListener('mouseup', handleMouseUp);
+      previewElement.removeEventListener('click', handleClick);
     };
-  }, [enabled, syncSelectionToEditor, handleClickToCursor, previewRef]);
+  }, [enabled, syncSelectionToEditor, handleClickToCursor, previewElement]);
 }

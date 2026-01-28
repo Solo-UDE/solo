@@ -7,7 +7,7 @@ import { useMemo, forwardRef } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
-import { MarkdownCode } from './CodeBlockWithCopy';
+import { MarkdownCode, MarkdownPre } from './CodeBlockWithCopy';
 import './markdown-preview.css';
 
 interface MarkdownPreviewProps {
@@ -27,6 +27,7 @@ export const MarkdownPreview = forwardRef<HTMLDivElement, MarkdownPreviewProps>(
             remarkPlugins={remarkPlugins}
             rehypePlugins={rehypePlugins}
             components={{
+              pre: MarkdownPre,
               code: MarkdownCode,
             }}
           >

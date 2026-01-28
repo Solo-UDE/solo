@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Settings, LogOut } from "lucide-react";
 import { PrimarySidebar } from "./components/sidebar";
@@ -14,6 +14,8 @@ import { SettingsModal } from "./components/settings";
 import { useAutosave } from "./hooks/useAutosave";
 import { useColorScheme } from "./hooks/useColorScheme";
 import { useTitlebarStyle } from "./hooks/usePlatform";
+import { SIDEBAR } from "./lib/constants";
+import { cn } from "./lib/utils";
 
 // Register built-in panels on module load
 registerBuiltinPanels();
@@ -21,8 +23,12 @@ registerBuiltinPanels();
 function AppContent() {
   const [backendStatus, setBackendStatus] = useState<string>("Connecting...");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartX = useRef<number>(0);
+  const dragStartWidth = useRef<number>(0);
 
   const leftSidebarWidth = useUIStore((state) => state.leftSidebarWidth);
+  const setLeftSidebarWidth = useUIStore((state) => state.setLeftSidebarWidth);
   const initializeProviders = useProviderStore((state) => state.initialize);
   const loadPersistedSessions = useAgentStore((state) => state.loadPersistedSessions);
   const signOut = useAuthStore((state) => state.signOut);
@@ -70,6 +76,45 @@ function AppContent() {
     const fileName = path.split('/').pop() ?? 'Untitled';
     openPanel(BUILTIN_PANEL_TYPES.FILE_VIEWER, { filePath: path, fileName });
   }, [openPanel]);
+
+  // Sidebar resize handlers
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+    dragStartX.current = e.clientX;
+    dragStartWidth.current = leftSidebarWidth;
+  }, [leftSidebarWidth]);
+
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    if (!isDragging) return;
+    const delta = e.clientX - dragStartX.current;
+    const newWidth = Math.max(SIDEBAR.min, Math.min(SIDEBAR.max, dragStartWidth.current + delta));
+    setLeftSidebarWidth(newWidth);
+  }, [isDragging, setLeftSidebarWidth]);
+
+  const handleMouseUp = useCallback(() => {
+    setIsDragging(false);
+  }, []);
+
+  const handleDoubleClick = useCallback(() => {
+    setLeftSidebarWidth(SIDEBAR.expanded);
+  }, [setLeftSidebarWidth]);
+
+  // Attach global mouse events for drag
+  useEffect(() => {
+    if (isDragging) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    }
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [isDragging, handleMouseMove, handleMouseUp]);
 
   return (
     <div className="h-screen w-screen bg-background text-foreground flex flex-col overflow-hidden">
@@ -124,6 +169,17 @@ function AppContent() {
       <div className="flex-1 flex overflow-hidden">
         {/* Dynamic-width sidebar */}
         <PrimarySidebar width={leftSidebarWidth} onFileOpen={handleFileOpen} />
+
+        {/* Resizable divider */}
+        <div
+          className={cn('split-divider', isDragging && 'dragging')}
+          onMouseDown={handleMouseDown}
+          onDoubleClick={handleDoubleClick}
+        >
+          <div className="split-divider-grip">
+            <span /><span /><span />
+          </div>
+        </div>
 
         {/* Main editor area with panel system */}
         <div className="flex-1 overflow-hidden">
