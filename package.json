@@ -7,12 +7,12 @@
   ],
   "scripts": {
     "dev": "bun run --filter @solo/desktop dev",
-    "build": "cargo build --release && bun run --filter @solo/desktop build",
+    "build": "bun run --filter @solo/desktop build:vite && cargo build --release",
     "tauri": "bun run --filter @solo/desktop tauri",
     "check": "cargo check && bun run --filter '*' typecheck",
     "test": "cargo test && bun run --filter '*' test",
     "clean": "cargo clean && rm -rf node_modules apps/*/node_modules packages/*/node_modules",
-    "gen:bindings": "cargo test -p solo-protocol && cp -r target/bindings apps/desktop/src/"
+    "gen:bindings": "cargo test -p solo-protocol -p solo-agent && rm -rf apps/desktop/src/bindings && mkdir -p apps/desktop/src/bindings && cp -r crates/solo-protocol/apps/desktop/src/bindings/* apps/desktop/src/bindings/ && cp -r crates/solo-agent/apps/desktop/src/bindings/* apps/desktop/src/bindings/"
   },
   "devDependencies": {
     "@types/bun": "^1.1.14",

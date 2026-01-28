@@ -6,9 +6,12 @@ mod commands;
 mod fs_commands;
 mod agent_commands;
 mod parse_commands;
+mod auth_commands;
 
 use fs_commands::FsState;
 use agent_commands::AgentState;
+use auth_commands::AuthState;
+use tauri::Emitter;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -28,8 +31,50 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            // Handle deep link from single instance
+            tracing::debug!("Single instance activated with args: {:?}", args);
+            if let Some(url) = args.get(1) {
+                if url.starts_with("soloide://") {
+                    if let Err(e) = app.emit("auth-callback", url) {
+                        tracing::error!("Failed to emit auth-callback: {}", e);
+                    }
+                }
+            }
+        }))
+        .setup(|app| {
+            // Register deep link handler
+            #[cfg(any(target_os = "linux", target_os = "windows"))]
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                app.deep_link().register("soloide").ok();
+            }
+
+            // Listen for deep link events
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                let app_handle = app.handle().clone();
+                tracing::info!("Setting up deep link handler...");
+                app.deep_link().on_open_url(move |event| {
+                    tracing::info!("Deep link event received!");
+                    for url in event.urls() {
+                        tracing::info!("Processing deep link URL: {}", url);
+                        if let Err(e) = app_handle.emit("auth-callback", url.to_string()) {
+                            tracing::error!("Failed to emit auth-callback: {}", e);
+                        } else {
+                            tracing::info!("Successfully emitted auth-callback event");
+                        }
+                    }
+                });
+                tracing::info!("Deep link handler registered");
+            }
+
+            Ok(())
+        })
         .manage(FsState::new())
         .manage(AgentState::new())
+        .manage(AuthState::new())
         .invoke_handler(tauri::generate_handler![
             // Core commands
             commands::ping,
@@ -63,6 +108,14 @@ pub fn run() {
             parse_commands::parse_file,
             parse_commands::parse_content,
             parse_commands::is_parseable,
+            // Auth commands
+            auth_commands::auth_start_oauth,
+            auth_commands::auth_start_magic_link,
+            auth_commands::auth_exchange_code,
+            auth_commands::auth_get_session,
+            auth_commands::auth_refresh_session,
+            auth_commands::auth_sign_out,
+            auth_commands::auth_get_access_token,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

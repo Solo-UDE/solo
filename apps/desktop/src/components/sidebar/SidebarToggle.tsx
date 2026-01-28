@@ -17,15 +17,20 @@ export const SidebarToggle: FC<SidebarToggleProps> = ({ className }) => {
   return (
     <button
       onClick={toggleSidebar}
-      className={`h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted/60 hover:scale-105 active:scale-95 transition-all duration-150 text-muted-foreground hover:text-foreground ${className ?? ''}`}
+      className={`h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted/60 hover:scale-105 active:scale-95 transition-all duration-150 text-muted-foreground hover:text-foreground relative ${className ?? ''}`}
       title={isCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
       aria-label={isCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
     >
-      {isCollapsed ? (
-        <PanelLeft className="h-4 w-4" />
-      ) : (
-        <PanelLeftClose className="h-4 w-4" />
-      )}
+      <PanelLeft
+        className={`h-4 w-4 absolute transition-all duration-150 ease-[cubic-bezier(0.4,0,0.2,1)] ${
+          isCollapsed ? 'opacity-100 scale-100' : 'opacity-0 scale-90'
+        }`}
+      />
+      <PanelLeftClose
+        className={`h-4 w-4 absolute transition-all duration-150 ease-[cubic-bezier(0.4,0,0.2,1)] ${
+          isCollapsed ? 'opacity-0 scale-90' : 'opacity-100 scale-100'
+        }`}
+      />
     </button>
   );
 };

@@ -7,7 +7,7 @@ import type { FC } from 'react';
 import { FileExplorer } from '@/components/file-explorer';
 import { SessionList, ApiKeyDialog } from '@/components/agent';
 import { SidebarToggle } from './SidebarToggle';
-import { TabButton } from './TabButton';
+import { TabGroup } from './TabButton';
 import { TRANSITIONS } from '@/lib/constants';
 import { useUIStore, useIsLeftSidebarCollapsed } from '@/stores/uiStore';
 import { useAgentStore } from '@/stores/agentStore';
@@ -77,6 +77,12 @@ export const PrimarySidebar: FC<PrimarySidebarProps> = ({ width, onFileOpen }) =
     }, 100);
   }, [createSessionAndShow]);
 
+  const tabs = ['Explorer', 'Sessions'] as const;
+  const activeTabIndex = activeTab === 'explorer' ? 0 : 1;
+  const handleTabChange = useCallback((index: number) => {
+    setActiveTab(index === 0 ? 'explorer' : 'sessions');
+  }, [setActiveTab]);
+
   return (
     <aside
       className="h-full flex flex-col border-r border-border/30 bg-sidebar overflow-hidden"
@@ -85,51 +91,48 @@ export const PrimarySidebar: FC<PrimarySidebarProps> = ({ width, onFileOpen }) =
         transition: `width ${TRANSITIONS.sidebar}`,
       }}
     >
-      {/* Header with toggle */}
+      {/* Header with tabs and toggle */}
       <div className="h-10 flex items-center justify-between px-2 shrink-0 border-b border-border/30">
         {!isCollapsed && (
-          <span className="text-sm font-medium text-muted-foreground ml-1">Explorer</span>
+          <TabGroup
+            tabs={tabs}
+            activeIndex={activeTabIndex}
+            onTabChange={handleTabChange}
+          />
         )}
         <SidebarToggle className={isCollapsed ? 'mx-auto' : ''} />
       </div>
 
-      {/* Tab Navigation - hidden when collapsed */}
-      <div
-        className={cn(
-          'flex items-center gap-1 px-2 py-1 shrink-0 overflow-hidden transition-all duration-150',
-          isCollapsed ? 'h-0 opacity-0' : 'h-10 opacity-100'
-        )}
-      >
-        <TabButton
-          label="Explorer"
-          active={activeTab === 'explorer'}
-          onClick={() => setActiveTab('explorer')}
-        />
-        <TabButton
-          label="Sessions"
-          active={activeTab === 'sessions'}
-          onClick={() => setActiveTab('sessions')}
-        />
-      </div>
-
-      {/* Tab Content */}
+      {/* Tab Content - Sliding Reel */}
       <div className="flex-1 overflow-hidden">
-        {activeTab === 'explorer' && (
-          <FileExplorer
-            onFileOpen={onFileOpen}
-            className={cn(
-              'h-full transition-opacity duration-150',
-              isCollapsed ? 'opacity-0 pointer-events-none' : 'opacity-100'
+        <div
+          className="flex h-full transition-transform duration-300 ease-[cubic-bezier(0.18,1.14,0.5,1.18)]"
+          style={{
+            width: '200%',
+            transform: activeTab === 'explorer' ? 'translateX(0%)' : 'translateX(-50%)',
+          }}
+        >
+          {/* Explorer Panel */}
+          <div className="w-1/2 h-full overflow-hidden">
+            <FileExplorer
+              onFileOpen={onFileOpen}
+              className={cn(
+                'h-full transition-opacity duration-150',
+                isCollapsed ? 'opacity-0 pointer-events-none' : 'opacity-100'
+              )}
+            />
+          </div>
+          {/* Sessions Panel */}
+          <div className="w-1/2 h-full overflow-hidden">
+            {!isCollapsed && (
+              <SessionList
+                onSessionSelect={handleSessionSelect}
+                onNewSession={handleNewSession}
+                className="h-full"
+              />
             )}
-          />
-        )}
-        {activeTab === 'sessions' && !isCollapsed && (
-          <SessionList
-            onSessionSelect={handleSessionSelect}
-            onNewSession={handleNewSession}
-            className="h-full"
-          />
-        )}
+          </div>
+        </div>
       </div>
 
       {/* API Key Dialog for onboarding */}
@@ -137,7 +140,7 @@ export const PrimarySidebar: FC<PrimarySidebarProps> = ({ width, onFileOpen }) =
         isOpen={showApiKeyDialog}
         onClose={handleApiKeyDialogClose}
         onSuccess={handleApiKeySaved}
-        provider="Anthropic"
+        provider="anthropic"
       />
     </aside>
   );

@@ -62,6 +62,17 @@
   --color-status-success: var(--status-success);
   --color-status-warning: var(--status-warning);
   --color-status-error: var(--status-error);
+
+  /* Status colors for components */
+  --color-success: var(--success);
+  --color-success-muted: var(--success-muted);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-muted: var(--warning-muted);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-muted: var(--info-muted);
+  --color-info-foreground: var(--info-foreground);
   --color-file-folder: var(--file-folder);
   --color-file-code: var(--file-code);
   --color-file-config: var(--file-config);
@@ -141,6 +152,21 @@
   --status-success: oklch(0.65 0.18 155);
   --status-warning: oklch(0.75 0.18 85);
   --status-error: oklch(0.55 0.22 25);
+
+  /* Success colors */
+  --success: oklch(0.65 0.18 155);
+  --success-muted: oklch(0.92 0.06 155);
+  --success-foreground: oklch(0.35 0.10 155);
+
+  /* Warning colors */
+  --warning: oklch(0.75 0.18 85);
+  --warning-muted: oklch(0.92 0.06 85);
+  --warning-foreground: oklch(0.40 0.10 85);
+
+  /* Info colors */
+  --info: oklch(0.60 0.15 240);
+  --info-muted: oklch(0.92 0.06 240);
+  --info-foreground: oklch(0.35 0.10 240);
 
   /* Semantic file type colors */
   --file-folder: oklch(0.75 0.15 85);
@@ -232,6 +258,21 @@ html.dark {
   --status-success: oklch(0.70 0.18 155);
   --status-warning: oklch(0.80 0.18 85);
   --status-error: oklch(0.65 0.20 25);
+
+  /* Success colors (dark mode) */
+  --success: oklch(0.70 0.18 155);
+  --success-muted: oklch(0.30 0.08 155);
+  --success-foreground: oklch(0.85 0.10 155);
+
+  /* Warning colors (dark mode) */
+  --warning: oklch(0.80 0.18 85);
+  --warning-muted: oklch(0.30 0.08 85);
+  --warning-foreground: oklch(0.90 0.10 85);
+
+  /* Info colors (dark mode) */
+  --info: oklch(0.70 0.15 240);
+  --info-muted: oklch(0.30 0.08 240);
+  --info-foreground: oklch(0.85 0.10 240);
 
   /* Semantic file type colors (dark mode) */
   --file-folder: oklch(0.80 0.18 90);
@@ -442,4 +483,36 @@ html.dark ::-webkit-scrollbar-thumb:hover {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* =============================================================================
+   SHIKI CODE BLOCK STYLES
+   ============================================================================= */
+.code-block-content pre {
+  padding: 1rem;
+  margin: 0;
+  overflow-x: auto;
+  background: transparent !important;
+}
+
+.code-block-content code {
+  font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.code-block-content [data-line] {
+  display: block;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+}
+
+.code-block-content [data-line]::before {
+  content: attr(data-line);
+  display: inline-block;
+  width: 2rem;
+  margin-right: 1rem;
+  text-align: right;
+  color: var(--muted-foreground);
+  opacity: 0.5;
 }

@@ -269,22 +269,33 @@ pub async fn agent_send_message(
     app: AppHandle,
     state: State<'_, AgentState>,
 ) -> Result<(), String> {
-    info!(session_id = %session_id, "Sending message to agent");
+    info!(session_id = %session_id, content_len = content.len(), "Sending message to agent");
 
     // Get the streaming receiver
     let mut receiver = state.manager
         .send_message(&session_id, content, system_prompt)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            error!(error = %e, session_id = %session_id, "Failed to send message");
+            e.to_string()
+        })?;
+
+    info!(session_id = %session_id, "Got streaming receiver, spawning event forwarder");
 
     // Spawn a task to forward events to the frontend
     let session_id_clone = session_id.clone();
     tokio::spawn(async move {
+        let mut event_count = 0u32;
         while let Some(event) = receiver.recv().await {
+            event_count += 1;
+            // Log every event for debugging
+            info!(session_id = %session_id_clone, event_count = event_count, event_type = ?std::mem::discriminant(&event), "Forwarding event to frontend");
+
             if let Err(e) = app.emit("backend-event", &event) {
                 error!(error = %e, session_id = %session_id_clone, "Failed to emit agent event");
             }
         }
+        info!(session_id = %session_id_clone, total_events = event_count, "Event stream completed");
     });
 
     Ok(())

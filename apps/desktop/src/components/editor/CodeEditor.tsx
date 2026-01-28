@@ -12,6 +12,8 @@ import { useEditorStore, isMarkdownFile, useMarkdownPreview } from '../../stores
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useShallow } from 'zustand/react/shallow';
 import { useParseResults, getSymbolPath } from '../../hooks/useParseResults';
+import { useSyncedScroll } from '../../hooks/useSyncedScroll';
+import { useSyncedSelection } from '../../hooks/useSyncedSelection';
 import { EditorTabs } from './EditorTabs';
 import { Breadcrumbs } from './Breadcrumbs';
 import { MarkdownPreview } from './MarkdownPreview';
@@ -69,6 +71,17 @@ function getMonacoLanguage(path: string): string {
 export function CodeEditor({ filePath, className = '' }: CodeEditorProps) {
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<typeof Monaco | null>(null);
+  const previewRef = useRef<HTMLDivElement | null>(null);
+  // Track editor instance for synced scroll/selection hooks (state triggers re-render when Monaco mounts)
+  const [editorInstance, setEditorInstance] = useState<Monaco.editor.IStandaloneCodeEditor | null>(null);
+  // Track when preview element is mounted (for ref timing in hooks)
+  const [previewElement, setPreviewElement] = useState<HTMLDivElement | null>(null);
+
+  // Callback ref that updates both the ref and state
+  const previewRefCallback = useCallback((node: HTMLDivElement | null) => {
+    previewRef.current = node;
+    setPreviewElement(node);
+  }, []);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -131,6 +144,28 @@ export function CodeEditor({ filePath, className = '' }: CodeEditorProps) {
   const isMarkdown = useMemo(() => isMarkdownFile(activeTab), [activeTab]);
   const { enabled: markdownPreviewEnabled, splitPosition } = useMarkdownPreview(activeTab);
 
+  // Force word wrap when markdown preview is open (editor pane shrinks)
+  const effectiveWordWrap = useMemo(() => {
+    if (isMarkdown && markdownPreviewEnabled) {
+      return true;
+    }
+    return editorSettings.wordWrap;
+  }, [isMarkdown, markdownPreviewEnabled, editorSettings.wordWrap]);
+
+  // Synchronized scrolling between editor and preview
+  useSyncedScroll({
+    editor: editorInstance,
+    previewElement,
+    enabled: isMarkdown && markdownPreviewEnabled,
+  });
+
+  // Sync selection from preview to editor
+  useSyncedSelection({
+    editor: editorInstance,
+    previewElement,
+    enabled: isMarkdown && markdownPreviewEnabled,
+  });
+
   // Markdown preview handlers
   const handleToggleMarkdownPreview = useCallback(() => {
     if (activeTab) {
@@ -180,6 +215,7 @@ export function CodeEditor({ filePath, className = '' }: CodeEditorProps) {
     (editor, monaco) => {
       editorRef.current = editor;
       monacoRef.current = monaco;
+      setEditorInstance(editor);
 
       // Add save command (Cmd+S / Ctrl+S) - use ref to avoid stale closure
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
@@ -283,10 +319,9 @@ export function CodeEditor({ filePath, className = '' }: CodeEditorProps) {
 
   // Update Monaco options when settings change
   useEffect(() => {
-    const editor = editorRef.current;
-    if (!editor) return;
+    if (!editorInstance) return;
 
-    editor.updateOptions({
+    editorInstance.updateOptions({
       fontSize: editorSettings.fontSize,
       lineHeight: Math.round(editorSettings.fontSize * 1.7),
       fontFamily: editorSettings.fontFamily === 'system-ui'
@@ -296,9 +331,9 @@ export function CodeEditor({ filePath, className = '' }: CodeEditorProps) {
       bracketPairColorization: { enabled: editorSettings.bracketColorization },
       lineNumbers: editorSettings.lineNumbers,
       tabSize: editorSettings.tabSize,
-      wordWrap: editorSettings.wordWrap ? 'on' : 'off',
+      wordWrap: effectiveWordWrap ? 'on' : 'off',
     });
-  }, [editorSettings]);
+  }, [editorSettings, effectiveWordWrap, editorInstance]);
 
   // No file selected - show placeholder
   if (!filePath && !activeTab) {
@@ -373,7 +408,7 @@ export function CodeEditor({ filePath, className = '' }: CodeEditorProps) {
         smoothScrolling: true,
         tabSize: editorSettings.tabSize,
         insertSpaces: true,
-        wordWrap: editorSettings.wordWrap ? 'on' : 'off',
+        wordWrap: effectiveWordWrap ? 'on' : 'off',
         padding: { top: 0, bottom: 0 },
         scrollbar: {
           useShadows: false,
@@ -404,14 +439,15 @@ export function CodeEditor({ filePath, className = '' }: CodeEditorProps) {
         }
       />
 
-      {/* Editor content - either split pane or Monaco only */}
+      {/* Editor content - use split pane for markdown files to keep editor in stable tree position */}
       <div className="flex-1 overflow-hidden">
-        {isMarkdown && markdownPreviewEnabled ? (
+        {isMarkdown ? (
           <MarkdownSplitPane
             left={monacoEditor}
-            right={<MarkdownPreview content={currentTabContent} />}
-            splitPosition={splitPosition}
+            right={<MarkdownPreview ref={previewRefCallback} content={currentTabContent} />}
+            splitPosition={markdownPreviewEnabled ? splitPosition : 100}
             onSplitChange={handleSplitPositionChange}
+            isOpen={markdownPreviewEnabled}
           />
         ) : (
           monacoEditor

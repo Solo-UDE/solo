@@ -83,7 +83,7 @@ export function AITab() {
   const modelOptions = useMemo(
     () =>
       models.map((m) => ({
-        label: m.name,
+        label: m.display_name,
         value: m.id,
       })),
     [models]
@@ -102,9 +102,7 @@ export function AITab() {
 
     setIsSaving(true);
     try {
-      const providerType: ProviderType =
-        activeProvider === 'anthropic' ? 'Anthropic' : 'OpenAI';
-      await setCredentials(providerType, apiKeyInput.trim());
+      await setCredentials(activeProvider as ProviderType, apiKeyInput.trim());
       setApiKeyInput('');
     } catch (err) {
       console.error('Failed to save API key:', err);
