@@ -93,6 +93,43 @@ export function useSyncedSelection({
     editor.focus();
   }, [enabled, editorRef, previewRef]);
 
+  // Handle click to position cursor (when no selection is made)
+  const handleClickToCursor = useCallback(
+    (e: MouseEvent) => {
+      if (!enabled) return;
+
+      const editor = editorRef.current;
+      const preview = previewRef.current;
+      if (!editor || !preview) return;
+
+      // Only process clicks directly on the preview (not selection drags)
+      const selection = window.getSelection();
+      if (selection && !selection.isCollapsed) return;
+
+      const target = e.target as HTMLElement;
+      if (!target || !preview.contains(target)) return;
+
+      // Get the clicked element's text content
+      const clickedText = target.textContent?.trim();
+      if (!clickedText || clickedText.length < 2) return;
+
+      // Find this text in the source and position cursor at start
+      const model = editor.getModel();
+      if (!model) return;
+
+      const sourceText = model.getValue();
+      const matchIndex = sourceText.indexOf(clickedText);
+
+      if (matchIndex !== -1) {
+        const position = model.getPositionAt(matchIndex);
+        editor.setPosition(position);
+        editor.revealPositionInCenter(position);
+        editor.focus();
+      }
+    },
+    [enabled, editorRef, previewRef]
+  );
+
   useEffect(() => {
     const preview = previewRef.current;
     if (!preview || !enabled) return;
@@ -105,10 +142,20 @@ export function useSyncedSelection({
       });
     };
 
+    // Handle clicks for cursor positioning
+    const handleClick = (e: MouseEvent) => {
+      // Small delay to ensure selection state is updated
+      requestAnimationFrame(() => {
+        handleClickToCursor(e);
+      });
+    };
+
     preview.addEventListener('mouseup', handleMouseUp);
+    preview.addEventListener('click', handleClick);
 
     return () => {
       preview.removeEventListener('mouseup', handleMouseUp);
+      preview.removeEventListener('click', handleClick);
     };
-  }, [enabled, syncSelectionToEditor, previewRef]);
+  }, [enabled, syncSelectionToEditor, handleClickToCursor, previewRef]);
 }

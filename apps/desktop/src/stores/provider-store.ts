@@ -140,9 +140,7 @@ export const useProviderStore = create<ProviderStore>()((set, get) => ({
 			await setCredentialsBackend(provider, apiKey);
 
 			// Refresh provider status
-			const providerStr =
-				provider === "Anthropic" ? "anthropic" : "openai";
-			await get().refreshProviderStatus(providerStr);
+			await get().refreshProviderStatus(provider);
 
 			set({ isLoading: false });
 		} catch (error) {

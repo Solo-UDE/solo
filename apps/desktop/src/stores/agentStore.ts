@@ -335,7 +335,7 @@ export const useAgentStore = create<AgentStore>()(
 						msg.content = message.content;
 						msg.isStreaming = false;
 						if (message.tool_calls) {
-							msg.toolCalls = message.tool_calls.map((tc) => ({
+							msg.toolCalls = message.tool_calls.map((tc: AgentToolCall) => ({
 								id: tc.id,
 								name: tc.name,
 								arguments: tc.arguments,

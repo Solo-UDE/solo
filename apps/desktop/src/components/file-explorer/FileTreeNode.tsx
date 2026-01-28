@@ -162,7 +162,7 @@ export const FileTreeNode = memo(function FileTreeNode({
             )}
           </button>
         ) : (
-          <div className="w-4" />
+          <div className="w-4 h-4 shrink-0" />
         )}
 
         {/* File/folder icon */}

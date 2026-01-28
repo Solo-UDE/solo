@@ -1,12 +1,14 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Settings } from "lucide-react";
+import { Settings, LogOut } from "lucide-react";
 import { PrimarySidebar } from "./components/sidebar";
 import { MosaicLayout } from "./components/panels";
+import { AuthGuard } from "./components/auth";
 import { useUIStore } from "./stores/uiStore";
 import { usePanelTabsStore } from "./stores/panelTabsStore";
 import { useProviderStore } from "./stores/provider-store";
 import { useAgentStore } from "./stores/agentStore";
+import { useAuthStore, useUser } from "./stores/authStore";
 import { registerBuiltinPanels, BUILTIN_PANEL_TYPES } from "./lib/panels";
 import { SettingsModal } from "./components/settings";
 import { useAutosave } from "./hooks/useAutosave";
@@ -16,13 +18,15 @@ import { useTitlebarStyle } from "./hooks/usePlatform";
 // Register built-in panels on module load
 registerBuiltinPanels();
 
-function App() {
+function AppContent() {
   const [backendStatus, setBackendStatus] = useState<string>("Connecting...");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   const leftSidebarWidth = useUIStore((state) => state.leftSidebarWidth);
   const initializeProviders = useProviderStore((state) => state.initialize);
   const loadPersistedSessions = useAgentStore((state) => state.loadPersistedSessions);
+  const signOut = useAuthStore((state) => state.signOut);
+  const user = useUser();
 
   // Get openPanel action directly from store to avoid selector subscription issues
   const openPanel = useMemo(() => usePanelTabsStore.getState().openPanel, []);
@@ -73,13 +77,18 @@ function App() {
       <div
         data-tauri-drag-region
         style={titlebarStyle}
-        className="h-12 flex items-center bg-card/80 backdrop-blur-sm border-b border-border/30 shrink-0"
+        className="h-12 flex items-center justify-between bg-card/80 backdrop-blur-sm border-b border-border/30 shrink-0"
       >
-        <div className="flex-1" data-tauri-drag-region>
-          <span className="text-sm font-medium text-muted-foreground">Solo</span>
-        </div>
-        {/* Settings button and status indicator */}
-        <div className="flex items-center gap-2">
+        {/* Left spacer for balance */}
+        <div className="flex-1" data-tauri-drag-region />
+
+        {/* Centered title */}
+        <span className="text-sm font-medium text-muted-foreground" data-tauri-drag-region>
+          Solo
+        </span>
+
+        {/* Settings button, sign out, and status indicator */}
+        <div className="flex-1 flex items-center justify-end gap-2">
           <div
             className={`w-2 h-2 rounded-full ${
               backendStatus.includes("connected")
@@ -89,12 +98,24 @@ function App() {
                   : "bg-status-warning animate-pulse"
             }`}
           />
+          {user?.email && (
+            <span className="text-xs text-muted-foreground truncate max-w-32">
+              {user.email}
+            </span>
+          )}
           <button
             onClick={() => setIsSettingsOpen(true)}
             className="p-1.5 rounded hover:bg-muted transition-colors"
             title="Settings"
           >
             <Settings className="w-4 h-4 text-muted-foreground" />
+          </button>
+          <button
+            onClick={signOut}
+            className="p-1.5 rounded hover:bg-muted transition-colors"
+            title="Sign out"
+          >
+            <LogOut className="w-4 h-4 text-muted-foreground" />
           </button>
         </div>
       </div>
@@ -113,6 +134,14 @@ function App() {
       {/* Settings modal */}
       <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
     </div>
+  );
+}
+
+function App() {
+  return (
+    <AuthGuard>
+      <AppContent />
+    </AuthGuard>
   );
 }
 

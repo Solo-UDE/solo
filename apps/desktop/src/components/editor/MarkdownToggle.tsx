@@ -1,9 +1,10 @@
 /**
  * MarkdownToggle - Button to toggle markdown preview pane
- * Shows Eye/EyeOff icon based on preview state
+ * Shows PanelRight/PanelRightClose icon based on preview state
  */
 
-import { Eye, EyeOff } from 'lucide-react';
+import { PanelRight, PanelRightClose } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface MarkdownToggleProps {
   enabled: boolean;
@@ -11,18 +12,28 @@ interface MarkdownToggleProps {
   className?: string;
 }
 
-export function MarkdownToggle({ enabled, onToggle, className = '' }: MarkdownToggleProps) {
+export function MarkdownToggle({ enabled, onToggle, className }: MarkdownToggleProps) {
   return (
     <button
       onClick={onToggle}
-      className={`flex items-center justify-center w-6 h-6 rounded hover:bg-accent/50 transition-colors ${className}`}
+      className={cn(
+        'flex items-center justify-center gap-1.5',
+        'h-7 px-2 rounded-lg',
+        'text-muted-foreground',
+        'hover:bg-muted/60 hover:text-foreground',
+        'hover:scale-[1.02] active:scale-[0.97]',
+        'transition-all duration-200',
+        enabled && 'bg-primary/10 text-primary',
+        className
+      )}
       title={enabled ? 'Hide preview' : 'Show preview'}
       aria-label={enabled ? 'Hide markdown preview' : 'Show markdown preview'}
+      aria-pressed={enabled}
     >
       {enabled ? (
-        <EyeOff className="w-3.5 h-3.5 text-muted-foreground hover:text-foreground" />
+        <PanelRightClose className="w-4 h-4" />
       ) : (
-        <Eye className="w-3.5 h-3.5 text-muted-foreground hover:text-foreground" />
+        <PanelRight className="w-4 h-4" />
       )}
     </button>
   );

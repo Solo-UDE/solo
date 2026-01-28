@@ -17,7 +17,7 @@ export const ApiKeyDialog: FC<ApiKeyDialogProps> = ({
 	isOpen,
 	onClose,
 	onSuccess,
-	provider = 'Anthropic',
+	provider = 'anthropic',
 }) => {
 	const [apiKey, setApiKey] = useState('');
 	const [showKey, setShowKey] = useState(false);
@@ -53,8 +53,8 @@ export const ApiKeyDialog: FC<ApiKeyDialogProps> = ({
 
 	if (!isOpen) return null;
 
-	const providerName = provider === 'Anthropic' ? 'Anthropic (Claude)' : 'OpenAI';
-	const apiKeyPlaceholder = provider === 'Anthropic' ? 'sk-ant-...' : 'sk-...';
+	const providerName = provider === 'anthropic' ? 'Anthropic (Claude)' : 'OpenAI';
+	const apiKeyPlaceholder = provider === 'anthropic' ? 'sk-ant-...' : 'sk-...';
 
 	return (
 		<div className="fixed inset-0 z-50 flex items-center justify-center">

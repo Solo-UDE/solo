@@ -134,6 +134,14 @@ export function CodeEditor({ filePath, className = '' }: CodeEditorProps) {
   const isMarkdown = useMemo(() => isMarkdownFile(activeTab), [activeTab]);
   const { enabled: markdownPreviewEnabled, splitPosition } = useMarkdownPreview(activeTab);
 
+  // Force word wrap when markdown preview is open (editor pane shrinks)
+  const effectiveWordWrap = useMemo(() => {
+    if (isMarkdown && markdownPreviewEnabled) {
+      return true;
+    }
+    return editorSettings.wordWrap;
+  }, [isMarkdown, markdownPreviewEnabled, editorSettings.wordWrap]);
+
   // Synchronized scrolling between editor and preview
   useSyncedScroll({
     editorRef,
@@ -313,9 +321,9 @@ export function CodeEditor({ filePath, className = '' }: CodeEditorProps) {
       bracketPairColorization: { enabled: editorSettings.bracketColorization },
       lineNumbers: editorSettings.lineNumbers,
       tabSize: editorSettings.tabSize,
-      wordWrap: editorSettings.wordWrap ? 'on' : 'off',
+      wordWrap: effectiveWordWrap ? 'on' : 'off',
     });
-  }, [editorSettings]);
+  }, [editorSettings, effectiveWordWrap]);
 
   // No file selected - show placeholder
   if (!filePath && !activeTab) {
@@ -390,7 +398,7 @@ export function CodeEditor({ filePath, className = '' }: CodeEditorProps) {
         smoothScrolling: true,
         tabSize: editorSettings.tabSize,
         insertSpaces: true,
-        wordWrap: editorSettings.wordWrap ? 'on' : 'off',
+        wordWrap: effectiveWordWrap ? 'on' : 'off',
         padding: { top: 0, bottom: 0 },
         scrollbar: {
           useShadows: false,

@@ -6,6 +6,7 @@
 import { useState, useCallback, type ReactNode } from 'react';
 import { Check, Copy } from 'lucide-react';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
+import { cn } from '@/lib/utils';
 
 interface CodeBlockWithCopyProps {
   children: ReactNode;
@@ -15,7 +16,6 @@ interface CodeBlockWithCopyProps {
 
 export function CodeBlockWithCopy({ children, className = '', language }: CodeBlockWithCopyProps) {
   const [copied, setCopied] = useState(false);
-  const [isHovered, setIsHovered] = useState(false);
 
   const handleCopy = useCallback(async () => {
     const codeElement = document.querySelector(`[data-code-id="${className}"]`);
@@ -31,11 +31,7 @@ export function CodeBlockWithCopy({ children, className = '', language }: CodeBl
   }, [className]);
 
   return (
-    <div
-      className="code-block-wrapper"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-    >
+    <div className="code-block-wrapper">
       {language && (
         <div className="code-block-header">
           <span className="code-block-language">{language}</span>
@@ -47,14 +43,14 @@ export function CodeBlockWithCopy({ children, className = '', language }: CodeBl
         </pre>
         <button
           onClick={handleCopy}
-          className={`code-copy-button ${isHovered ? 'visible' : ''}`}
+          className={cn('code-copy-button', copied && 'copied')}
           title={copied ? 'Copied!' : 'Copy code'}
           aria-label={copied ? 'Copied!' : 'Copy code'}
         >
           {copied ? (
-            <Check className="w-4 h-4 text-status-success" />
+            <Check className="w-3.5 h-3.5" />
           ) : (
-            <Copy className="w-4 h-4" />
+            <Copy className="w-3.5 h-3.5" />
           )}
         </button>
       </div>

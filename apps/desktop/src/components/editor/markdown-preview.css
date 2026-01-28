@@ -1,13 +1,26 @@
 /**
  * Markdown Preview Styles
  * Uses CSS variables from index.css for theme consistency
+ * Design: soft shadows, spring animations, consistent spacing
  */
 
-/* Container */
+/* Container with entrance animation */
 .markdown-preview {
   height: 100%;
   overflow-y: auto;
   background-color: var(--background);
+  animation: fadeSlideIn 250ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes fadeSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 .markdown-body {
@@ -19,7 +32,7 @@
   line-height: 1.7;
 }
 
-/* Headers */
+/* Headers - use box-shadow instead of border-bottom */
 .markdown-body h1,
 .markdown-body h2,
 .markdown-body h3,
@@ -36,13 +49,13 @@
 .markdown-body h1 {
   font-size: 2rem;
   padding-bottom: 0.5em;
-  border-bottom: 1px solid var(--border);
+  box-shadow: 0 1px 0 var(--border);
 }
 
 .markdown-body h2 {
   font-size: 1.5rem;
   padding-bottom: 0.25em;
-  border-bottom: 1px solid var(--border);
+  box-shadow: 0 1px 0 var(--border);
 }
 
 .markdown-body h3 {
@@ -113,12 +126,13 @@
   accent-color: var(--primary);
 }
 
-/* Blockquotes */
+/* Blockquotes - rounded corners, subtle border */
 .markdown-body blockquote {
-  margin: 1em 0;
-  padding: 0.5em 1em;
-  border-left: 4px solid var(--primary);
+  margin: 1.25em 0;
+  padding: 0.75em 1.25em;
+  border-left: 3px solid var(--primary);
   background-color: var(--muted);
+  border-radius: 0 8px 8px 0;
   color: var(--muted-foreground);
 }
 
@@ -126,11 +140,18 @@
   margin: 0;
 }
 
-/* Horizontal rule */
+/* Horizontal rule - gradient fade */
 .markdown-body hr {
-  margin: 2em 0;
+  margin: 2.5em 0;
   border: none;
-  border-top: 1px solid var(--border);
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    var(--border) 20%,
+    var(--border) 80%,
+    transparent
+  );
 }
 
 /* Inline code */
@@ -142,21 +163,31 @@
   border-radius: 0.25rem;
 }
 
-/* Code blocks */
+/* Code blocks - soft shadow, no hard borders */
 .code-block-wrapper {
   position: relative;
-  margin: 1em 0;
-  border-radius: 0.5rem;
+  margin: 1.25em 0;
+  border-radius: 10px;
   background-color: var(--muted);
+  box-shadow:
+    0 2px 8px -2px rgba(0, 0, 0, 0.08),
+    0 0 0 1px var(--border);
   overflow: hidden;
+  transition: box-shadow 200ms ease;
+}
+
+.code-block-wrapper:hover {
+  box-shadow:
+    0 4px 12px -4px rgba(0, 0, 0, 0.12),
+    0 0 0 1px var(--border);
 }
 
 .code-block-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   padding: 0.5rem 1rem;
   background-color: var(--accent);
-  border-bottom: 1px solid var(--border);
 }
 
 .code-block-language {
@@ -183,40 +214,69 @@
   font-family: var(--font-mono);
 }
 
+/* Copy button - always visible (subtle), spring animation */
 .code-copy-button {
   position: absolute;
   top: 0.5rem;
   right: 0.5rem;
-  padding: 0.375rem;
-  background-color: var(--accent);
-  border: 1px solid var(--border);
-  border-radius: 0.25rem;
-  opacity: 0;
-  transition: opacity 150ms ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background-color: var(--background);
+  border: none;
+  border-radius: 8px;
+  box-shadow: 0 2px 6px -2px rgba(0, 0, 0, 0.1);
+  opacity: 0.5;
   cursor: pointer;
   color: var(--muted-foreground);
+  transition: all 200ms cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .code-copy-button:hover {
-  background-color: var(--muted);
-  color: var(--foreground);
-}
-
-.code-copy-button.visible {
   opacity: 1;
+  background-color: var(--card);
+  color: var(--foreground);
+  transform: scale(1.05);
+  box-shadow: 0 4px 8px -2px rgba(0, 0, 0, 0.15);
 }
 
-/* Tables */
+.code-copy-button:active {
+  transform: scale(0.95);
+}
+
+.code-copy-button.copied {
+  opacity: 1;
+  background-color: oklch(0.65 0.2 145);
+  color: white;
+}
+
+/* Tables - rounded corners, contained shadow */
 .markdown-body table {
   width: 100%;
-  margin: 1em 0;
-  border-collapse: collapse;
+  margin: 1.25em 0;
+  border-collapse: separate;
+  border-spacing: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 0 0 1px var(--border);
 }
 
 .markdown-body th,
 .markdown-body td {
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--border);
+  padding: 0.625rem 0.875rem;
+  border-bottom: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+}
+
+.markdown-body th:last-child,
+.markdown-body td:last-child {
+  border-right: none;
+}
+
+.markdown-body tr:last-child td {
+  border-bottom: none;
 }
 
 .markdown-body th {
@@ -236,37 +296,71 @@
   border-radius: 0.5rem;
 }
 
-/* Split pane divider */
+/* Animated pane transitions */
+.split-pane-animated {
+  transition: width 300ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Split pane divider - wider grab area, 3-dot grip */
 .split-divider {
   flex-shrink: 0;
-  width: 4px;
-  background-color: var(--border);
+  width: 8px;
+  background-color: transparent;
   cursor: col-resize;
-  transition: background-color 150ms ease;
   position: relative;
+  transition: background-color 200ms ease;
 }
 
-.split-divider:hover,
-.split-divider.dragging {
+/* Visible track line */
+.split-divider::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  transform: translateX(-50%);
+  background-color: var(--border);
+  opacity: 0.5;
+  transition: all 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.split-divider:hover::before,
+.split-divider.dragging::before {
+  width: 3px;
   background-color: var(--primary);
+  opacity: 1;
 }
 
-.split-divider-line {
+/* 3-dot grip indicator */
+.split-divider-grip {
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 2px;
-  height: 32px;
-  background-color: var(--muted-foreground);
-  border-radius: 1px;
-  opacity: 0;
-  transition: opacity 150ms ease;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  opacity: 0.4;
+  transition: opacity 200ms ease;
 }
 
-.split-divider:hover .split-divider-line,
-.split-divider.dragging .split-divider-line {
-  opacity: 0.5;
+.split-divider-grip span {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background-color: var(--muted-foreground);
+  transition: background-color 200ms ease;
+}
+
+.split-divider:hover .split-divider-grip,
+.split-divider.dragging .split-divider-grip {
+  opacity: 0.8;
+}
+
+.split-divider:hover .split-divider-grip span,
+.split-divider.dragging .split-divider-grip span {
+  background-color: var(--primary);
 }
 
 /* Syntax highlighting (rehype-highlight) */

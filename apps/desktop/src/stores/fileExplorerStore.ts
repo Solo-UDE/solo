@@ -269,7 +269,7 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
           if (parent && parent.children) {
             parent.children.push(entry);
             // Sort children
-            parent.children.sort((a, b) => {
+            parent.children.sort((a: FileTreeEntry, b: FileTreeEntry) => {
               if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1;
               return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
             });
@@ -299,7 +299,7 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
           if (parent && parent.children) {
             parent.children.push(entry);
             // Sort children
-            parent.children.sort((a, b) => {
+            parent.children.sort((a: FileTreeEntry, b: FileTreeEntry) => {
               if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1;
               return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
             });
@@ -341,7 +341,7 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
           // Update parent's children
           const parent = state.entries.get(parentPath);
           if (parent && parent.children) {
-            const index = parent.children.findIndex((c) => c.path === path);
+            const index = parent.children.findIndex((c: FileTreeEntry) => c.path === path);
             if (index !== -1) {
               parent.children[index] = updatedEntry;
               // Re-sort children
@@ -402,7 +402,7 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
             const parentPath = getParentPath(path);
             const parent = state.entries.get(parentPath);
             if (parent && parent.children) {
-              parent.children = parent.children.filter((c) => c.path !== path);
+              parent.children = parent.children.filter((c: FileTreeEntry) => c.path !== path);
             }
           }
         });
@@ -466,7 +466,7 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
         const parentPath = getParentPath(path);
         const parent = state.entries.get(parentPath);
         if (parent && parent.children) {
-          parent.children = parent.children.filter((c) => c.path !== path);
+          parent.children = parent.children.filter((c: FileTreeEntry) => c.path !== path);
         }
       });
     },
@@ -482,7 +482,7 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
             set((state) => {
               // Find and update the changed file's entry
               const updatedChild = response.entry.children?.find(
-                (c) => c.path === path
+                (c: FileTreeEntry) => c.path === path
               );
               if (updatedChild) {
                 state.entries.set(path, updatedChild);

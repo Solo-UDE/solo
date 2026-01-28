@@ -4,6 +4,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect, type ReactNode } from 'react';
+import { cn } from '../../lib/utils';
 
 interface MarkdownSplitPaneProps {
   left: ReactNode;
@@ -15,6 +16,7 @@ interface MarkdownSplitPaneProps {
 
 const MIN_PANE_PERCENT = 20;
 const MAX_PANE_PERCENT = 80;
+const DEFAULT_SPLIT = 50;
 
 export function MarkdownSplitPane({
   left,
@@ -25,11 +27,22 @@ export function MarkdownSplitPane({
 }: MarkdownSplitPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [isAnimating, setIsAnimating] = useState(true);
+
+  // Trigger animation on mount, disable after transition completes
+  useEffect(() => {
+    const timer = setTimeout(() => setIsAnimating(false), 300);
+    return () => clearTimeout(timer);
+  }, []);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     setIsDragging(true);
   }, []);
+
+  const handleDoubleClick = useCallback(() => {
+    onSplitChange(DEFAULT_SPLIT);
+  }, [onSplitChange]);
 
   const handleMouseMove = useCallback(
     (e: MouseEvent) => {
@@ -63,20 +76,34 @@ export function MarkdownSplitPane({
     };
   }, [isDragging, handleMouseMove, handleMouseUp]);
 
+  // Apply transition only during animation and not while dragging
+  const paneTransitionClass = isAnimating && !isDragging ? 'split-pane-animated' : '';
+
   return (
-    <div ref={containerRef} className={`flex h-full ${className}`}>
-      <div className="overflow-hidden" style={{ width: `${splitPosition}%` }}>
+    <div ref={containerRef} className={cn('flex h-full', className)}>
+      <div
+        className={cn('overflow-hidden', paneTransitionClass)}
+        style={{ width: `${splitPosition}%` }}
+      >
         {left}
       </div>
 
       <div
-        className={`split-divider ${isDragging ? 'dragging' : ''}`}
+        className={cn('split-divider', isDragging && 'dragging')}
         onMouseDown={handleMouseDown}
+        onDoubleClick={handleDoubleClick}
       >
-        <div className="split-divider-line" />
+        <div className="split-divider-grip">
+          <span />
+          <span />
+          <span />
+        </div>
       </div>
 
-      <div className="overflow-hidden" style={{ width: `${100 - splitPosition}%` }}>
+      <div
+        className={cn('overflow-hidden', paneTransitionClass)}
+        style={{ width: `${100 - splitPosition}%` }}
+      >
         {right}
       </div>
     </div>

@@ -20,15 +20,6 @@ interface PlatformInfo {
   };
 }
 
-const DEFAULT_INFO: PlatformInfo = {
-  platform: 'unknown',
-  isMac: false,
-  isWindows: false,
-  isLinux: false,
-  isFullscreen: false,
-  titlebarInset: { left: 0, right: 0 },
-};
-
 function detectPlatform(): Platform {
   const ua = navigator.userAgent.toLowerCase();
   if (ua.includes('mac')) return 'macos';

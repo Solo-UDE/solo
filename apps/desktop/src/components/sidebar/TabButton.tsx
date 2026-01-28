@@ -15,13 +15,43 @@ export const TabButton: FC<TabButtonProps> = ({ label, active, onClick }) => {
   return (
     <button
       className={cn(
-        'relative flex items-center justify-center h-8 px-3 flex-1 transition-colors rounded-md',
-        active ? 'text-foreground bg-muted/60' : 'text-muted-foreground hover:text-foreground hover:bg-muted/40'
+        'relative flex items-center justify-center h-8 px-3 flex-1',
+        'transition-colors duration-150 ease-[cubic-bezier(0.4,0,0.2,1)]',
+        active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
       )}
       onClick={onClick}
       title={label}
     >
       <span className="text-xs font-medium truncate">{label}</span>
     </button>
+  );
+};
+
+interface TabGroupProps {
+  readonly tabs: readonly string[];
+  readonly activeIndex: number;
+  readonly onTabChange: (index: number) => void;
+}
+
+export const TabGroup: FC<TabGroupProps> = ({ tabs, activeIndex, onTabChange }) => {
+  return (
+    <div className="relative flex items-center">
+      {tabs.map((label, index) => (
+        <TabButton
+          key={label}
+          label={label}
+          active={activeIndex === index}
+          onClick={() => onTabChange(index)}
+        />
+      ))}
+      {/* Sliding accent bar */}
+      <div
+        className="absolute bottom-0 h-0.5 rounded-full bg-primary transition-all duration-150 ease-[cubic-bezier(0.4,0,0.2,1)]"
+        style={{
+          width: `calc(100% / ${tabs.length})`,
+          left: `calc(${activeIndex} * 100% / ${tabs.length})`,
+        }}
+      />
+    </div>
   );
 };
