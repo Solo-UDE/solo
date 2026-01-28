@@ -140,68 +140,58 @@ export function FileExplorer({ onFileOpen, className = '' }: FileExplorerProps) 
   const folderName = rootPath?.split('/').pop() ?? '';
 
   return (
-    <div className={`flex flex-col h-full bg-card ${className}`}>
-      {/* Header */}
-      <div
-        className="flex items-center justify-between px-3 py-2 border-b border-border"
-        data-tauri-drag-region="false"
-      >
-        <div className="flex items-center gap-2 min-w-0">
-          {rootPath ? (
-            <>
-              <FolderOpen className="w-4 h-4 text-amber-500 shrink-0" />
-              <span className="text-sm font-medium truncate">{folderName}</span>
-            </>
-          ) : (
-            <span className="text-sm text-muted-foreground">No folder open</span>
-          )}
-        </div>
+    <div className={`flex flex-col h-full ${className}`}>
+      {/* Header - only shown when a folder is open */}
+      {rootPath && (
+        <div
+          className="flex items-center justify-between px-3 py-2 border-b border-border"
+          data-tauri-drag-region="false"
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <FolderOpen className="w-4 h-4 text-amber-500 shrink-0" />
+            <span className="text-sm font-medium truncate">{folderName}</span>
+          </div>
 
-        <div className="flex items-center gap-1" style={{ pointerEvents: 'auto' }}>
-          {rootPath && (
-            <>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  console.log('New File button clicked');
-                  handleNewFile();
-                }}
-                className="p-1.5 rounded hover:bg-muted transition-colors cursor-pointer"
-                title="New File"
-              >
-                <FilePlus className="w-4 h-4 text-muted-foreground" />
-              </button>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  console.log('New Folder button clicked');
-                  handleNewFolder();
-                }}
-                className="p-1.5 rounded hover:bg-muted transition-colors cursor-pointer"
-                title="New Folder"
-              >
-                <FolderPlus className="w-4 h-4 text-muted-foreground" />
-              </button>
-              <button
-                onClick={handleRefresh}
-                className="p-1.5 rounded hover:bg-muted transition-colors"
-                title="Refresh"
-              >
-                <RefreshCw className="w-4 h-4 text-muted-foreground" />
-              </button>
-              <button
-                onClick={closeFolder}
-                className="p-1.5 rounded hover:bg-muted transition-colors"
-                title="Close Folder"
-              >
-                <X className="w-4 h-4 text-muted-foreground" />
-              </button>
-            </>
-          )}
+          <div className="flex items-center gap-1" style={{ pointerEvents: 'auto' }}>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleNewFile();
+              }}
+              className="p-1.5 rounded hover:bg-muted transition-colors cursor-pointer"
+              title="New File"
+            >
+              <FilePlus className="w-4 h-4 text-muted-foreground" />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleNewFolder();
+              }}
+              className="p-1.5 rounded hover:bg-muted transition-colors cursor-pointer"
+              title="New Folder"
+            >
+              <FolderPlus className="w-4 h-4 text-muted-foreground" />
+            </button>
+            <button
+              onClick={handleRefresh}
+              className="p-1.5 rounded hover:bg-muted transition-colors"
+              title="Refresh"
+            >
+              <RefreshCw className="w-4 h-4 text-muted-foreground" />
+            </button>
+            <button
+              onClick={closeFolder}
+              className="p-1.5 rounded hover:bg-muted transition-colors"
+              title="Close Folder"
+            >
+              <X className="w-4 h-4 text-muted-foreground" />
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Error banner */}
       {error && (

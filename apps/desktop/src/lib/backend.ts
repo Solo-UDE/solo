@@ -85,9 +85,7 @@ export async function hasCredentials(provider: string): Promise<boolean> {
  * @param apiKey - API key to store
  */
 export async function setCredentials(provider: ProviderType, apiKey: string): Promise<void> {
-	// Convert ProviderType enum to string for Rust
-	const providerStr = provider === 'Anthropic' ? 'anthropic' : 'openai';
-	return invoke('set_credentials', { provider: providerStr, apiKey });
+	return invoke('set_credentials', { provider, apiKey });
 }
 
 // =============================================================================

@@ -18,6 +18,7 @@ interface UIActions {
   toggleLeftSidebar: () => void;
   expandLeftSidebar: () => void;
   collapseLeftSidebar: () => void;
+  setLeftSidebarWidth: (width: number) => void;
   setActiveTab: (tab: SidebarTab) => void;
 }
 
@@ -45,6 +46,12 @@ export const useUIStore = create<UIStore>()(
     collapseLeftSidebar: (): void => {
       set((state) => {
         state.leftSidebarWidth = SIDEBAR.collapsed;
+      });
+    },
+
+    setLeftSidebarWidth: (width: number): void => {
+      set((state) => {
+        state.leftSidebarWidth = width;
       });
     },
 
