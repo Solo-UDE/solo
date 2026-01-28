@@ -17,7 +17,7 @@
   --foreground: oklch(0.147 0.004 49.25);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.147 0.004 49.25);
-  --primary: oklch(0.65 0.2 41);
+  --primary: oklch(0.68 0.17 140);  /* Solo Green */
   --primary-foreground: oklch(0.98 0.01 60);
   /* ... more colors */
 }
@@ -86,7 +86,7 @@ oklch(L C H)
 | `--card` | `oklch(0.205 0.006 56.043)` | Elevated surface |
 | `--muted` | `oklch(0.32 0.01 50)` | Subtle backgrounds |
 | `--muted-foreground` | `oklch(0.709 0.01 56.259)` | Secondary text |
-| `--primary` | `oklch(0.7 0.18 41)` | Orange accent |
+| `--primary` | `oklch(0.86 0.14 135)` | Solo Mint accent |
 | `--border` | `oklch(0.38 0.01 50)` | Visible borders |
 | `--destructive` | `oklch(0.704 0.191 22.216)` | Error red |
 
@@ -97,7 +97,7 @@ oklch(L C H)
 | `--foreground` | `oklch(0.147 0.004 49.25)` | Dark text |
 | `--card` | `oklch(1 0 0)` | White surface |
 | `--muted` | `oklch(0.97 0.001 106.424)` | Light gray |
-| `--primary` | `oklch(0.65 0.2 41)` | Orange accent |
+| `--primary` | `oklch(0.68 0.17 140)` | Solo Green accent |
 
 ---
 

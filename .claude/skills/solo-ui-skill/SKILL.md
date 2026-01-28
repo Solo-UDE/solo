@@ -1,6 +1,6 @@
 ---
-name: orbit-ui-skill
-description: Applies modern soft UI design patterns using shadows instead of borders, spring-based animations, and consistent design tokens. Use when styling React components, building user interfaces, creating animations, implementing design systems, working with Tailwind CSS, or when the user mentions UI, styling, buttons, inputs, modals, panels, cards, or animations.
+name: solo-ui-skill
+description: Applies modern soft UI design patterns using shadows instead of borders, spring-based animations, and consistent design tokens with Solo brand green. Use when styling React components, building user interfaces, creating animations, implementing design systems, working with Tailwind CSS, or when the user mentions UI, styling, buttons, inputs, modals, panels, cards, or animations.
 ---
 
 # Solo IDE UI Design System

@@ -15,9 +15,12 @@
 --color-muted: #44403c;          /* Stone 700 */
 --color-muted-foreground: #a8a29e; /* Stone 400 */
 
-/* Primary (Orange) */
---color-primary: #f97316;        /* Orange 500 */
---color-primary-foreground: #fff;
+/* Primary (Solo Green) */
+--color-primary: #6BBF59;        /* Light mode: Rich green */
+--color-primary-foreground: #fff; /* White text */
+/* In dark mode: */
+/* --color-primary: #B5E48C;     /* Dark mode: Mint green */
+/* --color-primary-foreground: #1c1917; /* Dark text */
 
 /* Accent */
 --color-accent: #292524;
@@ -25,7 +28,7 @@
 
 /* Borders & Rings */
 --color-border: #57534e;         /* Stone 600 */
---color-ring: #f97316;
+--color-ring: #6BBF59;           /* Matches primary */
 
 /* Semantic */
 --color-destructive: #ef4444;    /* Red 500 */

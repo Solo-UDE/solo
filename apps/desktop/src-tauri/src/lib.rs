@@ -4,9 +4,11 @@
 
 mod commands;
 mod fs_commands;
+mod agent_commands;
 mod parse_commands;
 
 use fs_commands::FsState;
+use agent_commands::AgentState;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -27,6 +29,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(FsState::new())
+        .manage(AgentState::new())
         .invoke_handler(tauri::generate_handler![
             // Core commands
             commands::ping,
@@ -43,6 +46,19 @@ pub fn run() {
             fs_commands::start_watching,
             fs_commands::stop_watching,
             fs_commands::reveal_in_finder,
+            // Agent commands
+            agent_commands::get_providers,
+            agent_commands::get_active_provider,
+            agent_commands::set_active_provider,
+            agent_commands::get_provider_status,
+            agent_commands::set_credentials,
+            agent_commands::has_credentials,
+            agent_commands::get_models,
+            agent_commands::get_models_for_provider_cmd,
+            agent_commands::agent_create_session,
+            agent_commands::agent_send_message,
+            agent_commands::agent_get_history,
+            agent_commands::agent_clear_history,
             // Parse commands
             parse_commands::parse_file,
             parse_commands::parse_content,

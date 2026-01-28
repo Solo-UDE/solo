@@ -146,6 +146,11 @@ impl AgentManager {
         *self.active_provider.read().await
     }
 
+    /// Check if a provider is initialized
+    pub async fn is_provider_initialized(&self, provider_type: ProviderType) -> bool {
+        self.providers.read().await.contains_key(&provider_type)
+    }
+
     /// Set the active provider
     pub async fn set_active_provider(&self, provider_type: ProviderType) -> ProviderResult<()> {
         // Ensure provider is initialized

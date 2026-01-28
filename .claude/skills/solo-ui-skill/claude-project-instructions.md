@@ -142,7 +142,7 @@ Follow these design principles consistently:
 2. **Generous spacing** - 8-16px padding, breathing room
 3. **Soft corners** - 8-14px border radius
 4. **Subtle animations** - 150-200ms transitions, scale transforms
-5. **Warm dark theme** - Stone colors (#1c1917 background, #f97316 primary)
+5. **Warm dark theme** - Stone colors (#1c1917 background, #6BBF59 primary light / #B5E48C primary dark)
 
 **Button patterns:**
 ```tsx
@@ -343,7 +343,8 @@ Background: #1c1917 (Stone 900)
 Card:       #292524 (Stone 800)
 Muted:      #44403c (Stone 700)
 Border:     #57534e (Stone 600)
-Primary:    #f97316 (Orange 500)
+Primary:    #6BBF59 (Solo Green - light mode)
+Primary:    #B5E48C (Solo Mint - dark mode)
 Foreground: #fafaf9 (Stone 50)
 ```
 

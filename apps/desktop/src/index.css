@@ -73,6 +73,12 @@
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-border: var(--sidebar-border);
 
+  /* Agent-specific colors */
+  --color-agent-user-bg: var(--agent-user-bg);
+  --color-agent-assistant-bg: var(--agent-assistant-bg);
+  --color-agent-tool-bg: var(--agent-tool-bg);
+  --color-agent-streaming: var(--agent-streaming);
+
   /* Syntax highlighting */
   --color-syntax-keyword: var(--syntax-keyword);
   --color-syntax-string: var(--syntax-string);
@@ -107,8 +113,8 @@
   --popover: oklch(0.98 0.005 75);
   --popover-foreground: oklch(0.25 0.02 60);
 
-  /* Primary (Orange) */
-  --primary: oklch(0.65 0.2 41);
+  /* Primary (Solo Green) */
+  --primary: oklch(0.68 0.17 140);
   --primary-foreground: oklch(0.98 0.01 75);
 
   /* Secondary */
@@ -129,7 +135,7 @@
   /* Borders & Input */
   --border: oklch(0.88 0.02 70);
   --input: oklch(0.90 0.015 70);
-  --ring: oklch(0.65 0.2 41);
+  --ring: oklch(0.68 0.17 140);
 
   /* Semantic status colors */
   --status-success: oklch(0.65 0.18 155);
@@ -147,6 +153,12 @@
   --sidebar: oklch(0.95 0.008 70);
   --sidebar-foreground: oklch(0.25 0.02 60);
   --sidebar-border: oklch(0.88 0.02 70);
+
+  /* Agent-specific */
+  --agent-user-bg: oklch(0.95 0.02 140 / 10%);
+  --agent-assistant-bg: oklch(0.96 0.008 70);
+  --agent-tool-bg: oklch(0.94 0.01 70);
+  --agent-streaming: oklch(0.68 0.17 140);
 
   /* Syntax highlighting tokens (light mode) */
   --syntax-keyword: oklch(0.5 0.15 240);
@@ -192,8 +204,8 @@ html.dark {
   --popover: oklch(0.22 0.015 58);
   --popover-foreground: oklch(0.93 0.01 75);
 
-  /* Primary (Orange) - brighter for dark */
-  --primary: oklch(0.68 0.19 40);
+  /* Primary (Solo Mint) - soft neon green for dark */
+  --primary: oklch(0.86 0.14 135);
   --primary-foreground: oklch(0.15 0.01 60);
 
   /* Secondary */
@@ -214,7 +226,7 @@ html.dark {
   /* Borders & Input - subtle white overlay */
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 12%);
-  --ring: oklch(0.55 0.15 38);
+  --ring: oklch(0.86 0.14 135);
 
   /* Semantic status colors (dark mode) */
   --status-success: oklch(0.70 0.18 155);
@@ -232,6 +244,12 @@ html.dark {
   --sidebar: oklch(0.18 0.012 58);
   --sidebar-foreground: oklch(0.93 0.01 75);
   --sidebar-border: oklch(1 0 0 / 10%);
+
+  /* Agent-specific (dark mode) */
+  --agent-user-bg: oklch(0.86 0.14 135 / 10%);
+  --agent-assistant-bg: oklch(0.22 0.015 58);
+  --agent-tool-bg: oklch(0.25 0.015 58);
+  --agent-streaming: oklch(0.86 0.14 135);
 }
 
 /* =============================================================================
@@ -305,6 +323,111 @@ html.dark ::-webkit-scrollbar-thumb {
 html.dark ::-webkit-scrollbar-thumb:hover {
   background: oklch(0.65 0.02 60 / 60%);
   background-clip: padding-box;
+}
+
+/* =============================================================================
+   REACT-MOSAIC OVERRIDES
+   Custom theme to match Orbit design system
+   ============================================================================= */
+
+/* Import base mosaic styles */
+@import "react-mosaic-component/react-mosaic-component.css";
+
+/* Root mosaic container */
+.mosaic {
+  height: 100%;
+  background: transparent;
+}
+
+/* Mosaic tile container */
+.mosaic-tile {
+  margin: 0;
+}
+
+/* Remove default window chrome since we use our own TabbedContainer */
+.mosaic-window {
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+.mosaic-window-toolbar,
+.mosaic-window-title,
+.mosaic-window-controls,
+.mosaic-window-body-overlay {
+  display: none;
+}
+
+.mosaic-window-body {
+  background: transparent;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Split/resize handles */
+.mosaic-split {
+  background: transparent;
+  z-index: 2;
+  transition: background-color 150ms ease;
+}
+
+.mosaic-split:hover {
+  background: var(--ring);
+}
+
+.mosaic-split.-row {
+  width: 4px;
+  margin: 0 -2px;
+  cursor: col-resize;
+}
+
+.mosaic-split.-column {
+  height: 4px;
+  margin: -2px 0;
+  cursor: row-resize;
+}
+
+/* Drop target styling */
+.mosaic-drop-target {
+  position: relative;
+}
+
+.mosaic-drop-target .drop-target-container {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+}
+
+.mosaic-drop-target .drop-target-container .drop-target {
+  position: absolute;
+  background: var(--primary);
+  opacity: 0;
+  transition: opacity 150ms ease;
+  border-radius: var(--radius-sm);
+}
+
+.mosaic-drop-target .drop-target-container .drop-target.drop-target-hover {
+  opacity: 0.25;
+}
+
+/* Preview during drag */
+.mosaic-preview {
+  position: absolute;
+  background: var(--primary);
+  opacity: 0.2;
+  border-radius: var(--radius-sm);
+  z-index: 20;
+  pointer-events: none;
+}
+
+/* Zero state (no tiles) */
+.mosaic-zero-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  background: transparent;
 }
 
 /* =============================================================================
