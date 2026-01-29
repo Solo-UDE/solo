@@ -58,9 +58,15 @@ export const AgentMessage: FC<AgentMessageProps> = ({
 				{content ? (
 					<AgentNarrative content={content} />
 				) : isStreaming ? (
-					<div className="flex items-center gap-2 text-sm text-muted-foreground">
-						<span>Thinking</span>
-						<span className="animate-pulse">...</span>
+					<div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-bg-surface-2 border border-border-subtle">
+						<span className="text-sm text-muted-foreground animate-pulse-opacity">
+							Thinking
+						</span>
+						<div className="flex gap-0.5">
+							<span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: '0ms' }} />
+							<span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: '150ms' }} />
+							<span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: '300ms' }} />
+						</div>
 					</div>
 				) : null}
 
@@ -91,8 +97,8 @@ const ToolCallBlock: FC<ToolCallBlockProps> = ({ toolCall }) => {
 	};
 
 	return (
-		<div className="rounded-lg border border-border bg-muted/30 overflow-hidden">
-			<div className="px-3 py-2 flex items-center gap-2 border-b border-border/50">
+		<div className="rounded-lg border border-border-subtle bg-bg-surface-1 overflow-hidden">
+			<div className="px-3 py-2 flex items-center gap-2 border-b border-border-subtle">
 				<span className="text-xs font-mono text-muted-foreground">
 					{toolCall.name}
 				</span>
@@ -105,7 +111,7 @@ const ToolCallBlock: FC<ToolCallBlockProps> = ({ toolCall }) => {
 				</span>
 			</div>
 			{toolCall.result && (
-				<div className="px-3 py-2">
+				<div className="px-3 py-2 bg-bg-base">
 					<pre className="text-xs font-mono text-muted-foreground overflow-x-auto whitespace-pre-wrap">
 						{toolCall.result.substring(0, 500)}
 						{toolCall.result.length > 500 && '...'}

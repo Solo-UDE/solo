@@ -25,11 +25,22 @@
   --solo-ease-smooth: cubic-bezier(0.16, 1, 0.3, 1);
   --solo-ease-snappy: cubic-bezier(0.4, 0, 0.2, 1);
 
-  /* Shadows */
-  --solo-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --solo-shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-  --solo-shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-  --solo-shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  /* Shadows - Soft elevation system (NeuralForge) */
+  --solo-shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.03);
+  --solo-shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.05), 0 1px 2px -1px rgb(0 0 0 / 0.05);
+  --solo-shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.07), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+  --solo-shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.05);
+  --solo-shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.05);
+  --solo-shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.15);
+
+  /* Soft glow shadows for interactive elements */
+  --solo-shadow-glow-sm: 0 0 10px -3px rgb(0 0 0 / 0.1);
+  --solo-shadow-glow-md: 0 0 20px -5px rgb(0 0 0 / 0.15);
+  --solo-shadow-glow-primary: 0 0 20px -5px var(--solo-primary);
+
+  /* Inset shadows for depth */
+  --solo-shadow-inset-sm: inset 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --solo-shadow-inset-md: inset 0 2px 4px 0 rgb(0 0 0 / 0.05);
 
   /* Radii */
   --solo-radius-sm: 0.375rem;
@@ -40,24 +51,35 @@
 
 /* Dark mode overrides */
 .dark {
-  --solo-background: oklch(0.145 0.004 49.25);
-  --solo-foreground: oklch(0.985 0.001 106.423);
-  --solo-card: oklch(0.205 0.006 56.043);
-  --solo-card-foreground: oklch(0.985 0.001 106.423);
-  --solo-muted: oklch(0.32 0.01 50);
-  --solo-muted-foreground: oklch(0.709 0.01 56.259);
-  --solo-border: oklch(0.38 0.01 50);
-  --solo-primary: oklch(0.7 0.18 41);
-  --solo-primary-foreground: oklch(0.98 0.02 60);
-  --solo-secondary: oklch(0.268 0.007 34.298);
-  --solo-secondary-foreground: oklch(0.985 0.001 106.423);
-  --solo-destructive: oklch(0.704 0.191 22.216);
+  --solo-background: oklch(0.05 0 0);
+  --solo-foreground: oklch(0.93 0.01 0);
+  --solo-card: oklch(0.12 0 0);
+  --solo-card-foreground: oklch(0.93 0.01 0);
+  --solo-muted: oklch(0.09 0 0);
+  --solo-muted-foreground: oklch(0.55 0 0);
+  --solo-border: oklch(0.15 0 0);
+  --solo-primary: oklch(0.86 0.14 135);
+  --solo-primary-foreground: oklch(0.15 0.01 0);
+  --solo-secondary: oklch(0.12 0 0);
+  --solo-secondary-foreground: oklch(0.90 0.01 0);
+  --solo-destructive: oklch(0.65 0.20 25);
   --solo-destructive-foreground: oklch(0.985 0 0);
-  --solo-ring: oklch(0.7 0.18 41);
+  --solo-ring: oklch(0.86 0.14 135);
 
-  /* Shadows (darker for dark mode) */
-  --solo-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
-  --solo-shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.3), 0 2px 4px -2px rgb(0 0 0 / 0.3);
-  --solo-shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.3), 0 4px 6px -4px rgb(0 0 0 / 0.3);
-  --solo-shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.3), 0 8px 10px -6px rgb(0 0 0 / 0.3);
+  /* Shadows (deeper blacks for dark mode, creates depth) */
+  --solo-shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.2);
+  --solo-shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.3), 0 1px 2px -1px rgb(0 0 0 / 0.2);
+  --solo-shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.3);
+  --solo-shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.5), 0 4px 6px -4px rgb(0 0 0 / 0.3);
+  --solo-shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.5), 0 8px 10px -6px rgb(0 0 0 / 0.3);
+  --solo-shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.6);
+
+  /* Soft glow shadows for interactive elements (subtle in dark mode) */
+  --solo-shadow-glow-sm: 0 0 10px -3px rgb(0 0 0 / 0.3);
+  --solo-shadow-glow-md: 0 0 20px -5px rgb(0 0 0 / 0.4);
+  --solo-shadow-glow-primary: 0 0 20px -5px oklch(0.86 0.14 135 / 40%);
+
+  /* Inset shadows for depth */
+  --solo-shadow-inset-sm: inset 0 1px 2px 0 rgb(0 0 0 / 0.2);
+  --solo-shadow-inset-md: inset 0 2px 4px 0 rgb(0 0 0 / 0.3);
 }

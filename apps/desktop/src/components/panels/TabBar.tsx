@@ -119,7 +119,7 @@ export function TabBar({
     <div
       ref={dropRef}
       className={cn(
-        'flex items-center bg-muted/30 border-b border-border/30',
+        'flex items-center bg-bg-surface-1 border-b border-border-subtle',
         'h-[35px] min-h-[35px]',
         isOver && 'bg-primary/10'
       )}
@@ -130,7 +130,7 @@ export function TabBar({
         <button
           className={cn(
             'flex items-center justify-center w-6 h-full',
-            'bg-muted/50 hover:bg-muted border-r border-border/30',
+            'bg-bg-surface-2 hover:bg-bg-surface-3 border-r border-border-subtle',
             'transition-colors duration-100'
           )}
           onClick={scrollLeft}
@@ -168,7 +168,7 @@ export function TabBar({
         <button
           className={cn(
             'flex items-center justify-center w-6 h-full',
-            'bg-muted/50 hover:bg-muted border-l border-border/30',
+            'bg-bg-surface-2 hover:bg-bg-surface-3 border-l border-border-subtle',
             'transition-colors duration-100'
           )}
           onClick={scrollRight}

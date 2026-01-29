@@ -1,3 +1,6 @@
+/* Google Fonts - Fira Sans & Fira Code */
+@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Fira+Sans:wght@400;500;600&display=swap');
+
 @import "tailwindcss";
 @import "tw-animate-css";
 
@@ -19,8 +22,40 @@
   --ease-smooth: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-snappy: cubic-bezier(0.4, 0, 0.2, 1);
 
-  /* Monospace font */
-  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  /* Monospace font - Fira Code > SF Mono */
+  --font-mono: "Fira Code", "SF Mono", SFMono-Regular, ui-monospace, Menlo, Monaco, Consolas, monospace;
+
+  /* Typography Scale (NeuralForge) */
+  --text-display: 1.5rem;      /* 24px - Modal Headers, Welcome Screens */
+  --text-h1: 1.25rem;          /* 20px - Main Context Titles */
+  --text-h2: 1rem;             /* 16px - Section Headers */
+  --text-body: 0.875rem;       /* 14px - Chat messages, Descriptions */
+  --text-mono: 0.8125rem;      /* 13px - Code blocks, Ticket IDs */
+  --text-tiny: 0.6875rem;      /* 11px - Tags, Status Pills, Metadata */
+
+  /* Font Weights */
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+
+  /* NeuralForge surface colors */
+  --color-bg-void: var(--bg-void);
+  --color-bg-base: var(--bg-base);
+  --color-bg-surface-1: var(--bg-surface-1);
+  --color-bg-surface-2: var(--bg-surface-2);
+  --color-bg-surface-3: var(--bg-surface-3);
+  --color-bg-glass: var(--bg-glass);
+
+  /* NeuralForge border colors */
+  --color-border-subtle: var(--border-subtle);
+  --color-border-medium: var(--border-medium);
+  --color-border-highlight: var(--border-highlight);
+  --color-border-focus: var(--border-focus);
+
+  /* Activity bar */
+  --color-activity-bar: var(--activity-bar);
+  --color-activity-bar-foreground: var(--activity-bar-foreground);
+  --color-activity-bar-active: var(--activity-bar-active);
 
   /* Base colors */
   --color-background: var(--background);
@@ -101,6 +136,25 @@
 
   --radius: 0.625rem;
 
+  /* NeuralForge Surface Hierarchy (Light mode fallbacks) */
+  --bg-void: oklch(0.96 0.005 75);
+  --bg-base: oklch(0.98 0.005 75);
+  --bg-surface-1: oklch(0.95 0.008 70);
+  --bg-surface-2: oklch(0.92 0.01 70);
+  --bg-surface-3: oklch(0.88 0.015 70);
+  --bg-glass: oklch(0.98 0.005 75 / 85%);
+
+  /* NeuralForge Border Hierarchy (Light mode fallbacks) */
+  --border-subtle: oklch(0.90 0.01 70);
+  --border-medium: oklch(0.85 0.015 70);
+  --border-highlight: oklch(0.78 0.02 70);
+  --border-focus: oklch(0.68 0.17 140);
+
+  /* Activity bar (Light mode) */
+  --activity-bar: oklch(0.94 0.008 70);
+  --activity-bar-foreground: oklch(0.45 0.02 60);
+  --activity-bar-active: oklch(0.25 0.02 60);
+
   /* Base */
   --background: oklch(0.98 0.005 75);
   --foreground: oklch(0.25 0.02 60);
@@ -174,58 +228,72 @@
 }
 
 /* =============================================================================
-   DARK MODE
+   DARK MODE - NeuralForge "Deep Field" Aesthetic
    ============================================================================= */
 html.dark {
   /* Force dark color scheme for scrollbars */
   color-scheme: dark;
 
-  /* Base - warm dark, not pure black */
-  --background: oklch(0.16 0.012 60);
-  --foreground: oklch(0.93 0.01 75);
+  /* NeuralForge Surface Hierarchy (Deep Field) */
+  --bg-void: oklch(0.04 0 0);       /* #0A0A0A - deepest, activity bar */
+  --bg-base: oklch(0.05 0 0);       /* #0D0D0D - main canvas/editor */
+  --bg-surface-1: oklch(0.09 0 0);  /* #161616 - sidebars */
+  --bg-surface-2: oklch(0.12 0 0);  /* #1F1F1F - cards/inputs */
+  --bg-surface-3: oklch(0.16 0 0);  /* #2A2A2A - hover states */
+  --bg-glass: oklch(0.08 0 0 / 75%); /* command palette glass */
 
-  /* Syntax highlighting tokens */
-  --syntax-keyword: oklch(0.7 0.12 240);
-  --syntax-string: oklch(0.75 0.12 40);
-  --syntax-type: oklch(0.75 0.15 175);
-  --syntax-function: oklch(0.85 0.1 90);
-  --syntax-variable: oklch(0.8 0.08 220);
-  --syntax-comment: oklch(0.55 0.1 140);
-  --syntax-number: oklch(0.8 0.1 130);
-  --syntax-control: oklch(0.75 0.12 320);
-  --syntax-operator: oklch(0.85 0.02 60);
-  --syntax-bracket: oklch(0.85 0.15 85);
+  /* NeuralForge Border Hierarchy */
+  --border-subtle: oklch(0.15 0 0);   /* #262626 */
+  --border-medium: oklch(0.20 0 0);   /* #333333 */
+  --border-highlight: oklch(0.30 0 0); /* #4D4D4D */
+  --border-focus: oklch(0.37 0 0);    /* #5E5E5E */
 
-  /* Card - slightly elevated */
-  --card: oklch(0.20 0.015 58);
-  --card-foreground: oklch(0.93 0.01 75);
+  /* Base - uses Deep Field hierarchy */
+  --background: var(--bg-base);
+  --foreground: oklch(0.93 0.01 0);
+
+  /* Syntax highlighting tokens (NeuralForge palette) */
+  --syntax-keyword: oklch(0.70 0.20 25);   /* Orange #FF5E1E */
+  --syntax-string: oklch(0.85 0.12 95);    /* Yellow #E6DB74 */
+  --syntax-type: oklch(0.75 0.12 200);     /* Cyan #66D9EF */
+  --syntax-function: oklch(0.80 0.12 200); /* Cyan #66D9EF */
+  --syntax-variable: oklch(0.80 0.08 220); /* Light blue */
+  --syntax-comment: oklch(0.50 0.05 110);  /* Olive grey #75715E */
+  --syntax-number: oklch(0.70 0.15 310);   /* Purple #AE81FF */
+  --syntax-control: oklch(0.70 0.20 25);   /* Orange (same as keyword) */
+  --syntax-operator: oklch(0.85 0.02 0);   /* Light grey */
+  --syntax-bracket: oklch(0.80 0.12 95);   /* Yellow */
+
+  /* Card - uses surface-2 */
+  --card: var(--bg-surface-2);
+  --card-foreground: oklch(0.93 0.01 0);
 
   /* Popover */
-  --popover: oklch(0.22 0.015 58);
-  --popover-foreground: oklch(0.93 0.01 75);
+  --popover: var(--bg-surface-2);
+  --popover-foreground: oklch(0.93 0.01 0);
 
   /* Primary (Solo Mint) - soft neon green for dark */
   --primary: oklch(0.86 0.14 135);
-  --primary-foreground: oklch(0.15 0.01 60);
+  --primary-foreground: oklch(0.15 0.01 0);
 
   /* Secondary */
-  --secondary: oklch(0.28 0.02 58);
-  --secondary-foreground: oklch(0.90 0.01 75);
+  --secondary: var(--bg-surface-2);
+  --secondary-foreground: oklch(0.90 0.01 0);
 
   /* Muted */
-  --muted: oklch(0.25 0.015 58);
-  --muted-foreground: oklch(0.65 0.03 60);
+  --muted: var(--bg-surface-1);
+  --muted-foreground: oklch(0.55 0 0);
 
   /* Accent */
-  --accent: oklch(0.30 0.02 55);
-  --accent-foreground: oklch(0.93 0.01 75);
+  --accent: var(--bg-surface-3);
+  --accent-foreground: oklch(0.93 0.01 0);
 
   /* Destructive */
   --destructive: oklch(0.65 0.20 25);
 
-  /* Borders & Input - subtle white overlay */
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 12%);
+  /* Borders & Input - uses border hierarchy */
+  --border: var(--border-subtle);
+  --input: var(--bg-surface-2);
   --ring: oklch(0.86 0.14 135);
 
   /* Semantic status colors (dark mode) */
@@ -237,18 +305,23 @@ html.dark {
   --file-folder: oklch(0.80 0.18 90);
   --file-code: oklch(0.65 0.15 240);
   --file-config: oklch(0.80 0.18 90);
-  --file-text: oklch(0.65 0.03 60);
+  --file-text: oklch(0.65 0.03 0);
   --file-image: oklch(0.60 0.18 300);
 
-  /* Sidebar - warm dark */
-  --sidebar: oklch(0.18 0.012 58);
-  --sidebar-foreground: oklch(0.93 0.01 75);
-  --sidebar-border: oklch(1 0 0 / 10%);
+  /* Sidebar - uses surface-1 */
+  --sidebar: var(--bg-surface-1);
+  --sidebar-foreground: oklch(0.93 0.01 0);
+  --sidebar-border: var(--border-subtle);
+
+  /* Activity bar - uses void (darkest) */
+  --activity-bar: var(--bg-void);
+  --activity-bar-foreground: oklch(0.60 0 0);
+  --activity-bar-active: oklch(0.93 0.01 0);
 
   /* Agent-specific (dark mode) */
   --agent-user-bg: oklch(0.86 0.14 135 / 10%);
-  --agent-assistant-bg: oklch(0.22 0.015 58);
-  --agent-tool-bg: oklch(0.25 0.015 58);
+  --agent-assistant-bg: var(--bg-surface-2);
+  --agent-tool-bg: var(--bg-surface-1);
   --agent-streaming: oklch(0.86 0.14 135);
 }
 
@@ -270,8 +343,9 @@ html.dark {
   body {
     background-color: var(--background);
     color: var(--foreground);
-    font-family: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-      "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    /* UI Font: Fira Sans > San Francisco > System */
+    font-family: "Fira Sans", "SF Pro Display", -apple-system, BlinkMacSystemFont,
+      ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
     font-feature-settings: "rlig" 1, "calt" 1;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -327,7 +401,7 @@ html.dark ::-webkit-scrollbar-thumb:hover {
 
 /* =============================================================================
    REACT-MOSAIC OVERRIDES
-   Custom theme to match Orbit design system
+   NeuralForge design system - Deep Field aesthetic
    ============================================================================= */
 
 /* Import base mosaic styles */
@@ -336,7 +410,7 @@ html.dark ::-webkit-scrollbar-thumb:hover {
 /* Root mosaic container */
 .mosaic {
   height: 100%;
-  background: transparent;
+  background: var(--bg-base);
 }
 
 /* Mosaic tile container */
@@ -365,7 +439,7 @@ html.dark ::-webkit-scrollbar-thumb:hover {
   flex-direction: column;
 }
 
-/* Split/resize handles */
+/* Split/resize handles - subtle on hover */
 .mosaic-split {
   background: transparent;
   z-index: 2;
@@ -373,7 +447,7 @@ html.dark ::-webkit-scrollbar-thumb:hover {
 }
 
 .mosaic-split:hover {
-  background: var(--ring);
+  background: var(--border-subtle);
 }
 
 .mosaic-split.-row {
@@ -386,6 +460,11 @@ html.dark ::-webkit-scrollbar-thumb:hover {
   height: 4px;
   margin: -2px 0;
   cursor: row-resize;
+}
+
+/* Active dragging state */
+.mosaic-split:active {
+  background: var(--primary);
 }
 
 /* Drop target styling */
@@ -427,7 +506,243 @@ html.dark ::-webkit-scrollbar-thumb:hover {
   align-items: center;
   justify-content: center;
   height: 100%;
+  background: var(--bg-base);
+}
+
+/* =============================================================================
+   SIDEBAR SPLIT DIVIDER
+   ============================================================================= */
+.split-divider {
+  width: 4px;
+  cursor: col-resize;
   background: transparent;
+  transition: background-color 150ms ease;
+  position: relative;
+  z-index: 10;
+}
+
+.split-divider:hover {
+  background: var(--border-subtle);
+}
+
+.split-divider.dragging {
+  background: var(--primary);
+}
+
+.split-divider-grip {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+.split-divider:hover .split-divider-grip {
+  opacity: 0.5;
+}
+
+.split-divider-grip span {
+  width: 2px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--foreground);
+}
+
+/* =============================================================================
+   TYPOGRAPHY UTILITY CLASSES (NeuralForge)
+   ============================================================================= */
+
+/* Display - Modal Headers, Welcome Screens */
+.text-display {
+  font-size: var(--text-display);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+/* H1 - Main Context Titles */
+.text-h1 {
+  font-size: var(--text-h1);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+}
+
+/* H2 - Section Headers */
+.text-h2 {
+  font-size: var(--text-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.4;
+}
+
+/* Body - Chat messages, Descriptions */
+.text-body {
+  font-size: var(--text-body);
+  font-weight: var(--font-weight-normal);
+  line-height: 1.5;
+}
+
+/* Mono - Code blocks, Ticket IDs */
+.text-mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-mono);
+  font-weight: var(--font-weight-normal);
+  line-height: 1.5;
+}
+
+/* Tiny - Tags, Status Pills, Metadata timestamps */
+.text-tiny {
+  font-size: var(--text-tiny);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.4;
+  letter-spacing: 0.01em;
+}
+
+/* =============================================================================
+   ANIMATION KEYFRAMES
+   ============================================================================= */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slide-out-right {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+}
+
+@keyframes pulse-opacity {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* =============================================================================
+   ANIMATION UTILITY CLASSES
+   ============================================================================= */
+.animate-fade-in-up {
+  animation: fade-in-up 200ms var(--ease-smooth) forwards;
+}
+
+.animate-scale-in {
+  animation: scale-in 200ms var(--ease-smooth) forwards;
+}
+
+.animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    oklch(1 0 0 / 5%) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite;
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 300ms var(--ease-spring) forwards;
+}
+
+.animate-slide-out-right {
+  animation: slide-out-right 200ms var(--ease-smooth) forwards;
+}
+
+.animate-pulse-opacity {
+  animation: pulse-opacity 2s ease-in-out infinite;
+}
+
+/* =============================================================================
+   NOISE TEXTURE UTILITY
+   ============================================================================= */
+.bg-noise::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  opacity: 0.03;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.bg-noise > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* =============================================================================
+   GLASS MORPHISM UTILITIES
+   ============================================================================= */
+.glass {
+  background: var(--bg-glass);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.glass-subtle {
+  background: oklch(0.08 0 0 / 50%);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+/* =============================================================================
+   SPRING TRANSITION UTILITIES
+   ============================================================================= */
+.transition-spring {
+  transition-timing-function: var(--ease-spring);
+}
+
+.transition-smooth {
+  transition-timing-function: var(--ease-smooth);
 }
 
 /* =============================================================================

@@ -1,9 +1,13 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Settings, LogOut } from "lucide-react";
+import { LogOut } from "lucide-react";
 import { PrimarySidebar } from "./components/sidebar";
+import { ActivityBar } from "./components/activity-bar";
 import { MosaicLayout } from "./components/panels";
 import { AuthGuard } from "./components/auth";
+import { CommandPalette } from "./components/command-palette";
+import { QuickSwitcher } from "./components/quick-switcher";
+import { ToastProvider } from "./components/toast";
 import { useUIStore } from "./stores/uiStore";
 import { usePanelTabsStore } from "./stores/panelTabsStore";
 import { useProviderStore } from "./stores/provider-store";
@@ -71,6 +75,15 @@ function AppContent() {
     loadPersistedSessions();
   }, [loadPersistedSessions]);
 
+  // Listen for settings open event from command palette
+  useEffect(() => {
+    const handleOpenSettings = () => {
+      setIsSettingsOpen(true);
+    };
+    window.addEventListener('open-settings', handleOpenSettings);
+    return () => window.removeEventListener('open-settings', handleOpenSettings);
+  }, []);
+
   // Open a file in the panel system
   const handleFileOpen = useCallback((path: string) => {
     const fileName = path.split('/').pop() ?? 'Untitled';
@@ -122,7 +135,7 @@ function AppContent() {
       <div
         data-tauri-drag-region
         style={titlebarStyle}
-        className="h-12 flex items-center justify-between bg-card/80 backdrop-blur-sm border-b border-border/30 shrink-0"
+        className="h-10 flex items-center justify-between bg-bg-surface-1/80 backdrop-blur-sm border-b border-border-subtle shrink-0"
       >
         {/* Left spacer for balance */}
         <div className="flex-1" data-tauri-drag-region />
@@ -132,16 +145,17 @@ function AppContent() {
           Solo
         </span>
 
-        {/* Settings button, sign out, and status indicator */}
+        {/* Status indicator and sign out */}
         <div className="flex-1 flex items-center justify-end gap-2">
           <div
-            className={`w-2 h-2 rounded-full ${
+            className={cn(
+              'w-2 h-2 rounded-full',
               backendStatus.includes("connected")
                 ? "bg-status-success"
                 : backendStatus.includes("error")
                   ? "bg-status-error"
                   : "bg-status-warning animate-pulse"
-            }`}
+            )}
           />
           {user?.email && (
             <span className="text-xs text-muted-foreground truncate max-w-32">
@@ -149,15 +163,8 @@ function AppContent() {
             </span>
           )}
           <button
-            onClick={() => setIsSettingsOpen(true)}
-            className="p-1.5 rounded hover:bg-muted transition-colors"
-            title="Settings"
-          >
-            <Settings className="w-4 h-4 text-muted-foreground" />
-          </button>
-          <button
             onClick={signOut}
-            className="p-1.5 rounded hover:bg-muted transition-colors"
+            className="p-1.5 rounded hover:bg-bg-surface-2 transition-colors"
             title="Sign out"
           >
             <LogOut className="w-4 h-4 text-muted-foreground" />
@@ -165,30 +172,44 @@ function AppContent() {
         </div>
       </div>
 
-      {/* Main content */}
+      {/* Main content with activity bar */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Dynamic-width sidebar */}
+        {/* Activity Bar - leftmost edge */}
+        <ActivityBar onSettingsClick={() => setIsSettingsOpen(true)} />
+
+        {/* Primary Sidebar - adjacent to activity bar */}
         <PrimarySidebar width={leftSidebarWidth} onFileOpen={handleFileOpen} />
 
-        {/* Resizable divider */}
-        <div
-          className={cn('split-divider', isDragging && 'dragging')}
-          onMouseDown={handleMouseDown}
-          onDoubleClick={handleDoubleClick}
-        >
-          <div className="split-divider-grip">
-            <span /><span /><span />
+        {/* Resizable divider - only show when sidebar is expanded */}
+        {leftSidebarWidth > 0 && (
+          <div
+            className={cn('split-divider', isDragging && 'dragging')}
+            onMouseDown={handleMouseDown}
+            onDoubleClick={handleDoubleClick}
+          >
+            <div className="split-divider-grip">
+              <span /><span /><span />
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Main editor area with panel system */}
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 overflow-hidden bg-bg-base">
           <MosaicLayout />
         </div>
       </div>
 
       {/* Settings modal */}
       <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+
+      {/* Command Palette (Cmd+K) */}
+      <CommandPalette />
+
+      {/* Quick Switcher (Cmd+P) */}
+      <QuickSwitcher />
+
+      {/* Toast notifications */}
+      <ToastProvider />
     </div>
   );
 }

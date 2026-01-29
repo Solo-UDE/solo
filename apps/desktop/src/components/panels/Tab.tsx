@@ -125,13 +125,14 @@ export function Tab({
       tabIndex={isActive ? 0 : -1}
       className={cn(
         'group relative flex items-center gap-1.5 h-[35px] px-3',
-        'border-r border-border/20',
-        'transition-all duration-150 ease-out',
+        'border-r border-border-subtle/50',
+        'transition-all duration-150',
+        '[transition-timing-function:cubic-bezier(0.34,1.56,0.64,1)]',
         'cursor-pointer select-none',
         'shrink-0 min-w-[80px] max-w-[200px]',
         isActive
-          ? 'bg-card text-foreground'
-          : 'bg-transparent text-muted-foreground hover:text-foreground hover:bg-muted/40',
+          ? 'bg-bg-base text-foreground'
+          : 'bg-transparent text-muted-foreground hover:text-foreground hover:brightness-110',
         isDragging && 'opacity-50',
         isOver && !isDragging && 'bg-primary/10'
       )}
@@ -139,6 +140,11 @@ export function Tab({
       onMouseDown={handleMouseDown}
       onContextMenu={handleContextMenu}
     >
+      {/* Active tab indicator line - TOP position for NeuralForge */}
+      {isActive && (
+        <div className="absolute top-0 left-0 right-0 h-[2px] bg-border-focus" />
+      )}
+
       {/* Dirty indicator */}
       {instance.isDirty && (
         <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
@@ -160,7 +166,7 @@ export function Tab({
           className={cn(
             'p-0.5 rounded-sm',
             'opacity-0 group-hover:opacity-100',
-            'hover:bg-muted active:scale-95',
+            'hover:bg-bg-surface-2 active:scale-95',
             'transition-all duration-100',
             'shrink-0',
             // Always show close button if dirty
@@ -172,11 +178,6 @@ export function Tab({
         >
           <X className="w-3.5 h-3.5" />
         </button>
-      )}
-
-      {/* Active tab indicator line */}
-      {isActive && (
-        <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-primary" />
       )}
     </div>
   );

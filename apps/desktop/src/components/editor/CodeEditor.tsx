@@ -418,6 +418,16 @@ export function CodeEditor({ filePath, className = '' }: CodeEditorProps) {
         overviewRulerLanes: 0,
         hideCursorInOverviewRuler: true,
         overviewRulerBorder: false,
+        // Indent guides for NeuralForge aesthetic
+        guides: {
+          indentation: true,
+          highlightActiveIndentation: true,
+          bracketPairs: true,
+        },
+        // Smooth cursor for polished feel
+        cursorSmoothCaretAnimation: 'on',
+        // Semantic highlighting for richer colors
+        'semanticHighlighting.enabled': true,
       }}
     />
   );

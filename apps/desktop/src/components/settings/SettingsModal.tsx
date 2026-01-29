@@ -90,25 +90,26 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
       onClick={onClose}
       onKeyDown={handleKeyDown}
     >
       <div
         ref={modalRef}
-        className="bg-card border border-border rounded-lg shadow-xl w-[680px] h-[520px] flex flex-col overflow-hidden"
+        className="bg-bg-surface-1 border border-border-subtle rounded-xl shadow-2xl w-[680px] h-[520px] flex flex-col overflow-hidden animate-scale-in"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle shrink-0">
           <div className="flex items-center gap-2">
             <Settings className="w-4 h-4 text-muted-foreground" />
             <h2 className="text-sm font-medium text-foreground">Settings</h2>
+            <span className="text-xs text-muted-foreground font-mono">⌘,</span>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1 rounded hover:bg-muted transition-colors"
+            className="p-1.5 rounded-md hover:bg-bg-surface-2 transition-colors"
           >
             <X className="w-4 h-4 text-muted-foreground" />
           </button>
@@ -117,7 +118,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         {/* Body */}
         <div className="flex-1 flex min-h-0">
           {/* Sidebar tabs */}
-          <nav className="w-40 border-r border-border bg-muted/30 py-2 shrink-0">
+          <nav className="w-40 border-r border-border-subtle bg-bg-surface-2/50 py-2 shrink-0">
             {TABS.map((tab, index) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
@@ -130,10 +131,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   onClick={() => setActiveTab(tab.id)}
                   className={`
                     w-full flex items-center gap-2 px-4 py-2 text-sm
-                    transition-colors text-left
+                    transition-all duration-150 text-left
                     ${isActive
                       ? 'bg-primary/10 text-primary border-r-2 border-primary'
-                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                      : 'text-muted-foreground hover:bg-bg-surface-3 hover:text-foreground'
                     }
                   `}
                 >
@@ -145,7 +146,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           </nav>
 
           {/* Content */}
-          <div className="flex-1 overflow-y-auto p-6">
+          <div className="flex-1 overflow-y-auto p-6 bg-bg-base">
             {renderTabContent()}
           </div>
         </div>

@@ -1,20 +1,18 @@
 /**
  * PrimarySidebar - Main collapsible sidebar with tab navigation
+ * Works alongside the ActivityBar for view switching
  */
 
 import { useState, useCallback, useMemo } from 'react';
 import type { FC } from 'react';
 import { FileExplorer } from '@/components/file-explorer';
 import { SessionList, ApiKeyDialog } from '@/components/agent';
-import { SidebarToggle } from './SidebarToggle';
-import { TabGroup } from './TabButton';
 import { TRANSITIONS } from '@/lib/constants';
-import { useUIStore, useIsLeftSidebarCollapsed } from '@/stores/uiStore';
+import { useUIStore } from '@/stores/uiStore';
 import { useAgentStore } from '@/stores/agentStore';
 import { usePanelTabsStore } from '@/stores/panelTabsStore';
 import { useHasCredentials, useActiveProvider } from '@/stores/provider-store';
 import { BUILTIN_PANEL_TYPES } from '@/lib/panels';
-import { cn } from '@/lib/utils';
 
 interface PrimarySidebarProps {
   readonly width: number;
@@ -22,9 +20,7 @@ interface PrimarySidebarProps {
 }
 
 export const PrimarySidebar: FC<PrimarySidebarProps> = ({ width, onFileOpen }) => {
-  const isCollapsed = useIsLeftSidebarCollapsed();
   const activeTab = useUIStore((state) => state.activeTab);
-  const setActiveTab = useUIStore((state) => state.setActiveTab);
   const setActiveSession = useAgentStore((state) => state.setActiveSession);
   const createSession = useAgentStore((state) => state.createSession);
 
@@ -35,6 +31,9 @@ export const PrimarySidebar: FC<PrimarySidebarProps> = ({ width, onFileOpen }) =
   const activeProvider = useActiveProvider();
   const hasCredentials = useHasCredentials(activeProvider ?? 'anthropic');
   const [showApiKeyDialog, setShowApiKeyDialog] = useState(false);
+
+  // Check if sidebar is collapsed (width is 0 or near 0)
+  const isCollapsed = width <= 40;
 
   // Open a session as a tab in the panel system
   const handleSessionSelect = useCallback((sessionId: string): void => {
@@ -77,36 +76,30 @@ export const PrimarySidebar: FC<PrimarySidebarProps> = ({ width, onFileOpen }) =
     }, 100);
   }, [createSessionAndShow]);
 
-  const tabs = ['Explorer', 'Sessions'] as const;
-  const activeTabIndex = activeTab === 'explorer' ? 0 : 1;
-  const handleTabChange = useCallback((index: number) => {
-    setActiveTab(index === 0 ? 'explorer' : 'sessions');
-  }, [setActiveTab]);
+  // Don't render if collapsed
+  if (isCollapsed) {
+    return null;
+  }
 
   return (
     <aside
-      className="h-full flex flex-col border-r border-border/30 bg-sidebar overflow-hidden"
+      className="h-full flex flex-col bg-bg-surface-1 overflow-hidden"
       style={{
         width,
         transition: `width ${TRANSITIONS.sidebar}`,
       }}
     >
-      {/* Header with tabs and toggle */}
-      <div className="h-10 flex items-center justify-between px-2 shrink-0 border-b border-border/30">
-        {!isCollapsed && (
-          <TabGroup
-            tabs={tabs}
-            activeIndex={activeTabIndex}
-            onTabChange={handleTabChange}
-          />
-        )}
-        <SidebarToggle className={isCollapsed ? 'mx-auto' : ''} />
+      {/* Section header */}
+      <div className="h-9 flex items-center px-3 shrink-0 border-b border-border-subtle">
+        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+          {activeTab === 'explorer' ? 'Explorer' : 'Sessions'}
+        </span>
       </div>
 
       {/* Tab Content - Sliding Reel */}
       <div className="flex-1 overflow-hidden">
         <div
-          className="flex h-full transition-transform duration-300 ease-[cubic-bezier(0.18,1.14,0.5,1.18)]"
+          className="flex h-full transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]"
           style={{
             width: '200%',
             transform: activeTab === 'explorer' ? 'translateX(0%)' : 'translateX(-50%)',
@@ -116,21 +109,16 @@ export const PrimarySidebar: FC<PrimarySidebarProps> = ({ width, onFileOpen }) =
           <div className="w-1/2 h-full overflow-hidden">
             <FileExplorer
               onFileOpen={onFileOpen}
-              className={cn(
-                'h-full transition-opacity duration-150',
-                isCollapsed ? 'opacity-0 pointer-events-none' : 'opacity-100'
-              )}
+              className="h-full"
             />
           </div>
           {/* Sessions Panel */}
           <div className="w-1/2 h-full overflow-hidden">
-            {!isCollapsed && (
-              <SessionList
-                onSessionSelect={handleSessionSelect}
-                onNewSession={handleNewSession}
-                className="h-full"
-              />
-            )}
+            <SessionList
+              onSessionSelect={handleSessionSelect}
+              onNewSession={handleNewSession}
+              className="h-full"
+            />
           </div>
         </div>
       </div>
