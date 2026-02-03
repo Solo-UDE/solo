@@ -1014,8 +1014,18 @@ impl ToolExecutor for GlobTool {
         // Validate root path against workspace_root when set
         if let Some(ref ws_root) = self.workspace_root {
             let root_path = Path::new(root);
-            if root_path.is_absolute() {
-                if let (Ok(canon_root), Ok(canon_ws)) = (root_path.canonicalize(), ws_root.canonicalize()) {
+            let abs_root = if root_path.is_absolute() {
+                root_path.to_path_buf()
+            } else {
+                std::env::current_dir()
+                    .map_err(|e| ToolError::ExecutionFailed(format!("Cannot get cwd: {}", e)))?
+                    .join(root_path)
+            };
+            if let Ok(canon_ws) = ws_root.canonicalize() {
+                if abs_root.exists() {
+                    let canon_root = abs_root.canonicalize().map_err(|e| {
+                        ToolError::PathViolation(format!("Cannot resolve glob root: {}", e))
+                    })?;
                     if !canon_root.starts_with(&canon_ws) {
                         return Err(ToolError::PathViolation(format!(
                             "Glob root {} is outside workspace {}",

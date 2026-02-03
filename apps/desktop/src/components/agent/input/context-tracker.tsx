@@ -12,35 +12,20 @@ import {
   TooltipProvider,
 } from '../../ui/tooltip';
 import { useActiveSessionId, useSessionMessages } from '../../../stores/agentStore';
-import { useProviderStore } from '../../../stores/provider-store';
+import { useProviderStore, useModels } from '../../../stores/provider-store';
 import { cn } from '../../../lib/utils';
 
 import type { FC } from 'react';
 import type { Message } from '../../../stores/agentStore';
+import type { ModelInfo } from '../../../lib/backend';
 
 // Rough token estimation: ~4 characters per token
 const CHARS_PER_TOKEN = 4;
 
-// Default context windows by model prefix (must match actual backend model IDs)
-const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
-  'claude-opus': 200_000,
-  'claude-sonnet': 200_000,
-  'claude-haiku': 200_000,
-  'claude-3': 200_000,
-  'gpt-4.1': 1_000_000,
-  'gpt-4o': 128_000,
-  'o3': 200_000,
-  'o4-mini': 200_000,
-  'gemini-2.0': 1_000_000,
-  'gemini-2.5': 1_000_000,
-};
-
-function getContextWindow(modelId: string | null): number {
+function getContextWindow(modelId: string | null, models: ModelInfo[]): number {
   if (!modelId) return 200_000;
-  for (const [prefix, window] of Object.entries(MODEL_CONTEXT_WINDOWS)) {
-    if (modelId.startsWith(prefix)) return window;
-  }
-  return 200_000;
+  const model = models.find(m => m.id === modelId);
+  return model?.context_window ?? 200_000;
 }
 
 interface ContextBreakdown {
@@ -52,12 +37,12 @@ function estimateTokens(text: string): number {
   return Math.ceil(text.length / CHARS_PER_TOKEN);
 }
 
-function computeBreakdown(messages: Message[], modelId: string | null): {
+function computeBreakdown(messages: Message[], modelId: string | null, models: ModelInfo[]): {
   breakdown: ContextBreakdown[];
   total: number;
   max: number;
 } {
-  const max = getContextWindow(modelId);
+  const max = getContextWindow(modelId, models);
 
   // Estimate system prompt tokens (base system prompt is ~2-3k tokens)
   const systemPromptTokens = 3000;
@@ -117,10 +102,11 @@ export const ContextTracker: FC<ContextTrackerProps> = ({
   const activeSessionId = useActiveSessionId();
   const messages = useSessionMessages(activeSessionId);
   const selectedModel = useProviderStore((state) => state.selectedModel);
+  const models = useModels();
 
   const { breakdown, total, max } = useMemo(
-    () => computeBreakdown(messages, selectedModel),
-    [messages, selectedModel]
+    () => computeBreakdown(messages, selectedModel, models),
+    [messages, selectedModel, models]
   );
 
   const percentage = max > 0 ? (total / max) * 100 : 0;

@@ -32,6 +32,7 @@ export interface ModelInfo {
 	provider: ProviderType;
 	is_default: boolean;
 	description: string;
+	context_window: number;
 }
 
 // Re-export for convenience
