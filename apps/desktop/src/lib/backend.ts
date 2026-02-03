@@ -92,6 +92,15 @@ export async function setCredentials(provider: ProviderType, apiKey: string): Pr
 	return invoke('set_credentials', { provider, apiKey });
 }
 
+/**
+ * Set an OAuth token manually (e.g. from `claude setup-token`)
+ * @param provider - Provider type
+ * @param token - OAuth access token
+ */
+export async function setOAuthTokenManual(provider: string, token: string): Promise<void> {
+	return invoke('set_oauth_token_manual', { provider, token });
+}
+
 // =============================================================================
 // Model Commands
 // =============================================================================
