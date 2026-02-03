@@ -9,6 +9,7 @@ pub mod models;
 pub mod credentials;
 pub mod anthropic;
 pub mod openai;
+pub mod oauth;
 
 // Re-export main types
 pub use provider::{AIProvider, ProviderType, ProviderConfig, ProviderError, ProviderResult};
@@ -16,6 +17,11 @@ pub use models::{AIModel, ModelCapabilities, MODEL_REGISTRY};
 pub use credentials::{CredentialManager, CredentialSource};
 pub use anthropic::AnthropicProvider;
 pub use openai::OpenAIProvider;
+pub use oauth::{
+    AuthMethodInfo, AuthType, OAuthFlowResult, OAuthMethod, OAuthState, OAuthToken,
+    AnthropicOAuthConfig, start_callback_server, get_callback_url, CallbackError, CallbackResult,
+    ClaudeCodeOAuthConfig, ClaudeCodeOAuthFlow, ClaudeAiOAuth, ClaudeCodeCredentials,
+};
 
 use solo_protocol::{AgentMessage, AgentToolCall, BackendEvent};
 use std::sync::Arc;

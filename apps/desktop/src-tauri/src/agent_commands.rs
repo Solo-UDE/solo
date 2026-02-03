@@ -4,11 +4,17 @@
 
 use solo_agent::{
     models::{get_all_models, get_models_for_provider},
-    AgentManager, CredentialManager, ProviderType,
+    oauth::{
+        AnthropicOAuthConfig, OpenAIOAuthConfig, AuthMethodInfo, OAuthFlowResult, OAuthMethod, OAuthState,
+        start_callback_server,
+    },
+    AgentManager, CredentialManager, CredentialSource, ProviderType,
 };
 use solo_protocol::AgentMessage;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, State};
+use tokio::sync::RwLock;
 use tracing::{debug, error, info};
 
 /// Application state for agent operations
@@ -17,6 +23,8 @@ pub struct AgentState {
     pub manager: Arc<AgentManager>,
     /// Credential manager
     pub credentials: Arc<CredentialManager>,
+    /// Pending OAuth flows (state -> OAuthState)
+    pub oauth_pending: RwLock<HashMap<String, OAuthState>>,
 }
 
 impl AgentState {
@@ -26,6 +34,7 @@ impl AgentState {
         Self {
             manager,
             credentials,
+            oauth_pending: RwLock::new(HashMap::new()),
         }
     }
 }
@@ -322,4 +331,278 @@ pub async fn agent_clear_history(
     // For now, we'll return an error since the current API doesn't support this well
     // TODO: Add a method to AgentManager to clear a session's history
     Err("Clear history not yet implemented".to_string())
+}
+
+// =============================================================================
+// OAuth Commands
+// =============================================================================
+
+/// Start an OAuth flow for a provider
+#[tauri::command]
+pub async fn start_oauth_flow(
+    provider: String,
+    method: OAuthMethod,
+    state: State<'_, AgentState>,
+) -> Result<OAuthFlowResult, String> {
+    info!(provider = %provider, method = ?method, "Starting OAuth flow");
+
+    let provider_type = ProviderType::from_str(&provider)
+        .ok_or_else(|| format!("Unknown provider: {}", provider))?;
+
+    // Build authorization URL based on provider
+    let (result, oauth_state) = match provider_type {
+        ProviderType::Anthropic => AnthropicOAuthConfig::build_auth_url()
+            .map_err(|e| e.to_string())?,
+        ProviderType::OpenAI => OpenAIOAuthConfig::build_auth_url()
+            .map_err(|e| e.to_string())?,
+    };
+
+    // Store the pending OAuth state
+    state.oauth_pending
+        .write()
+        .await
+        .insert(result.state.clone(), oauth_state);
+
+    // If browser method, open the URL in the default browser
+    if method == OAuthMethod::Browser {
+        if let Err(e) = webbrowser::open(&result.auth_url) {
+            error!(error = %e, "Failed to open browser for OAuth");
+            // Don't fail - user can still copy the URL
+        }
+    }
+
+    Ok(result)
+}
+
+/// Complete an OAuth flow with the authorization code
+#[tauri::command]
+pub async fn complete_oauth_flow(
+    code: String,
+    oauth_state: String,
+    state: State<'_, AgentState>,
+) -> Result<(), String> {
+    info!("Completing OAuth flow");
+
+    // Get and remove the pending OAuth state
+    let pending = state.oauth_pending
+        .write()
+        .await
+        .remove(&oauth_state)
+        .ok_or_else(|| "Invalid or expired OAuth state".to_string())?;
+
+    // Check if state has expired
+    if pending.is_expired() {
+        return Err("OAuth state has expired. Please try again.".to_string());
+    }
+
+    let provider_type = ProviderType::from_str(&pending.provider)
+        .ok_or_else(|| format!("Unknown provider: {}", pending.provider))?;
+
+    // Exchange code for token based on provider
+    match provider_type {
+        ProviderType::Anthropic => {
+            let token = AnthropicOAuthConfig::exchange_code(&code, &pending.code_verifier)
+                .await
+                .map_err(|e| e.to_string())?;
+            // Store the token
+            state.credentials
+                .set_oauth_token(provider_type, token)
+                .await
+                .map_err(|e| e.to_string())?;
+        }
+        ProviderType::OpenAI => {
+            let token = OpenAIOAuthConfig::exchange_code(&code, &pending.code_verifier)
+                .await
+                .map_err(|e| e.to_string())?;
+            // Store the OpenAI-specific token (includes account_id)
+            state.credentials
+                .set_openai_oauth_token(token)
+                .await
+                .map_err(|e| e.to_string())?;
+        }
+    };
+
+    // Initialize the provider with the new credentials
+    state.manager
+        .initialize_provider(provider_type)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    info!(provider = %pending.provider, "OAuth flow completed successfully");
+
+    Ok(())
+}
+
+/// Wait for OAuth callback from browser (used with Browser method)
+#[tauri::command]
+pub async fn wait_for_oauth_callback(
+    _state: State<'_, AgentState>,
+) -> Result<(String, String), String> {
+    info!("Waiting for OAuth callback");
+
+    let result = start_callback_server(None)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok((result.code, result.state))
+}
+
+/// Get authentication method info for a provider
+#[tauri::command]
+pub async fn get_auth_method(
+    provider: String,
+    state: State<'_, AgentState>,
+) -> Result<AuthMethodInfo, String> {
+    debug!(provider = %provider, "Getting auth method");
+
+    let provider_type = ProviderType::from_str(&provider)
+        .ok_or_else(|| format!("Unknown provider: {}", provider))?;
+
+    state.credentials
+        .get_auth_method_info(provider_type)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Disconnect OAuth for a provider
+#[tauri::command]
+pub async fn disconnect_oauth(
+    provider: String,
+    state: State<'_, AgentState>,
+) -> Result<(), String> {
+    info!(provider = %provider, "Disconnecting OAuth");
+
+    let provider_type = ProviderType::from_str(&provider)
+        .ok_or_else(|| format!("Unknown provider: {}", provider))?;
+
+    state.credentials
+        .disconnect_oauth(provider_type)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+// =============================================================================
+// Claude Code CLI Commands
+// =============================================================================
+
+/// Check if Claude Code CLI is installed
+#[tauri::command]
+pub async fn check_claude_cli_installed() -> Result<bool, String> {
+    debug!("Checking if Claude Code CLI is installed");
+
+    let output = std::process::Command::new("which")
+        .arg("claude")
+        .output();
+
+    match output {
+        Ok(output) => {
+            let is_installed = output.status.success();
+            debug!(installed = is_installed, "Claude CLI check complete");
+            Ok(is_installed)
+        }
+        Err(e) => {
+            error!(error = %e, "Failed to check for Claude CLI");
+            Ok(false)
+        }
+    }
+}
+
+/// Install Claude Code CLI via npm
+#[tauri::command]
+pub async fn install_claude_cli() -> Result<(), String> {
+    info!("Installing Claude Code CLI via npm");
+
+    // First check if npm is available
+    let npm_check = std::process::Command::new("which")
+        .arg("npm")
+        .output();
+
+    match npm_check {
+        Ok(output) if !output.status.success() => {
+            return Err("npm is not installed. Please install Node.js from https://nodejs.org".to_string());
+        }
+        Err(e) => {
+            return Err(format!("Failed to check for npm: {}. Please install Node.js from https://nodejs.org", e));
+        }
+        _ => {}
+    }
+
+    // Install Claude Code CLI globally
+    let output = std::process::Command::new("npm")
+        .args(["install", "-g", "@anthropic-ai/claude-code"])
+        .output()
+        .map_err(|e| format!("Failed to run npm install: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("npm install failed: {}", stderr));
+    }
+
+    info!("Claude Code CLI installed successfully");
+    Ok(())
+}
+
+/// Open Terminal and run `claude` to trigger the native login flow
+#[tauri::command]
+pub async fn start_claude_login() -> Result<(), String> {
+    info!("Opening Terminal to run Claude Code CLI");
+
+    // Use osascript to open Terminal and run claude
+    // This opens a new Terminal window and runs the claude command
+    let output = std::process::Command::new("osascript")
+        .args([
+            "-e",
+            r#"tell application "Terminal"
+                activate
+                do script "claude"
+            end tell"#,
+        ])
+        .output()
+        .map_err(|e| format!("Failed to open Terminal: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to open Terminal: {}", stderr));
+    }
+
+    info!("Terminal opened with claude command");
+    Ok(())
+}
+
+/// Check if Claude Code auth is complete (token exists in keychain)
+#[tauri::command]
+pub async fn check_claude_auth_status(
+    state: State<'_, AgentState>,
+) -> Result<bool, String> {
+    info!("Checking Claude Code auth status");
+
+    // Clear cache first to get fresh credentials
+    state.credentials.clear_cache().await;
+
+    // Check if we have any credentials for Anthropic
+    let has_creds = state.credentials
+        .has_credentials(ProviderType::Anthropic)
+        .await;
+
+    info!(has_credentials = has_creds, "Credential check result");
+
+    if has_creds {
+        // Try to initialize the provider to verify credentials work
+        if let Err(e) = state.manager.initialize_provider(ProviderType::Anthropic).await {
+            info!(error = %e, "Failed to initialize provider with credentials");
+            return Ok(false);
+        }
+
+        // Check the credential source
+        if let Ok(Some(source)) = state.credentials
+            .get_credential_source(ProviderType::Anthropic)
+            .await
+        {
+            info!(source = %source, "Credential source");
+            // Accept any valid credential source (ClaudeOAuth, Keychain, or Environment)
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
 }

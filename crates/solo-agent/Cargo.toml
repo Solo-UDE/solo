@@ -43,3 +43,14 @@ lazy_static = "1.5"
 
 # TypeScript bindings
 ts-rs = { version = "10.1", features = ["serde-compat"] }
+
+# OAuth support
+hyper = { version = "1.5", features = ["server", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+http-body-util = "0.1"
+bytes = "1.9"
+sha2 = "0.10"
+base64 = "0.22"
+getrandom = "0.2"
+url = "2.5"
+urlencoding = "2.1"
