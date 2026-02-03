@@ -117,7 +117,7 @@ function ProviderCard({
 
   return (
     <div
-      className={`p-4 rounded-xl border bg-card/50 space-y-4 transition-all duration-200 ${
+      className={`p-4 rounded-none border bg-card/50 space-y-4 transition-all duration-200 ${
         isActive
           ? 'border-primary/50 ring-2 ring-primary/20'
           : 'border-border hover:border-border/80'
@@ -158,7 +158,7 @@ function ProviderCard({
             type="button"
             onClick={onOAuthLogin}
             disabled={isOAuthPending}
-            className={`w-full h-10 px-4 ${providerConfig.buttonColor} text-white rounded-lg text-sm font-medium active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed`}
+            className={`w-full h-10 px-4 ${providerConfig.buttonColor} text-white rounded-none text-sm font-medium active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed`}
           >
             {isOAuthPending ? (
               <>
@@ -187,7 +187,7 @@ function ProviderCard({
 
       {/* OAuth connected notice */}
       {isConnectedViaOAuth && (
-        <div className="p-3 bg-muted/40 rounded-lg text-xs text-muted-foreground">
+        <div className="p-3 bg-muted/40 rounded-none text-xs text-muted-foreground">
           <p className="mb-2">
             {isClaudeCodeAuth
               ? 'Using credentials from Claude Code.'
@@ -243,7 +243,7 @@ function ProviderCard({
             type="button"
             onClick={onApiKeySave}
             disabled={!apiKeyInput.trim() || isSaving}
-            className="px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="px-3 py-1.5 bg-primary text-primary-foreground rounded-none text-sm font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {isSaving ? 'Saving...' : 'Save'}
           </button>

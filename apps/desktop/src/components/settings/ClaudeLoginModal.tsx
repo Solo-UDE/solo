@@ -1,9 +1,15 @@
 /**
  * ClaudeLoginModal - Simple modal to authenticate via Claude Code CLI
+ * Uses Radix UI Dialog for consistent modal behavior
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { X, CheckCircle, Loader2, AlertCircle, Terminal, RefreshCw } from 'lucide-react';
+import { CheckCircle, Loader2, AlertCircle, Terminal, RefreshCw } from 'lucide-react';
+import {
+	Dialog,
+	DialogContent,
+	DialogTitle,
+} from '../ui/dialog';
 import {
 	startClaudeLogin,
 	checkClaudeAuthStatus,
@@ -87,41 +93,16 @@ export function ClaudeLoginModal({ isOpen, onClose, onSuccess }: ClaudeLoginModa
 		}
 	}, [onSuccess, onClose]);
 
-	const handleKeyDown = useCallback(
-		(e: React.KeyboardEvent) => {
-			if (e.key === 'Escape') {
-				e.preventDefault();
-				onClose();
-			}
-		},
-		[onClose]
-	);
-
-	if (!isOpen) return null;
-
 	return (
-		<div
-			className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50"
-			onClick={onClose}
-			onKeyDown={handleKeyDown}
-		>
-			<div
-				className="bg-card border border-border rounded-xl shadow-xl w-[420px] overflow-hidden"
-				onClick={(e) => e.stopPropagation()}
+		<Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+			<DialogContent
+				showCloseButton={true}
+				className="sm:max-w-[420px] w-[420px] p-0 overflow-hidden"
 			>
 				{/* Header */}
-				<div className="flex items-center justify-between px-5 py-4 border-b border-border">
-					<div className="flex items-center gap-2.5">
-						<Terminal className="w-4 h-4 text-muted-foreground" />
-						<h2 className="text-sm font-medium text-foreground">Sign in with Claude</h2>
-					</div>
-					<button
-						type="button"
-						onClick={onClose}
-						className="p-1.5 rounded-lg hover:bg-muted/60 transition-colors"
-					>
-						<X className="w-4 h-4 text-muted-foreground" />
-					</button>
+				<div className="flex items-center gap-2.5 px-5 py-4 border-b border-border">
+					<Terminal className="w-4 h-4 text-muted-foreground" />
+					<DialogTitle className="text-sm font-medium text-foreground">Sign in with Claude</DialogTitle>
 				</div>
 
 				{/* Body */}
@@ -144,7 +125,7 @@ export function ClaudeLoginModal({ isOpen, onClose, onSuccess }: ClaudeLoginModa
 							<button
 								type="button"
 								onClick={handleOpenTerminal}
-								className="w-full h-10 px-4 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:brightness-110 active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2"
+								className="w-full h-10 px-4 bg-primary text-primary-foreground rounded-none text-sm font-medium hover:brightness-110 active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2"
 							>
 								<Terminal className="w-4 h-4" />
 								Open Terminal
@@ -154,7 +135,7 @@ export function ClaudeLoginModal({ isOpen, onClose, onSuccess }: ClaudeLoginModa
 
 					{step === 'waiting' && (
 						<>
-							<div className="p-4 bg-muted/40 rounded-lg space-y-2">
+							<div className="p-4 bg-muted/40 rounded-none space-y-2">
 								<p className="text-sm text-foreground font-medium">Complete login in Terminal</p>
 								<ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside">
 									<li>A Terminal window opened with Claude</li>
@@ -164,7 +145,7 @@ export function ClaudeLoginModal({ isOpen, onClose, onSuccess }: ClaudeLoginModa
 							</div>
 
 							{error && (
-								<div className="flex items-start gap-2 p-3 bg-destructive/10 rounded-lg">
+								<div className="flex items-start gap-2 p-3 bg-destructive/10 rounded-none">
 									<AlertCircle className="w-4 h-4 text-destructive mt-0.5 shrink-0" />
 									<p className="text-xs text-destructive">{error}</p>
 								</div>
@@ -174,7 +155,7 @@ export function ClaudeLoginModal({ isOpen, onClose, onSuccess }: ClaudeLoginModa
 								<button
 									type="button"
 									onClick={handleOpenTerminal}
-									className="flex-1 h-10 px-4 bg-muted hover:bg-muted/80 text-foreground rounded-lg text-sm font-medium active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2"
+									className="flex-1 h-10 px-4 bg-muted hover:bg-muted/80 text-foreground rounded-none text-sm font-medium active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2"
 								>
 									<Terminal className="w-4 h-4" />
 									Reopen Terminal
@@ -182,7 +163,7 @@ export function ClaudeLoginModal({ isOpen, onClose, onSuccess }: ClaudeLoginModa
 								<button
 									type="button"
 									onClick={handleVerify}
-									className="flex-1 h-10 px-4 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:brightness-110 active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2"
+									className="flex-1 h-10 px-4 bg-primary text-primary-foreground rounded-none text-sm font-medium hover:brightness-110 active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2"
 								>
 									<CheckCircle className="w-4 h-4" />
 									Verify
@@ -203,7 +184,7 @@ export function ClaudeLoginModal({ isOpen, onClose, onSuccess }: ClaudeLoginModa
 
 					{step === 'error' && (
 						<>
-							<div className="flex items-start gap-2 p-4 bg-destructive/10 rounded-lg">
+							<div className="flex items-start gap-2 p-4 bg-destructive/10 rounded-none">
 								<AlertCircle className="w-4 h-4 text-destructive mt-0.5 shrink-0" />
 								<div>
 									<p className="text-sm text-destructive font-medium">Something went wrong</p>
@@ -213,7 +194,7 @@ export function ClaudeLoginModal({ isOpen, onClose, onSuccess }: ClaudeLoginModa
 							<button
 								type="button"
 								onClick={checkAuth}
-								className="w-full h-10 px-4 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:brightness-110 active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2"
+								className="w-full h-10 px-4 bg-primary text-primary-foreground rounded-none text-sm font-medium hover:brightness-110 active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2"
 							>
 								<RefreshCw className="w-4 h-4" />
 								Try Again
@@ -221,7 +202,7 @@ export function ClaudeLoginModal({ isOpen, onClose, onSuccess }: ClaudeLoginModa
 						</>
 					)}
 				</div>
-			</div>
-		</div>
+			</DialogContent>
+		</Dialog>
 	);
 }
