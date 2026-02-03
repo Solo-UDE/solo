@@ -7,6 +7,7 @@ import { convertToMessageGroups } from './messageAdapter';
 import { useAgentSession } from '../../hooks/useAgentSession';
 import { useAgentStream } from '../../hooks/useAgentStream';
 import { useProviderStore } from '../../stores/provider-store';
+import { useAgentStore } from '../../stores/agentStore';
 
 import type { FC } from 'react';
 import type { MessageMode } from '../../stores/agentStore';
@@ -118,6 +119,15 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 		[sendMessage]
 	);
 
+	// Handle tool approval/rejection
+	const resolveToolApproval = useAgentStore((state) => state.resolveToolApproval);
+	const handleToolApproval = useCallback(
+		(toolCallId: string, approved: boolean) => {
+			resolveToolApproval(toolCallId, approved);
+		},
+		[resolveToolApproval]
+	);
+
 	// Handle new session
 	const handleNewSession = useCallback(() => {
 		createSession(selectedModel || undefined);
@@ -191,6 +201,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 			<MessageFeed
 				messageGroups={messageGroups}
 				autoScroll={true}
+				onToolApproval={handleToolApproval}
 				className="flex-1"
 			/>
 

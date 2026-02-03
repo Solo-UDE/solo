@@ -24,13 +24,17 @@ export function AuthGuard({ children }: AuthGuardProps) {
   const isAuthenticated = useIsAuthenticated();
   const isInitializing = useIsAuthInitializing();
 
-  // Initialize auth on mount
+  // Initialize auth on mount (skip in dev mode)
   useEffect(() => {
-    initialize();
+    if (!import.meta.env.DEV) {
+      initialize();
+    }
   }, [initialize]);
 
-  // Listen for auth callback deep links
+  // Listen for auth callback deep links (skip in dev mode)
   useEffect(() => {
+    if (import.meta.env.DEV) return;
+
     let unlisten: (() => void) | undefined;
 
     const setupListener = async () => {
@@ -45,6 +49,11 @@ export function AuthGuard({ children }: AuthGuardProps) {
       unlisten?.();
     };
   }, [handleAuthCallback]);
+
+  // In dev mode, bypass auth so we can test without deep link OAuth
+  if (import.meta.env.DEV) {
+    return <>{children}</>;
+  }
 
   // Show loading spinner during initialization
   if (isInitializing) {

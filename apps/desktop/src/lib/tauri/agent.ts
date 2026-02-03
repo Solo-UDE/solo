@@ -5,7 +5,7 @@
  */
 
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import type { BackendEvent, AgentToolCall, AgentMessage } from '../../bindings';
+import type { BackendEvent, AgentToolCall, AgentMessage, ToolCallWithStatus } from '../../bindings';
 
 // =============================================================================
 // Event Types
@@ -15,6 +15,7 @@ export interface AgentEventHandlers {
 	onChunk?: (conversationId: string, content: string) => void;
 	onToolStart?: (conversationId: string, toolCall: AgentToolCall) => void;
 	onToolEnd?: (conversationId: string, toolCallId: string, result: string) => void;
+	onToolApprovalNeeded?: (conversationId: string, toolCall: ToolCallWithStatus) => void;
 	onComplete?: (conversationId: string, message: AgentMessage) => void;
 	onError?: (conversationId: string, error: string) => void;
 }
@@ -78,6 +79,14 @@ export async function listenToAgentEvents(
 				);
 				break;
 
+			case 'agent:tool_approval_needed':
+				console.log('[Agent TOOL_APPROVAL_NEEDED]', payload.payload.tool_call);
+				handlers.onToolApprovalNeeded?.(
+					payload.payload.conversation_id,
+					payload.payload.tool_call
+				);
+				break;
+
 			case 'agent:complete':
 				console.log('[Agent COMPLETE]', payload.payload.message);
 				handlers.onComplete?.(
@@ -120,6 +129,9 @@ export async function listenToSessionEvents(
 		},
 		onToolEnd: (id, toolCallId, result) => {
 			if (id === sessionId) handlers.onToolEnd?.(id, toolCallId, result);
+		},
+		onToolApprovalNeeded: (id, toolCall) => {
+			if (id === sessionId) handlers.onToolApprovalNeeded?.(id, toolCall);
 		},
 		onComplete: (id, message) => {
 			if (id === sessionId) handlers.onComplete?.(id, message);

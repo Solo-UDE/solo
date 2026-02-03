@@ -6,7 +6,7 @@ use solo_agent::{
     models::{get_all_models, get_models_for_provider},
     AgentManager, CredentialManager, ProviderType,
 };
-use solo_protocol::AgentMessage;
+use solo_protocol::{AgentMessage, AgentToolCall, ToolCallWithStatus, ToolResult};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, State};
 use tracing::{debug, error, info};
@@ -333,4 +333,95 @@ pub async fn agent_clear_history(
     // For now, we'll return an error since the current API doesn't support this well
     // TODO: Add a method to AgentManager to clear a session's history
     Err("Clear history not yet implemented".to_string())
+}
+
+// =============================================================================
+// Tool Commands
+// =============================================================================
+
+/// Tool definition response for frontend
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ToolDefinitionResponse {
+    pub name: String,
+    pub description: String,
+    pub parameters: serde_json::Value,
+    pub needs_approval: bool,
+}
+
+/// Get all available tools
+#[tauri::command]
+pub async fn get_tools(
+    state: State<'_, AgentState>,
+) -> Result<Vec<ToolDefinitionResponse>, String> {
+    debug!("Getting all tools");
+
+    let tools = state.manager.get_tool_definitions().await;
+
+    Ok(tools
+        .into_iter()
+        .map(|t| ToolDefinitionResponse {
+            name: t.name,
+            description: t.description,
+            parameters: t.input_schema,
+            needs_approval: t.needs_approval,
+        })
+        .collect())
+}
+
+/// Execute a tool call
+#[tauri::command]
+pub async fn execute_tool(
+    tool_name: String,
+    args: serde_json::Value,
+    state: State<'_, AgentState>,
+) -> Result<ToolResult, String> {
+    info!(tool_name = %tool_name, "Executing tool");
+
+    let tool_call = AgentToolCall {
+        id: uuid::Uuid::new_v4().to_string(),
+        name: tool_name,
+        arguments: serde_json::to_string(&args).unwrap_or_default(),
+    };
+
+    let result = state.manager.execute_tool(&tool_call).await;
+    Ok(result)
+}
+
+/// Approve a pending tool call
+#[tauri::command]
+pub async fn approve_tool_call(
+    tool_call_id: String,
+    state: State<'_, AgentState>,
+) -> Result<ToolCallWithStatus, String> {
+    info!(tool_call_id = %tool_call_id, "Approving tool call");
+
+    state.manager
+        .approve_tool_call(&tool_call_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Reject a pending tool call
+#[tauri::command]
+pub async fn reject_tool_call(
+    tool_call_id: String,
+    state: State<'_, AgentState>,
+) -> Result<ToolCallWithStatus, String> {
+    info!(tool_call_id = %tool_call_id, "Rejecting tool call");
+
+    state.manager
+        .reject_tool_call(&tool_call_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Check if a tool requires approval
+#[tauri::command]
+pub async fn tool_requires_approval(
+    tool_name: String,
+    state: State<'_, AgentState>,
+) -> Result<bool, String> {
+    debug!(tool_name = %tool_name, "Checking if tool requires approval");
+
+    Ok(state.manager.tool_requires_approval(&tool_name).await)
 }

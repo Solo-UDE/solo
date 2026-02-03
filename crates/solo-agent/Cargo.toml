@@ -43,3 +43,14 @@ lazy_static = "1.5"
 
 # TypeScript bindings
 ts-rs = { version = "10.1", features = ["serde-compat"] }
+
+# OpenTelemetry (optional)
+opentelemetry = { version = "0.28", optional = true }
+opentelemetry_sdk = { version = "0.28", features = ["rt-tokio"], optional = true }
+opentelemetry-stdout = { version = "0.28", optional = true }
+tracing-opentelemetry = { version = "0.28", optional = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = true }
+
+[features]
+default = []
+telemetry = ["opentelemetry", "opentelemetry_sdk", "opentelemetry-stdout", "tracing-opentelemetry", "tracing-subscriber"]

@@ -14,6 +14,7 @@
     "clean": "rm -rf node_modules/.vite dist"
   },
   "dependencies": {
+    "@ai-sdk/react": "3.0.59",
     "@icons-pack/react-simple-icons": "13.8.0",
     "@lexical/react": "^0.39.0",
     "@monaco-editor/react": "^4.6.0",
@@ -25,10 +26,11 @@
     "@solo/ui": "workspace:*",
     "@tanstack/react-virtual": "3.13.18",
     "@tauri-apps/api": "^2.2.0",
-    "@tauri-apps/plugin-deep-link": "^2.0.0",
     "@tauri-apps/plugin-clipboard-manager": "2.3.2",
+    "@tauri-apps/plugin-deep-link": "^2.0.0",
     "@tauri-apps/plugin-dialog": "2.6.0",
     "@tauri-apps/plugin-shell": "^2.2.0",
+    "ai": "6.0.57",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "framer-motion": "^12.23.26",
