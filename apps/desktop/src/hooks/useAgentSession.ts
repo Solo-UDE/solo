@@ -2,14 +2,22 @@
  * Hook for managing agent sessions
  *
  * Provides session lifecycle management and message sending.
+ * Accepts an explicit sessionId for tab-scoped usage.
  */
 
-import { useCallback, useEffect, useRef } from 'react';
-import { useAgentStore, useActiveSession, useActiveSessionId, useActiveSessionMessages } from '../stores/agentStore';
-import type { MessageMode } from '../stores/agentStore';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+	useAgentStore,
+	useSessionMessages,
+	useIsSessionStreaming,
+	useSessionError,
+} from '../stores/agentStore';
+import type { Message, MessageMode, AgentSession } from '../stores/agentStore';
 
 export interface UseAgentSessionOptions {
-	/** Auto-create a session if none exists */
+	/** Explicit session ID to use (from tab data) */
+	sessionId: string | null;
+	/** Auto-create a session if sessionId is null */
 	autoCreate?: boolean;
 	/** Default model for new sessions */
 	defaultModel?: string;
@@ -17,11 +25,11 @@ export interface UseAgentSessionOptions {
 
 export interface UseAgentSessionReturn {
 	/** Current session */
-	session: ReturnType<typeof useActiveSession>;
+	session: AgentSession | null;
 	/** Current session ID */
 	sessionId: string | null;
 	/** Messages in the current session */
-	messages: ReturnType<typeof useActiveSessionMessages>;
+	messages: Message[];
 	/** Whether the agent is currently processing */
 	isRunning: boolean;
 	/** Current error message */
@@ -35,38 +43,25 @@ export interface UseAgentSessionReturn {
 }
 
 /**
- * Hook for managing agent sessions
- *
- * @example
- * ```tsx
- * function ChatPanel() {
- *   const { session, messages, sendMessage, isRunning } = useAgentSession({
- *     autoCreate: true,
- *   });
- *
- *   const handleSubmit = (content: string) => {
- *     sendMessage(content, 'planning');
- *   };
- *
- *   return (
- *     <div>
- *       {messages.map(msg => <Message key={msg.id} {...msg} />)}
- *       <Input onSubmit={handleSubmit} disabled={isRunning} />
- *     </div>
- *   );
- * }
- * ```
+ * Hook for managing agent sessions, scoped to a specific session ID.
  */
 export function useAgentSession(
-	options: UseAgentSessionOptions = {}
+	options: UseAgentSessionOptions
 ): UseAgentSessionReturn {
-	const { autoCreate = false, defaultModel } = options;
+	const { sessionId: propSessionId, autoCreate = false, defaultModel } = options;
 
-	const session = useActiveSession();
-	const sessionId = useActiveSessionId();
-	const messages = useActiveSessionMessages();
-	const isRunning = useAgentStore((state) => state.isAgentRunning);
-	const error = useAgentStore((state) => state.error);
+	// Local session ID for auto-created sessions
+	const [localSessionId, setLocalSessionId] = useState<string | null>(null);
+	const effectiveSessionId = propSessionId ?? localSessionId;
+
+	// Session data from store
+	const sessions = useAgentStore((state) => state.sessions);
+	const session = effectiveSessionId ? sessions.get(effectiveSessionId) ?? null : null;
+
+	// Per-session messages and streaming state
+	const messages = useSessionMessages(effectiveSessionId);
+	const isRunning = useIsSessionStreaming(effectiveSessionId);
+	const error = useSessionError(effectiveSessionId);
 
 	const storeCreateSession = useAgentStore((state) => state.createSession);
 	const storeSendMessage = useAgentStore((state) => state.sendMessage);
@@ -75,13 +70,17 @@ export function useAgentSession(
 	// Track if we've attempted auto-creation
 	const autoCreated = useRef(false);
 
-	// Auto-create session if requested
+	// Auto-create session if requested and no session ID provided
 	useEffect(() => {
-		if (autoCreate && !sessionId && !autoCreated.current) {
+		if (autoCreate && !propSessionId && !localSessionId && !autoCreated.current) {
 			autoCreated.current = true;
-			storeCreateSession(defaultModel).catch(console.error);
+			storeCreateSession(defaultModel)
+				.then((newId) => {
+					setLocalSessionId(newId);
+				})
+				.catch(console.error);
 		}
-	}, [autoCreate, sessionId, defaultModel, storeCreateSession]);
+	}, [autoCreate, propSessionId, localSessionId, defaultModel, storeCreateSession]);
 
 	const createSession = useCallback(
 		async (model?: string) => {
@@ -92,19 +91,21 @@ export function useAgentSession(
 
 	const sendMessage = useCallback(
 		async (content: string, mode: MessageMode = 'planning') => {
-			if (!content.trim()) return;
-			await storeSendMessage(content, mode);
+			if (!content.trim() || !effectiveSessionId) return;
+			await storeSendMessage(effectiveSessionId, content, mode);
 		},
-		[storeSendMessage]
+		[storeSendMessage, effectiveSessionId]
 	);
 
 	const clearError = useCallback(() => {
-		storeClearError();
-	}, [storeClearError]);
+		if (effectiveSessionId) {
+			storeClearError(effectiveSessionId);
+		}
+	}, [storeClearError, effectiveSessionId]);
 
 	return {
 		session,
-		sessionId,
+		sessionId: effectiveSessionId,
 		messages,
 		isRunning,
 		error,
