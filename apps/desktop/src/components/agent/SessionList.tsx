@@ -1,16 +1,26 @@
 /**
- * SessionList - Compact session list for sidebar
- * Shows all sessions with ability to create new ones and switch between them
+ * SessionList - ChatGPT-style session list for sidebar
+ * Shows all sessions with titles from first message, context menu, search, and sorting
  */
 
-import { useRef } from 'react';
-import { Plus, MessageSquare } from 'lucide-react';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import { Plus, MessageSquare, MoreHorizontal, Pencil, Trash2, Search } from 'lucide-react';
 import { useAgentStore, useSessions, useActiveSessionId } from '@/stores/agentStore';
+import type { Message } from '@/stores/agentStore';
 import { usePanelTabsStore } from '@/stores/panelTabsStore';
 import { BUILTIN_PANEL_TYPES } from '@/lib/panels';
 import { cn } from '@/lib/utils';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { ConfirmDialog } from '@/components/file-explorer/ConfirmDialog';
 
 import type { FC } from 'react';
+import type { AgentSession } from '@/stores/agentStore';
 
 export interface SessionListProps {
   /** Called when a session is selected */
@@ -82,96 +92,18 @@ function useStreamingSessionIds(): Set<string> {
 }
 
 /**
- * Compact session list component for sidebar
- * Displays all sessions and allows creating new ones
+ * Derive a display title for a session.
+ * Priority: custom name > first user message (truncated) > "New Session"
+ * Takes messages as parameter so the caller subscribes to store changes reactively.
  */
-export const SessionList: FC<SessionListProps> = ({
-  onSessionSelect,
-  onNewSession,
-  className = '',
-}) => {
-  const sessions = useSessions();
-  const activeSessionId = useActiveSessionId();
-  const streamingIds = useStreamingSessionIds();
-  const openSessionIds = useOpenSessionIds();
-
-  // Empty state - centered like Explorer
-  if (sessions.length === 0) {
-    return (
-      <div className={cn('flex flex-col items-center justify-center h-full gap-4 p-4', className)}>
-        <MessageSquare className="w-12 h-12 text-muted-foreground/50" />
-        <p className="text-sm text-muted-foreground text-center">
-          Start a new session to chat
-        </p>
-        <button
-          onClick={onNewSession}
-          className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
-        >
-          New Session
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div className={cn('flex flex-col h-full', className)}>
-      {/* New Session Button */}
-      <div className="p-2 border-b border-border/30">
-        <button
-          onClick={onNewSession}
-          className="w-full h-9 px-3 flex items-center gap-2 rounded-lg bg-primary text-primary-foreground hover:brightness-110 active:scale-[0.97] transition-all duration-200"
-        >
-          <Plus className="h-4 w-4" />
-          <span className="text-sm font-medium">New session</span>
-        </button>
-      </div>
-
-      {/* Session List */}
-      <div className="flex-1 overflow-y-auto p-2">
-        <div className="space-y-1">
-          {sessions.map((session) => {
-            const isStreaming = streamingIds.has(session.id);
-            const hasOpenTab = openSessionIds.has(session.id);
-
-            return (
-              <button
-                key={session.id}
-                onClick={() => onSessionSelect(session.id)}
-                className={cn(
-                  'w-full px-3 py-2 flex items-center gap-2 rounded-lg text-left transition-all duration-150',
-                  'hover:bg-muted/60 hover:scale-[1.02] active:scale-[0.97]',
-                  activeSessionId === session.id
-                    ? 'bg-muted text-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
-                )}
-              >
-                {/* Streaming indicator — pulsing dot */}
-                {isStreaming && (
-                  <span className="w-2 h-2 rounded-full bg-primary animate-pulse shrink-0" />
-                )}
-
-                <MessageSquare
-                  className={cn(
-                    'h-4 w-4 shrink-0',
-                    hasOpenTab ? 'text-primary' : ''
-                  )}
-                />
-                <div className="flex-1 min-w-0">
-                  <span className="text-sm truncate block">
-                    {formatSessionDate(session.createdAt)}
-                  </span>
-                  <span className="text-xs text-muted-foreground/60 truncate block">
-                    {session.model.split('-').slice(0, 2).join(' ')}
-                  </span>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-};
+function getSessionTitle(sessionId: string, name: string | undefined, messagesMap: Map<string, Message[]>): string {
+  if (name) return name;
+  const messages = messagesMap.get(sessionId);
+  const firstUserMsg = messages?.find((m) => m.role === 'user');
+  if (!firstUserMsg) return 'New Session';
+  const content = firstUserMsg.content;
+  return content.length <= 40 ? content : content.slice(0, 40) + '...';
+}
 
 /**
  * Format session date for display
@@ -193,3 +125,316 @@ function formatSessionDate(date: Date): string {
     day: 'numeric',
   });
 }
+
+/**
+ * Individual session item with context menu
+ */
+const SessionItem: FC<{
+  session: AgentSession;
+  isActive: boolean;
+  isStreaming: boolean;
+  hasOpenTab: boolean;
+  isRenaming: boolean;
+  renameValue: string;
+  messagesMap: Map<string, Message[]>;
+  onSelect: () => void;
+  onStartRename: () => void;
+  onCommitRename: () => void;
+  onCancelRename: () => void;
+  onRenameChange: (value: string) => void;
+  onRequestDelete: () => void;
+}> = ({
+  session,
+  isActive,
+  isStreaming,
+  hasOpenTab,
+  isRenaming,
+  renameValue,
+  messagesMap,
+  onSelect,
+  onStartRename,
+  onCommitRename,
+  onCancelRename,
+  onRenameChange,
+  onRequestDelete,
+}) => {
+  const renameInputRef = useRef<HTMLInputElement>(null);
+  const title = getSessionTitle(session.id, session.name, messagesMap);
+
+  useEffect(() => {
+    if (isRenaming && renameInputRef.current) {
+      renameInputRef.current.focus();
+      renameInputRef.current.select();
+    }
+  }, [isRenaming]);
+
+  const handleRenameKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        onCommitRename();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        onCancelRename();
+      }
+    },
+    [onCommitRename, onCancelRename]
+  );
+
+  return (
+    <div className="group relative">
+      <button
+        onClick={() => {
+          if (!isRenaming) onSelect();
+        }}
+        className={cn(
+          'w-full px-3 py-2 flex items-center gap-2 rounded-lg text-left transition-all duration-150',
+          'hover:bg-muted/60 hover:scale-[1.02] active:scale-[0.97]',
+          isActive
+            ? 'bg-muted text-foreground'
+            : 'text-muted-foreground hover:text-foreground'
+        )}
+      >
+        {isStreaming && (
+          <span className="w-2 h-2 rounded-full bg-primary animate-pulse shrink-0" />
+        )}
+
+        <MessageSquare
+          className={cn(
+            'h-4 w-4 shrink-0',
+            hasOpenTab ? 'text-primary' : ''
+          )}
+        />
+
+        <div className="flex-1 min-w-0">
+          {isRenaming ? (
+            <input
+              ref={renameInputRef}
+              type="text"
+              value={renameValue}
+              onChange={(e) => onRenameChange(e.target.value)}
+              onKeyDown={handleRenameKeyDown}
+              onBlur={onCommitRename}
+              className="w-full text-sm bg-transparent border-b border-primary outline-none text-foreground placeholder:text-muted-foreground/60"
+              placeholder="Session name..."
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <>
+              <span className="text-sm truncate block">{title}</span>
+              <span className="text-xs text-muted-foreground/60 truncate block">
+                {formatSessionDate(session.createdAt)}
+              </span>
+            </>
+          )}
+        </div>
+      </button>
+
+      {/* Three-dot context menu — visible on hover */}
+      {!isRenaming && (
+        <div className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className="p-1 rounded-sm text-muted-foreground hover:text-foreground transition-colors"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <MoreHorizontal className="h-4 w-4" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent side="right" align="start" className="w-44">
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onStartRename();
+                }}
+                className="flex items-center gap-2 cursor-pointer"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+                <span>Rename</span>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRequestDelete();
+                }}
+                className="flex items-center gap-2 cursor-pointer text-destructive focus:text-destructive"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                <span>Delete</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      )}
+    </div>
+  );
+};
+
+/**
+ * Session list component for sidebar
+ */
+export const SessionList: FC<SessionListProps> = ({
+  onSessionSelect,
+  onNewSession,
+  className = '',
+}) => {
+  const sessions = useSessions();
+  const activeSessionId = useActiveSessionId();
+  const streamingIds = useStreamingSessionIds();
+  const openSessionIds = useOpenSessionIds();
+  const messagesMap = useAgentStore((state) => state.messages);
+
+  const renameSession = useAgentStore((state) => state.renameSession);
+  const deleteSession = useAgentStore((state) => state.deleteSession);
+
+  // Search state
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Rename state
+  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+
+  // Delete confirmation state
+  const [deleteConfirmSessionId, setDeleteConfirmSessionId] = useState<string | null>(null);
+
+  // Filter sessions by search query
+  const filteredSessions = useMemo(() => {
+    if (!searchQuery.trim()) return sessions;
+    const q = searchQuery.toLowerCase();
+    return sessions.filter((session) => {
+      const title = getSessionTitle(session.id, session.name, messagesMap).toLowerCase();
+      return title.includes(q);
+    });
+  }, [sessions, searchQuery, messagesMap]);
+
+  // Rename handlers
+  const handleStartRename = useCallback(
+    (session: AgentSession) => {
+      setRenamingSessionId(session.id);
+      setRenameValue(session.name || getSessionTitle(session.id, undefined, messagesMap));
+    },
+    [messagesMap]
+  );
+
+  const handleCommitRename = useCallback(() => {
+    if (renamingSessionId) {
+      renameSession(renamingSessionId, renameValue);
+      setRenamingSessionId(null);
+      setRenameValue('');
+    }
+  }, [renamingSessionId, renameValue, renameSession]);
+
+  const handleCancelRename = useCallback(() => {
+    setRenamingSessionId(null);
+    setRenameValue('');
+  }, []);
+
+  // Delete handlers
+  const handleRequestDelete = useCallback((sessionId: string) => {
+    setDeleteConfirmSessionId(sessionId);
+  }, []);
+
+  const handleConfirmDelete = useCallback(() => {
+    if (deleteConfirmSessionId) {
+      deleteSession(deleteConfirmSessionId);
+      setDeleteConfirmSessionId(null);
+    }
+  }, [deleteConfirmSessionId, deleteSession]);
+
+  const handleCancelDelete = useCallback(() => {
+    setDeleteConfirmSessionId(null);
+  }, []);
+
+  // Empty state
+  if (sessions.length === 0) {
+    return (
+      <div className={cn('flex flex-col items-center justify-center h-full gap-4 p-4', className)}>
+        <MessageSquare className="w-12 h-12 text-muted-foreground/50" />
+        <p className="text-sm text-muted-foreground text-center">
+          Start a new session to chat
+        </p>
+        <button
+          onClick={onNewSession}
+          className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
+        >
+          New Session
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className={cn('flex flex-col h-full', className)}>
+        {/* New Session Button */}
+        <div className="p-2 border-b border-border/30">
+          <button
+            onClick={onNewSession}
+            className="w-full h-9 px-3 flex items-center gap-2 rounded-lg bg-primary text-primary-foreground hover:brightness-110 active:scale-[0.97] transition-all duration-200"
+          >
+            <Plus className="h-4 w-4" />
+            <span className="text-sm font-medium">New session</span>
+          </button>
+        </div>
+
+        {/* Search Input */}
+        <div className="px-2 py-2">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search sessions..."
+              className="w-full h-8 pl-8 pr-3 text-sm bg-muted/40 border border-border/30 rounded-lg placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-ring transition-colors"
+            />
+          </div>
+        </div>
+
+        {/* Session List */}
+        <div className="flex-1 overflow-y-auto px-2 pb-2">
+          {filteredSessions.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 text-muted-foreground/60">
+              <p className="text-sm">No sessions found</p>
+            </div>
+          ) : (
+            <div className="space-y-1">
+              {filteredSessions.map((session) => (
+                <SessionItem
+                  key={session.id}
+                  session={session}
+                  isActive={activeSessionId === session.id}
+                  isStreaming={streamingIds.has(session.id)}
+                  hasOpenTab={openSessionIds.has(session.id)}
+                  isRenaming={renamingSessionId === session.id}
+                  renameValue={renameValue}
+                  messagesMap={messagesMap}
+                  onSelect={() => onSessionSelect(session.id)}
+                  onStartRename={() => handleStartRename(session)}
+                  onCommitRename={handleCommitRename}
+                  onCancelRename={handleCancelRename}
+                  onRenameChange={setRenameValue}
+                  onRequestDelete={() => handleRequestDelete(session.id)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={deleteConfirmSessionId !== null}
+        title="Delete Session"
+        message="Are you sure you want to delete this session? This action cannot be undone."
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="destructive"
+        onConfirm={handleConfirmDelete}
+        onCancel={handleCancelDelete}
+      />
+    </>
+  );
+};

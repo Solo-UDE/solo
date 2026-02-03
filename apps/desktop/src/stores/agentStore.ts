@@ -51,6 +51,7 @@ export interface AgentSession {
 	id: string;
 	createdAt: Date;
 	model: string;
+	name?: string;
 }
 
 export interface SessionStreamState {
@@ -108,6 +109,7 @@ interface AgentActions {
 	createSession: (model?: string) => Promise<string>;
 	setActiveSession: (sessionId: string) => void;
 	deleteSession: (sessionId: string) => void;
+	renameSession: (sessionId: string, name: string) => void;
 
 	// Message handling
 	sendMessage: (sessionId: string, content: string, mode: MessageMode) => Promise<void>;
@@ -218,6 +220,17 @@ export const useAgentStore = create<AgentStore>()(
 				}
 			});
 			// Persist after deletion
+			get().persistSessions();
+		},
+
+		renameSession: (sessionId: string, name: string) => {
+			set((state) => {
+				const session = state.sessions.get(sessionId);
+				if (session) {
+					const trimmed = name.trim();
+					session.name = trimmed || undefined;
+				}
+			});
 			get().persistSessions();
 		},
 
@@ -511,8 +524,39 @@ export const useAgentError = (): string | null => {
 	});
 };
 
+// Module-level cache for useSessions sorted result (stable reference)
+let _sessionsCache: { key: string; result: AgentSession[] } = { key: '', result: EMPTY_SESSIONS };
+
 export const useSessions = (): AgentSession[] => {
-	const sessions = useAgentStore((state) => state.sessions);
-	if (sessions.size === 0) return EMPTY_SESSIONS;
-	return Array.from(sessions.values());
+	return useAgentStore((state) => {
+		if (state.sessions.size === 0) return EMPTY_SESSIONS;
+
+		// Build a key from session ids + names + last message timestamps to detect changes
+		const entries = Array.from(state.sessions.values());
+		const key = entries.map(s => {
+			const msgs = state.messages.get(s.id);
+			const lastTs = (msgs && msgs.length > 0) ? msgs[msgs.length - 1].timestamp.getTime() : 0;
+			return `${s.id}:${s.name || ''}:${lastTs}`;
+		}).join(',');
+
+		if (key === _sessionsCache.key) {
+			return _sessionsCache.result;
+		}
+
+		// Sort by last activity (most recent first)
+		const sorted = entries.sort((a, b) => {
+			const aMessages = state.messages.get(a.id);
+			const bMessages = state.messages.get(b.id);
+			const aTime = (aMessages && aMessages.length > 0)
+				? aMessages[aMessages.length - 1].timestamp.getTime()
+				: a.createdAt.getTime();
+			const bTime = (bMessages && bMessages.length > 0)
+				? bMessages[bMessages.length - 1].timestamp.getTime()
+				: b.createdAt.getTime();
+			return bTime - aTime;
+		});
+
+		_sessionsCache = { key, result: sorted };
+		return sorted;
+	});
 };
