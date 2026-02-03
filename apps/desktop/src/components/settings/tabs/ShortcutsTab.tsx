@@ -68,7 +68,7 @@ export function ShortcutsTab() {
   const hasCustomizations = Object.keys(customKeybindings).length > 0;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {/* Search and Reset */}
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
@@ -78,14 +78,14 @@ export function ShortcutsTab() {
             placeholder="Search shortcuts..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 bg-background border border-border rounded-md text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+            className="w-full pl-9 pr-3 py-2 bg-background border border-border rounded-none text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
           />
         </div>
         {hasCustomizations && (
           <button
             type="button"
             onClick={resetAllKeybindings}
-            className="flex items-center gap-1.5 px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted rounded-none transition-colors"
           >
             <RotateCcw className="w-4 h-4" />
             Reset All
@@ -94,10 +94,10 @@ export function ShortcutsTab() {
       </div>
 
       {/* Keybinding Categories */}
-      <div className="space-y-6">
+      <div className="space-y-8">
         {filteredCategories.map((category) => (
           <div key={category.id}>
-            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4">
               {category.label}
             </h3>
             <div className="divide-y divide-border">

@@ -1,9 +1,11 @@
 /**
  * NumberInput - Numeric value input with min/max bounds
+ * Updated with sharp corners and improved styling
  */
 
 import { useCallback } from 'react';
 import { Minus, Plus } from 'lucide-react';
+import { cn } from '../../../lib/utils';
 
 interface NumberInputProps {
   value: number;
@@ -50,12 +52,12 @@ export function NumberInput({
         type="button"
         onClick={handleDecrement}
         disabled={disabled || value <= min}
-        className={`
-          p-1.5 rounded-l-md border border-r-0 border-border
-          bg-muted hover:bg-muted/80
-          disabled:cursor-not-allowed disabled:opacity-50
-          transition-colors
-        `}
+        className={cn(
+          "p-2 border border-r-0 border-border rounded-none",
+          "bg-muted hover:bg-muted/80",
+          "disabled:cursor-not-allowed disabled:opacity-50",
+          "transition-colors cursor-pointer"
+        )}
       >
         <Minus className="w-3 h-3" />
       </button>
@@ -67,24 +69,24 @@ export function NumberInput({
         max={max}
         step={step}
         disabled={disabled}
-        className={`
-          w-14 px-2 py-1 text-center text-sm
-          border-y border-border bg-background text-foreground
-          focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-inset
-          disabled:cursor-not-allowed disabled:opacity-50
-          [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none
-        `}
+        className={cn(
+          "w-16 px-3 py-1.5 text-center text-sm",
+          "border-y border-border bg-background text-foreground",
+          "focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-inset",
+          "disabled:cursor-not-allowed disabled:opacity-50",
+          "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+        )}
       />
       <button
         type="button"
         onClick={handleIncrement}
         disabled={disabled || value >= max}
-        className={`
-          p-1.5 rounded-r-md border border-l-0 border-border
-          bg-muted hover:bg-muted/80
-          disabled:cursor-not-allowed disabled:opacity-50
-          transition-colors
-        `}
+        className={cn(
+          "p-2 border border-l-0 border-border rounded-none",
+          "bg-muted hover:bg-muted/80",
+          "disabled:cursor-not-allowed disabled:opacity-50",
+          "transition-colors cursor-pointer"
+        )}
       >
         <Plus className="w-3 h-3" />
       </button>

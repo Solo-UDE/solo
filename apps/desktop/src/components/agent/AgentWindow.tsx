@@ -1,12 +1,14 @@
 import { useEffect, useCallback, useMemo } from 'react';
+import { Plus } from 'lucide-react';
 
-import { AgentWindowHeader } from './AgentWindowHeader';
 import { MessageFeed } from './messages';
 import { ChatInputContainer } from './input';
 import { convertToMessageGroups } from './messageAdapter';
 import { useAgentSession } from '../../hooks/useAgentSession';
 import { useAgentStream } from '../../hooks/useAgentStream';
 import { useProviderStore } from '../../stores/provider-store';
+import { usePanelTabsStore } from '../../stores/panelTabsStore';
+import { BUILTIN_PANEL_TYPES } from '../../lib/panels/builtinPanels';
 
 import type { FC } from 'react';
 import type { MessageMode } from '../../stores/agentStore';
@@ -18,7 +20,6 @@ export interface AgentWindowCallbacks {
 }
 
 export interface AgentWindowUIOptions {
-	showHeader?: boolean;
 	showModelSelector?: boolean;
 	showModeSelector?: boolean;
 	agentName?: string;
@@ -69,20 +70,14 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 	instanceId,
 	initialSessionId: _initialSessionId, // Reserved for future session restoration
 	callbacks,
-	ui = {},
+	ui: _ui = {}, // Reserved for future UI customization
 	className = '',
 }) => {
-	const {
-		showHeader = true,
-		agentName = 'Claude',
-	} = ui;
-
 	// Enable stream listening for this window
 	useAgentStream({ enabled: true });
 
 	// Session management
 	const {
-		session,
 		sessionId,
 		messages,
 		isRunning,
@@ -96,6 +91,9 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 
 	// Provider state for model selection
 	const selectedModel = useProviderStore((state) => state.selectedModel);
+
+	// Panel system for opening new tabs
+	const openPanel = usePanelTabsStore((state) => state.openPanel);
 
 	// Convert messages to message groups for the new MessageFeed
 	const messageGroups = useMemo(
@@ -118,27 +116,30 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 		[sendMessage]
 	);
 
-	// Handle new session
+	// Handle new session - creates session AND opens as new tab
 	const handleNewSession = useCallback(() => {
-		createSession(selectedModel || undefined);
-	}, [createSession, selectedModel]);
+		createSession(selectedModel || undefined).then((newSessionId) => {
+			if (newSessionId) {
+				openPanel(BUILTIN_PANEL_TYPES.AGENT, { sessionId: newSessionId });
+			}
+		});
+	}, [createSession, selectedModel, openPanel]);
 
 	// Empty state for no messages
 	if (messages.length === 0) {
 		return (
 			<div
-				className={`flex flex-col h-full bg-background ${className}`}
+				className={`relative flex flex-col h-full bg-background ${className}`}
 				data-instance-id={instanceId}
 			>
-				{/* Header */}
-				{showHeader && (
-					<AgentWindowHeader
-						sessionId={sessionId}
-						agentName={agentName}
-						model={selectedModel || session?.model}
-						onNewSession={handleNewSession}
-					/>
-				)}
+				{/* Floating new session button */}
+				<button
+					onClick={handleNewSession}
+					className="absolute top-2 right-2 z-10 p-1.5 rounded-none hover:bg-muted/60 transition-colors"
+					title="New session"
+				>
+					<Plus className="w-4 h-4 text-muted-foreground" />
+				</button>
 
 				{/* Empty state */}
 				<div className="flex-1 flex items-center justify-center">
@@ -174,18 +175,17 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 
 	return (
 		<div
-			className={`flex flex-col h-full bg-background ${className}`}
+			className={`relative flex flex-col h-full bg-background ${className}`}
 			data-instance-id={instanceId}
 		>
-			{/* Header */}
-			{showHeader && (
-				<AgentWindowHeader
-					sessionId={sessionId}
-					agentName={agentName}
-					model={selectedModel || session?.model}
-					onNewSession={handleNewSession}
-				/>
-			)}
+			{/* Floating new session button */}
+			<button
+				onClick={handleNewSession}
+				className="absolute top-2 right-2 z-10 p-1.5 rounded-none hover:bg-muted/60 transition-colors"
+				title="New session"
+			>
+				<Plus className="w-4 h-4 text-muted-foreground" />
+			</button>
 
 			{/* Message feed */}
 			<MessageFeed

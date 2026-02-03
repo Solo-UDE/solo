@@ -67,12 +67,6 @@ export function AgentPanel({
       instanceId={instanceId}
       initialSessionId={sessionId}
       className="h-full"
-      ui={{
-        showHeader: true,
-        showModelSelector: true,
-        showModeSelector: true,
-        agentName: 'Claude',
-      }}
     />
   );
 }
