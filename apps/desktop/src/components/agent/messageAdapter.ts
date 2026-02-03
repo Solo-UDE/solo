@@ -46,13 +46,33 @@ function convertToAgentContent(msg: StoreMessage): AgentMessageContent {
 
   // Convert tool calls if present
   if (msg.toolCalls && msg.toolCalls.length > 0) {
-    content.toolCalls = msg.toolCalls.map((tc) => ({
-      id: tc.id,
-      command: tc.name,
-      cwd: '.',
-      exitCode: tc.status === 'completed' ? 0 : tc.status === 'error' ? 1 : undefined,
-      output: tc.result,
-    }));
+    // Separate pending approvals from regular tool calls
+    const regularCalls = msg.toolCalls.filter((tc) => tc.status !== 'pending_approval');
+    const pendingCalls = msg.toolCalls.filter((tc) => tc.status === 'pending_approval');
+
+    if (regularCalls.length > 0) {
+      content.toolCalls = regularCalls.map((tc) => ({
+        id: tc.id,
+        command: tc.name,
+        cwd: '.',
+        exitCode: tc.status === 'completed' ? 0 : tc.status === 'error' ? 1 : undefined,
+        output: tc.result,
+      }));
+    }
+
+    if (pendingCalls.length > 0) {
+      content.pendingApprovals = pendingCalls.map((tc) => ({
+        tool_call: {
+          id: tc.id,
+          name: tc.name,
+          arguments: tc.arguments,
+        },
+        status: 'pending_approval' as const,
+        result: null,
+        error: null,
+        needs_approval: true,
+      }));
+    }
   }
 
   return content;

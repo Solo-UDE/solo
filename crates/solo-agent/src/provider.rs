@@ -162,6 +162,9 @@ pub struct ToolDefinition {
     pub description: String,
     /// Input schema as JSON
     pub input_schema: serde_json::Value,
+    /// Whether this tool requires user approval
+    #[serde(default)]
+    pub needs_approval: bool,
 }
 
 /// Trait for AI providers

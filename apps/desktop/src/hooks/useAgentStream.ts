@@ -15,36 +15,64 @@ let _cleanup: (() => void) | null = null;
  * Initialize the singleton agent stream listener.
  * Safe to call multiple times — only the first call sets up the listener.
  */
-export function initializeAgentStreamListener(): void {
-	if (_initialized) return;
-	_initialized = true;
+export function useAgentStream(options: UseAgentStreamOptions = {}): void {
+	const { enabled = true } = options;
 
-	const handlers: AgentEventHandlers = {
-		onChunk: (conversationId, content) => {
-			useAgentStore.getState().handleAgentChunk(conversationId, content);
-		},
-		onToolStart: (conversationId, toolCall) => {
-			useAgentStore.getState().handleAgentToolStart(conversationId, toolCall);
-		},
-		onToolEnd: (conversationId, toolCallId, result) => {
-			useAgentStore.getState().handleAgentToolEnd(conversationId, toolCallId, result);
-		},
-		onComplete: (conversationId, message) => {
-			useAgentStore.getState().handleAgentComplete(conversationId, message);
-		},
-		onError: (conversationId, error) => {
-			useAgentStore.getState().handleAgentError(conversationId, error);
-		},
-	};
+	// Get store actions (stable references)
+	const handleAgentChunk = useAgentStore((state) => state.handleAgentChunk);
+	const handleAgentToolStart = useAgentStore((state) => state.handleAgentToolStart);
+	const handleAgentToolEnd = useAgentStore((state) => state.handleAgentToolEnd);
+	const handleToolApprovalNeeded = useAgentStore((state) => state.handleToolApprovalNeeded);
+	const handleAgentComplete = useAgentStore((state) => state.handleAgentComplete);
+	const handleAgentError = useAgentStore((state) => state.handleAgentError);
 
-	listenToAgentEvents(handlers)
-		.then((unlisten) => {
-			_cleanup = unlisten;
-		})
-		.catch((error) => {
-			console.error('Failed to initialize agent stream listener:', error);
-			_initialized = false;
-		});
+	// Track cleanup function
+	const cleanupRef = useRef<(() => void) | null>(null);
+
+	useEffect(() => {
+		if (!enabled) {
+			// Cleanup existing listener if disabled
+			if (cleanupRef.current) {
+				cleanupRef.current();
+				cleanupRef.current = null;
+			}
+			return;
+		}
+
+		const handlers: AgentEventHandlers = {
+			onChunk: handleAgentChunk,
+			onToolStart: handleAgentToolStart,
+			onToolEnd: handleAgentToolEnd,
+			onToolApprovalNeeded: handleToolApprovalNeeded,
+			onComplete: handleAgentComplete,
+			onError: handleAgentError,
+		};
+
+		// Start listening
+		listenToAgentEvents(handlers)
+			.then((unlisten) => {
+				cleanupRef.current = unlisten;
+			})
+			.catch((error) => {
+				console.error('Failed to listen to agent events:', error);
+			});
+
+		// Cleanup on unmount
+		return () => {
+			if (cleanupRef.current) {
+				cleanupRef.current();
+				cleanupRef.current = null;
+			}
+		};
+	}, [
+		enabled,
+		handleAgentChunk,
+		handleAgentToolStart,
+		handleAgentToolEnd,
+		handleToolApprovalNeeded,
+		handleAgentComplete,
+		handleAgentError,
+	]);
 }
 
 /**

@@ -22,6 +22,7 @@ solo-protocol = { path = "../../../crates/solo-protocol" }
 solo-fs = { path = "../../../crates/solo-fs" }
 solo-agent = { path = "../../../crates/solo-agent" }
 solo-parse = { path = "../../../crates/solo-parse" }
+solo-embeddings = { path = "../../../crates/solo-embeddings" }
 
 tauri.workspace = true
 uuid = { version = "1.11", features = ["v4"] }

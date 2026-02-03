@@ -24,14 +24,18 @@ export function AuthGuard({ children }: AuthGuardProps) {
   // const isAuthenticated = useIsAuthenticated();
   // const isInitializing = useIsAuthInitializing();
 
-  // // Initialize auth on mount
-  // useEffect(() => {
-  //   initialize();
-  // }, [initialize]);
+  // Initialize auth on mount (skip in dev mode)
+  useEffect(() => {
+    if (!import.meta.env.DEV) {
+      initialize();
+    }
+  }, [initialize]);
 
-  // // Listen for auth callback deep links
-  // useEffect(() => {
-  //   let unlisten: (() => void) | undefined;
+  // Listen for auth callback deep links (skip in dev mode)
+  useEffect(() => {
+    if (import.meta.env.DEV) return;
+
+    let unlisten: (() => void) | undefined;
 
   //   const setupListener = async () => {
   //     unlisten = await onAuthCallback((code) => {
@@ -46,17 +50,22 @@ export function AuthGuard({ children }: AuthGuardProps) {
   //   };
   // }, [handleAuthCallback]);
 
-  // // Show loading spinner during initialization
-  // if (isInitializing) {
-  //   return (
-  //     <div className="h-screen w-screen bg-background flex items-center justify-center">
-  //       <div className="flex flex-col items-center gap-3">
-  //         <Loader2 className="w-8 h-8 animate-spin text-primary" />
-  //         <p className="text-sm text-muted-foreground">Loading...</p>
-  //       </div>
-  //     </div>
-  //   );
-  // }
+  // In dev mode, bypass auth so we can test without deep link OAuth
+  if (import.meta.env.DEV) {
+    return <>{children}</>;
+  }
+
+  // Show loading spinner during initialization
+  if (isInitializing) {
+    return (
+      <div className="h-screen w-screen bg-background flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   // // Show login screen if not authenticated
   // if (!isAuthenticated) {

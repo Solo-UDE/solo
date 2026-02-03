@@ -80,6 +80,71 @@ pub struct AgentToolCall {
     pub arguments: String,
 }
 
+/// Status of a tool call
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "snake_case")]
+pub enum ToolCallStatus {
+    /// Tool call is pending approval
+    PendingApproval,
+    /// Tool call has been approved
+    Approved,
+    /// Tool call has been rejected
+    Rejected,
+    /// Tool is currently executing
+    Running,
+    /// Tool completed successfully
+    Completed,
+    /// Tool execution failed
+    Failed,
+}
+
+/// A tool call with its current status and result
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct ToolCallWithStatus {
+    /// The tool call
+    pub tool_call: AgentToolCall,
+    /// Current status
+    pub status: ToolCallStatus,
+    /// Result (if completed)
+    pub result: Option<String>,
+    /// Error message (if failed)
+    pub error: Option<String>,
+    /// Whether this tool requires approval
+    pub needs_approval: bool,
+}
+
+/// Tool definition for registration
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct ToolDefinitionProto {
+    /// Tool name (unique identifier)
+    pub name: String,
+    /// Human-readable description
+    pub description: String,
+    /// JSON Schema for parameters (as JSON string)
+    pub parameters: String,
+    /// Whether this tool requires user approval
+    pub needs_approval: bool,
+    /// Tool category for grouping
+    pub category: String,
+}
+
+/// Result of a tool execution
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct ToolResult {
+    /// Tool call ID this result is for
+    pub tool_call_id: String,
+    /// Whether execution succeeded
+    pub success: bool,
+    /// Result content (for success)
+    pub content: Option<String>,
+    /// Error message (for failure)
+    pub error: Option<String>,
+}
+
 /// A message in the conversation
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../apps/desktop/src/bindings/")]
@@ -284,6 +349,21 @@ pub enum BackendEvent {
         conversation_id: String,
         tool_call_id: String,
         result: String,
+    },
+
+    /// Agent tool call needs approval
+    #[serde(rename = "agent:tool_approval_needed")]
+    AgentToolApprovalNeeded {
+        conversation_id: String,
+        tool_call: ToolCallWithStatus,
+    },
+
+    /// Agent tool call approval response
+    #[serde(rename = "agent:tool_approval_response")]
+    AgentToolApprovalResponse {
+        conversation_id: String,
+        tool_call_id: String,
+        approved: bool,
     },
 
     /// Agent message completed

@@ -6,8 +6,7 @@ import { ChatInputContainer } from './input';
 import { convertToMessageGroups } from './messageAdapter';
 import { useAgentSession } from '../../hooks/useAgentSession';
 import { useProviderStore } from '../../stores/provider-store';
-import { usePanelTabsStore } from '../../stores/panelTabsStore';
-import { BUILTIN_PANEL_TYPES } from '../../lib/panels/builtinPanels';
+import { useAgentStore } from '../../stores/agentStore';
 
 import type { FC } from 'react';
 import type { MessageMode } from '../../stores/agentStore';
@@ -100,7 +99,16 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 		[sendMessage]
 	);
 
-	// Handle new session - creates session AND opens as new tab
+	// Handle tool approval/rejection
+	const resolveToolApproval = useAgentStore((state) => state.resolveToolApproval);
+	const handleToolApproval = useCallback(
+		(toolCallId: string, approved: boolean) => {
+			resolveToolApproval(toolCallId, approved);
+		},
+		[resolveToolApproval]
+	);
+
+	// Handle new session
 	const handleNewSession = useCallback(() => {
 		createSession(selectedModel || undefined).then((newSessionId) => {
 			if (newSessionId) {
@@ -175,6 +183,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 			<MessageFeed
 				messageGroups={messageGroups}
 				autoScroll={true}
+				onToolApproval={handleToolApproval}
 				className="flex-1"
 			/>
 
