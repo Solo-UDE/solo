@@ -37,9 +37,17 @@ function getSessionTitle(sessionId: string | undefined): string {
 export function AgentPanel({
   instanceId,
   data,
+  isActive,
   onTitleChange,
 }: PanelProps<AgentPanelData>) {
   const sessionId = data?.sessionId;
+
+  // Sync activeSessionId when this tab is focused
+  useEffect(() => {
+    if (isActive && sessionId) {
+      useAgentStore.getState().setActiveSession(sessionId);
+    }
+  }, [isActive, sessionId]);
 
   // Update title based on session content
   useEffect(() => {
