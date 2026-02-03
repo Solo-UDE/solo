@@ -13,10 +13,10 @@ export function FilesTab() {
   const setShowHiddenFiles = useSettingsStore((s) => s.setShowHiddenFiles);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* File Handling Section */}
       <div>
-        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4">
           File Handling
         </h3>
         <div className="divide-y divide-border">

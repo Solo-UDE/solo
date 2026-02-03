@@ -122,10 +122,10 @@ export function AITab() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Provider Section */}
       <div>
-        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4">
           Provider
         </h3>
         <div className="divide-y divide-border">
@@ -141,11 +141,11 @@ export function AITab() {
             />
           </SettingRow>
 
-          <div className="py-3">
+          <div className="py-4">
             <div className="flex items-center justify-between mb-2">
               <div>
                 <div className="text-sm font-medium text-foreground">API Key</div>
-                <div className="text-xs text-muted-foreground mt-0.5">
+                <div className="text-xs text-muted-foreground mt-1">
                   Stored securely in your system keychain
                 </div>
               </div>
@@ -172,7 +172,7 @@ export function AITab() {
                 type="button"
                 onClick={handleApiKeySubmit}
                 disabled={!apiKeyInput.trim() || isSaving}
-                className="px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="px-3 py-2 bg-primary text-primary-foreground rounded-none text-sm font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
               >
                 {isSaving ? 'Saving...' : 'Save'}
               </button>
@@ -197,7 +197,7 @@ export function AITab() {
 
       {/* Behavior Section */}
       <div>
-        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4">
           Behavior
         </h3>
         <div className="divide-y divide-border">
@@ -232,13 +232,13 @@ export function AITab() {
 
       {/* Advanced Section */}
       <div>
-        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4">
           Advanced
         </h3>
         <div className="divide-y divide-border">
-          <div className="py-3">
+          <div className="py-4">
             <div className="text-sm font-medium text-foreground mb-1">Custom API URL</div>
-            <div className="text-xs text-muted-foreground mb-2">
+            <div className="text-xs text-muted-foreground mb-3">
               Override the default API endpoint (leave empty for default)
             </div>
             <input
@@ -246,7 +246,7 @@ export function AITab() {
               value={customApiUrl}
               onChange={(e) => setCustomApiUrl(e.target.value)}
               placeholder="https://api.example.com/v1"
-              className="w-full px-3 py-1.5 bg-background border border-border rounded-md text-sm text-foreground font-mono placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+              className="w-full px-3 py-2 bg-background border border-border rounded-none text-sm text-foreground font-mono placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
             />
           </div>
         </div>

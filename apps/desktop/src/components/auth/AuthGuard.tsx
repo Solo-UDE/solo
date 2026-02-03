@@ -18,50 +18,50 @@ interface AuthGuardProps {
 }
 
 export function AuthGuard({ children }: AuthGuardProps) {
-  const initialize = useAuthStore((state) => state.initialize);
-  const handleAuthCallback = useAuthStore((state) => state.handleAuthCallback);
+  // const initialize = useAuthStore((state) => state.initialize);
+  // const handleAuthCallback = useAuthStore((state) => state.handleAuthCallback);
 
-  const isAuthenticated = useIsAuthenticated();
-  const isInitializing = useIsAuthInitializing();
+  // const isAuthenticated = useIsAuthenticated();
+  // const isInitializing = useIsAuthInitializing();
 
-  // Initialize auth on mount
-  useEffect(() => {
-    initialize();
-  }, [initialize]);
+  // // Initialize auth on mount
+  // useEffect(() => {
+  //   initialize();
+  // }, [initialize]);
 
-  // Listen for auth callback deep links
-  useEffect(() => {
-    let unlisten: (() => void) | undefined;
+  // // Listen for auth callback deep links
+  // useEffect(() => {
+  //   let unlisten: (() => void) | undefined;
 
-    const setupListener = async () => {
-      unlisten = await onAuthCallback((code) => {
-        handleAuthCallback(code);
-      });
-    };
+  //   const setupListener = async () => {
+  //     unlisten = await onAuthCallback((code) => {
+  //       handleAuthCallback(code);
+  //     });
+  //   };
 
-    setupListener();
+  //   setupListener();
 
-    return () => {
-      unlisten?.();
-    };
-  }, [handleAuthCallback]);
+  //   return () => {
+  //     unlisten?.();
+  //   };
+  // }, [handleAuthCallback]);
 
-  // Show loading spinner during initialization
-  if (isInitializing) {
-    return (
-      <div className="h-screen w-screen bg-background flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-8 h-8 animate-spin text-primary" />
-          <p className="text-sm text-muted-foreground">Loading...</p>
-        </div>
-      </div>
-    );
-  }
+  // // Show loading spinner during initialization
+  // if (isInitializing) {
+  //   return (
+  //     <div className="h-screen w-screen bg-background flex items-center justify-center">
+  //       <div className="flex flex-col items-center gap-3">
+  //         <Loader2 className="w-8 h-8 animate-spin text-primary" />
+  //         <p className="text-sm text-muted-foreground">Loading...</p>
+  //       </div>
+  //     </div>
+  //   );
+  // }
 
-  // Show login screen if not authenticated
-  if (!isAuthenticated) {
-    return <LoginScreen />;
-  }
+  // // Show login screen if not authenticated
+  // if (!isAuthenticated) {
+  //   return <LoginScreen />;
+  // }
 
   // Render children if authenticated
   return <>{children}</>;
