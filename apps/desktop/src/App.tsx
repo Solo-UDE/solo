@@ -15,6 +15,10 @@ import { useAutosave } from "./hooks/useAutosave";
 import { useColorScheme } from "./hooks/useColorScheme";
 import { useTitlebarStyle } from "./hooks/usePlatform";
 import { useAgentStream } from "./hooks/useAgentStream";
+import { useTerminalStream } from "./hooks/useTerminalStream";
+import { useTerminalStore } from "./stores/terminalStore";
+import { useFileExplorerStore } from "./stores/fileExplorerStore";
+import { createTerminal } from "./lib/tauri/terminal";
 import { SIDEBAR } from "./lib/constants";
 import { cn } from "./lib/utils";
 
@@ -67,13 +71,43 @@ function AppContent() {
     });
   }, [initializeProviders]);
 
-  // Set up agent event stream listener (hook manages its own lifecycle)
+  // Set up event stream listeners (hooks manage their own lifecycle)
   useAgentStream();
+  useTerminalStream();
 
   // Load persisted agent sessions on startup
   useEffect(() => {
     loadPersistedSessions();
   }, [loadPersistedSessions]);
+
+  // Keyboard shortcut: Ctrl+` (Cmd+` on Mac) to toggle/create terminal
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === '`' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+
+        // If there's an existing active terminal, focus its panel instead of creating a new one
+        const { terminals, activeTerminalId } = useTerminalStore.getState();
+        if (activeTerminalId && terminals.get(activeTerminalId)?.isAlive) {
+          openPanel(BUILTIN_PANEL_TYPES.TERMINAL, { terminalId: activeTerminalId });
+          return;
+        }
+
+        // No active terminal — create a new one
+        const cwd = useFileExplorerStore.getState().rootPath ?? undefined;
+        createTerminal(cwd)
+          .then((id) => {
+            useTerminalStore.getState().addTerminal(id, cwd);
+            openPanel(BUILTIN_PANEL_TYPES.TERMINAL, { terminalId: id });
+          })
+          .catch((err) => {
+            console.error('Failed to create terminal:', err);
+          });
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [openPanel]);
 
   // Open a file in the panel system
   const handleFileOpen = useCallback((path: string) => {

@@ -4,6 +4,7 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import type { FC } from 'react';
+import { Terminal } from 'lucide-react';
 import { FileExplorer } from '@/components/file-explorer';
 import { SessionList, ApiKeyDialog } from '@/components/agent';
 import { SidebarToggle } from './SidebarToggle';
@@ -13,7 +14,10 @@ import { useUIStore, useIsLeftSidebarCollapsed } from '@/stores/uiStore';
 import { useAgentStore } from '@/stores/agentStore';
 import { usePanelTabsStore } from '@/stores/panelTabsStore';
 import { useHasCredentials, useActiveProvider } from '@/stores/provider-store';
+import { useTerminalStore } from '@/stores/terminalStore';
+import { useFileExplorerStore } from '@/stores/fileExplorerStore';
 import { BUILTIN_PANEL_TYPES } from '@/lib/panels';
+import { createTerminal } from '@/lib/tauri/terminal';
 import { cn } from '@/lib/utils';
 
 interface PrimarySidebarProps {
@@ -26,6 +30,7 @@ export const PrimarySidebar: FC<PrimarySidebarProps> = ({ width, onFileOpen }) =
   const activeTab = useUIStore((state) => state.activeTab);
   const setActiveTab = useUIStore((state) => state.setActiveTab);
   const createSession = useAgentStore((state) => state.createSession);
+  const addTerminal = useTerminalStore((state) => state.addTerminal);
 
   // Get store actions directly to avoid selector subscription issues
   const openPanel = useMemo(() => usePanelTabsStore.getState().openPanel, []);
@@ -91,6 +96,19 @@ export const PrimarySidebar: FC<PrimarySidebarProps> = ({ width, onFileOpen }) =
     }, 100);
   }, [createSessionAndShow]);
 
+  const handleNewTerminal = useCallback((): void => {
+    // Use file explorer root as cwd if available
+    const cwd = useFileExplorerStore.getState().rootPath ?? undefined;
+    createTerminal(cwd)
+      .then((id) => {
+        addTerminal(id, cwd);
+        openPanel(BUILTIN_PANEL_TYPES.TERMINAL, { terminalId: id });
+      })
+      .catch((err) => {
+        console.error('Failed to create terminal:', err);
+      });
+  }, [addTerminal, openPanel]);
+
   const tabs = ['Explorer', 'Sessions'] as const;
   const activeTabIndex = activeTab === 'explorer' ? 0 : 1;
   const handleTabChange = useCallback((index: number) => {
@@ -114,7 +132,18 @@ export const PrimarySidebar: FC<PrimarySidebarProps> = ({ width, onFileOpen }) =
             onTabChange={handleTabChange}
           />
         )}
-        <SidebarToggle className={isCollapsed ? 'mx-auto' : ''} />
+        <div className="flex items-center gap-0.5">
+          {!isCollapsed && (
+            <button
+              onClick={handleNewTerminal}
+              className="p-1.5 rounded hover:bg-muted transition-colors"
+              title="New Terminal"
+            >
+              <Terminal className="w-3.5 h-3.5 text-muted-foreground" />
+            </button>
+          )}
+          <SidebarToggle className={isCollapsed ? 'mx-auto' : ''} />
+        </div>
       </div>
 
       {/* Tab Content - Sliding Reel */}

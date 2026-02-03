@@ -300,7 +300,7 @@ pub async fn agent_send_message(
             // Log every event for debugging
             info!(session_id = %session_id_clone, event_count = event_count, event_type = ?std::mem::discriminant(&event), "Forwarding event to frontend");
 
-            if let Err(e) = app.emit("backend-event", &event) {
+            if let Err(e) = app.emit("agent-event", &event) {
                 error!(error = %e, session_id = %session_id_clone, "Failed to emit agent event");
             }
         }

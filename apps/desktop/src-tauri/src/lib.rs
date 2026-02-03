@@ -8,11 +8,13 @@ mod agent_commands;
 mod parse_commands;
 mod auth_commands;
 mod embedding_commands;
+mod terminal_commands;
 
 use fs_commands::FsState;
 use agent_commands::AgentState;
 use auth_commands::AuthState;
 use embedding_commands::EmbeddingState;
+use terminal_commands::TerminalState;
 use tauri::Emitter;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -78,6 +80,7 @@ pub fn run() {
         .manage(AgentState::new())
         .manage(AuthState::new())
         .manage(EmbeddingState::new())
+        .manage(TerminalState::new())
         .invoke_handler(tauri::generate_handler![
             // Core commands
             commands::ping,
@@ -132,6 +135,11 @@ pub fn run() {
             auth_commands::auth_refresh_session,
             auth_commands::auth_sign_out,
             auth_commands::auth_get_access_token,
+            // Terminal commands
+            terminal_commands::spawn_pty,
+            terminal_commands::write_pty,
+            terminal_commands::resize_pty,
+            terminal_commands::kill_pty,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
