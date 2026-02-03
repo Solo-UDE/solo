@@ -104,6 +104,17 @@ pub fn run() {
             agent_commands::agent_send_message,
             agent_commands::agent_get_history,
             agent_commands::agent_clear_history,
+            // OAuth commands
+            agent_commands::start_oauth_flow,
+            agent_commands::complete_oauth_flow,
+            agent_commands::wait_for_oauth_callback,
+            agent_commands::get_auth_method,
+            agent_commands::disconnect_oauth,
+            // Claude Code CLI commands
+            agent_commands::check_claude_cli_installed,
+            agent_commands::install_claude_cli,
+            agent_commands::start_claude_login,
+            agent_commands::check_claude_auth_status,
             // Parse commands
             parse_commands::parse_file,
             parse_commands::parse_content,
