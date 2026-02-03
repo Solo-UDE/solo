@@ -20,6 +20,11 @@ function getSessionTitle(sessionId: string | undefined): string {
   if (!sessionId) return 'New Session';
 
   const store = useAgentStore.getState();
+  const session = store.sessions.get(sessionId);
+
+  // Use custom name if set
+  if (session?.name) return session.name;
+
   const messages = store.messages.get(sessionId);
 
   if (!messages || messages.length === 0) return 'New Session';
