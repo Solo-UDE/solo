@@ -7,11 +7,17 @@ mod fs_commands;
 mod agent_commands;
 mod parse_commands;
 mod auth_commands;
+mod embedding_commands;
+mod terminal_commands;
 
 use fs_commands::FsState;
 use agent_commands::AgentState;
 use auth_commands::AuthState;
+use embedding_commands::EmbeddingState;
+use terminal_commands::TerminalState;
 use tauri::Emitter;
+#[cfg(target_os = "macos")]
+use tauri_plugin_decorum::WebviewWindowExt;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -31,6 +37,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_decorum::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             // Handle deep link from single instance
@@ -70,11 +77,29 @@ pub fn run() {
                 tracing::info!("Deep link handler registered");
             }
 
+            // macOS: position traffic lights and apply native vibrancy
+            #[cfg(target_os = "macos")]
+            {
+                use tauri::Manager;
+                use tauri::window::{Effect, EffectState, EffectsBuilder};
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.set_traffic_lights_inset(13.0, 13.0);
+                    let _ = window.set_effects(
+                        EffectsBuilder::new()
+                            .effect(Effect::Sidebar)
+                            .state(EffectState::FollowsWindowActiveState)
+                            .build(),
+                    );
+                }
+            }
+
             Ok(())
         })
         .manage(FsState::new())
         .manage(AgentState::new())
         .manage(AuthState::new())
+        .manage(EmbeddingState::new())
+        .manage(TerminalState::new())
         .invoke_handler(tauri::generate_handler![
             // Core commands
             commands::ping,
@@ -104,21 +129,23 @@ pub fn run() {
             agent_commands::agent_send_message,
             agent_commands::agent_get_history,
             agent_commands::agent_clear_history,
-            // OAuth commands
-            agent_commands::start_oauth_flow,
-            agent_commands::complete_oauth_flow,
-            agent_commands::wait_for_oauth_callback,
-            agent_commands::get_auth_method,
-            agent_commands::disconnect_oauth,
-            // Claude Code CLI commands
-            agent_commands::check_claude_cli_installed,
-            agent_commands::install_claude_cli,
-            agent_commands::start_claude_login,
-            agent_commands::check_claude_auth_status,
+            // Tool commands
+            agent_commands::get_tools,
+            agent_commands::execute_tool,
+            agent_commands::approve_tool_call,
+            agent_commands::reject_tool_call,
+            agent_commands::tool_requires_approval,
             // Parse commands
             parse_commands::parse_file,
             parse_commands::parse_content,
             parse_commands::is_parseable,
+            // Embedding commands
+            embedding_commands::embedding_init,
+            embedding_commands::embedding_index_code,
+            embedding_commands::embedding_search_code,
+            embedding_commands::embedding_embed_text,
+            embedding_commands::embedding_clear_index,
+            embedding_commands::embedding_get_stats,
             // Auth commands
             auth_commands::auth_start_oauth,
             auth_commands::auth_start_magic_link,
@@ -127,6 +154,11 @@ pub fn run() {
             auth_commands::auth_refresh_session,
             auth_commands::auth_sign_out,
             auth_commands::auth_get_access_token,
+            // Terminal commands
+            terminal_commands::spawn_pty,
+            terminal_commands::write_pty,
+            terminal_commands::resize_pty,
+            terminal_commands::kill_pty,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

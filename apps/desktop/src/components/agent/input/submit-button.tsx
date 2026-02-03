@@ -1,4 +1,4 @@
-import { ArrowUp } from 'lucide-react';
+import { ArrowUp } from '@phosphor-icons/react';
 import React from 'react';
 
 export interface SubmitButtonProps {

@@ -1,4 +1,4 @@
-import { ChevronDown, Zap, Brain } from 'lucide-react';
+import { CaretDown, Lightning, Brain } from '@phosphor-icons/react';
 import React from 'react';
 
 import {
@@ -24,7 +24,7 @@ const MODE_CONFIG = {
   },
   fast: {
     label: 'Fast',
-    icon: Zap,
+    icon: Lightning,
     description: 'Quick responses',
   },
 };
@@ -55,7 +55,7 @@ export const ModeSelector: React.FC<ModeSelectorProps> = ({
         <span className="text-sm font-medium text-foreground">
           {selectedMode.label}
         </span>
-        <ChevronDown className="h-3 w-3 text-muted-foreground" />
+        <CaretDown className="h-3 w-3 text-muted-foreground" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-56">
         {Object.entries(MODE_CONFIG).map(([key, config]) => {

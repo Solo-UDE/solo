@@ -4,7 +4,7 @@
 
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import { SIDEBAR } from '@/lib/constants';
+import { SIDEBAR, TERMINAL_SECTION } from '@/lib/constants';
 
 // Sidebar tab types
 export type SidebarTab = 'explorer' | 'sessions';
@@ -12,6 +12,8 @@ export type SidebarTab = 'explorer' | 'sessions';
 interface UIState {
   leftSidebarWidth: number;
   activeTab: SidebarTab;
+  terminalPanelOpen: boolean;
+  terminalPanelHeight: number;
 }
 
 interface UIActions {
@@ -20,6 +22,8 @@ interface UIActions {
   collapseLeftSidebar: () => void;
   setLeftSidebarWidth: (width: number) => void;
   setActiveTab: (tab: SidebarTab) => void;
+  toggleTerminalPanel: () => void;
+  setTerminalPanelHeight: (height: number) => void;
 }
 
 type UIStore = UIState & UIActions;
@@ -28,6 +32,8 @@ export const useUIStore = create<UIStore>()(
   immer((set) => ({
     leftSidebarWidth: SIDEBAR.expanded,
     activeTab: 'explorer' as SidebarTab,
+    terminalPanelOpen: false,
+    terminalPanelHeight: TERMINAL_SECTION.defaultHeight,
 
     toggleLeftSidebar: (): void => {
       set((state) => {
@@ -58,6 +64,21 @@ export const useUIStore = create<UIStore>()(
     setActiveTab: (tab: SidebarTab): void => {
       set((state) => {
         state.activeTab = tab;
+      });
+    },
+
+    toggleTerminalPanel: (): void => {
+      set((state) => {
+        state.terminalPanelOpen = !state.terminalPanelOpen;
+      });
+    },
+
+    setTerminalPanelHeight: (height: number): void => {
+      set((state) => {
+        state.terminalPanelHeight = Math.max(
+          TERMINAL_SECTION.minHeight,
+          Math.min(height, TERMINAL_SECTION.maxHeight),
+        );
       });
     },
   }))

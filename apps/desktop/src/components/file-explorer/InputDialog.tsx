@@ -4,7 +4,8 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { X } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { X } from '@phosphor-icons/react';
 
 interface InputDialogProps {
   isOpen: boolean;
@@ -60,7 +61,7 @@ export function InputDialog({
 
   if (!isOpen) return null;
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
       onClick={onCancel}
@@ -110,6 +111,7 @@ export function InputDialog({
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

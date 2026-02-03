@@ -6,8 +6,8 @@ import React, { useCallback, useRef, useEffect, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import { FileTreeNode } from './FileTreeNode';
+import { CreationRow } from './CreationRow';
 import { FileContextMenu } from './FileContextMenu';
-import { InputDialog } from './InputDialog';
 import { ConfirmDialog } from './ConfirmDialog';
 import {
   useFileExplorerStore,
@@ -21,12 +21,6 @@ interface ContextMenuState {
   position: { x: number; y: number } | null;
   targetPath: string | null;
   isDirectory: boolean;
-}
-
-interface InputDialogState {
-  isOpen: boolean;
-  type: 'file' | 'folder';
-  targetDir: string;
 }
 
 interface DeleteConfirmState {
@@ -59,21 +53,16 @@ export function FileTree({ onFileOpen }: FileTreeProps) {
   const cancelRename = useFileExplorerStore((s) => s.cancelRename);
   const startRename = useFileExplorerStore((s) => s.startRename);
   const deleteFiles = useFileExplorerStore((s) => s.delete);
-  const createFile = useFileExplorerStore((s) => s.createFile);
-  const createDirectory = useFileExplorerStore((s) => s.createDirectory);
+  const startCreating = useFileExplorerStore((s) => s.startCreating);
+  const cancelCreating = useFileExplorerStore((s) => s.cancelCreating);
+  const submitCreating = useFileExplorerStore((s) => s.submitCreating);
+  const creatingInPath = useFileExplorerStore((s) => s.creatingInPath);
 
   // Context menu state
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
     position: null,
     targetPath: null,
     isDirectory: false,
-  });
-
-  // Input dialog state for New File/Folder from context menu
-  const [inputDialog, setInputDialog] = useState<InputDialogState>({
-    isOpen: false,
-    type: 'file',
-    targetDir: '',
   });
 
   // Delete confirmation dialog state
@@ -96,57 +85,69 @@ export function FileTree({ onFileOpen }: FileTreeProps) {
       // Only handle if container is focused or has focus within
       if (!containerRef.current?.contains(document.activeElement)) return;
 
+      // Skip keyboard nav when inline creation input is active
+      if (creatingInPath) return;
+
       const selectedPaths = Array.from(selected);
       const firstSelectedIndex = flattenedTree.findIndex(
-        (item) => selectedPaths[0] === item.entry.path
+        (item) => item.kind === 'entry' && selectedPaths[0] === item.entry.path
       );
+
+      // Helper to find the next navigable entry item, skipping ghost rows
+      const findNextEntry = (from: number, direction: 1 | -1): number => {
+        let idx = from + direction;
+        while (idx >= 0 && idx < flattenedTree.length) {
+          if (flattenedTree[idx].kind === 'entry') return idx;
+          idx += direction;
+        }
+        return from;
+      };
 
       switch (e.key) {
         case 'ArrowDown': {
           e.preventDefault();
-          const nextIndex = Math.min(
-            firstSelectedIndex + 1,
-            flattenedTree.length - 1
-          );
-          if (nextIndex >= 0 && flattenedTree[nextIndex]) {
-            selectFile(flattenedTree[nextIndex].entry.path);
+          const nextIndex = findNextEntry(firstSelectedIndex, 1);
+          const item = flattenedTree[nextIndex];
+          if (item?.kind === 'entry') {
+            selectFile(item.entry.path);
             virtualizer.scrollToIndex(nextIndex);
           }
           break;
         }
         case 'ArrowUp': {
           e.preventDefault();
-          const prevIndex = Math.max(firstSelectedIndex - 1, 0);
-          if (flattenedTree[prevIndex]) {
-            selectFile(flattenedTree[prevIndex].entry.path);
+          const prevIndex = findNextEntry(firstSelectedIndex, -1);
+          const item = flattenedTree[prevIndex];
+          if (item?.kind === 'entry') {
+            selectFile(item.entry.path);
             virtualizer.scrollToIndex(prevIndex);
           }
           break;
         }
         case 'ArrowRight': {
           e.preventDefault();
-          const entry = flattenedTree[firstSelectedIndex]?.entry;
-          if (entry?.is_dir && !expanded.has(entry.path)) {
-            toggleDirectory(entry.path);
+          const item = flattenedTree[firstSelectedIndex];
+          if (item?.kind === 'entry' && item.entry.is_dir && !expanded.has(item.entry.path)) {
+            toggleDirectory(item.entry.path);
           }
           break;
         }
         case 'ArrowLeft': {
           e.preventDefault();
-          const entry = flattenedTree[firstSelectedIndex]?.entry;
-          if (entry?.is_dir && expanded.has(entry.path)) {
-            toggleDirectory(entry.path);
+          const item = flattenedTree[firstSelectedIndex];
+          if (item?.kind === 'entry' && item.entry.is_dir && expanded.has(item.entry.path)) {
+            toggleDirectory(item.entry.path);
           }
           break;
         }
         case 'Enter': {
           e.preventDefault();
-          const entry = flattenedTree[firstSelectedIndex]?.entry;
-          if (entry) {
-            if (entry.is_dir) {
-              toggleDirectory(entry.path);
+          const item = flattenedTree[firstSelectedIndex];
+          if (item?.kind === 'entry') {
+            if (item.entry.is_dir) {
+              toggleDirectory(item.entry.path);
             } else if (onFileOpen) {
-              onFileOpen(entry.path);
+              onFileOpen(item.entry.path);
             }
           }
           break;
@@ -162,7 +163,6 @@ export function FileTree({ onFileOpen }: FileTreeProps) {
         case 'Backspace': {
           if (!renamingPath && selectedPaths.length > 0) {
             e.preventDefault();
-            // Show confirmation dialog
             const count = selectedPaths.length;
             const message =
               count === 1
@@ -186,6 +186,7 @@ export function FileTree({ onFileOpen }: FileTreeProps) {
     selected,
     expanded,
     renamingPath,
+    creatingInPath,
     selectFile,
     toggleDirectory,
     startRename,
@@ -249,40 +250,14 @@ export function FileTree({ onFileOpen }: FileTreeProps) {
   const handleNewFile = useCallback(() => {
     const targetDir = getContextMenuTargetDir();
     if (!targetDir) return;
-
-    setInputDialog({
-      isOpen: true,
-      type: 'file',
-      targetDir,
-    });
-  }, [getContextMenuTargetDir]);
+    startCreating(targetDir, 'file');
+  }, [getContextMenuTargetDir, startCreating]);
 
   const handleNewFolder = useCallback(() => {
     const targetDir = getContextMenuTargetDir();
     if (!targetDir) return;
-
-    setInputDialog({
-      isOpen: true,
-      type: 'folder',
-      targetDir,
-    });
-  }, [getContextMenuTargetDir]);
-
-  const handleInputDialogSubmit = useCallback(
-    (name: string) => {
-      if (inputDialog.type === 'file') {
-        createFile(inputDialog.targetDir, name);
-      } else {
-        createDirectory(inputDialog.targetDir, name);
-      }
-      setInputDialog((prev) => ({ ...prev, isOpen: false }));
-    },
-    [inputDialog.type, inputDialog.targetDir, createFile, createDirectory]
-  );
-
-  const handleInputDialogCancel = useCallback(() => {
-    setInputDialog((prev) => ({ ...prev, isOpen: false }));
-  }, []);
+    startCreating(targetDir, 'folder');
+  }, [getContextMenuTargetDir, startCreating]);
 
   const handleRenameFromMenu = useCallback(() => {
     if (contextMenu.targetPath) {
@@ -338,6 +313,16 @@ export function FileTree({ onFileOpen }: FileTreeProps) {
     [rename]
   );
 
+  // Scroll the ghost creation row into view when it appears
+  useEffect(() => {
+    if (creatingInPath) {
+      const idx = flattenedTree.findIndex((item) => item.kind === 'creating');
+      if (idx >= 0) {
+        virtualizer.scrollToIndex(idx, { align: 'auto' });
+      }
+    }
+  }, [creatingInPath, flattenedTree, virtualizer]);
+
   if (flattenedTree.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
@@ -363,6 +348,28 @@ export function FileTree({ onFileOpen }: FileTreeProps) {
           const item = flattenedTree[virtualRow.index];
           if (!item) return null;
 
+          const rowStyle: React.CSSProperties = {
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: ROW_HEIGHT,
+            transform: `translateY(${virtualRow.start}px)`,
+          };
+
+          if (item.kind === 'creating') {
+            return (
+              <CreationRow
+                key={`creating-${item.parentPath}`}
+                type={item.type}
+                depth={item.depth}
+                style={rowStyle}
+                onSubmit={submitCreating}
+                onCancel={cancelCreating}
+              />
+            );
+          }
+
           return (
             <FileTreeNode
               key={item.entry.path}
@@ -372,14 +379,7 @@ export function FileTree({ onFileOpen }: FileTreeProps) {
               isSelected={selected.has(item.entry.path)}
               isLoading={loading.has(item.entry.path)}
               isRenaming={renamingPath === item.entry.path}
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: '100%',
-                height: ROW_HEIGHT,
-                transform: `translateY(${virtualRow.start}px)`,
-              }}
+              style={rowStyle}
               onToggle={() => toggleDirectory(item.entry.path)}
               onClick={(e) => handleClick(item.entry.path, e)}
               onDoubleClick={() => handleDoubleClick(item.entry)}
@@ -405,15 +405,6 @@ export function FileTree({ onFileOpen }: FileTreeProps) {
         onDelete={handleDeleteFromMenu}
         onCopyPath={handleCopyPath}
         onRevealInFinder={handleRevealInFinder}
-      />
-
-      {/* Input Dialog for New File/Folder */}
-      <InputDialog
-        isOpen={inputDialog.isOpen}
-        title={inputDialog.type === 'file' ? 'New File' : 'New Folder'}
-        placeholder={inputDialog.type === 'file' ? 'filename.txt' : 'folder-name'}
-        onSubmit={handleInputDialogSubmit}
-        onCancel={handleInputDialogCancel}
       />
 
       {/* Delete Confirmation Dialog */}

@@ -1,10 +1,8 @@
 import { useMemo } from 'react';
-import { ChevronDown, ChevronUp } from 'lucide-react';
-import {
-  SiClaude,
-  SiGooglegemini,
-  SiOpenai,
-} from '@icons-pack/react-simple-icons';
+import { CaretDown, CaretUp } from '@phosphor-icons/react';
+import { ClaudeLogo } from '../../icons/ClaudeLogo';
+import { GeminiLogo } from '../../icons/GeminiLogo';
+import { OpenAILogo } from '../../icons/OpenAILogo';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -38,28 +36,25 @@ export const renderModelIcon = (iconType: ProviderIconType, size: number = 13): 
   switch (iconType) {
     case 'openai':
       return (
-        <SiOpenai
+        <OpenAILogo
+          size={size}
           color="currentColor"
-          width={size}
-          height={size}
           className="size-auto"
         />
       );
     case 'claude':
       return (
-        <SiClaude
+        <ClaudeLogo
+          size={size}
           color="#D97757"
-          width={size}
-          height={size}
           className="size-auto"
         />
       );
     case 'gemini':
       return (
-        <SiGooglegemini
+        <GeminiLogo
+          size={size}
           color="#60a9ed"
-          width={size}
-          height={size}
           className="size-auto"
         />
       );
@@ -92,7 +87,7 @@ export const ModelPicker: FC<ModelPickerProps> = ({
     [selectedModel]
   );
 
-  const ChevronIcon = chevronIcon === 'up' ? ChevronUp : ChevronDown;
+  const ChevronIcon = chevronIcon === 'up' ? CaretUp : CaretDown;
 
   const handleModelSelect = async (modelValue: string) => {
     const model = MODEL_OPTIONS.find((m) => m.value === modelValue);

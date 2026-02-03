@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { CaretDown, CaretRight } from '@phosphor-icons/react';
 import { useState } from 'react';
 
 import { ProgressStep } from './progress-step';
@@ -39,9 +39,9 @@ export const ProgressUpdates: FC<ProgressUpdatesProps> = ({
         className="flex items-center gap-2 text-xs font-medium text-muted-foreground uppercase tracking-wide hover:text-foreground transition-colors w-full"
       >
         {isExpanded ? (
-          <ChevronDown className="w-3 h-3" />
+          <CaretDown className="w-3 h-3" />
         ) : (
-          <ChevronRight className="w-3 h-3" />
+          <CaretRight className="w-3 h-3" />
         )}
         <span>
           Progress Updates ({completedCount}/{totalCount})

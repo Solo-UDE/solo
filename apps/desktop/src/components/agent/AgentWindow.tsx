@@ -1,14 +1,14 @@
 import { useEffect, useCallback, useMemo } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus } from '@phosphor-icons/react';
 
 import { MessageFeed } from './messages';
 import { ChatInputContainer } from './input';
 import { convertToMessageGroups } from './messageAdapter';
 import { useAgentSession } from '../../hooks/useAgentSession';
-import { useAgentStream } from '../../hooks/useAgentStream';
 import { useProviderStore } from '../../stores/provider-store';
+import { useAgentStore } from '../../stores/agentStore';
 import { usePanelTabsStore } from '../../stores/panelTabsStore';
-import { BUILTIN_PANEL_TYPES } from '../../lib/panels/builtinPanels';
+import { BUILTIN_PANEL_TYPES } from '../../lib/panels/constants';
 
 import type { FC } from 'react';
 import type { MessageMode } from '../../stores/agentStore';
@@ -44,39 +44,15 @@ export interface AgentWindowProps {
  *
  * This component provides a complete chat interface for the AI agent.
  * It can be used as a standalone panel or embedded in React Mosaic.
- *
- * @example
- * ```tsx
- * // Basic usage
- * <AgentWindow instanceId="agent-1" />
- *
- * // With callbacks
- * <AgentWindow
- *   instanceId="agent-2"
- *   callbacks={{
- *     onFileOpen: (path) => openEditor(path),
- *   }}
- * />
- *
- * // In React Mosaic
- * const tabFactory = (id) => {
- *   if (id.startsWith('agent-')) {
- *     return <AgentWindow instanceId={id} />;
- *   }
- * };
- * ```
  */
 export const AgentWindow: FC<AgentWindowProps> = ({
 	instanceId,
-	initialSessionId: _initialSessionId, // Reserved for future session restoration
+	initialSessionId,
 	callbacks,
-	ui: _ui = {}, // Reserved for future UI customization
+	ui: _ui = {},
 	className = '',
 }) => {
-	// Enable stream listening for this window
-	useAgentStream({ enabled: true });
-
-	// Session management
+	// Session management — scoped to this tab's session
 	const {
 		sessionId,
 		messages,
@@ -86,7 +62,9 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 		sendMessage,
 		clearError,
 	} = useAgentSession({
-		autoCreate: true,
+		sessionId: initialSessionId ?? null,
+		autoCreate: !initialSessionId,
+		defaultModel: useProviderStore((state) => state.selectedModel) || undefined,
 	});
 
 	// Provider state for model selection
@@ -94,6 +72,13 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 
 	// Panel system for opening new tabs
 	const openPanel = usePanelTabsStore((state) => state.openPanel);
+
+	// When auto-created, sync session ID back to panel data
+	useEffect(() => {
+		if (sessionId && !initialSessionId) {
+			usePanelTabsStore.getState().updateData(instanceId, { sessionId });
+		}
+	}, [sessionId, initialSessionId, instanceId]);
 
 	// Convert messages to message groups for the new MessageFeed
 	const messageGroups = useMemo(
@@ -116,7 +101,16 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 		[sendMessage]
 	);
 
-	// Handle new session - creates session AND opens as new tab
+	// Handle tool approval/rejection
+	const resolveToolApproval = useAgentStore((state) => state.resolveToolApproval);
+	const handleToolApproval = useCallback(
+		(toolCallId: string, approved: boolean) => {
+			resolveToolApproval(toolCallId, approved);
+		},
+		[resolveToolApproval]
+	);
+
+	// Handle new session
 	const handleNewSession = useCallback(() => {
 		createSession(selectedModel || undefined).then((newSessionId) => {
 			if (newSessionId) {
@@ -191,6 +185,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 			<MessageFeed
 				messageGroups={messageGroups}
 				autoScroll={true}
+				onToolApproval={handleToolApproval}
 				className="flex-1"
 			/>
 

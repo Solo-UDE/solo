@@ -5,10 +5,12 @@
 
 import { useCallback, type MouseEvent } from 'react';
 import { useDrag, useDrop } from 'react-dnd';
-import { X, Pin } from 'lucide-react';
+import { X, PushPin } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import type { PanelInstance, TileId, PanelInstanceId, TabDragItem } from '@/lib/panels/types';
 import { DragItemTypes } from '@/lib/panels/types';
+import { useIsSessionStreaming } from '@/stores/agentStore';
+import { BUILTIN_PANEL_TYPES } from '@/lib/panels/constants';
 
 interface TabProps {
   instance: PanelInstance;
@@ -117,6 +119,13 @@ export function Tab({
     drop(node);
   };
 
+  // Check if this is a streaming agent tab
+  const isAgentTab = instance.panelType === BUILTIN_PANEL_TYPES.AGENT;
+  const agentSessionId = isAgentTab
+    ? ((instance.data as Record<string, unknown>)?.sessionId as string | undefined) ?? null
+    : null;
+  const isSessionCurrentlyStreaming = useIsSessionStreaming(agentSessionId);
+
   return (
     <div
       ref={combinedRef}
@@ -139,10 +148,12 @@ export function Tab({
       onMouseDown={handleMouseDown}
       onContextMenu={handleContextMenu}
     >
-      {/* Dirty indicator */}
-      {instance.isDirty && (
+      {/* Streaming indicator (pulsing dot) takes priority over dirty indicator */}
+      {isSessionCurrentlyStreaming ? (
+        <span className="w-2 h-2 rounded-full bg-primary animate-pulse shrink-0" />
+      ) : instance.isDirty ? (
         <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
-      )}
+      ) : null}
 
       {/* Tab title */}
       <span className="text-sm truncate flex-1">{instance.title}</span>
@@ -153,7 +164,7 @@ export function Tab({
           className="p-0.5 shrink-0 text-muted-foreground"
           title="Pinned - right-click to unpin"
         >
-          <Pin className="w-3 h-3" />
+          <PushPin className="w-3 h-3" />
         </span>
       ) : (
         <button

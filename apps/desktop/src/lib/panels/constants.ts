@@ -49,3 +49,13 @@ export const DEFAULT_TILES = {
   /** Main editor tile */
   editor: 'tile-editor-main',
 } as const;
+
+/**
+ * List of built-in panel type IDs
+ */
+export const BUILTIN_PANEL_TYPES = {
+  FILE_VIEWER: 'file-viewer',
+  WELCOME: 'welcome',
+  AGENT: 'agent',
+  TERMINAL: 'terminal',
+} as const;

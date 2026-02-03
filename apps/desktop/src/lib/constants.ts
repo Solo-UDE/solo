@@ -11,8 +11,15 @@ export const SIDEBAR = {
 } as const;
 
 export const HEIGHTS = {
-  titlebar: 48,
+  titlebar: 38,
   statusbar: 24,
+} as const;
+
+export const TERMINAL_SECTION = {
+  defaultHeight: 200,
+  minHeight: 120,
+  maxHeight: 600,
+  headerHeight: 36,
 } as const;
 
 export const TRANSITIONS = {

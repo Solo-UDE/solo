@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { FileText, Loader2, AlertCircle } from 'lucide-react';
+import { FileText, CircleNotch, WarningCircle } from '@phosphor-icons/react';
 import * as fs from '../../lib/tauri/fs';
 
 interface FileViewerProps {
@@ -88,7 +88,7 @@ export function FileViewer({ filePath, className = '' }: FileViewerProps) {
     return (
       <div className={`flex items-center justify-center h-full ${className}`}>
         <div className="text-center space-y-4">
-          <Loader2 className="w-8 h-8 text-primary animate-spin mx-auto" />
+          <CircleNotch weight="bold" className="w-8 h-8 text-primary animate-spin mx-auto" />
           <p className="text-sm text-muted-foreground">Loading file...</p>
         </div>
       </div>
@@ -99,7 +99,7 @@ export function FileViewer({ filePath, className = '' }: FileViewerProps) {
     return (
       <div className={`flex items-center justify-center h-full ${className}`}>
         <div className="text-center space-y-4 max-w-md px-4">
-          <AlertCircle className="w-8 h-8 text-destructive mx-auto" />
+          <WarningCircle className="w-8 h-8 text-destructive mx-auto" />
           <p className="text-sm text-destructive">Failed to load file</p>
           <p className="text-xs text-muted-foreground break-all">{error}</p>
         </div>

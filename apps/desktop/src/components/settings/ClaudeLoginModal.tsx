@@ -4,7 +4,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { CheckCircle, Loader2, AlertCircle, Terminal, RefreshCw } from 'lucide-react';
+import { CheckCircle, CircleNotch, WarningCircle, Terminal, ArrowsClockwise } from '@phosphor-icons/react';
 import {
 	Dialog,
 	DialogContent,
@@ -109,7 +109,7 @@ export function ClaudeLoginModal({ isOpen, onClose, onSuccess }: ClaudeLoginModa
 				<div className="p-5 space-y-4">
 					{step === 'checking' && (
 						<div className="flex flex-col items-center justify-center gap-3 py-6">
-							<Loader2 className="w-6 h-6 text-primary animate-spin" />
+							<CircleNotch weight="bold" className="w-6 h-6 text-primary animate-spin" />
 							<p className="text-sm text-muted-foreground">Checking authentication...</p>
 						</div>
 					)}
@@ -146,7 +146,7 @@ export function ClaudeLoginModal({ isOpen, onClose, onSuccess }: ClaudeLoginModa
 
 							{error && (
 								<div className="flex items-start gap-2 p-3 bg-destructive/10 rounded-none">
-									<AlertCircle className="w-4 h-4 text-destructive mt-0.5 shrink-0" />
+									<WarningCircle className="w-4 h-4 text-destructive mt-0.5 shrink-0" />
 									<p className="text-xs text-destructive">{error}</p>
 								</div>
 							)}
@@ -185,7 +185,7 @@ export function ClaudeLoginModal({ isOpen, onClose, onSuccess }: ClaudeLoginModa
 					{step === 'error' && (
 						<>
 							<div className="flex items-start gap-2 p-4 bg-destructive/10 rounded-none">
-								<AlertCircle className="w-4 h-4 text-destructive mt-0.5 shrink-0" />
+								<WarningCircle className="w-4 h-4 text-destructive mt-0.5 shrink-0" />
 								<div>
 									<p className="text-sm text-destructive font-medium">Something went wrong</p>
 									<p className="text-xs text-muted-foreground mt-1">{error}</p>
@@ -196,7 +196,7 @@ export function ClaudeLoginModal({ isOpen, onClose, onSuccess }: ClaudeLoginModa
 								onClick={checkAuth}
 								className="w-full h-10 px-4 bg-primary text-primary-foreground rounded-none text-sm font-medium hover:brightness-110 active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2"
 							>
-								<RefreshCw className="w-4 h-4" />
+								<ArrowsClockwise className="w-4 h-4" />
 								Try Again
 							</button>
 						</>

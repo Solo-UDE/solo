@@ -4,7 +4,7 @@
  */
 
 import { useEffect } from "react";
-import { Loader2 } from "lucide-react";
+import { CircleNotch } from "@phosphor-icons/react";
 import {
   useAuthStore,
   useIsAuthenticated,
@@ -17,51 +17,62 @@ interface AuthGuardProps {
   children: React.ReactNode;
 }
 
+/**
+ * In dev mode, bypass auth entirely so we can test without deep link OAuth.
+ * In production, delegate to the real auth guard.
+ */
 export function AuthGuard({ children }: AuthGuardProps) {
-  // const initialize = useAuthStore((state) => state.initialize);
-  // const handleAuthCallback = useAuthStore((state) => state.handleAuthCallback);
+  if (import.meta.env.DEV) {
+    return <>{children}</>;
+  }
 
-  // const isAuthenticated = useIsAuthenticated();
-  // const isInitializing = useIsAuthInitializing();
+  return <AuthGuardInner>{children}</AuthGuardInner>;
+}
 
-  // // Initialize auth on mount
-  // useEffect(() => {
-  //   initialize();
-  // }, [initialize]);
+function AuthGuardInner({ children }: AuthGuardProps) {
+  const initialize = useAuthStore((state) => state.initialize);
+  const handleAuthCallback = useAuthStore((state) => state.handleAuthCallback);
+  const isAuthenticated = useIsAuthenticated();
+  const isInitializing = useIsAuthInitializing();
 
-  // // Listen for auth callback deep links
-  // useEffect(() => {
-  //   let unlisten: (() => void) | undefined;
+  // Initialize auth on mount
+  useEffect(() => {
+    initialize();
+  }, [initialize]);
 
-  //   const setupListener = async () => {
-  //     unlisten = await onAuthCallback((code) => {
-  //       handleAuthCallback(code);
-  //     });
-  //   };
+  // Listen for auth callback deep links
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
 
-  //   setupListener();
+    const setupListener = async () => {
+      unlisten = await onAuthCallback((code) => {
+        handleAuthCallback(code);
+      });
+    };
 
-  //   return () => {
-  //     unlisten?.();
-  //   };
-  // }, [handleAuthCallback]);
+    setupListener();
 
-  // // Show loading spinner during initialization
-  // if (isInitializing) {
-  //   return (
-  //     <div className="h-screen w-screen bg-background flex items-center justify-center">
-  //       <div className="flex flex-col items-center gap-3">
-  //         <Loader2 className="w-8 h-8 animate-spin text-primary" />
-  //         <p className="text-sm text-muted-foreground">Loading...</p>
-  //       </div>
-  //     </div>
-  //   );
-  // }
+    return () => {
+      unlisten?.();
+    };
+  }, [handleAuthCallback]);
 
-  // // Show login screen if not authenticated
-  // if (!isAuthenticated) {
-  //   return <LoginScreen />;
-  // }
+  // Show loading spinner during initialization
+  if (isInitializing) {
+    return (
+      <div className="h-screen w-screen bg-background flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <CircleNotch weight="bold" className="w-8 h-8 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show login screen if not authenticated
+  if (!isAuthenticated) {
+    return <LoginScreen />;
+  }
 
   // Render children if authenticated
   return <>{children}</>;

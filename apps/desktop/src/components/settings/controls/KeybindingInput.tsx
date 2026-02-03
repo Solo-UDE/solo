@@ -3,7 +3,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { Keyboard, RotateCcw, X } from 'lucide-react';
+import { Keyboard, ArrowCounterClockwise, X } from '@phosphor-icons/react';
 
 interface KeybindingInputProps {
   value: string;
@@ -156,7 +156,7 @@ export function KeybindingInput({
             className="p-1.5 rounded-none hover:bg-muted transition-colors cursor-pointer"
             title="Reset to default"
           >
-            <RotateCcw className="w-3.5 h-3.5 text-muted-foreground" />
+            <ArrowCounterClockwise className="w-3.5 h-3.5 text-muted-foreground" />
           </button>
         )}
       </div>

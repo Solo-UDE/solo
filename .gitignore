@@ -37,3 +37,14 @@ npm-debug.log*
 
 # Test coverage
 coverage
+docs/CLAUDE.md
+apps/desktop/CLAUDE.md
+apps/desktop/src/stores/CLAUDE.md
+packages/ui/CLAUDE.md
+crates/solo-agent/CLAUDE.md
+crates/solo-core/CLAUDE.md
+crates/solo-fs/CLAUDE.md
+crates/solo-protocol/CLAUDE.md
+apps/desktop/src-tauri/CLAUDE.md
+apps/desktop/src-tauri/src/CLAUDE.md
+apps/desktop/src/lib/tauri/CLAUDE.md

@@ -7,6 +7,7 @@ import { panelRegistry } from './registry';
 import { FileViewerPanel } from '@/components/panels/FileViewerPanel';
 import { WelcomePanel } from '@/components/panels/WelcomePanel';
 import { AgentPanel } from '@/components/panels/AgentPanel';
+import { TerminalPanel } from '@/components/panels/TerminalPanel';
 
 /**
  * Register all built-in panel types
@@ -60,13 +61,19 @@ export function registerBuiltinPanels(): void {
     serializeData: (data) => ({ sessionId: data.sessionId }),
     deserializeData: (raw) => ({ sessionId: raw.sessionId as string | undefined }),
   });
+
+  // Terminal Panel — no serialization: terminals can't survive app restarts
+  // because backend PTY processes are gone. Serializing would create zombie tabs.
+  panelRegistry.register({
+    id: 'terminal',
+    displayName: 'Terminal',
+    defaultIcon: 'terminal',
+    component: TerminalPanel,
+    getDefaultTitle: () => 'Terminal',
+    allowMultiple: true,
+    preferredRegion: 'editor',
+  });
 }
 
-/**
- * List of built-in panel type IDs
- */
-export const BUILTIN_PANEL_TYPES = {
-  FILE_VIEWER: 'file-viewer',
-  WELCOME: 'welcome',
-  AGENT: 'agent',
-} as const;
+// BUILTIN_PANEL_TYPES lives in ./constants.ts to avoid circular imports
+export { BUILTIN_PANEL_TYPES } from './constants';

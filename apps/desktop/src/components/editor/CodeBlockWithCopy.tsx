@@ -4,7 +4,7 @@
  */
 
 import { useState, useCallback, type ReactNode } from 'react';
-import { Check, Copy } from 'lucide-react';
+import { Check, Copy } from '@phosphor-icons/react';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import { cn } from '@/lib/utils';
 

@@ -1,4 +1,4 @@
-import { ChevronDown, Sparkles } from 'lucide-react';
+import { CaretDown, Sparkle } from '@phosphor-icons/react';
 import React from 'react';
 
 import {
@@ -61,11 +61,11 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
           ${disabled ? 'opacity-50 cursor-not-allowed' : ''}
         `}
       >
-        <Sparkles className="h-4 w-4 text-foreground" />
+        <Sparkle className="h-4 w-4 text-foreground" />
         <span className="text-sm font-medium text-foreground">
           {selectedModel?.name ?? 'Select Model'}
         </span>
-        <ChevronDown className="h-3 w-3 text-muted-foreground" />
+        <CaretDown className="h-3 w-3 text-muted-foreground" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-64">
         {models.map((model) => (
@@ -79,7 +79,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
               ${value === model.id ? 'bg-primary/10' : ''}
             `}
           >
-            <Sparkles className="h-4 w-4 mt-0.5 text-foreground" />
+            <Sparkle className="h-4 w-4 mt-0.5 text-foreground" />
             <div className="flex flex-col">
               <span className="text-sm font-medium">{model.name}</span>
               <span className="text-xs text-muted-foreground">{model.description}</span>

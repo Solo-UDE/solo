@@ -3,7 +3,7 @@
  */
 
 import { useState, useCallback } from "react";
-import { Github, Mail, Loader2, AlertCircle, ExternalLink } from "lucide-react";
+import { GithubLogo, Envelope, CircleNotch, WarningCircle, ArrowSquareOut } from "@phosphor-icons/react";
 import {
   useAuthStore,
   useIsAuthenticating,
@@ -52,7 +52,7 @@ export function LoginScreen() {
         {/* Error message */}
         {error && (
           <div className="mb-6 p-3 rounded-md bg-destructive/10 border border-destructive/20 flex items-start gap-2">
-            <AlertCircle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
+            <WarningCircle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
             <p className="text-sm text-destructive">{error}</p>
           </div>
         )}
@@ -65,9 +65,9 @@ export function LoginScreen() {
           className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-md bg-foreground text-background font-medium text-sm transition-colors hover:bg-foreground/90 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isAuthenticating ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
+            <CircleNotch weight="bold" className="w-4 h-4 animate-spin" />
           ) : (
-            <Github className="w-4 h-4" />
+            <GithubLogo className="w-4 h-4" />
           )}
           Continue with GitHub
         </button>
@@ -75,7 +75,7 @@ export function LoginScreen() {
         {/* Browser notice */}
         {isAuthenticating && (
           <p className="mt-3 text-center text-xs text-muted-foreground flex items-center justify-center gap-1">
-            <ExternalLink className="w-3 h-3" />
+            <ArrowSquareOut className="w-3 h-3" />
             Complete sign in in your browser
           </p>
         )}
@@ -93,7 +93,7 @@ export function LoginScreen() {
         {/* Magic link form */}
         {magicLinkSent ? (
           <div className="text-center p-4 rounded-md bg-muted/50 border border-border">
-            <Mail className="w-8 h-8 mx-auto text-primary mb-2" />
+            <Envelope className="w-8 h-8 mx-auto text-primary mb-2" />
             <p className="text-sm text-foreground font-medium mb-1">
               Check your email
             </p>
@@ -131,9 +131,9 @@ export function LoginScreen() {
               className="w-full mt-3 flex items-center justify-center gap-2 px-4 py-2.5 rounded-md bg-muted border border-border text-foreground font-medium text-sm transition-colors hover:bg-muted/80 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isAuthenticating ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
+                <CircleNotch weight="bold" className="w-4 h-4 animate-spin" />
               ) : (
-                <Mail className="w-4 h-4" />
+                <Envelope className="w-4 h-4" />
               )}
               Send Magic Link
             </button>

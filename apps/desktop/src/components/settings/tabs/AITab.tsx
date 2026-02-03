@@ -4,7 +4,7 @@
  */
 
 import { useCallback, useState, useEffect, useMemo } from 'react';
-import { CheckCircle, AlertCircle, Loader2, Clock, Terminal, Sparkles } from 'lucide-react';
+import { CheckCircle, WarningCircle, CircleNotch, Clock, Terminal, Sparkle } from '@phosphor-icons/react';
 import { useSettingsStore } from '../../../stores/settingsStore';
 import { useProviderStore, useOAuthPending } from '../../../stores/provider-store';
 import { useShallow } from 'zustand/react/shallow';
@@ -34,7 +34,7 @@ function ConnectionStatusBadge({
   if (!authInfo || authInfo.authType === 'none') {
     return (
       <div className="flex items-center gap-1.5 text-xs text-amber-600">
-        <AlertCircle className="w-3.5 h-3.5" />
+        <WarningCircle className="w-3.5 h-3.5" />
         Not configured
       </div>
     );
@@ -106,7 +106,7 @@ function ProviderCard({
       }
     : {
         name: 'OpenAI',
-        icon: Sparkles,
+        icon: Sparkle,
         iconColor: 'text-[#10a37f]',
         buttonColor: 'bg-[#10a37f] hover:bg-[#0d8c6d]',
         buttonText: 'Sign in with ChatGPT',
@@ -162,7 +162,7 @@ function ProviderCard({
           >
             {isOAuthPending ? (
               <>
-                <Loader2 className="w-4 h-4 animate-spin" />
+                <CircleNotch weight="bold" className="w-4 h-4 animate-spin" />
                 Waiting for sign in...
               </>
             ) : (
@@ -389,7 +389,7 @@ export function AITab() {
   if (!isInitialized && isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+        <CircleNotch weight="bold" className="w-6 h-6 animate-spin text-muted-foreground" />
       </div>
     );
   }

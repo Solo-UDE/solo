@@ -4,7 +4,7 @@
  */
 
 import { useCallback, useEffect, useRef } from 'react';
-import { X, XCircle, Pin, PinOff } from 'lucide-react';
+import { X, XCircle, PushPin, PushPinSlash } from '@phosphor-icons/react';
 import type { PanelInstanceId, TileId } from '@/lib/panels/types';
 
 interface ContextMenuPosition {
@@ -168,7 +168,7 @@ export function TabContextMenu({
 
       {/* Pin/Unpin action */}
       <MenuItem
-        icon={isPinned ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
+        icon={isPinned ? <PushPinSlash className="w-4 h-4" /> : <PushPin className="w-4 h-4" />}
         label={isPinned ? 'Unpin Tab' : 'Pin Tab'}
         onClick={() => {
           onTogglePin();
