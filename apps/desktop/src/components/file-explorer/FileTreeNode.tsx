@@ -2,12 +2,24 @@
  * FileTreeNode - Individual file/folder row in the tree
  */
 
-import React, { memo, useCallback, useEffect, useState } from 'react';
+import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { useDrag } from 'react-dnd';
 import { ChevronRight, ChevronDown, Loader2 } from 'lucide-react';
 import { FileIcon, FolderIcon } from '@react-symbols/icons/utils';
 import { Git } from '@react-symbols/icons/files';
 import { FolderGray, FolderGithub } from '@react-symbols/icons/folders';
 import type { FileTreeEntry } from '../../bindings';
+
+export const DND_ITEM_TYPES = {
+  FILE_TREE_NODE: 'FILE_TREE_NODE',
+} as const;
+
+export interface FileTreeDragItem {
+  type: typeof DND_ITEM_TYPES.FILE_TREE_NODE;
+  path: string;
+  name: string;
+  isDir: boolean;
+}
 
 interface FileTreeNodeProps {
   entry: FileTreeEntry;
@@ -94,6 +106,27 @@ export const FileTreeNode = memo(function FileTreeNode({
   onRenameCancel,
 }: FileTreeNodeProps) {
   const [renameValue, setRenameValue] = useState(entry.name);
+  const rowRef = useRef<HTMLDivElement>(null);
+
+  const [{ isDragging }, dragRef] = useDrag({
+    type: DND_ITEM_TYPES.FILE_TREE_NODE,
+    item: {
+      type: DND_ITEM_TYPES.FILE_TREE_NODE,
+      path: entry.path,
+      name: entry.name,
+      isDir: entry.is_dir,
+    } satisfies FileTreeDragItem,
+    collect: (monitor) => ({
+      isDragging: monitor.isDragging(),
+    }),
+  });
+
+  // Combine drag ref with our row ref
+  useEffect(() => {
+    if (rowRef.current) {
+      dragRef(rowRef.current);
+    }
+  }, [dragRef]);
 
   // Sync rename value when entry name changes (e.g., after external rename)
   useEffect(() => {
@@ -129,7 +162,8 @@ export const FileTreeNode = memo(function FileTreeNode({
 
   return (
     <div
-      style={style}
+      ref={rowRef}
+      style={{ ...style, opacity: isDragging ? 0.5 : 1 }}
       className={`
         flex items-center h-7 px-2 cursor-pointer select-none
         hover:bg-muted/50 active:bg-muted/70

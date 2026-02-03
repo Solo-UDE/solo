@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { DndProvider } from "react-dnd";
+import { HTML5Backend } from "react-dnd-html5-backend";
 import { Settings, LogOut } from "lucide-react";
 import { PrimarySidebar } from "./components/sidebar";
 import { MosaicLayout } from "./components/panels";
@@ -170,26 +172,28 @@ function AppContent() {
       </div>
 
       {/* Main content */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Dynamic-width sidebar */}
-        <PrimarySidebar width={leftSidebarWidth} onFileOpen={handleFileOpen} />
+      <DndProvider backend={HTML5Backend}>
+        <div className="flex-1 flex overflow-hidden">
+          {/* Dynamic-width sidebar */}
+          <PrimarySidebar width={leftSidebarWidth} onFileOpen={handleFileOpen} />
 
-        {/* Resizable divider */}
-        <div
-          className={cn('split-divider', isDragging && 'dragging')}
-          onMouseDown={handleMouseDown}
-          onDoubleClick={handleDoubleClick}
-        >
-          <div className="split-divider-grip">
-            <span /><span /><span />
+          {/* Resizable divider */}
+          <div
+            className={cn('split-divider', isDragging && 'dragging')}
+            onMouseDown={handleMouseDown}
+            onDoubleClick={handleDoubleClick}
+          >
+            <div className="split-divider-grip">
+              <span /><span /><span />
+            </div>
+          </div>
+
+          {/* Main editor area with panel system */}
+          <div className="flex-1 overflow-hidden">
+            <MosaicLayout />
           </div>
         </div>
-
-        {/* Main editor area with panel system */}
-        <div className="flex-1 overflow-hidden">
-          <MosaicLayout />
-        </div>
-      </div>
+      </DndProvider>
 
       {/* Settings modal */}
       <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />

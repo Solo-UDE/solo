@@ -5,8 +5,6 @@
 
 import { useCallback, useEffect, useMemo } from 'react';
 import { Mosaic, MosaicBranch } from 'react-mosaic-component';
-import { DndProvider } from 'react-dnd';
-import { HTML5Backend } from 'react-dnd-html5-backend';
 import { usePanelLayoutStore, useFocusedTileId } from '@/stores/panelLayoutStore';
 import { usePanelTabsStore } from '@/stores/panelTabsStore';
 import { TabbedContainer } from './TabbedContainer';
@@ -116,17 +114,15 @@ export function MosaicLayout() {
   }
 
   return (
-    <DndProvider backend={HTML5Backend}>
-      <div className="h-full w-full">
-        <Mosaic<TileId>
-          value={mosaicTree}
-          onChange={handleChange}
-          renderTile={renderTile}
-          className="mosaic-solo-theme"
-          zeroStateView={<ZeroState />}
-        />
-      </div>
-    </DndProvider>
+    <div className="h-full w-full">
+      <Mosaic<TileId>
+        value={mosaicTree}
+        onChange={handleChange}
+        renderTile={renderTile}
+        className="mosaic-solo-theme"
+        zeroStateView={<ZeroState />}
+      />
+    </div>
   );
 }
 
