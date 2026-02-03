@@ -7,7 +7,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Editor, { OnMount, BeforeMount } from '@monaco-editor/react';
 import type * as Monaco from 'monaco-editor';
-import { Loader2, AlertCircle } from 'lucide-react';
+import { CircleNotch, WarningCircle } from '@phosphor-icons/react';
 import * as fs from '@/lib/tauri/fs';
 import { registerSoloTheme, SOLO_THEME_NAME } from '@/components/editor/theme';
 import { MarkdownPreview } from '@/components/editor/MarkdownPreview';
@@ -232,7 +232,7 @@ export function FileViewerPanel({
     return (
       <div className="flex items-center justify-center h-full bg-background">
         <div className="text-center space-y-4">
-          <Loader2 className="w-8 h-8 text-primary animate-spin mx-auto" />
+          <CircleNotch weight="bold" className="w-8 h-8 text-primary animate-spin mx-auto" />
           <p className="text-sm text-muted-foreground">Loading file...</p>
         </div>
       </div>
@@ -243,7 +243,7 @@ export function FileViewerPanel({
     return (
       <div className="flex items-center justify-center h-full bg-background">
         <div className="text-center space-y-4 max-w-md px-4">
-          <AlertCircle className="w-8 h-8 text-destructive mx-auto" />
+          <WarningCircle className="w-8 h-8 text-destructive mx-auto" />
           <p className="text-sm text-destructive">Failed to load file</p>
           <p className="text-xs text-muted-foreground break-all">{error}</p>
         </div>

@@ -4,8 +4,13 @@
 
 import { invoke } from '@tauri-apps/api/core';
 
+export interface SpawnResult {
+	id: string;
+	shell: string;
+}
+
 /**
- * Spawn a new PTY process and return its ID.
+ * Spawn a new PTY process and return its ID and shell name.
  */
 export async function createTerminal(
 	cwd?: string,
@@ -13,8 +18,8 @@ export async function createTerminal(
 	env?: Record<string, string>,
 	cols?: number,
 	rows?: number,
-): Promise<string> {
-	return invoke<string>('spawn_pty', { cwd, shell, cols, rows, env });
+): Promise<SpawnResult> {
+	return invoke<SpawnResult>('spawn_pty', { cwd, shell, cols, rows, env });
 }
 
 /**

@@ -4,7 +4,7 @@
  */
 
 import { useCallback, useEffect, useRef } from 'react';
-import { AlertTriangle, X } from 'lucide-react';
+import { Warning, X } from '@phosphor-icons/react';
 
 interface UnsavedChangesDialogProps {
   isOpen: boolean;
@@ -56,7 +56,7 @@ export function UnsavedChangesDialog({
       >
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-yellow-500" />
+            <Warning className="w-4 h-4 text-yellow-500" />
             <h3 className="text-sm font-medium text-foreground">Unsaved Changes</h3>
           </div>
           <button

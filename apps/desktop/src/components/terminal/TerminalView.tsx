@@ -20,19 +20,30 @@ interface TerminalViewProps {
 	onExit?: (code: number | null) => void;
 }
 
-/** Read CSS custom properties and map to an xterm ITheme. */
-function getThemeFromCSS(): Record<string, string> {
-	const style = getComputedStyle(document.documentElement);
-	const get = (name: string) => style.getPropertyValue(name).trim();
-
-	return {
-		background: get('--color-background') || '#1e1e2e',
-		foreground: get('--color-foreground') || '#cdd6f4',
-		cursor: get('--color-foreground') || '#cdd6f4',
-		cursorAccent: get('--color-background') || '#1e1e2e',
-		selectionBackground: get('--color-muted') || '#45475a',
-	};
-}
+/** Catppuccin Mocha — always-dark terminal palette (decoupled from app theme). */
+const TERMINAL_THEME = {
+	background: '#1e1e2e',
+	foreground: '#cdd6f4',
+	cursor: '#cdd6f4',
+	cursorAccent: '#1e1e2e',
+	selectionBackground: '#45475a',
+	black: '#45475a',
+	red: '#f38ba8',
+	green: '#a6e3a1',
+	yellow: '#f9e2af',
+	blue: '#89b4fa',
+	magenta: '#f5c2e7',
+	cyan: '#94e2d5',
+	white: '#cdd6f4',
+	brightBlack: '#585b70',
+	brightRed: '#f38ba8',
+	brightGreen: '#a6e3a1',
+	brightYellow: '#f9e2af',
+	brightBlue: '#89b4fa',
+	brightMagenta: '#f5c2e7',
+	brightCyan: '#94e2d5',
+	brightWhite: '#f5f5f5',
+};
 
 export function TerminalView({ terminalId, isActive, onExit }: TerminalViewProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
@@ -57,7 +68,7 @@ export function TerminalView({ terminalId, isActive, onExit }: TerminalViewProps
 			cursorBlink: true,
 			fontSize: 13,
 			fontFamily: 'ui-monospace, "SF Mono", Menlo, Monaco, "Cascadia Code", monospace',
-			theme: getThemeFromCSS(),
+			theme: TERMINAL_THEME,
 			allowProposedApi: true,
 			scrollback: 5000,
 		});
@@ -88,9 +99,13 @@ export function TerminalView({ terminalId, isActive, onExit }: TerminalViewProps
 			(code) => onExitRef.current?.(code),
 		);
 
-		// ResizeObserver to keep xterm fitted
+		// ResizeObserver to keep xterm fitted.
+		// Debounced to avoid flicker during CSS transitions (e.g. sidebar resize).
+		let resizeTimer: ReturnType<typeof setTimeout> | null = null;
+
 		const observer = new ResizeObserver(() => {
-			requestAnimationFrame(() => {
+			if (resizeTimer) clearTimeout(resizeTimer);
+			resizeTimer = setTimeout(() => {
 				if (!fitRef.current) return;
 				fitRef.current.fit();
 				const dims = fitRef.current.proposeDimensions();
@@ -99,21 +114,12 @@ export function TerminalView({ terminalId, isActive, onExit }: TerminalViewProps
 						console.debug('Terminal resize failed (may be dead):', err);
 					});
 				}
-			});
+			}, 80);
 		});
 		observer.observe(container);
 
-		// Watch for theme changes (class mutations on <html> indicate dark/light switch)
-		const themeObserver = new MutationObserver(() => {
-			term.options.theme = getThemeFromCSS();
-		});
-		themeObserver.observe(document.documentElement, {
-			attributes: true,
-			attributeFilter: ['class', 'data-theme'],
-		});
-
 		return () => {
-			themeObserver.disconnect();
+			if (resizeTimer) clearTimeout(resizeTimer);
 			observer.disconnect();
 			dataDisposable.dispose();
 			unregister();

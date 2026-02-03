@@ -101,6 +101,7 @@
   --color-syntax-control: var(--syntax-control);
   --color-syntax-operator: var(--syntax-operator);
   --color-syntax-bracket: var(--syntax-bracket);
+
 }
 
 /* =============================================================================
@@ -197,6 +198,7 @@
   --syntax-control: oklch(0.55 0.15 320);
   --syntax-operator: oklch(0.35 0.02 60);
   --syntax-bracket: oklch(0.6 0.15 85);
+
 }
 
 /* =============================================================================
@@ -321,9 +323,11 @@ html.dark {
 
 /* Disable text selection on UI elements */
 button,
+[role="button"],
 [data-tauri-drag-region] {
   user-select: none;
   -webkit-user-select: none;
+  cursor: pointer;
 }
 
 /* =============================================================================

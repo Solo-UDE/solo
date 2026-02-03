@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Settings, LogOut } from "lucide-react";
+import { GearSix, SignOut, Terminal, IconContext } from "@phosphor-icons/react";
 import { PrimarySidebar } from "./components/sidebar";
+import { SidebarTerminal } from "./components/sidebar";
 import { MosaicLayout } from "./components/panels";
 import { AuthGuard } from "./components/auth";
 import { useUIStore } from "./stores/uiStore";
@@ -32,8 +33,16 @@ function AppContent() {
   const dragStartX = useRef<number>(0);
   const dragStartWidth = useRef<number>(0);
 
+  // Terminal panel drag state
+  const [isDraggingTerminal, setIsDraggingTerminal] = useState(false);
+  const dragStartY = useRef<number>(0);
+  const dragStartHeight = useRef<number>(0);
+
   const leftSidebarWidth = useUIStore((state) => state.leftSidebarWidth);
   const setLeftSidebarWidth = useUIStore((state) => state.setLeftSidebarWidth);
+  const terminalPanelOpen = useUIStore((s) => s.terminalPanelOpen);
+  const terminalPanelHeight = useUIStore((s) => s.terminalPanelHeight);
+  const setTerminalPanelHeight = useUIStore((s) => s.setTerminalPanelHeight);
   const initializeProviders = useProviderStore((state) => state.initialize);
   const loadPersistedSessions = useAgentStore((state) => state.loadPersistedSessions);
   const signOut = useAuthStore((state) => state.signOut);
@@ -80,34 +89,38 @@ function AppContent() {
     loadPersistedSessions();
   }, [loadPersistedSessions]);
 
-  // Keyboard shortcut: Ctrl+` (Cmd+` on Mac) to toggle/create terminal
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === '`' && (e.ctrlKey || e.metaKey)) {
-        e.preventDefault();
-
-        // If there's an existing active terminal, focus its panel instead of creating a new one
-        const { terminals, activeTerminalId } = useTerminalStore.getState();
-        if (activeTerminalId && terminals.get(activeTerminalId)?.isAlive) {
-          openPanel(BUILTIN_PANEL_TYPES.TERMINAL, { terminalId: activeTerminalId });
-          return;
-        }
-
-        // No active terminal — create a new one
+  // Toggle terminal panel, auto-creating a terminal if none exist
+  const handleToggleTerminal = useCallback(() => {
+    const uiState = useUIStore.getState();
+    if (!uiState.terminalPanelOpen) {
+      const { terminals } = useTerminalStore.getState();
+      if (terminals.size === 0) {
         const cwd = useFileExplorerStore.getState().rootPath ?? undefined;
         createTerminal(cwd)
-          .then((id) => {
-            useTerminalStore.getState().addTerminal(id, cwd);
-            openPanel(BUILTIN_PANEL_TYPES.TERMINAL, { terminalId: id });
+          .then(({ id, shell }) => {
+            useTerminalStore.getState().addTerminal(id, cwd, shell);
+            uiState.toggleTerminalPanel();
           })
           .catch((err) => {
             console.error('Failed to create terminal:', err);
           });
+        return;
+      }
+    }
+    uiState.toggleTerminalPanel();
+  }, []);
+
+  // Keyboard shortcut: Ctrl+` (Cmd+` on Mac) to toggle terminal panel
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === '`' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        handleToggleTerminal();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [openPanel]);
+  }, [handleToggleTerminal]);
 
   // Open a file in the panel system
   const handleFileOpen = useCallback((path: string) => {
@@ -138,7 +151,7 @@ function AppContent() {
     setLeftSidebarWidth(SIDEBAR.expanded);
   }, [setLeftSidebarWidth]);
 
-  // Attach global mouse events for drag
+  // Attach global mouse events for sidebar drag
   useEffect(() => {
     if (isDragging) {
       document.addEventListener('mousemove', handleMouseMove);
@@ -154,26 +167,58 @@ function AppContent() {
     };
   }, [isDragging, handleMouseMove, handleMouseUp]);
 
+  // Terminal panel divider drag handlers
+  const handleTerminalDragStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsDraggingTerminal(true);
+    dragStartY.current = e.clientY;
+    dragStartHeight.current = terminalPanelHeight;
+  }, [terminalPanelHeight]);
+
+  const handleTerminalDragMove = useCallback((e: MouseEvent) => {
+    if (!isDraggingTerminal) return;
+    // Dragging up increases terminal height
+    const delta = dragStartY.current - e.clientY;
+    setTerminalPanelHeight(dragStartHeight.current + delta);
+  }, [isDraggingTerminal, setTerminalPanelHeight]);
+
+  const handleTerminalDragEnd = useCallback(() => {
+    setIsDraggingTerminal(false);
+  }, []);
+
+  // Attach global mouse events for terminal divider drag
+  useEffect(() => {
+    if (isDraggingTerminal) {
+      document.addEventListener('mousemove', handleTerminalDragMove);
+      document.addEventListener('mouseup', handleTerminalDragEnd);
+      document.body.style.cursor = 'row-resize';
+      document.body.style.userSelect = 'none';
+    }
+    return () => {
+      document.removeEventListener('mousemove', handleTerminalDragMove);
+      document.removeEventListener('mouseup', handleTerminalDragEnd);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [isDraggingTerminal, handleTerminalDragMove, handleTerminalDragEnd]);
+
   return (
-    <div className="h-screen w-screen bg-background text-foreground flex flex-col overflow-hidden">
-      {/* Titlebar drag region - padding adjusts for platform window controls */}
+    <div className="h-screen w-screen bg-background text-foreground overflow-hidden relative">
+      {/* Titlebar overlay — floats above full-height content */}
       <div
         data-tauri-drag-region
         style={titlebarStyle}
-        className="h-12 flex items-center justify-between bg-card/80 backdrop-blur-sm border-b border-border/30 shrink-0"
+        className="absolute top-0 inset-x-0 h-[38px] flex items-center z-50 backdrop-blur-md bg-background/70"
       >
-        {/* Left spacer for balance */}
         <div className="flex-1" data-tauri-drag-region />
 
-        {/* Centered title */}
-        <span className="text-sm font-medium text-muted-foreground" data-tauri-drag-region>
+        <span className="text-xs font-medium text-muted-foreground/60" data-tauri-drag-region>
           Solo
         </span>
 
-        {/* Settings button, sign out, and status indicator */}
-        <div className="flex-1 flex items-center justify-end gap-2">
+        <div className="flex-1 flex items-center justify-end gap-1.5">
           <div
-            className={`w-2 h-2 rounded-full ${
+            className={`w-1.5 h-1.5 rounded-full ${
               backendStatus.includes("connected")
                 ? "bg-status-success"
                 : backendStatus.includes("error")
@@ -182,33 +227,41 @@ function AppContent() {
             }`}
           />
           {user?.email && (
-            <span className="text-xs text-muted-foreground truncate max-w-32">
+            <span className="text-[11px] text-muted-foreground/70 truncate max-w-28">
               {user.email}
             </span>
           )}
           <button
+            onClick={handleToggleTerminal}
+            className={cn(
+              'p-1 rounded hover:bg-foreground/[0.08] transition-colors',
+              terminalPanelOpen && 'bg-foreground/[0.08]',
+            )}
+            title="Toggle Terminal (⌘`)"
+          >
+            <Terminal className="w-3.5 h-3.5 text-muted-foreground" />
+          </button>
+          <button
             onClick={() => setIsSettingsOpen(true)}
-            className="p-1.5 rounded hover:bg-muted transition-colors"
+            className="p-1 rounded hover:bg-foreground/[0.08] transition-colors"
             title="Settings"
           >
-            <Settings className="w-4 h-4 text-muted-foreground" />
+            <GearSix className="w-3.5 h-3.5 text-muted-foreground" />
           </button>
           <button
             onClick={signOut}
-            className="p-1.5 rounded hover:bg-muted transition-colors"
+            className="p-1 rounded hover:bg-foreground/[0.08] transition-colors"
             title="Sign out"
           >
-            <LogOut className="w-4 h-4 text-muted-foreground" />
+            <SignOut className="w-3.5 h-3.5 text-muted-foreground" />
           </button>
         </div>
       </div>
 
-      {/* Main content */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Dynamic-width sidebar */}
+      {/* Full-height content — sidebar bg extends behind titlebar */}
+      <div className="flex h-full">
         <PrimarySidebar width={leftSidebarWidth} onFileOpen={handleFileOpen} />
 
-        {/* Resizable divider */}
         <div
           className={cn('split-divider', isDragging && 'dragging')}
           onMouseDown={handleMouseDown}
@@ -219,13 +272,35 @@ function AppContent() {
           </div>
         </div>
 
-        {/* Main editor area with panel system */}
-        <div className="flex-1 overflow-hidden">
-          <MosaicLayout />
+        {/* Right column: content pushed below titlebar */}
+        <div className="flex-1 flex flex-col overflow-hidden min-h-0 pt-[38px]">
+          <div className="flex-1 overflow-hidden min-h-0">
+            <MosaicLayout />
+          </div>
+
+          {terminalPanelOpen && (
+            <>
+              <div
+                className={cn(
+                  'h-1.5 shrink-0 cursor-row-resize flex items-center justify-center hover:bg-primary/20 transition-colors',
+                  isDraggingTerminal && 'bg-primary/30',
+                )}
+                onMouseDown={handleTerminalDragStart}
+              >
+                <div className="w-8 h-px bg-border/60 rounded-full" />
+              </div>
+
+              <div
+                className="shrink-0 overflow-hidden"
+                style={{ height: terminalPanelHeight }}
+              >
+                <SidebarTerminal />
+              </div>
+            </>
+          )}
         </div>
       </div>
 
-      {/* Settings modal */}
       <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
     </div>
   );
@@ -233,9 +308,11 @@ function AppContent() {
 
 function App() {
   return (
-    <AuthGuard>
-      <AppContent />
-    </AuthGuard>
+    <IconContext.Provider value={{ weight: "fill" }}>
+      <AuthGuard>
+        <AppContent />
+      </AuthGuard>
+    </IconContext.Provider>
   );
 }
 

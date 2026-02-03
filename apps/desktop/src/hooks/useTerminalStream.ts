@@ -5,7 +5,7 @@
  * terminal:data and terminal:exit events to per-terminal callbacks.
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type { BackendEvent } from '../bindings';
 
@@ -34,11 +34,15 @@ export function registerTerminalCallbacks(
 /**
  * Sets up a single global listener for terminal backend events.
  * Mount once at the app root (App.tsx).
+ *
+ * Uses closure-scoped cancellation so each StrictMode invocation
+ * independently tracks whether its listener should stay alive.
  */
 export function useTerminalStream(): void {
-	const cleanupRef = useRef<UnlistenFn | null>(null);
-
 	useEffect(() => {
+		let cancelled = false;
+		let unlisten: UnlistenFn | null = null;
+
 		listen<BackendEvent>('terminal-event', (event) => {
 			const payload = event.payload;
 
@@ -50,16 +54,20 @@ export function useTerminalStream(): void {
 				cb?.(payload.payload.code);
 			}
 		})
-			.then((unlisten) => {
-				cleanupRef.current = unlisten;
+			.then((fn) => {
+				if (cancelled) {
+					fn();
+				} else {
+					unlisten = fn;
+				}
 			})
 			.catch((err) => {
 				console.error('Failed to listen to terminal events:', err);
 			});
 
 		return () => {
-			cleanupRef.current?.();
-			cleanupRef.current = null;
+			cancelled = true;
+			unlisten?.();
 		};
 	}, []);
 }

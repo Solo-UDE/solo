@@ -20,7 +20,7 @@ interface TerminalState {
 	terminals: Map<string, TerminalInstance>;
 	activeTerminalId: string | null;
 
-	addTerminal: (id: string, cwd?: string) => void;
+	addTerminal: (id: string, cwd?: string, shell?: string) => void;
 	removeTerminal: (id: string) => void;
 	setActiveTerminal: (id: string | null) => void;
 	markExited: (id: string) => void;
@@ -32,11 +32,11 @@ export const useTerminalStore = create<TerminalState>()(
 		terminals: new Map(),
 		activeTerminalId: null,
 
-		addTerminal: (id, cwd) =>
+		addTerminal: (id, cwd, shell) =>
 			set((state) => {
 				state.terminals.set(id, {
 					id,
-					title: 'Terminal',
+					title: shell ?? 'Terminal',
 					cwd,
 					isAlive: true,
 				});
@@ -63,7 +63,7 @@ export const useTerminalStore = create<TerminalState>()(
 				const terminal = state.terminals.get(id);
 				if (terminal) {
 					terminal.isAlive = false;
-					terminal.title = 'Terminal (exited)';
+					terminal.title = `${terminal.title} (exited)`;
 				}
 			}),
 

@@ -5,12 +5,102 @@
 //! and write/resize/kill commands exposed as Tauri IPC handlers.
 
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
+use serde::Serialize;
 use solo_protocol::BackendEvent;
 use std::collections::HashMap;
 use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
 use tauri::{AppHandle, Emitter, State};
 use tracing::{debug, error, info, warn};
+
+const SHELL_CONFIG_VERSION: &str = "# solo-shell-v1";
+
+const ZSH_RC: &str = r#"# solo-shell-v1
+# Restore original ZDOTDIR for subshells
+if [[ -n "$_SOLO_ORIG_ZDOTDIR" ]]; then
+  export ZDOTDIR="$_SOLO_ORIG_ZDOTDIR"
+else
+  unset ZDOTDIR
+fi
+
+# Source user config (PATH, aliases, completions, plugins)
+[[ -f "${HOME}/.zshrc" ]] && source "${HOME}/.zshrc"
+
+# Solo prompt — only inside Solo terminal
+[[ -z "$SOLO_TERMINAL" ]] && return
+
+__solo_git_info() {
+  local branch
+  branch=$(git symbolic-ref --short HEAD 2>/dev/null) || return
+  local dirty=""
+  if ! git diff --quiet --ignore-submodules 2>/dev/null || \
+     ! git diff --cached --quiet --ignore-submodules 2>/dev/null; then
+    dirty=" %F{yellow}✗%f"
+  fi
+  echo " %F{cyan}git:(%F{red}${branch}%F{cyan})%f${dirty}"
+}
+
+precmd() { PROMPT="%F{cyan}→%f  %F{red}%n%f$(__solo_git_info) " }
+"#;
+
+const BASH_RC: &str = r#"# solo-shell-v1
+[[ -f "${HOME}/.bashrc" ]] && source "${HOME}/.bashrc"
+[[ -z "$SOLO_TERMINAL" ]] && return
+
+__solo_git_info() {
+  local branch
+  branch=$(git symbolic-ref --short HEAD 2>/dev/null) || return
+  local dirty=""
+  if ! git diff --quiet --ignore-submodules 2>/dev/null || \
+     ! git diff --cached --quiet --ignore-submodules 2>/dev/null; then
+    dirty=" \[\e[33m\]✗\[\e[0m\]"
+  fi
+  echo " \[\e[36m\]git:(\[\e[31m\]${branch}\[\e[36m\])\[\e[0m\]${dirty}"
+}
+
+PROMPT_COMMAND='PS1="\[\e[36m\]→\[\e[0m\]  \[\e[31m\]\u\[\e[0m\]$(__solo_git_info) "'
+"#;
+
+fn solo_shell_dir() -> PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+    PathBuf::from(home).join(".solo").join("shell")
+}
+
+/// Write a file only if it's missing or the version header doesn't match.
+fn write_if_outdated(path: &Path, content: &str) -> Result<(), String> {
+    if path.exists() {
+        if let Ok(existing) = std::fs::read_to_string(path) {
+            if existing.starts_with(SHELL_CONFIG_VERSION) {
+                return Ok(());
+            }
+        }
+    }
+    std::fs::write(path, content).map_err(|e| format!("Failed to write {}: {e}", path.display()))
+}
+
+/// Create Solo shell RC files in ~/.solo/shell/ (best-effort).
+fn ensure_shell_configs() -> Result<(), String> {
+    let base = solo_shell_dir();
+    let zsh_dir = base.join("zsh");
+    let bash_dir = base.join("bash");
+
+    std::fs::create_dir_all(&zsh_dir)
+        .map_err(|e| format!("Failed to create {}: {e}", zsh_dir.display()))?;
+    std::fs::create_dir_all(&bash_dir)
+        .map_err(|e| format!("Failed to create {}: {e}", bash_dir.display()))?;
+
+    write_if_outdated(&zsh_dir.join(".zshrc"), ZSH_RC)?;
+    write_if_outdated(&bash_dir.join(".bashrc"), BASH_RC)?;
+
+    Ok(())
+}
+
+#[derive(Serialize)]
+pub struct SpawnResult {
+    id: String,
+    shell: String,
+}
 
 pub struct PtyInstance {
     writer: Arc<Mutex<Box<dyn Write + Send>>>,
@@ -38,7 +128,7 @@ impl Default for TerminalState {
     }
 }
 
-/// Spawn a new PTY process and return its ID.
+/// Spawn a new PTY process and return its ID and shell name.
 #[tauri::command]
 pub fn spawn_pty(
     cwd: Option<String>,
@@ -48,7 +138,7 @@ pub fn spawn_pty(
     env: Option<HashMap<String, String>>,
     app: AppHandle,
     state: State<'_, TerminalState>,
-) -> Result<String, String> {
+) -> Result<SpawnResult, String> {
     let pty_system = native_pty_system();
 
     let size = PtySize {
@@ -89,8 +179,44 @@ pub fn spawn_pty(
         }
     });
 
-    let mut cmd = CommandBuilder::new(&shell_path);
+    // Best-effort: generate Solo shell configs before spawning
+    if let Err(e) = ensure_shell_configs() {
+        warn!("Failed to ensure shell configs: {e}");
+    }
+
+    let shell_name_lower = std::path::Path::new(&shell_path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    let is_zsh = shell_name_lower == "zsh";
+    let is_bash = shell_name_lower == "bash";
+
+    let mut cmd = if is_bash {
+        // Bash: use --rcfile to source our custom config
+        let rc_path = solo_shell_dir().join("bash").join(".bashrc");
+        let mut c = CommandBuilder::new(&shell_path);
+        c.arg("--rcfile");
+        c.arg(rc_path.to_string_lossy().as_ref());
+        c
+    } else {
+        CommandBuilder::new(&shell_path)
+    };
+
     cmd.cwd(&working_dir);
+    cmd.env("TERM", "xterm-256color");
+    cmd.env("COLORTERM", "truecolor");
+    cmd.env("SOLO_TERMINAL", "1");
+
+    if is_zsh {
+        // Save original ZDOTDIR so our .zshrc can restore it for subshells
+        if let Ok(orig) = std::env::var("ZDOTDIR") {
+            cmd.env("_SOLO_ORIG_ZDOTDIR", &orig);
+        }
+        let zsh_dir = solo_shell_dir().join("zsh");
+        cmd.env("ZDOTDIR", zsh_dir.to_string_lossy().as_ref());
+    }
 
     // Merge extra env vars
     if let Some(vars) = env {
@@ -140,8 +266,14 @@ pub fn spawn_pty(
         read_loop(reader, &read_id, &app, &child_for_reader, &terminals_ref);
     });
 
+    let shell_name = std::path::Path::new(&shell_path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("shell")
+        .to_string();
+
     info!(id = %id, shell = %shell_path, cwd = %working_dir.display(), "Spawned PTY");
-    Ok(id)
+    Ok(SpawnResult { id, shell: shell_name })
 }
 
 /// Blocking read loop that forwards PTY output to the frontend.

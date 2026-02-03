@@ -90,7 +90,7 @@ export function useTitlebarStyle(): React.CSSProperties {
   const { titlebarInset } = usePlatform();
 
   return {
-    paddingLeft: titlebarInset.left || 16,
-    paddingRight: titlebarInset.right || 16,
+    paddingLeft: titlebarInset.left || 12,
+    paddingRight: titlebarInset.right || 12,
   };
 }

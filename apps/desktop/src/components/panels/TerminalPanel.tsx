@@ -22,6 +22,7 @@ export function TerminalPanel({
 }: PanelProps<TerminalPanelData>) {
 	const terminalId = data?.terminalId;
 	const killedRef = useRef(false);
+	const pendingKillRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	// Sync title from store
 	useEffect(() => {
@@ -36,15 +37,23 @@ export function TerminalPanel({
 		return useTerminalStore.subscribe(update);
 	}, [terminalId, onTitleChange]);
 
-	// Kill backend process on unmount
+	// Kill backend process on unmount (deferred to survive StrictMode double-mount).
+	// StrictMode unmounts then immediately remounts — the remount cancels the pending kill.
 	useEffect(() => {
+		if (pendingKillRef.current !== null) {
+			clearTimeout(pendingKillRef.current);
+			pendingKillRef.current = null;
+		}
+
 		return () => {
 			if (terminalId && !killedRef.current) {
-				killedRef.current = true;
-				killTerminal(terminalId).catch(() => {
-					// Terminal may already be dead
-				});
-				useTerminalStore.getState().removeTerminal(terminalId);
+				pendingKillRef.current = setTimeout(() => {
+					killedRef.current = true;
+					killTerminal(terminalId).catch(() => {
+						// Terminal may already be dead
+					});
+					useTerminalStore.getState().removeTerminal(terminalId);
+				}, 50);
 			}
 		};
 	}, [terminalId]);

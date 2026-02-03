@@ -5,7 +5,7 @@
 
 import { useCallback, type MouseEvent } from 'react';
 import { useDrag, useDrop } from 'react-dnd';
-import { X, Pin } from 'lucide-react';
+import { X, PushPin } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import type { PanelInstance, TileId, PanelInstanceId, TabDragItem } from '@/lib/panels/types';
 import { DragItemTypes } from '@/lib/panels/types';
@@ -164,7 +164,7 @@ export function Tab({
           className="p-0.5 shrink-0 text-muted-foreground"
           title="Pinned - right-click to unpin"
         >
-          <Pin className="w-3 h-3" />
+          <PushPin className="w-3 h-3" />
         </span>
       ) : (
         <button

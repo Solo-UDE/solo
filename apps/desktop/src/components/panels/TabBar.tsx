@@ -5,7 +5,7 @@
 
 import { useCallback, useRef, useState, useEffect, type MouseEvent } from 'react';
 import { useDrop } from 'react-dnd';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { CaretLeft, CaretRight } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Tab } from './Tab';
 import type { PanelInstance, TileId, PanelInstanceId, TabDragItem } from '@/lib/panels/types';
@@ -136,7 +136,7 @@ export function TabBar({
           onClick={scrollLeft}
           aria-label="Scroll tabs left"
         >
-          <ChevronLeft className="w-4 h-4 text-muted-foreground" />
+          <CaretLeft className="w-4 h-4 text-muted-foreground" />
         </button>
       )}
 
@@ -174,7 +174,7 @@ export function TabBar({
           onClick={scrollRight}
           aria-label="Scroll tabs right"
         >
-          <ChevronRight className="w-4 h-4 text-muted-foreground" />
+          <CaretRight className="w-4 h-4 text-muted-foreground" />
         </button>
       )}
     </div>
