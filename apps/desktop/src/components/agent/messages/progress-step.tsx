@@ -1,4 +1,4 @@
-import { Check, Loader2, X, Circle } from 'lucide-react';
+import { Check, CircleNotch, X, Circle } from '@phosphor-icons/react';
 
 import type { FC } from 'react';
 
@@ -26,7 +26,7 @@ export const ProgressStep: FC<ProgressStepProps> = ({
       case 'in_progress':
         return (
           <div className="w-5 h-5 rounded-full bg-info-muted flex items-center justify-center">
-            <Loader2 className="w-3 h-3 text-info animate-spin" />
+            <CircleNotch weight="bold" className="w-3 h-3 text-info animate-spin" />
           </div>
         );
       case 'failed':

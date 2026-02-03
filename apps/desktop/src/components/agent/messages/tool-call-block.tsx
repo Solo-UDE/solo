@@ -1,4 +1,4 @@
-import { Terminal, ExternalLink, ChevronDown, ChevronRight } from 'lucide-react';
+import { Terminal, ArrowSquareOut, CaretDown, CaretRight } from '@phosphor-icons/react';
 import { useState } from 'react';
 
 import type { FC } from 'react';
@@ -53,7 +53,7 @@ export const ToolCallBlock: FC<ToolCallBlockProps> = ({
             className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline"
             disabled={!onOpenTerminal}
           >
-            <ExternalLink className="w-3 h-3" />
+            <ArrowSquareOut className="w-3 h-3" />
             <span>Open Terminal</span>
           </button>
 
@@ -76,9 +76,9 @@ export const ToolCallBlock: FC<ToolCallBlockProps> = ({
               className="w-full px-3 py-2 flex items-center gap-2 text-xs font-medium text-muted-foreground hover:bg-muted/50 transition-colors"
             >
               {isExpanded ? (
-                <ChevronDown className="w-3 h-3" />
+                <CaretDown className="w-3 h-3" />
               ) : (
-                <ChevronRight className="w-3 h-3" />
+                <CaretRight className="w-3 h-3" />
               )}
               <span>Output</span>
             </button>

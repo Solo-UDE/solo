@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { GearSix, SignOut, Terminal, IconContext } from "@phosphor-icons/react";
+import { GearSix, SignOut, Terminal } from "@phosphor-icons/react";
 import { PrimarySidebar } from "./components/sidebar";
 import { SidebarTerminal } from "./components/sidebar";
 import { MosaicLayout } from "./components/panels";
@@ -308,11 +308,9 @@ function AppContent() {
 
 function App() {
   return (
-    <IconContext.Provider value={{ weight: "fill" }}>
-      <AuthGuard>
-        <AppContent />
-      </AuthGuard>
-    </IconContext.Provider>
+    <AuthGuard>
+      <AppContent />
+    </AuthGuard>
   );
 }
 

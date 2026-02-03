@@ -1,4 +1,4 @@
-import { Bot, Loader2 } from 'lucide-react';
+import { Robot, CircleNotch } from '@phosphor-icons/react';
 
 import { AgentNarrative } from './AgentNarrative';
 
@@ -39,7 +39,7 @@ export const AgentMessage: FC<AgentMessageProps> = ({
 				{avatarUrl ? (
 					<img src={avatarUrl} alt={agentName} className="w-full h-full object-cover" />
 				) : (
-					<Bot className="w-4 h-4 text-secondary-foreground" />
+					<Robot className="w-4 h-4 text-secondary-foreground" />
 				)}
 			</div>
 
@@ -50,7 +50,7 @@ export const AgentMessage: FC<AgentMessageProps> = ({
 					<span className="text-sm font-medium text-foreground">{agentName}</span>
 					<span className="text-xs text-muted-foreground">{formatTime(timestamp)}</span>
 					{isStreaming && (
-						<Loader2 className="w-3 h-3 text-muted-foreground animate-spin" />
+						<CircleNotch weight="bold" className="w-3 h-3 text-muted-foreground animate-spin" />
 					)}
 				</div>
 
@@ -99,7 +99,7 @@ const ToolCallBlock: FC<ToolCallBlockProps> = ({ toolCall }) => {
 				</span>
 				<span className={`text-xs ${statusColors[toolCall.status]}`}>
 					{toolCall.status === 'running' && (
-						<Loader2 className="w-3 h-3 animate-spin inline" />
+						<CircleNotch weight="bold" className="w-3 h-3 animate-spin inline" />
 					)}
 					{toolCall.status === 'completed' && '✓'}
 					{toolCall.status === 'error' && '✗'}

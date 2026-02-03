@@ -15,7 +15,6 @@
   },
   "dependencies": {
     "@ai-sdk/react": "3.0.59",
-    "@icons-pack/react-simple-icons": "13.8.0",
     "@lexical/react": "^0.39.0",
     "@monaco-editor/react": "^4.6.0",
     "@phosphor-icons/react": "2.1.10",
@@ -41,7 +40,6 @@
     "framer-motion": "^12.23.26",
     "immer": "11.1.3",
     "lexical": "^0.39.0",
-    "lucide-react": "0.563.0",
     "monaco-editor": "^0.52.0",
     "react": "^19.0.0",
     "react-dnd": "16.0.1",

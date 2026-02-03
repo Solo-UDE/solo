@@ -3,7 +3,7 @@
  */
 
 import { useState, useCallback } from 'react';
-import { Eye, EyeOff, X } from 'lucide-react';
+import { Eye, EyeSlash, X } from '@phosphor-icons/react';
 
 interface PasswordInputProps {
   value: string;
@@ -57,7 +57,7 @@ export function PasswordInput({
           title={visible ? 'Hide' : 'Show'}
         >
           {visible ? (
-            <EyeOff className="w-3.5 h-3.5 text-muted-foreground" />
+            <EyeSlash className="w-3.5 h-3.5 text-muted-foreground" />
           ) : (
             <Eye className="w-3.5 h-3.5 text-muted-foreground" />
           )}

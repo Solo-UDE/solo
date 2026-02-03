@@ -4,7 +4,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Settings, X, Sun, Code, FolderOpen, Keyboard, Bot, BookOpen, ExternalLink, LogOut } from 'lucide-react';
+import { GearSix, X, Sun, Code, FolderOpen, Keyboard, Robot, BookOpen, ArrowSquareOut, SignOut } from '@phosphor-icons/react';
 import {
   Dialog,
   DialogContent,
@@ -36,7 +36,7 @@ const TABS: Tab[] = [
   { id: 'editor', label: 'Editor', icon: Code },
   { id: 'files', label: 'Files', icon: FolderOpen },
   { id: 'shortcuts', label: 'Shortcuts', icon: Keyboard },
-  { id: 'ai', label: 'AI', icon: Bot },
+  { id: 'ai', label: 'AI', icon: Robot },
 ];
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
@@ -155,7 +155,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               >
                 <BookOpen className="w-4 h-4" />
                 <span>Docs</span>
-                <ExternalLink className="w-3 h-3 ml-auto opacity-50" />
+                <ArrowSquareOut className="w-3 h-3 ml-auto opacity-50" />
               </button>
             </nav>
 
@@ -164,7 +164,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               onClick={handleLogout}
               className="w-full flex items-center gap-2 px-3 py-2 rounded-none text-sm transition-colors cursor-pointer text-muted-foreground hover:text-foreground hover:bg-background/50 mt-2"
             >
-              <LogOut className="w-4 h-4" />
+              <SignOut className="w-4 h-4" />
               <span>Log out</span>
             </button>
           </div>
@@ -174,7 +174,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
               <div className="flex items-center gap-2">
-                <Settings className="w-4 h-4 text-muted-foreground" />
+                <GearSix className="w-4 h-4 text-muted-foreground" />
                 <h2 className="text-sm font-medium text-foreground">
                   {TABS.find((t) => t.id === activeTab)?.label}
                 </h2>

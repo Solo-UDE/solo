@@ -3,7 +3,7 @@
  */
 
 import { useState, useMemo, useCallback } from 'react';
-import { Search, RotateCcw } from 'lucide-react';
+import { MagnifyingGlass, ArrowCounterClockwise } from '@phosphor-icons/react';
 import { useSettingsStore } from '../../../stores/settingsStore';
 import { KeybindingInput } from '../controls';
 import {
@@ -72,7 +72,7 @@ export function ShortcutsTab() {
       {/* Search and Reset */}
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <MagnifyingGlass className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <input
             type="text"
             placeholder="Search shortcuts..."
@@ -87,7 +87,7 @@ export function ShortcutsTab() {
             onClick={resetAllKeybindings}
             className="flex items-center gap-1.5 px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted rounded-none transition-colors"
           >
-            <RotateCcw className="w-4 h-4" />
+            <ArrowCounterClockwise className="w-4 h-4" />
             Reset All
           </button>
         )}

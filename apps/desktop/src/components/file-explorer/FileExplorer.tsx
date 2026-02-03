@@ -6,11 +6,11 @@ import { useCallback, useEffect, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import {
   FolderOpen,
-  RefreshCw,
+  ArrowsClockwise,
   FilePlus,
   FolderPlus,
   X,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import { FileTree } from './FileTree';
 import { InputDialog } from './InputDialog';
 import { useFileExplorerStore, getParentPath } from '../../stores/fileExplorerStore';
@@ -180,7 +180,7 @@ export function FileExplorer({ onFileOpen, className = '' }: FileExplorerProps) 
               className="p-1.5 rounded hover:bg-muted transition-colors"
               title="Refresh"
             >
-              <RefreshCw className="w-4 h-4 text-muted-foreground" />
+              <ArrowsClockwise className="w-4 h-4 text-muted-foreground" />
             </button>
             <button
               onClick={closeFolder}

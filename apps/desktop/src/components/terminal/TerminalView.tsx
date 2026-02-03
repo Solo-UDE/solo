@@ -20,30 +20,74 @@ interface TerminalViewProps {
 	onExit?: (code: number | null) => void;
 }
 
-/** Catppuccin Mocha — always-dark terminal palette (decoupled from app theme). */
-const TERMINAL_THEME = {
-	background: '#1e1e2e',
-	foreground: '#cdd6f4',
-	cursor: '#cdd6f4',
-	cursorAccent: '#1e1e2e',
-	selectionBackground: '#45475a',
-	black: '#45475a',
-	red: '#f38ba8',
-	green: '#a6e3a1',
-	yellow: '#f9e2af',
-	blue: '#89b4fa',
-	magenta: '#f5c2e7',
-	cyan: '#94e2d5',
-	white: '#cdd6f4',
-	brightBlack: '#585b70',
-	brightRed: '#f38ba8',
-	brightGreen: '#a6e3a1',
-	brightYellow: '#f9e2af',
-	brightBlue: '#89b4fa',
-	brightMagenta: '#f5c2e7',
-	brightCyan: '#94e2d5',
-	brightWhite: '#f5f5f5',
+const DARK_ANSI = {
+	black:         '#3b3b3b',
+	red:           '#ff5f56',
+	green:         '#2ed573',
+	yellow:        '#ffc107',
+	blue:          '#61afef',
+	magenta:       '#c678dd',
+	cyan:          '#56d4dd',
+	white:         '#d4d4d4',
+	brightBlack:   '#6b6b6b',
+	brightRed:     '#ff6e67',
+	brightGreen:   '#5af78e',
+	brightYellow:  '#ffd866',
+	brightBlue:    '#6cb6ff',
+	brightMagenta: '#d19aff',
+	brightCyan:    '#7ee8e8',
+	brightWhite:   '#f1f1f1',
 };
+
+const LIGHT_ANSI = {
+	black:         '#383a42',
+	red:           '#d32f2f',
+	green:         '#388e3c',
+	yellow:        '#c68a00',
+	blue:          '#1976d2',
+	magenta:       '#7b1fa2',
+	cyan:          '#0097a7',
+	white:         '#fafafa',
+	brightBlack:   '#8e8e8e',
+	brightRed:     '#e53935',
+	brightGreen:   '#43a047',
+	brightYellow:  '#f9a825',
+	brightBlue:    '#42a5f5',
+	brightMagenta: '#ab47bc',
+	brightCyan:    '#26c6da',
+	brightWhite:   '#ffffff',
+};
+
+let _hexCtx: CanvasRenderingContext2D | null = null;
+
+function cssColorToHex(cssValue: string): string {
+	if (!_hexCtx) _hexCtx = document.createElement('canvas').getContext('2d');
+	if (!_hexCtx) return cssValue;
+	_hexCtx.fillStyle = cssValue;
+	return _hexCtx.fillStyle;
+}
+
+function getCssVarHex(name: string): string {
+	const raw = getComputedStyle(document.documentElement)
+		.getPropertyValue(name).trim();
+	return raw ? cssColorToHex(raw) : '';
+}
+
+function buildTerminalTheme(): Record<string, string> {
+	const dark = document.documentElement.classList.contains('dark');
+	const bg = getCssVarHex('--background');
+	const fg = getCssVarHex('--foreground');
+	const muted = getCssVarHex('--muted');
+
+	return {
+		background: bg,
+		foreground: fg,
+		cursor: fg,
+		cursorAccent: bg,
+		selectionBackground: muted,
+		...(dark ? DARK_ANSI : LIGHT_ANSI),
+	};
+}
 
 export function TerminalView({ terminalId, isActive, onExit }: TerminalViewProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
@@ -67,8 +111,8 @@ export function TerminalView({ terminalId, isActive, onExit }: TerminalViewProps
 		const term = new Terminal({
 			cursorBlink: true,
 			fontSize: 13,
-			fontFamily: 'ui-monospace, "SF Mono", Menlo, Monaco, "Cascadia Code", monospace',
-			theme: TERMINAL_THEME,
+			fontFamily: '"MesloLGS NF", "Hack Nerd Font", "FiraCode Nerd Font", "JetBrainsMono Nerd Font", ui-monospace, "SF Mono", Menlo, Monaco, "Cascadia Code", monospace',
+			theme: buildTerminalTheme(),
 			allowProposedApi: true,
 			scrollback: 5000,
 		});
@@ -118,9 +162,19 @@ export function TerminalView({ terminalId, isActive, onExit }: TerminalViewProps
 		});
 		observer.observe(container);
 
+		// Follow light/dark theme changes
+		const themeObserver = new MutationObserver(() => {
+			term.options.theme = buildTerminalTheme();
+		});
+		themeObserver.observe(document.documentElement, {
+			attributes: true,
+			attributeFilter: ['class'],
+		});
+
 		return () => {
 			if (resizeTimer) clearTimeout(resizeTimer);
 			observer.disconnect();
+			themeObserver.disconnect();
 			dataDisposable.dispose();
 			unregister();
 			term.dispose();

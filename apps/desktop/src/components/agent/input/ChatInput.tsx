@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { Send, Brain, Zap, ChevronDown } from 'lucide-react';
+import { PaperPlaneTilt, Brain, Lightning, CaretDown } from '@phosphor-icons/react';
 
 import type { FC, KeyboardEvent } from 'react';
 import type { MessageMode } from '../../../stores/agentStore';
@@ -54,7 +54,7 @@ export const ChatInput: FC<ChatInputProps> = ({
 		},
 		fast: {
 			label: 'Fast',
-			icon: Zap,
+			icon: Lightning,
 			description: 'Quick responses',
 		},
 	};
@@ -107,7 +107,7 @@ export const ChatInput: FC<ChatInputProps> = ({
 									<span className="text-sm font-medium text-foreground">
 										{modeConfig[mode].label}
 									</span>
-									<ChevronDown className="h-3 w-3 text-muted-foreground" />
+									<CaretDown className="h-3 w-3 text-muted-foreground" />
 								</button>
 								{showModeMenu && (
 									<div className="absolute bottom-full left-0 mb-1 w-48 py-1 rounded-md border border-border bg-background shadow-lg z-10">
@@ -159,7 +159,7 @@ export const ChatInput: FC<ChatInputProps> = ({
 									<span className="text-sm font-medium text-foreground truncate max-w-[120px]">
 										{getModelDisplayName(selectedModel)}
 									</span>
-									<ChevronDown className="h-3 w-3 text-muted-foreground" />
+									<CaretDown className="h-3 w-3 text-muted-foreground" />
 								</button>
 								{showModelMenu && (
 									<ModelMenu
@@ -189,7 +189,7 @@ export const ChatInput: FC<ChatInputProps> = ({
 							${isDisabled || !content.trim() ? 'opacity-50 cursor-not-allowed' : ''}
 						`}
 					>
-						<Send className="h-4 w-4" />
+						<PaperPlaneTilt className="h-4 w-4" />
 						<span className="text-sm font-medium">Send</span>
 					</button>
 				</div>

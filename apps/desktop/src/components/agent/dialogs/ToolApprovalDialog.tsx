@@ -7,17 +7,17 @@
 
 import { FC, useState, useMemo } from 'react';
 import {
-	AlertTriangle,
+	Warning,
 	Check,
 	X,
-	ChevronDown,
-	ChevronRight,
+	CaretDown,
+	CaretRight,
 	Terminal,
 	FileText,
 	Folder,
-	Search,
+	MagnifyingGlass,
 	GitBranch,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import type { ToolCallWithStatus } from '../../../bindings';
 import { approveToolCall, rejectToolCall } from '../../../lib/ai/tools';
 
@@ -50,7 +50,7 @@ const getToolIcon = (toolName: string) => {
 		return GitBranch;
 	}
 	if (toolName.includes('grep') || toolName.includes('search') || toolName.includes('glob')) {
-		return Search;
+		return MagnifyingGlass;
 	}
 	return Terminal;
 };
@@ -117,7 +117,7 @@ export const ToolApprovalDialog: FC<ToolApprovalDialogProps> = ({
 			<div className="p-3 space-y-3">
 				{/* Warning Banner */}
 				<div className="flex items-center gap-2 text-amber-600 dark:text-amber-500">
-					<AlertTriangle className="w-4 h-4 flex-shrink-0" />
+					<Warning className="w-4 h-4 flex-shrink-0" />
 					<span className="text-sm font-medium">Tool requires approval</span>
 				</div>
 
@@ -142,9 +142,9 @@ export const ToolApprovalDialog: FC<ToolApprovalDialogProps> = ({
 					className="w-full flex items-center gap-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
 				>
 					{isExpanded ? (
-						<ChevronDown className="w-3 h-3" />
+						<CaretDown className="w-3 h-3" />
 					) : (
-						<ChevronRight className="w-3 h-3" />
+						<CaretRight className="w-3 h-3" />
 					)}
 					<span>Parameters</span>
 				</button>

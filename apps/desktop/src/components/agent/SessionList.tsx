@@ -4,11 +4,12 @@
  */
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
-import { Plus, MessageSquare, MoreHorizontal, Pencil, Trash2, Search } from 'lucide-react';
+import { Plus, ChatTeardrop, DotsThree, PencilSimple, Trash, MagnifyingGlass } from '@phosphor-icons/react';
 import { useAgentStore, useSessions, useActiveSessionId } from '@/stores/agentStore';
 import type { Message } from '@/stores/agentStore';
 import { usePanelTabsStore } from '@/stores/panelTabsStore';
 import { BUILTIN_PANEL_TYPES } from '@/lib/panels/constants';
+import { useInlineRename } from '@/hooks/useInlineRename';
 import { cn } from '@/lib/utils';
 import {
   DropdownMenu,
@@ -139,6 +140,7 @@ const SessionItem: FC<{
   messagesMap: Map<string, Message[]>;
   onSelect: () => void;
   onStartRename: () => void;
+  onDoubleClickRename: () => void;
   onCommitRename: () => void;
   onCancelRename: () => void;
   onRenameChange: (value: string) => void;
@@ -153,6 +155,7 @@ const SessionItem: FC<{
   messagesMap,
   onSelect,
   onStartRename,
+  onDoubleClickRename,
   onCommitRename,
   onCancelRename,
   onRenameChange,
@@ -187,6 +190,7 @@ const SessionItem: FC<{
         onClick={() => {
           if (!isRenaming) onSelect();
         }}
+        onDoubleClick={onDoubleClickRename}
         className={cn(
           'w-full px-3 py-2 flex items-center gap-2 rounded-lg text-left transition-all duration-150',
           'hover:bg-muted/60 hover:scale-[1.02] active:scale-[0.97]',
@@ -199,7 +203,7 @@ const SessionItem: FC<{
           <span className="w-2 h-2 rounded-full bg-primary animate-pulse shrink-0" />
         )}
 
-        <MessageSquare
+        <ChatTeardrop
           className={cn(
             'h-4 w-4 shrink-0',
             hasOpenTab ? 'text-primary' : ''
@@ -239,7 +243,7 @@ const SessionItem: FC<{
                 className="p-1 rounded-sm text-muted-foreground hover:text-foreground transition-colors"
                 onClick={(e) => e.stopPropagation()}
               >
-                <MoreHorizontal className="h-4 w-4" />
+                <DotsThree className="h-4 w-4" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent side="right" align="start" className="w-44">
@@ -250,7 +254,7 @@ const SessionItem: FC<{
                 }}
                 className="flex items-center gap-2 cursor-pointer"
               >
-                <Pencil className="h-3.5 w-3.5" />
+                <PencilSimple className="h-3.5 w-3.5" />
                 <span>Rename</span>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
@@ -261,7 +265,7 @@ const SessionItem: FC<{
                 }}
                 className="flex items-center gap-2 cursor-pointer text-destructive focus:text-destructive"
               >
-                <Trash2 className="h-3.5 w-3.5" />
+                <Trash className="h-3.5 w-3.5" />
                 <span>Delete</span>
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -292,9 +296,8 @@ export const SessionList: FC<SessionListProps> = ({
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Rename state
-  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null);
-  const [renameValue, setRenameValue] = useState('');
+  // Rename state (shared hook)
+  const rename = useInlineRename((id, value) => renameSession(id, value));
 
   // Delete confirmation state
   const [deleteConfirmSessionId, setDeleteConfirmSessionId] = useState<string | null>(null);
@@ -308,28 +311,6 @@ export const SessionList: FC<SessionListProps> = ({
       return title.includes(q);
     });
   }, [sessions, searchQuery, messagesMap]);
-
-  // Rename handlers
-  const handleStartRename = useCallback(
-    (session: AgentSession) => {
-      setRenamingSessionId(session.id);
-      setRenameValue(session.name || getSessionTitle(session.id, undefined, messagesMap));
-    },
-    [messagesMap]
-  );
-
-  const handleCommitRename = useCallback(() => {
-    if (renamingSessionId) {
-      renameSession(renamingSessionId, renameValue);
-      setRenamingSessionId(null);
-      setRenameValue('');
-    }
-  }, [renamingSessionId, renameValue, renameSession]);
-
-  const handleCancelRename = useCallback(() => {
-    setRenamingSessionId(null);
-    setRenameValue('');
-  }, []);
 
   // Delete handlers
   const handleRequestDelete = useCallback((sessionId: string) => {
@@ -351,7 +332,7 @@ export const SessionList: FC<SessionListProps> = ({
   if (sessions.length === 0) {
     return (
       <div className={cn('flex flex-col items-center justify-center h-full gap-4 p-4', className)}>
-        <MessageSquare className="w-12 h-12 text-muted-foreground/50" />
+        <ChatTeardrop className="w-12 h-12 text-muted-foreground/50" />
         <p className="text-sm text-muted-foreground text-center">
           Start a new session to chat
         </p>
@@ -382,7 +363,7 @@ export const SessionList: FC<SessionListProps> = ({
         {/* Search Input */}
         <div className="px-2 py-2">
           <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <MagnifyingGlass className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
             <input
               type="text"
               value={searchQuery}
@@ -408,14 +389,15 @@ export const SessionList: FC<SessionListProps> = ({
                   isActive={activeSessionId === session.id}
                   isStreaming={streamingIds.has(session.id)}
                   hasOpenTab={openSessionIds.has(session.id)}
-                  isRenaming={renamingSessionId === session.id}
-                  renameValue={renameValue}
+                  isRenaming={rename.renamingId === session.id}
+                  renameValue={rename.renameValue}
                   messagesMap={messagesMap}
                   onSelect={() => onSessionSelect(session.id)}
-                  onStartRename={() => handleStartRename(session)}
-                  onCommitRename={handleCommitRename}
-                  onCancelRename={handleCancelRename}
-                  onRenameChange={setRenameValue}
+                  onStartRename={() => rename.startRename(session.id, session.name || getSessionTitle(session.id, undefined, messagesMap))}
+                  onDoubleClickRename={() => rename.startRename(session.id, session.name || getSessionTitle(session.id, undefined, messagesMap))}
+                  onCommitRename={rename.commitRename}
+                  onCancelRename={rename.cancelRename}
+                  onRenameChange={rename.setRenameValue}
                   onRequestDelete={() => handleRequestDelete(session.id)}
                 />
               ))}

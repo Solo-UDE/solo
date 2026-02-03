@@ -4,7 +4,7 @@
  * (bypasses the mosaic panel system).
  */
 
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import type { FC } from 'react';
 import { Plus, TerminalWindow, X } from '@phosphor-icons/react';
 import { TerminalView } from '@/components/terminal/TerminalView';
@@ -12,6 +12,7 @@ import { useTerminalStore } from '@/stores/terminalStore';
 import { useUIStore } from '@/stores/uiStore';
 import { useFileExplorerStore } from '@/stores/fileExplorerStore';
 import { createTerminal, killTerminal } from '@/lib/tauri/terminal';
+import { useInlineRename } from '@/hooks/useInlineRename';
 import { TERMINAL_SECTION } from '@/lib/constants';
 import { cn } from '@/lib/utils';
 
@@ -21,7 +22,10 @@ export const SidebarTerminal: FC = () => {
   const setActiveTerminal = useTerminalStore((s) => s.setActiveTerminal);
   const addTerminal = useTerminalStore((s) => s.addTerminal);
   const removeTerminal = useTerminalStore((s) => s.removeTerminal);
+  const renameTerminal = useTerminalStore((s) => s.renameTerminal);
   const toggleTerminalPanel = useUIStore((s) => s.toggleTerminalPanel);
+
+  const rename = useInlineRename((id, value) => renameTerminal(id, value));
 
   const handleNewTerminal = useCallback(() => {
     const cwd = useFileExplorerStore.getState().rootPath ?? undefined;
@@ -34,12 +38,17 @@ export const SidebarTerminal: FC = () => {
       });
   }, [addTerminal]);
 
-  // Auto-create a terminal if the section opens with none
+  const rootPath = useFileExplorerStore((s) => s.rootPath);
+  const hasAutoCreated = useRef(false);
+
+  // Auto-create a terminal once rootPath is available (ensures correct cwd)
   useEffect(() => {
-    if (terminals.size === 0) {
-      handleNewTerminal();
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    if (hasAutoCreated.current) return;
+    if (!rootPath) return;
+    if (useTerminalStore.getState().terminals.size > 0) return;
+    hasAutoCreated.current = true;
+    handleNewTerminal();
+  }, [rootPath, handleNewTerminal]);
 
   const handleCloseTab = useCallback(
     (id: string) => {
@@ -76,6 +85,7 @@ export const SidebarTerminal: FC = () => {
             <button
               key={t.id}
               onClick={() => setActiveTerminal(t.id)}
+              onDoubleClick={() => rename.startRename(t.id, t.title)}
               className={cn(
                 'group relative flex items-center gap-1 px-3 py-2 text-[11px] max-w-32 cursor-pointer',
                 'transition-colors duration-150 ease-[cubic-bezier(0.4,0,0.2,1)]',
@@ -85,7 +95,15 @@ export const SidebarTerminal: FC = () => {
               )}
             >
               <TerminalWindow className="w-3 h-3 shrink-0" />
-              <span className="truncate">{t.title}</span>
+              {rename.renamingId === t.id ? (
+                <input
+                  {...rename.getInputProps()}
+                  type="text"
+                  className="w-full bg-transparent outline-none border-b border-primary text-[11px] text-foreground px-0"
+                />
+              ) : (
+                <span className="truncate">{t.title}</span>
+              )}
               <span
                 role="button"
                 onClick={(e) => { e.stopPropagation(); handleCloseTab(t.id); }}

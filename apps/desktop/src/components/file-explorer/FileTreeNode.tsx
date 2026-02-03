@@ -3,7 +3,7 @@
  */
 
 import React, { memo, useCallback, useEffect, useState } from 'react';
-import { ChevronRight, ChevronDown, Loader2 } from 'lucide-react';
+import { CaretRight, CaretDown, CircleNotch } from '@phosphor-icons/react';
 import { FileIcon, FolderIcon } from '@react-symbols/icons/utils';
 import { Git } from '@react-symbols/icons/files';
 import { FolderGray, FolderGithub } from '@react-symbols/icons/folders';
@@ -154,11 +154,11 @@ export const FileTreeNode = memo(function FileTreeNode({
             className="w-4 h-4 flex items-center justify-center shrink-0 hover:bg-muted rounded"
           >
             {isLoading ? (
-              <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
+              <CircleNotch weight="bold" className="w-3 h-3 animate-spin text-muted-foreground" />
             ) : isExpanded ? (
-              <ChevronDown className="w-3 h-3 text-muted-foreground" />
+              <CaretDown className="w-3 h-3 text-muted-foreground" />
             ) : (
-              <ChevronRight className="w-3 h-3 text-muted-foreground" />
+              <CaretRight className="w-3 h-3 text-muted-foreground" />
             )}
           </button>
         ) : (

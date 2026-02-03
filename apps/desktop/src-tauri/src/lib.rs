@@ -16,6 +16,8 @@ use auth_commands::AuthState;
 use embedding_commands::EmbeddingState;
 use terminal_commands::TerminalState;
 use tauri::Emitter;
+#[cfg(target_os = "macos")]
+use tauri_plugin_decorum::WebviewWindowExt;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -35,6 +37,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_decorum::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             // Handle deep link from single instance
@@ -72,6 +75,15 @@ pub fn run() {
                     }
                 });
                 tracing::info!("Deep link handler registered");
+            }
+
+            // Position macOS traffic lights centered in the 38px titlebar
+            #[cfg(target_os = "macos")]
+            {
+                use tauri::Manager;
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.set_traffic_lights_inset(13.0, 13.0);
+                }
             }
 
             Ok(())

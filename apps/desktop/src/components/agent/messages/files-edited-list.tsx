@@ -1,4 +1,4 @@
-import { File, FilePlus, FileEdit, FileX } from 'lucide-react';
+import { File, FilePlus, NotePencil, FileX } from '@phosphor-icons/react';
 
 import type { FC } from 'react';
 
@@ -23,7 +23,7 @@ export const FilesEditedList: FC<FilesEditedListProps> = ({
       case 'added':
         return <FilePlus className="w-3 h-3" />;
       case 'modified':
-        return <FileEdit className="w-3 h-3" />;
+        return <NotePencil className="w-3 h-3" />;
       case 'deleted':
         return <FileX className="w-3 h-3" />;
       default:
