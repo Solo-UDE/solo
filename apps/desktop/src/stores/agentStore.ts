@@ -6,7 +6,7 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import { enableMapSet } from 'immer';
-import type { AgentMessage, AgentToolCall } from '../bindings';
+import type { AgentMessage, AgentToolCall, ToolCallWithStatus } from '../bindings';
 import * as backend from '../lib/backend';
 import {
 	loadSessions,
@@ -33,8 +33,9 @@ export interface ToolCallState {
 	id: string;
 	name: string;
 	arguments: string;
-	status: 'pending' | 'running' | 'completed' | 'error';
+	status: 'pending' | 'pending_approval' | 'running' | 'completed' | 'error';
 	result?: string;
+	needsApproval?: boolean;
 }
 
 export interface Message {
@@ -70,6 +71,9 @@ interface AgentState {
 	streamingContent: string;
 	activeToolCalls: Map<string, ToolCallState>;
 
+	// Tool approval state
+	pendingToolApprovals: Map<string, ToolCallWithStatus>;
+
 	// UI state
 	isAgentRunning: boolean;
 	error: string | null;
@@ -89,6 +93,8 @@ interface AgentActions {
 	handleAgentChunk: (conversationId: string, content: string) => void;
 	handleAgentToolStart: (conversationId: string, toolCall: AgentToolCall) => void;
 	handleAgentToolEnd: (conversationId: string, toolCallId: string, result: string) => void;
+	handleToolApprovalNeeded: (conversationId: string, toolCall: ToolCallWithStatus) => void;
+	resolveToolApproval: (toolCallId: string, approved: boolean) => void;
 	handleAgentComplete: (conversationId: string, message: AgentMessage) => void;
 	handleAgentError: (conversationId: string, error: string) => void;
 
@@ -107,6 +113,8 @@ type AgentStore = AgentState & AgentActions;
 // Initial State
 // =============================================================================
 
+const EMPTY_APPROVALS: ToolCallWithStatus[] = [];
+
 const initialState: AgentState = {
 	sessions: new Map(),
 	activeSessionId: null,
@@ -114,6 +122,7 @@ const initialState: AgentState = {
 	streamingMessageId: null,
 	streamingContent: '',
 	activeToolCalls: new Map(),
+	pendingToolApprovals: new Map(),
 	isAgentRunning: false,
 	error: null,
 };
@@ -339,6 +348,50 @@ export const useAgentStore = create<AgentStore>()(
 			});
 		},
 
+		handleToolApprovalNeeded: (conversationId: string, toolCall: ToolCallWithStatus) => {
+			set((state) => {
+				// Track in pending approvals map
+				state.pendingToolApprovals.set(toolCall.tool_call.id, toolCall);
+
+				// Also add to the streaming message's tool calls as pending_approval
+				const messages = state.messages.get(conversationId);
+				if (messages && state.streamingMessageId) {
+					const msg = messages.find((m) => m.id === state.streamingMessageId);
+					if (msg) {
+						if (!msg.toolCalls) msg.toolCalls = [];
+						msg.toolCalls.push({
+							id: toolCall.tool_call.id,
+							name: toolCall.tool_call.name,
+							arguments: toolCall.tool_call.arguments,
+							status: 'pending_approval',
+							needsApproval: true,
+						});
+					}
+				}
+			});
+		},
+
+		resolveToolApproval: (toolCallId: string, approved: boolean) => {
+			set((state) => {
+				state.pendingToolApprovals.delete(toolCallId);
+
+				// Update tool call status in all session messages
+				for (const [, sessionMessages] of state.messages) {
+					for (const msg of sessionMessages) {
+						if (msg.toolCalls) {
+							const tc = msg.toolCalls.find((t) => t.id === toolCallId);
+							if (tc) {
+								tc.status = approved ? 'running' : 'error';
+								if (!approved) {
+									tc.result = 'Rejected by user';
+								}
+							}
+						}
+					}
+				}
+			});
+		},
+
 		handleAgentComplete: (conversationId: string, message: AgentMessage) => {
 			console.log('[Store COMPLETE] conversationId:', conversationId, 'message:', message);
 			set((state) => {
@@ -449,4 +502,10 @@ export const useSessions = (): AgentSession[] => {
 	const sessions = useAgentStore((state) => state.sessions);
 	if (sessions.size === 0) return EMPTY_SESSIONS;
 	return Array.from(sessions.values());
+};
+
+export const usePendingToolApprovals = (): ToolCallWithStatus[] => {
+	const approvals = useAgentStore((state) => state.pendingToolApprovals);
+	if (approvals.size === 0) return EMPTY_APPROVALS;
+	return Array.from(approvals.values());
 };

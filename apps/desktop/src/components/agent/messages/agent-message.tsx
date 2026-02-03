@@ -6,8 +6,10 @@ import { NotifyUserCard } from './notify-user-card';
 import { ProceedIndicator } from './proceed-indicator';
 import { TaskPhaseCard } from './task-phase-card';
 import { ToolCallBlock } from './tool-call-block';
+import { ToolApprovalInline } from '../dialogs/ToolApprovalDialog';
 
 import type { FC } from 'react';
+import type { ToolCallWithStatus } from '../../../bindings';
 
 export interface AgentMessageContent {
   narrative?: string;
@@ -32,6 +34,7 @@ export interface AgentMessageContent {
     exitCode?: number;
     output?: string;
   }[];
+  pendingApprovals?: ToolCallWithStatus[];
   notifications?: {
     id: string;
     type: 'info' | 'warning' | 'error' | 'success';
@@ -50,6 +53,7 @@ export interface AgentMessageProps {
   avatarUrl?: string;
   agentName?: string;
   onFeedback?: (messageId: string, feedback: 'good' | 'bad') => void;
+  onToolApproval?: (toolCallId: string, approved: boolean) => void;
   messageId?: string;
   className?: string;
 }
@@ -60,6 +64,7 @@ export const AgentMessage: FC<AgentMessageProps> = ({
   avatarUrl,
   agentName = 'Agent',
   onFeedback,
+  onToolApproval,
   messageId,
   className = '',
 }) => {
@@ -125,6 +130,20 @@ export const AgentMessage: FC<AgentMessageProps> = ({
                 cwd={toolCall.cwd}
                 {...(toolCall.exitCode !== undefined && { exitCode: toolCall.exitCode })}
                 {...(toolCall.output && { output: toolCall.output })}
+              />
+            ))}
+          </div>
+        ) : null}
+
+        {/* Pending Tool Approvals */}
+        {content.pendingApprovals && content.pendingApprovals.length > 0 ? (
+          <div className="space-y-2">
+            {content.pendingApprovals.map((approval) => (
+              <ToolApprovalInline
+                key={approval.tool_call.id}
+                toolCall={approval}
+                onApproved={(id) => onToolApproval?.(id, true)}
+                onRejected={(id) => onToolApproval?.(id, false)}
               />
             ))}
           </div>

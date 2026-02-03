@@ -14,12 +14,14 @@ export interface MessageGroup {
 export interface MessageFeedProps {
   messageGroups: MessageGroup[];
   autoScroll?: boolean;
+  onToolApproval?: (toolCallId: string, approved: boolean) => void;
   className?: string;
 }
 
 export const MessageFeed: FC<MessageFeedProps> = ({
   messageGroups,
   autoScroll = true,
+  onToolApproval,
   className = '',
 }) => {
   const parentRef = useRef<HTMLDivElement>(null);
@@ -97,6 +99,7 @@ export const MessageFeed: FC<MessageFeedProps> = ({
               <MessageSection
                 sectionIndex={virtualItem.index}
                 messages={messageGroup.messages}
+                onToolApproval={onToolApproval}
               />
             </div>
           );

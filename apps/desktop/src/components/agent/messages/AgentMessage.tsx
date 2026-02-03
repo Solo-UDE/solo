@@ -83,8 +83,9 @@ interface ToolCallBlockProps {
 }
 
 const ToolCallBlock: FC<ToolCallBlockProps> = ({ toolCall }) => {
-	const statusColors = {
+	const statusColors: Record<string, string> = {
 		pending: 'text-muted-foreground',
+		pending_approval: 'text-amber-500',
 		running: 'text-blue-500',
 		completed: 'text-green-500',
 		error: 'text-red-500',

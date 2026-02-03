@@ -39,6 +39,7 @@ export function useAgentStream(options: UseAgentStreamOptions = {}): void {
 	const handleAgentChunk = useAgentStore((state) => state.handleAgentChunk);
 	const handleAgentToolStart = useAgentStore((state) => state.handleAgentToolStart);
 	const handleAgentToolEnd = useAgentStore((state) => state.handleAgentToolEnd);
+	const handleToolApprovalNeeded = useAgentStore((state) => state.handleToolApprovalNeeded);
 	const handleAgentComplete = useAgentStore((state) => state.handleAgentComplete);
 	const handleAgentError = useAgentStore((state) => state.handleAgentError);
 
@@ -59,6 +60,7 @@ export function useAgentStream(options: UseAgentStreamOptions = {}): void {
 			onChunk: handleAgentChunk,
 			onToolStart: handleAgentToolStart,
 			onToolEnd: handleAgentToolEnd,
+			onToolApprovalNeeded: handleToolApprovalNeeded,
 			onComplete: handleAgentComplete,
 			onError: handleAgentError,
 		};
@@ -84,6 +86,7 @@ export function useAgentStream(options: UseAgentStreamOptions = {}): void {
 		handleAgentChunk,
 		handleAgentToolStart,
 		handleAgentToolEnd,
+		handleToolApprovalNeeded,
 		handleAgentComplete,
 		handleAgentError,
 	]);
