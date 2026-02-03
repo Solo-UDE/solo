@@ -143,6 +143,9 @@ pub enum ProviderError {
     #[error("Keychain error: {0}")]
     KeychainError(String),
 
+    #[error("OAuth error: {0}")]
+    OAuthError(String),
+
     #[error("{0}")]
     Other(String),
 }

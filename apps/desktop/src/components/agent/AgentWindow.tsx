@@ -1,11 +1,10 @@
 import { useEffect, useCallback, useMemo } from 'react';
+import { Plus } from 'lucide-react';
 
-import { AgentWindowHeader } from './AgentWindowHeader';
 import { MessageFeed } from './messages';
 import { ChatInputContainer } from './input';
 import { convertToMessageGroups } from './messageAdapter';
 import { useAgentSession } from '../../hooks/useAgentSession';
-import { useAgentStream } from '../../hooks/useAgentStream';
 import { useProviderStore } from '../../stores/provider-store';
 import { useAgentStore } from '../../stores/agentStore';
 
@@ -19,7 +18,6 @@ export interface AgentWindowCallbacks {
 }
 
 export interface AgentWindowUIOptions {
-	showHeader?: boolean;
 	showModelSelector?: boolean;
 	showModeSelector?: boolean;
 	agentName?: string;
@@ -44,46 +42,16 @@ export interface AgentWindowProps {
  *
  * This component provides a complete chat interface for the AI agent.
  * It can be used as a standalone panel or embedded in React Mosaic.
- *
- * @example
- * ```tsx
- * // Basic usage
- * <AgentWindow instanceId="agent-1" />
- *
- * // With callbacks
- * <AgentWindow
- *   instanceId="agent-2"
- *   callbacks={{
- *     onFileOpen: (path) => openEditor(path),
- *   }}
- * />
- *
- * // In React Mosaic
- * const tabFactory = (id) => {
- *   if (id.startsWith('agent-')) {
- *     return <AgentWindow instanceId={id} />;
- *   }
- * };
- * ```
  */
 export const AgentWindow: FC<AgentWindowProps> = ({
 	instanceId,
-	initialSessionId: _initialSessionId, // Reserved for future session restoration
+	initialSessionId,
 	callbacks,
-	ui = {},
+	ui: _ui = {},
 	className = '',
 }) => {
+	// Session management — scoped to this tab's session
 	const {
-		showHeader = true,
-		agentName = 'Claude',
-	} = ui;
-
-	// Enable stream listening for this window
-	useAgentStream({ enabled: true });
-
-	// Session management
-	const {
-		session,
 		sessionId,
 		messages,
 		isRunning,
@@ -92,11 +60,23 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 		sendMessage,
 		clearError,
 	} = useAgentSession({
-		autoCreate: true,
+		sessionId: initialSessionId ?? null,
+		autoCreate: !initialSessionId,
+		defaultModel: useProviderStore((state) => state.selectedModel) || undefined,
 	});
 
 	// Provider state for model selection
 	const selectedModel = useProviderStore((state) => state.selectedModel);
+
+	// Panel system for opening new tabs
+	const openPanel = usePanelTabsStore((state) => state.openPanel);
+
+	// When auto-created, sync session ID back to panel data
+	useEffect(() => {
+		if (sessionId && !initialSessionId) {
+			usePanelTabsStore.getState().updateData(instanceId, { sessionId });
+		}
+	}, [sessionId, initialSessionId, instanceId]);
 
 	// Convert messages to message groups for the new MessageFeed
 	const messageGroups = useMemo(
@@ -130,25 +110,28 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 
 	// Handle new session
 	const handleNewSession = useCallback(() => {
-		createSession(selectedModel || undefined);
-	}, [createSession, selectedModel]);
+		createSession(selectedModel || undefined).then((newSessionId) => {
+			if (newSessionId) {
+				openPanel(BUILTIN_PANEL_TYPES.AGENT, { sessionId: newSessionId });
+			}
+		});
+	}, [createSession, selectedModel, openPanel]);
 
 	// Empty state for no messages
 	if (messages.length === 0) {
 		return (
 			<div
-				className={`flex flex-col h-full bg-background ${className}`}
+				className={`relative flex flex-col h-full bg-background ${className}`}
 				data-instance-id={instanceId}
 			>
-				{/* Header */}
-				{showHeader && (
-					<AgentWindowHeader
-						sessionId={sessionId}
-						agentName={agentName}
-						model={selectedModel || session?.model}
-						onNewSession={handleNewSession}
-					/>
-				)}
+				{/* Floating new session button */}
+				<button
+					onClick={handleNewSession}
+					className="absolute top-2 right-2 z-10 p-1.5 rounded-none hover:bg-muted/60 transition-colors"
+					title="New session"
+				>
+					<Plus className="w-4 h-4 text-muted-foreground" />
+				</button>
 
 				{/* Empty state */}
 				<div className="flex-1 flex items-center justify-center">
@@ -184,18 +167,17 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 
 	return (
 		<div
-			className={`flex flex-col h-full bg-background ${className}`}
+			className={`relative flex flex-col h-full bg-background ${className}`}
 			data-instance-id={instanceId}
 		>
-			{/* Header */}
-			{showHeader && (
-				<AgentWindowHeader
-					sessionId={sessionId}
-					agentName={agentName}
-					model={selectedModel || session?.model}
-					onNewSession={handleNewSession}
-				/>
-			)}
+			{/* Floating new session button */}
+			<button
+				onClick={handleNewSession}
+				className="absolute top-2 right-2 z-10 p-1.5 rounded-none hover:bg-muted/60 transition-colors"
+				title="New session"
+			>
+				<Plus className="w-4 h-4 text-muted-foreground" />
+			</button>
 
 			{/* Message feed */}
 			<MessageFeed

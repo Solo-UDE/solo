@@ -21,10 +21,10 @@ export function GeneralTab() {
   const setEditorFontSize = useSettingsStore((s) => s.setEditorFontSize);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Appearance Section */}
       <div>
-        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4">
           Appearance
         </h3>
         <div className="divide-y divide-border">

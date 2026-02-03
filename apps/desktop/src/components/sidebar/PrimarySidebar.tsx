@@ -25,10 +25,9 @@ export const PrimarySidebar: FC<PrimarySidebarProps> = ({ width, onFileOpen }) =
   const isCollapsed = useIsLeftSidebarCollapsed();
   const activeTab = useUIStore((state) => state.activeTab);
   const setActiveTab = useUIStore((state) => state.setActiveTab);
-  const setActiveSession = useAgentStore((state) => state.setActiveSession);
   const createSession = useAgentStore((state) => state.createSession);
 
-  // Get openPanel action directly from store to avoid selector subscription issues
+  // Get store actions directly to avoid selector subscription issues
   const openPanel = useMemo(() => usePanelTabsStore.getState().openPanel, []);
 
   // Provider/credentials state
@@ -36,11 +35,26 @@ export const PrimarySidebar: FC<PrimarySidebarProps> = ({ width, onFileOpen }) =
   const hasCredentials = useHasCredentials(activeProvider ?? 'anthropic');
   const [showApiKeyDialog, setShowApiKeyDialog] = useState(false);
 
-  // Open a session as a tab in the panel system
+  // Open a session as a tab — find existing tab first, otherwise open new
   const handleSessionSelect = useCallback((sessionId: string): void => {
-    setActiveSession(sessionId);
+    const store = usePanelTabsStore.getState();
+    // Search for an existing agent panel with this session
+    for (const [instanceId, instance] of store.instances.entries()) {
+      if (
+        instance.panelType === BUILTIN_PANEL_TYPES.AGENT &&
+        (instance.data as Record<string, unknown>)?.sessionId === sessionId
+      ) {
+        // Found existing tab — activate it
+        const tileId = store.findTileForPanel(instanceId);
+        if (tileId) {
+          store.setActiveTab(tileId, instanceId);
+          return;
+        }
+      }
+    }
+    // No existing tab found — open a new one
     openPanel(BUILTIN_PANEL_TYPES.AGENT, { sessionId });
-  }, [setActiveSession, openPanel]);
+  }, [openPanel]);
 
   // Create session and open as tab
   const createSessionAndShow = useCallback((): void => {

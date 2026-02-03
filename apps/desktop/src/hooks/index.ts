@@ -3,6 +3,6 @@
  */
 
 export { useAgentSession, type UseAgentSessionOptions, type UseAgentSessionReturn } from './useAgentSession';
-export { useAgentStream, useAgentSessionWithStream, type UseAgentStreamOptions } from './useAgentStream';
+export { initializeAgentStreamListener, teardownAgentStreamListener } from './useAgentStream';
 export { useAutosave } from './useAutosave';
 export { useParseResults } from './useParseResults';

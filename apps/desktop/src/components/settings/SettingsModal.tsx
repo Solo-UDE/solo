@@ -1,14 +1,22 @@
 /**
  * SettingsModal - Modal dialog with vertical tabbed navigation
+ * Redesigned with Radix UI Dialog and Orchids-inspired styling
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Settings, X, Sun, Code, FolderOpen, Keyboard, Bot } from 'lucide-react';
+import { Settings, X, Sun, Code, FolderOpen, Keyboard, Bot, BookOpen, ExternalLink, LogOut } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from '../ui/dialog';
+import { useUser, useAuthStore } from '../../stores/authStore';
 import { GeneralTab } from './tabs/GeneralTab';
 import { EditorTab } from './tabs/EditorTab';
 import { FilesTab } from './tabs/FilesTab';
 import { ShortcutsTab } from './tabs/ShortcutsTab';
 import { AITab } from './tabs/AITab';
+import { cn } from '../../lib/utils';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -33,8 +41,9 @@ const TABS: Tab[] = [
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<TabId>('general');
-  const modalRef = useRef<HTMLDivElement>(null);
   const firstTabRef = useRef<HTMLButtonElement>(null);
+  const user = useUser();
+  const signOut = useAuthStore((s) => s.signOut);
 
   // Focus management
   useEffect(() => {
@@ -50,12 +59,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   // Keyboard navigation
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        onClose();
-        return;
-      }
-
       // Tab navigation with arrow keys
       const currentIndex = TABS.findIndex((t) => t.id === activeTab);
 
@@ -66,10 +69,17 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         setActiveTab(TABS[nextIndex].id);
       }
     },
-    [activeTab, onClose]
+    [activeTab]
   );
 
-  if (!isOpen) return null;
+  const handleDocsClick = () => {
+    window.open('https://docs.solo.dev', '_blank');
+  };
+
+  const handleLogout = async () => {
+    await signOut();
+    onClose();
+  };
 
   const renderTabContent = () => {
     switch (activeTab) {
@@ -89,67 +99,102 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-      onClick={onClose}
-      onKeyDown={handleKeyDown}
-    >
-      <div
-        ref={modalRef}
-        className="bg-card border border-border rounded-lg shadow-xl w-[680px] h-[520px] flex flex-col overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent
+        showCloseButton={false}
+        className="sm:max-w-[900px] w-[900px] max-w-[90vw] h-[600px] p-0 overflow-hidden"
+        onKeyDown={handleKeyDown}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
-          <div className="flex items-center gap-2">
-            <Settings className="w-4 h-4 text-muted-foreground" />
-            <h2 className="text-sm font-medium text-foreground">Settings</h2>
+        {/* Hidden title for accessibility */}
+        <DialogTitle className="sr-only">Settings</DialogTitle>
+
+        <div className="flex h-full">
+          {/* Sidebar */}
+          <div className="w-64 bg-muted/30 border-r border-border p-4 flex flex-col shrink-0">
+            {/* User Info Section */}
+            <div className="mb-6">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="text-sm font-semibold text-foreground">
+                  {(user?.user_metadata?.full_name as string) || user?.email?.split('@')[0] || 'User'}
+                </div>
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {user?.email}
+              </div>
+            </div>
+
+            {/* Navigation Tabs */}
+            <nav className="flex-1 space-y-1">
+              {TABS.map((tab, index) => {
+                const Icon = tab.icon;
+                const isActive = activeTab === tab.id;
+
+                return (
+                  <button
+                    key={tab.id}
+                    ref={index === 0 ? firstTabRef : undefined}
+                    type="button"
+                    onClick={() => setActiveTab(tab.id)}
+                    className={cn(
+                      "w-full flex items-center gap-2 px-3 py-2 rounded-none text-sm transition-colors text-left cursor-pointer",
+                      isActive
+                        ? "bg-background text-foreground"
+                        : "text-muted-foreground hover:text-foreground hover:bg-background/50"
+                    )}
+                  >
+                    <Icon className="w-4 h-4" />
+                    <span>{tab.label}</span>
+                  </button>
+                );
+              })}
+
+              {/* Docs button */}
+              <button
+                onClick={handleDocsClick}
+                className="w-full flex items-center gap-2 px-3 py-2 rounded-none text-sm transition-colors cursor-pointer text-muted-foreground hover:text-foreground hover:bg-background/50"
+              >
+                <BookOpen className="w-4 h-4" />
+                <span>Docs</span>
+                <ExternalLink className="w-3 h-3 ml-auto opacity-50" />
+              </button>
+            </nav>
+
+            {/* Logout button at bottom */}
+            <button
+              onClick={handleLogout}
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-none text-sm transition-colors cursor-pointer text-muted-foreground hover:text-foreground hover:bg-background/50 mt-2"
+            >
+              <LogOut className="w-4 h-4" />
+              <span>Log out</span>
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1 rounded hover:bg-muted transition-colors"
-          >
-            <X className="w-4 h-4 text-muted-foreground" />
-          </button>
-        </div>
 
-        {/* Body */}
-        <div className="flex-1 flex min-h-0">
-          {/* Sidebar tabs */}
-          <nav className="w-40 border-r border-border bg-muted/30 py-2 shrink-0">
-            {TABS.map((tab, index) => {
-              const Icon = tab.icon;
-              const isActive = activeTab === tab.id;
+          {/* Main Content */}
+          <div className="flex-1 flex flex-col min-w-0 min-h-0">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
+              <div className="flex items-center gap-2">
+                <Settings className="w-4 h-4 text-muted-foreground" />
+                <h2 className="text-sm font-medium text-foreground">
+                  {TABS.find((t) => t.id === activeTab)?.label}
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={onClose}
+                className="p-1 rounded-none hover:bg-muted transition-colors"
+              >
+                <X className="w-4 h-4 text-muted-foreground" />
+              </button>
+            </div>
 
-              return (
-                <button
-                  key={tab.id}
-                  ref={index === 0 ? firstTabRef : undefined}
-                  type="button"
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`
-                    w-full flex items-center gap-2 px-4 py-2 text-sm
-                    transition-colors text-left
-                    ${isActive
-                      ? 'bg-primary/10 text-primary border-r-2 border-primary'
-                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                    }
-                  `}
-                >
-                  <Icon className="w-4 h-4" />
-                  {tab.label}
-                </button>
-              );
-            })}
-          </nav>
-
-          {/* Content */}
-          <div className="flex-1 overflow-y-auto p-6">
-            {renderTabContent()}
+            {/* Content - scrollable area */}
+            <div className="flex-1 overflow-y-auto overflow-x-hidden px-6 pt-4 pb-6">
+              {renderTabContent()}
+            </div>
           </div>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

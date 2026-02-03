@@ -25,6 +25,7 @@ interface PersistedSession {
   id: string;
   createdAt: string; // ISO string
   model: string;
+  name?: string; // User-assigned custom name
   title: string; // First message preview for tab titles
   messages: PersistedMessage[];
 }
@@ -59,6 +60,7 @@ function serializeSession(
     id: session.id,
     createdAt: session.createdAt.toISOString(),
     model: session.model,
+    name: session.name,
     title: generateTitle(messages),
     messages: messages.map((m) => ({
       id: m.id,
@@ -83,6 +85,7 @@ function deserializeSession(persisted: PersistedSession): {
       id: persisted.id,
       createdAt: new Date(persisted.createdAt),
       model: persisted.model,
+      name: persisted.name,
     },
     messages: persisted.messages.map((m) => ({
       id: m.id,

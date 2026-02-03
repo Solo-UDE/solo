@@ -20,6 +20,11 @@ function getSessionTitle(sessionId: string | undefined): string {
   if (!sessionId) return 'New Session';
 
   const store = useAgentStore.getState();
+  const session = store.sessions.get(sessionId);
+
+  // Use custom name if set
+  if (session?.name) return session.name;
+
   const messages = store.messages.get(sessionId);
 
   if (!messages || messages.length === 0) return 'New Session';
@@ -37,9 +42,17 @@ function getSessionTitle(sessionId: string | undefined): string {
 export function AgentPanel({
   instanceId,
   data,
+  isActive,
   onTitleChange,
 }: PanelProps<AgentPanelData>) {
   const sessionId = data?.sessionId;
+
+  // Sync activeSessionId when this tab is focused
+  useEffect(() => {
+    if (isActive && sessionId) {
+      useAgentStore.getState().setActiveSession(sessionId);
+    }
+  }, [isActive, sessionId]);
 
   // Update title based on session content
   useEffect(() => {
@@ -67,12 +80,6 @@ export function AgentPanel({
       instanceId={instanceId}
       initialSessionId={sessionId}
       className="h-full"
-      ui={{
-        showHeader: true,
-        showModelSelector: true,
-        showModeSelector: true,
-        agentName: 'Claude',
-      }}
     />
   );
 }

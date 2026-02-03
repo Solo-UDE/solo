@@ -1,36 +1,19 @@
 /**
- * Hook for listening to agent streaming events
+ * Singleton agent stream listener
  *
- * Automatically connects to the Tauri event system and updates the agent store.
+ * Sets up ONE Tauri event listener for all agent streaming events.
+ * Dispatches to the agent store's per-session handlers.
  */
 
-import { useEffect, useRef } from 'react';
 import { useAgentStore } from '../stores/agentStore';
 import { listenToAgentEvents, type AgentEventHandlers } from '../lib/tauri/agent';
 
-export interface UseAgentStreamOptions {
-	/** Whether to enable the stream listener */
-	enabled?: boolean;
-}
+let _initialized = false;
+let _cleanup: (() => void) | null = null;
 
 /**
- * Hook that listens to agent streaming events and updates the store
- *
- * This hook should be used at the top level of your agent UI to ensure
- * all streaming events are captured and the store is updated.
- *
- * @example
- * ```tsx
- * function AgentWindow() {
- *   // This hook automatically updates the agent store with streaming events
- *   useAgentStream({ enabled: true });
- *
- *   const messages = useActiveSessionMessages();
- *   // Messages will automatically update as chunks arrive
- *
- *   return <MessageFeed messages={messages} />;
- * }
- * ```
+ * Initialize the singleton agent stream listener.
+ * Safe to call multiple times — only the first call sets up the listener.
  */
 export function useAgentStream(options: UseAgentStreamOptions = {}): void {
 	const { enabled = true } = options;
@@ -93,35 +76,12 @@ export function useAgentStream(options: UseAgentStreamOptions = {}): void {
 }
 
 /**
- * Hook that provides both session management and stream listening
- *
- * Combines useAgentSession and useAgentStream for convenience.
+ * Teardown the singleton agent stream listener.
  */
-export function useAgentSessionWithStream() {
-	// Enable stream listening
-	useAgentStream({ enabled: true });
-
-	// Return session state
-	const activeSessionId = useAgentStore((state) => state.activeSessionId);
-	const sessions = useAgentStore((state) => state.sessions);
-	const messages = useAgentStore((state) =>
-		activeSessionId ? state.messages.get(activeSessionId) || [] : []
-	);
-	const isRunning = useAgentStore((state) => state.isAgentRunning);
-	const error = useAgentStore((state) => state.error);
-
-	const createSession = useAgentStore((state) => state.createSession);
-	const sendMessage = useAgentStore((state) => state.sendMessage);
-	const clearError = useAgentStore((state) => state.clearError);
-
-	return {
-		sessionId: activeSessionId,
-		session: activeSessionId ? sessions.get(activeSessionId) : null,
-		messages,
-		isRunning,
-		error,
-		createSession,
-		sendMessage,
-		clearError,
-	};
+export function teardownAgentStreamListener(): void {
+	if (_cleanup) {
+		_cleanup();
+		_cleanup = null;
+	}
+	_initialized = false;
 }

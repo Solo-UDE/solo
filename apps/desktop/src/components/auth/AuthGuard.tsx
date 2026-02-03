@@ -18,11 +18,11 @@ interface AuthGuardProps {
 }
 
 export function AuthGuard({ children }: AuthGuardProps) {
-  const initialize = useAuthStore((state) => state.initialize);
-  const handleAuthCallback = useAuthStore((state) => state.handleAuthCallback);
+  // const initialize = useAuthStore((state) => state.initialize);
+  // const handleAuthCallback = useAuthStore((state) => state.handleAuthCallback);
 
-  const isAuthenticated = useIsAuthenticated();
-  const isInitializing = useIsAuthInitializing();
+  // const isAuthenticated = useIsAuthenticated();
+  // const isInitializing = useIsAuthInitializing();
 
   // Initialize auth on mount (skip in dev mode)
   useEffect(() => {
@@ -37,18 +37,18 @@ export function AuthGuard({ children }: AuthGuardProps) {
 
     let unlisten: (() => void) | undefined;
 
-    const setupListener = async () => {
-      unlisten = await onAuthCallback((code) => {
-        handleAuthCallback(code);
-      });
-    };
+  //   const setupListener = async () => {
+  //     unlisten = await onAuthCallback((code) => {
+  //       handleAuthCallback(code);
+  //     });
+  //   };
 
-    setupListener();
+  //   setupListener();
 
-    return () => {
-      unlisten?.();
-    };
-  }, [handleAuthCallback]);
+  //   return () => {
+  //     unlisten?.();
+  //   };
+  // }, [handleAuthCallback]);
 
   // In dev mode, bypass auth so we can test without deep link OAuth
   if (import.meta.env.DEV) {
@@ -67,10 +67,10 @@ export function AuthGuard({ children }: AuthGuardProps) {
     );
   }
 
-  // Show login screen if not authenticated
-  if (!isAuthenticated) {
-    return <LoginScreen />;
-  }
+  // // Show login screen if not authenticated
+  // if (!isAuthenticated) {
+  //   return <LoginScreen />;
+  // }
 
   // Render children if authenticated
   return <>{children}</>;

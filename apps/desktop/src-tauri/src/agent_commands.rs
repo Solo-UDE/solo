@@ -4,11 +4,16 @@
 
 use solo_agent::{
     models::{get_all_models, get_models_for_provider},
-    AgentManager, CredentialManager, ProviderType,
+    oauth::{
+        AnthropicOAuthConfig, OpenAIOAuthConfig, AuthMethodInfo, OAuthFlowResult, OAuthMethod, OAuthState,
+        start_callback_server,
+    },
+    AgentManager, CredentialManager, CredentialSource, ProviderType,
 };
 use solo_protocol::{AgentMessage, AgentToolCall, ToolCallWithStatus, ToolResult};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, State};
+use tokio::sync::RwLock;
 use tracing::{debug, error, info};
 
 /// Application state for agent operations
@@ -17,6 +22,8 @@ pub struct AgentState {
     pub manager: Arc<AgentManager>,
     /// Credential manager
     pub credentials: Arc<CredentialManager>,
+    /// Pending OAuth flows (state -> OAuthState)
+    pub oauth_pending: RwLock<HashMap<String, OAuthState>>,
 }
 
 impl AgentState {
@@ -26,6 +33,7 @@ impl AgentState {
         Self {
             manager,
             credentials,
+            oauth_pending: RwLock::new(HashMap::new()),
         }
     }
 }
