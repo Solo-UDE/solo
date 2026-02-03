@@ -7,6 +7,6 @@
 
 | ID | Time | T | Title | Read |
 |----|------|---|-------|------|
-| #570 | 5:29 PM | 🔵 | FileTreeNode Uses Fast Color Transitions Without Expand/Collapse Animations | ~598 |
-| #206 | 3:33 PM | 🔵 | FileTreeNode UI Includes Git and Worktree Icon Mappings | ~475 |
+| #556 | 5:25 PM | 🔵 | Solo App Design System Specifications Loaded | ~496 |
+| #555 | 5:24 PM | 🔵 | Solo App Custom Animation Skill Documentation Loaded | ~505 |
 </claude-mem-context>

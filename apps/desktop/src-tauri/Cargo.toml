@@ -24,7 +24,7 @@ solo-agent = { path = "../../../crates/solo-agent" }
 solo-parse = { path = "../../../crates/solo-parse" }
 solo-embeddings = { path = "../../../crates/solo-embeddings" }
 
-tauri.workspace = true
+tauri = { workspace = true, features = ["macos-private-api"] }
 uuid = { version = "1.11", features = ["v4"] }
 tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"

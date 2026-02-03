@@ -7,6 +7,5 @@
 
 | ID | Time | T | Title | Read |
 |----|------|---|-------|------|
-| #570 | 5:29 PM | 🔵 | FileTreeNode Uses Fast Color Transitions Without Expand/Collapse Animations | ~598 |
-| #206 | 3:33 PM | 🔵 | FileTreeNode UI Includes Git and Worktree Icon Mappings | ~475 |
+| #575 | 5:30 PM | 🔵 | Markdown Preview Uses Custom Keyframe Animations and Spring Curves | ~612 |
 </claude-mem-context>

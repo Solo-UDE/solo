@@ -99,7 +99,7 @@ export const PrimarySidebar: FC<PrimarySidebarProps> = ({ width, onFileOpen }) =
 
   return (
     <aside
-      className="h-full flex flex-col border-r border-border/30 bg-sidebar overflow-hidden pt-[38px]"
+      className="h-full flex flex-col border-r border-white/[0.06] bg-sidebar overflow-hidden pt-[38px]"
       style={{
         width,
         transition: `width ${TRANSITIONS.sidebar}`,

@@ -204,11 +204,11 @@ function AppContent() {
 
   return (
     <div className="h-screen w-screen bg-background text-foreground overflow-hidden relative">
-      {/* Titlebar overlay — floats above full-height content */}
+      {/* Titlebar overlay — glass on vibrancy platforms, solid fallback */}
       <div
         data-tauri-drag-region
         style={titlebarStyle}
-        className="absolute top-0 inset-x-0 h-[38px] flex items-center z-50 backdrop-blur-md bg-background/70"
+        className="absolute top-0 inset-x-0 h-[38px] flex items-center z-50 backdrop-blur-md bg-background/70 titlebar-glass"
       >
         <div className="flex-1" data-tauri-drag-region />
 
@@ -272,8 +272,8 @@ function AppContent() {
           </div>
         </div>
 
-        {/* Right column: content pushed below titlebar */}
-        <div className="flex-1 flex flex-col overflow-hidden min-h-0 pt-[38px]">
+        {/* Right column: opaque background covers vibrancy for editor area */}
+        <div className="flex-1 flex flex-col overflow-hidden min-h-0 pt-[38px] bg-background">
           <div className="flex-1 overflow-hidden min-h-0">
             <MosaicLayout />
           </div>

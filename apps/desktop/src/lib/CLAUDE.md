@@ -7,6 +7,5 @@
 
 | ID | Time | T | Title | Read |
 |----|------|---|-------|------|
-| #570 | 5:29 PM | 🔵 | FileTreeNode Uses Fast Color Transitions Without Expand/Collapse Animations | ~598 |
-| #206 | 3:33 PM | 🔵 | FileTreeNode UI Includes Git and Worktree Icon Mappings | ~475 |
+| #574 | 5:30 PM | 🔵 | Centralized Layout and Transition Constants Defined | ~557 |
 </claude-mem-context>

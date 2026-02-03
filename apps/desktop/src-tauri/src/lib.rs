@@ -77,12 +77,22 @@ pub fn run() {
                 tracing::info!("Deep link handler registered");
             }
 
-            // Position macOS traffic lights centered in the 38px titlebar
+            // macOS: position traffic lights and apply native vibrancy
             #[cfg(target_os = "macos")]
             {
                 use tauri::Manager;
+                use tauri::window::{Effect, EffectState, EffectsBuilder};
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.set_traffic_lights_inset(13.0, 13.0);
+                    if window.set_effects(
+                        EffectsBuilder::new()
+                            .effect(Effect::Sidebar)
+                            .state(EffectState::FollowsWindowActiveState)
+                            .build(),
+                    ).is_ok() {
+                        // Signal to CSS that native vibrancy is active
+                        let _ = window.eval("document.documentElement.setAttribute('data-vibrancy','true')");
+                    }
                 }
             }
 
