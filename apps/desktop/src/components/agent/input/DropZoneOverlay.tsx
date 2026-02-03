@@ -34,6 +34,7 @@ export interface DropZoneOverlayProps {
 export const DropZoneOverlay: FC<DropZoneOverlayProps> = ({ disabled, children }) => {
 	const [isNativeDragOver, setIsNativeDragOver] = useState(false);
 	const dragCounterRef = useRef(0);
+	const containerRef = useRef<HTMLDivElement>(null);
 	const addAttachment = useAttachmentStore((s) => s.addAttachment);
 
 	const handleFileTreeDrop = useCallback(
@@ -63,6 +64,15 @@ export const DropZoneOverlay: FC<DropZoneOverlayProps> = ({ disabled, children }
 			isOver: monitor.isOver(),
 		}),
 	});
+
+	// Combine drop ref with container ref via callback ref
+	const combinedDropRef = useCallback(
+		(node: HTMLDivElement | null) => {
+			containerRef.current = node;
+			dropRef(node);
+		},
+		[dropRef]
+	);
 
 	// Native drag handlers for OS file drops
 	const handleDragEnter = useCallback(
@@ -103,8 +113,9 @@ export const DropZoneOverlay: FC<DropZoneOverlayProps> = ({ disabled, children }
 			const files = Array.from(e.dataTransfer.files);
 			for (const file of files) {
 				const isImage = isImageFile(file.name);
-				// In Tauri, dropped files have a .path property
-				const filePath = (file as File & { path?: string }).path || file.name;
+				// In Tauri, dropped files may have a .path property with the full filesystem path
+				const tauriPath = (file as File & { path?: string }).path;
+				const filePath = tauriPath || file.webkitRelativePath || file.name;
 
 				const attachment: Attachment = {
 					id: createAttachmentId(),
@@ -113,7 +124,7 @@ export const DropZoneOverlay: FC<DropZoneOverlayProps> = ({ disabled, children }
 					name: file.name,
 					mimeType: file.type || undefined,
 					size: file.size,
-					thumbnailUrl: isImage ? convertFileSrc(filePath) : undefined,
+					thumbnailUrl: isImage && tauriPath ? convertFileSrc(filePath) : undefined,
 				};
 				addAttachment(attachment);
 			}
@@ -125,7 +136,7 @@ export const DropZoneOverlay: FC<DropZoneOverlayProps> = ({ disabled, children }
 
 	return (
 		<div
-			ref={dropRef as unknown as React.Ref<HTMLDivElement>}
+			ref={combinedDropRef}
 			onDragEnter={handleDragEnter}
 			onDragOver={handleDragOver}
 			onDragLeave={handleDragLeave}

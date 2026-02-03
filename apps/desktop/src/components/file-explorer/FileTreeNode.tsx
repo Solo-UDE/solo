@@ -121,12 +121,14 @@ export const FileTreeNode = memo(function FileTreeNode({
     }),
   });
 
-  // Combine drag ref with our row ref
-  useEffect(() => {
-    if (rowRef.current) {
-      dragRef(rowRef.current);
-    }
-  }, [dragRef]);
+  // Combine drag ref with our row ref via callback ref
+  const combinedRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      rowRef.current = node;
+      dragRef(node);
+    },
+    [dragRef]
+  );
 
   // Sync rename value when entry name changes (e.g., after external rename)
   useEffect(() => {
@@ -162,7 +164,7 @@ export const FileTreeNode = memo(function FileTreeNode({
 
   return (
     <div
-      ref={rowRef}
+      ref={combinedRef}
       style={{ ...style, opacity: isDragging ? 0.5 : 1 }}
       className={`
         flex items-center h-7 px-2 cursor-pointer select-none

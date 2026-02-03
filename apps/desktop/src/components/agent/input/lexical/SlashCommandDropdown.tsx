@@ -19,7 +19,7 @@ export interface SlashCommandDropdownProps {
 	commands: SlashCommand[];
 	selectedIndex: number;
 	onSelect: (command: SlashCommand) => void;
-	position: { top: number; left: number };
+	position: { bottom: number; left: number };
 }
 
 export const SlashCommandDropdown: FC<SlashCommandDropdownProps> = ({
@@ -37,7 +37,7 @@ export const SlashCommandDropdown: FC<SlashCommandDropdownProps> = ({
 	return (
 		<div
 			className="fixed z-50 w-80 max-h-72 overflow-y-auto rounded-md border border-border bg-popover shadow-lg"
-			style={{ top: position.top, left: position.left }}
+			style={{ bottom: position.bottom, left: position.left }}
 		>
 			{commands.length === 0 ? (
 				<div className="p-3 text-sm text-muted-foreground text-center">

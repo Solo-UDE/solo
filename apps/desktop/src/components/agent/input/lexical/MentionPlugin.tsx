@@ -65,7 +65,7 @@ function getMentionMatch(textContent: string, offset: number): MentionMatch | nu
 /**
  * Get cursor position in the DOM for dropdown placement.
  */
-function getCursorPosition(): { top: number; left: number } | null {
+function getCursorPosition(): { bottom: number; left: number } | null {
 	const selection = window.getSelection();
 	if (!selection || selection.rangeCount === 0) return null;
 
@@ -73,7 +73,7 @@ function getCursorPosition(): { top: number; left: number } | null {
 	const rect = range.getBoundingClientRect();
 
 	return {
-		top: rect.bottom + 4,
+		bottom: window.innerHeight - rect.top + 4,
 		left: rect.left,
 	};
 }
@@ -86,7 +86,7 @@ export const MentionPlugin: FC = () => {
 	const [isOpen, setIsOpen] = useState(false);
 	const [query, setQuery] = useState('');
 	const [match, setMatch] = useState<MentionMatch | null>(null);
-	const [position, setPosition] = useState({ top: 0, left: 0 });
+	const [position, setPosition] = useState({ bottom: 0, left: 0 });
 	const [selectedIndex, setSelectedIndex] = useState(0);
 
 	const results = useMemo(() => fuzzySearchFiles(query, files), [query, files]);

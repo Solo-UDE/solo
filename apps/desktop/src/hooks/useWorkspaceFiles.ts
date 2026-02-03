@@ -75,7 +75,7 @@ export function useWorkspaceFiles(): {
 
 				try {
 					const response = await readDirectory(dirPath, 1);
-					const entries: FileTreeEntry[] = response.entries || [];
+					const entries: FileTreeEntry[] = response.entry.children || [];
 
 					for (const entry of entries) {
 						// Abort if a newer scan started

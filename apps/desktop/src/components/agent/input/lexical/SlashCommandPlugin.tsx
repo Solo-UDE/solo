@@ -79,7 +79,7 @@ export const SlashCommandPlugin: FC<SlashCommandPluginProps> = ({
 
 	const [isOpen, setIsOpen] = useState(false);
 	const [query, setQuery] = useState('');
-	const [position, setPosition] = useState({ top: 0, left: 0 });
+	const [position, setPosition] = useState({ bottom: 0, left: 0 });
 	const [selectedIndex, setSelectedIndex] = useState(0);
 
 	const filteredCommands = useMemo(() => {
@@ -134,7 +134,7 @@ export const SlashCommandPlugin: FC<SlashCommandPluginProps> = ({
 					if (sel && sel.rangeCount > 0) {
 						const range = sel.getRangeAt(0);
 						const rect = range.getBoundingClientRect();
-						setPosition({ top: rect.bottom + 4, left: rect.left - (commandQuery.length * 7) });
+						setPosition({ bottom: window.innerHeight - rect.top + 4, left: rect.left - (commandQuery.length * 7) });
 					}
 					setIsOpen(true);
 				} else {

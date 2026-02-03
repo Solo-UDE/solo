@@ -12,7 +12,7 @@ export interface MentionDropdownProps {
 	results: FileSearchResult[];
 	selectedIndex: number;
 	onSelect: (result: FileSearchResult) => void;
-	position: { top: number; left: number };
+	position: { bottom: number; left: number };
 }
 
 export const MentionDropdown: FC<MentionDropdownProps> = ({
@@ -33,7 +33,7 @@ export const MentionDropdown: FC<MentionDropdownProps> = ({
 		<div
 			ref={listRef}
 			className="fixed z-50 w-72 max-h-60 overflow-y-auto rounded-md border border-border bg-popover shadow-lg"
-			style={{ top: position.top, left: position.left }}
+			style={{ bottom: position.bottom, left: position.left }}
 		>
 			{results.length === 0 ? (
 				<div className="p-3 text-sm text-muted-foreground text-center">
