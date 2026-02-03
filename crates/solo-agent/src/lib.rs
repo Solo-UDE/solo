@@ -269,6 +269,16 @@ impl AgentManager {
         Ok(())
     }
 
+    /// Update the model for an existing session
+    pub async fn update_session_model(&self, session_id: &str, model: String) -> ProviderResult<()> {
+        let mut sessions = self.sessions.write().await;
+        let session = sessions
+            .get_mut(session_id)
+            .ok_or_else(|| ProviderError::SessionNotFound(session_id.to_string()))?;
+        session.model = model;
+        Ok(())
+    }
+
     /// Get a session by ID
     pub async fn get_session(&self, session_id: &str) -> Option<tokio::sync::RwLockReadGuard<'_, std::collections::HashMap<String, AgentSession>>> {
         let sessions = self.sessions.read().await;

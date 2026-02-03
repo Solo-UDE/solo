@@ -269,6 +269,20 @@ pub async fn agent_create_session(
     Ok(session_id)
 }
 
+/// Update the model for an existing session
+#[tauri::command]
+pub async fn agent_update_session_model(
+    session_id: String,
+    model: String,
+    state: State<'_, AgentState>,
+) -> Result<(), String> {
+    info!(session_id = %session_id, model = %model, "Updating session model");
+    state.manager
+        .update_session_model(&session_id, model)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Send a message to the agent and stream the response
 #[tauri::command]
 pub async fn agent_send_message(

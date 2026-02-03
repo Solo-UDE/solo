@@ -5,7 +5,7 @@
  * Dispatches to the agent store's per-session handlers.
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { useAgentStore } from '../stores/agentStore';
 import { listenToAgentEvents, type AgentEventHandlers } from '../lib/tauri/agent';
 
@@ -28,18 +28,16 @@ export function useAgentStream(options: UseAgentStreamOptions = {}): void {
 	const handleAgentComplete = useAgentStore((state) => state.handleAgentComplete);
 	const handleAgentError = useAgentStore((state) => state.handleAgentError);
 
-	// Track cleanup function
-	const cleanupRef = useRef<(() => void) | null>(null);
-
 	useEffect(() => {
 		if (!enabled) {
-			// Cleanup existing listener if disabled
-			if (cleanupRef.current) {
-				cleanupRef.current();
-				cleanupRef.current = null;
-			}
 			return;
 		}
+
+		// Track whether this effect instance has been cleaned up.
+		// This handles the React.StrictMode async cleanup race where
+		// cleanup runs before the async listenToAgentEvents resolves.
+		let cancelled = false;
+		let unlistenFn: (() => void) | null = null;
 
 		const handlers: AgentEventHandlers = {
 			onChunk: handleAgentChunk,
@@ -50,20 +48,25 @@ export function useAgentStream(options: UseAgentStreamOptions = {}): void {
 			onError: handleAgentError,
 		};
 
-		// Start listening
 		listenToAgentEvents(handlers)
 			.then((unlisten) => {
-				cleanupRef.current = unlisten;
+				if (cancelled) {
+					// Effect was cleaned up before the listener resolved —
+					// immediately unlisten to avoid a dangling listener.
+					unlisten();
+				} else {
+					unlistenFn = unlisten;
+				}
 			})
 			.catch((error) => {
 				console.error('Failed to listen to agent events:', error);
 			});
 
-		// Cleanup on unmount
 		return () => {
-			if (cleanupRef.current) {
-				cleanupRef.current();
-				cleanupRef.current = null;
+			cancelled = true;
+			if (unlistenFn) {
+				unlistenFn();
+				unlistenFn = null;
 			}
 		};
 	}, [
@@ -76,4 +79,3 @@ export function useAgentStream(options: UseAgentStreamOptions = {}): void {
 		handleAgentError,
 	]);
 }
-

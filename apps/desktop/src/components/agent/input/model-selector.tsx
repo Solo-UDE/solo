@@ -16,18 +16,18 @@ export interface ModelOption {
 
 export const CLAUDE_MODELS: ModelOption[] = [
   {
-    id: 'claude-opus-4-5',
+    id: 'claude-opus-4-5-20251101',
     name: 'Claude Opus 4.5',
     description: 'Most capable model',
   },
   {
-    id: 'claude-sonnet-4-5',
+    id: 'claude-sonnet-4-5-20250929',
     name: 'Claude Sonnet 4.5',
     description: 'Balanced performance',
   },
   {
-    id: 'claude-haiku-4',
-    name: 'Claude Haiku 4',
+    id: 'claude-haiku-4-5-20251001',
+    name: 'Claude Haiku 4.5',
     description: 'Fastest responses',
   },
 ];

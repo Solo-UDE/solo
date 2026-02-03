@@ -104,6 +104,7 @@ pub fn run() {
             agent_commands::get_models,
             agent_commands::get_models_for_provider_cmd,
             agent_commands::agent_create_session,
+            agent_commands::agent_update_session_model,
             agent_commands::agent_send_message,
             agent_commands::agent_get_history,
             agent_commands::agent_clear_history,

@@ -24,7 +24,7 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
 
   const handleSubmit = (): void => {
     if (content.trim() && !isAgentRunning) {
-      onSubmit(content, mode, selectedModel || 'claude-sonnet-4-5-20250514');
+      onSubmit(content, mode, selectedModel || 'claude-sonnet-4-5-20250929');
       setContent('');
     }
   };

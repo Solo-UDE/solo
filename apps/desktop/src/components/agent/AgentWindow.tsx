@@ -69,6 +69,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 
 	// Provider state for model selection
 	const selectedModel = useProviderStore((state) => state.selectedModel);
+	const updateSessionModel = useAgentStore((state) => state.updateSessionModel);
 
 	// Panel system for opening new tabs
 	const openPanel = usePanelTabsStore((state) => state.openPanel);
@@ -79,6 +80,13 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 			usePanelTabsStore.getState().updateData(instanceId, { sessionId });
 		}
 	}, [sessionId, initialSessionId, instanceId]);
+
+	// Sync model selection to the active session
+	useEffect(() => {
+		if (sessionId && selectedModel) {
+			updateSessionModel(sessionId, selectedModel);
+		}
+	}, [sessionId, selectedModel, updateSessionModel]);
 
 	// Convert messages to message groups for the new MessageFeed
 	const messageGroups = useMemo(

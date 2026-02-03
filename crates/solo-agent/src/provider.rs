@@ -80,7 +80,7 @@ impl Default for ProviderConfig {
             api_key: None,
             api_base_url: None,
             default_model: None,
-            max_tokens: Some(8192),
+            max_tokens: Some(64_000),
         }
     }
 }
@@ -213,6 +213,6 @@ mod tests {
         let config = ProviderConfig::default();
         assert_eq!(config.provider_type, ProviderType::Anthropic);
         assert!(config.api_key.is_none());
-        assert_eq!(config.max_tokens, Some(8192));
+        assert_eq!(config.max_tokens, Some(64_000));
     }
 }

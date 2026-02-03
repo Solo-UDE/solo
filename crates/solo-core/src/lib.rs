@@ -110,8 +110,8 @@ impl Default for AgentConfig {
     fn default() -> Self {
         Self {
             api_key: None,
-            model: "claude-sonnet-4-20250514".to_string(),
-            max_tokens: 8192,
+            model: "claude-sonnet-4-5-20250929".to_string(),
+            max_tokens: 64_000,
         }
     }
 }
@@ -125,6 +125,6 @@ mod tests {
         let config = SoloConfig::default();
         assert!(config.workspace_root.is_none());
         assert_eq!(config.terminal.font_size, 14);
-        assert_eq!(config.agent.model, "claude-sonnet-4-20250514");
+        assert_eq!(config.agent.model, "claude-sonnet-4-5-20250929");
     }
 }

@@ -40,7 +40,7 @@ impl Default for ModelCapabilities {
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../apps/desktop/src/bindings/")]
 pub struct AIModel {
-    /// Model ID (e.g., "claude-sonnet-4-20250514")
+    /// Model ID (e.g., "claude-sonnet-4-5-20250929")
     pub id: String,
     /// Display name (e.g., "Claude Sonnet 4")
     pub display_name: String,
@@ -81,29 +81,29 @@ pub static MODEL_REGISTRY: &[AIModel] = &[
 lazy_static::lazy_static! {
     pub static ref ANTHROPIC_MODELS: Vec<AIModel> = vec![
         AIModel {
-            id: "claude-sonnet-4-20250514".to_string(),
-            display_name: "Claude Sonnet 4".to_string(),
+            id: "claude-sonnet-4-5-20250929".to_string(),
+            display_name: "Claude Sonnet 4.5".to_string(),
             alias: "sonnet".to_string(),
             provider: ProviderType::Anthropic,
             capabilities: ModelCapabilities {
                 context_window: 200_000,
-                max_output_tokens: 8192,
+                max_output_tokens: 64_000,
                 supports_vision: true,
                 supports_tools: true,
                 supports_streaming: true,
-                supports_thinking: false,
+                supports_thinking: true,
             },
             is_default: true,
             description: "Best balance of intelligence and speed".to_string(),
         },
         AIModel {
-            id: "claude-opus-4-20250514".to_string(),
-            display_name: "Claude Opus 4".to_string(),
+            id: "claude-opus-4-5-20251101".to_string(),
+            display_name: "Claude Opus 4.5".to_string(),
             alias: "opus".to_string(),
             provider: ProviderType::Anthropic,
             capabilities: ModelCapabilities {
                 context_window: 200_000,
-                max_output_tokens: 8192,
+                max_output_tokens: 64_000,
                 supports_vision: true,
                 supports_tools: true,
                 supports_streaming: true,
@@ -113,17 +113,17 @@ lazy_static::lazy_static! {
             description: "Most capable model for complex tasks".to_string(),
         },
         AIModel {
-            id: "claude-3-5-haiku-latest".to_string(),
-            display_name: "Claude 3.5 Haiku".to_string(),
+            id: "claude-haiku-4-5-20251001".to_string(),
+            display_name: "Claude Haiku 4.5".to_string(),
             alias: "haiku".to_string(),
             provider: ProviderType::Anthropic,
             capabilities: ModelCapabilities {
                 context_window: 200_000,
-                max_output_tokens: 8192,
+                max_output_tokens: 64_000,
                 supports_vision: true,
                 supports_tools: true,
                 supports_streaming: true,
-                supports_thinking: false,
+                supports_thinking: true,
             },
             is_default: false,
             description: "Fast and efficient for simple tasks".to_string(),
@@ -276,7 +276,7 @@ mod tests {
     #[test]
     fn test_find_model() {
         assert!(find_model("sonnet").is_some());
-        assert!(find_model("claude-sonnet-4-20250514").is_some());
+        assert!(find_model("claude-sonnet-4-5-20250929").is_some());
         assert!(find_model("gpt-4.1").is_some());
         assert!(find_model("nonexistent").is_none());
     }

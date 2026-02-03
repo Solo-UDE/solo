@@ -40,21 +40,21 @@ export interface ModelOptionConfig {
 export const MODEL_OPTIONS: ModelOptionConfig[] = [
   // Anthropic Claude models
   {
-    value: 'claude-opus-4-5-20250514',
+    value: 'claude-opus-4-5-20251101',
     label: 'Claude Opus 4.5',
     description: 'Most capable model',
     provider: 'anthropic',
     iconType: 'claude',
   },
   {
-    value: 'claude-sonnet-4-5-20250514',
+    value: 'claude-sonnet-4-5-20250929',
     label: 'Claude Sonnet 4.5',
     description: 'Balanced speed and intelligence',
     provider: 'anthropic',
     iconType: 'claude',
   },
   {
-    value: 'claude-haiku-4-5-20250514',
+    value: 'claude-haiku-4-5-20251001',
     label: 'Claude Haiku 4.5',
     description: 'Fast and efficient',
     provider: 'anthropic',

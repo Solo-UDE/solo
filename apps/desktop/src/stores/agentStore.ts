@@ -120,6 +120,7 @@ interface AgentState {
 interface AgentActions {
 	// Session management
 	createSession: (model?: string) => Promise<string>;
+	updateSessionModel: (sessionId: string, model: string) => Promise<void>;
 	setActiveSession: (sessionId: string) => void;
 	deleteSession: (sessionId: string) => void;
 	renameSession: (sessionId: string, name: string) => void;
@@ -207,7 +208,7 @@ export const useAgentStore = create<AgentStore>()(
 					state.sessions.set(sessionId, {
 						id: sessionId,
 						createdAt: new Date(),
-						model: model || 'claude-sonnet-4-20250514',
+						model: model || 'claude-sonnet-4-5-20250929',
 					});
 					state.messages.set(sessionId, []);
 					state.sessionStreaming.set(sessionId, createDefaultStreamState());
@@ -221,6 +222,20 @@ export const useAgentStore = create<AgentStore>()(
 				const errorMsg = error instanceof Error ? error.message : String(error);
 				console.error(`Failed to create session: ${errorMsg}`);
 				throw error;
+			}
+		},
+
+		updateSessionModel: async (sessionId: string, model: string) => {
+			try {
+				await backend.updateSessionModel(sessionId, model);
+				set((state) => {
+					const session = state.sessions.get(sessionId);
+					if (session) {
+						session.model = model;
+					}
+				});
+			} catch (error) {
+				console.error('Failed to update session model:', error);
 			}
 		},
 

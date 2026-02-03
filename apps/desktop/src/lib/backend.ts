@@ -127,6 +127,15 @@ export async function createAgentSession(model?: string): Promise<string> {
 }
 
 /**
+ * Update the model for an existing session
+ * @param sessionId - Session ID
+ * @param model - New model ID
+ */
+export async function updateSessionModel(sessionId: string, model: string): Promise<void> {
+	return invoke<void>('agent_update_session_model', { sessionId, model });
+}
+
+/**
  * Send a message to the agent
  * @param sessionId - Session ID
  * @param content - Message content
