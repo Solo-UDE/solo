@@ -12,6 +12,7 @@ pub mod openai;
 pub mod tools;
 pub mod middleware;
 pub mod telemetry;
+pub mod oauth;
 
 // Re-export main types
 pub use provider::{AIProvider, ProviderType, ProviderConfig, ProviderError, ProviderResult, ToolDefinition};
@@ -30,10 +31,9 @@ pub use telemetry::{
     AITelemetry, TelemetrySummary,
 };
 
-use solo_protocol::{AgentMessage, AgentToolCall, BackendEvent, ToolCallStatus, ToolCallWithStatus, ToolResult};
+use solo_protocol::{AgentMessage, AgentToolCall, BackendEvent, ToolCallWithStatus, ToolResult};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::info;
 
 /// Agent session state
 pub struct AgentSession {

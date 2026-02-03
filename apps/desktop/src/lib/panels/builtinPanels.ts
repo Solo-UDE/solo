@@ -62,11 +62,5 @@ export function registerBuiltinPanels(): void {
   });
 }
 
-/**
- * List of built-in panel type IDs
- */
-export const BUILTIN_PANEL_TYPES = {
-  FILE_VIEWER: 'file-viewer',
-  WELCOME: 'welcome',
-  AGENT: 'agent',
-} as const;
+// BUILTIN_PANEL_TYPES lives in ./constants.ts to avoid circular imports
+export { BUILTIN_PANEL_TYPES } from './constants';

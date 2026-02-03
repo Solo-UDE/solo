@@ -41,6 +41,17 @@ eventsource-stream = "0.2"
 # Lazy static for model registry
 lazy_static = "1.5"
 
+# OAuth dependencies
+base64 = "0.22"
+sha2 = "0.10"
+url = "2"
+hyper = { version = "1", features = ["http1", "server"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+http-body-util = "0.1"
+bytes = "1"
+getrandom = "0.2"
+urlencoding = "2"
+
 # TypeScript bindings
 ts-rs = { version = "10.1", features = ["serde-compat"] }
 

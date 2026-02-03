@@ -5,15 +5,17 @@
  * Dispatches to the agent store's per-session handlers.
  */
 
+import { useEffect, useRef } from 'react';
 import { useAgentStore } from '../stores/agentStore';
 import { listenToAgentEvents, type AgentEventHandlers } from '../lib/tauri/agent';
 
-let _initialized = false;
-let _cleanup: (() => void) | null = null;
+interface UseAgentStreamOptions {
+	enabled?: boolean;
+}
 
 /**
- * Initialize the singleton agent stream listener.
- * Safe to call multiple times — only the first call sets up the listener.
+ * Hook that sets up a singleton agent stream listener.
+ * Manages its own lifecycle via useEffect — call at the top level of a component.
  */
 export function useAgentStream(options: UseAgentStreamOptions = {}): void {
 	const { enabled = true } = options;
@@ -75,13 +77,3 @@ export function useAgentStream(options: UseAgentStreamOptions = {}): void {
 	]);
 }
 
-/**
- * Teardown the singleton agent stream listener.
- */
-export function teardownAgentStreamListener(): void {
-	if (_cleanup) {
-		_cleanup();
-		_cleanup = null;
-	}
-	_initialized = false;
-}

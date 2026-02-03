@@ -109,6 +109,9 @@ interface AgentState {
 	// Tool approval state
 	pendingToolApprovals: Map<string, ToolCallWithStatus>;
 
+	// Per-session streaming state
+	sessionStreaming: Map<string, SessionStreamState>;
+
 	// UI state
 	isAgentRunning: boolean;
 	error: string | null;
@@ -159,6 +162,7 @@ const initialState: AgentState = {
 	streamingContent: '',
 	activeToolCalls: new Map(),
 	pendingToolApprovals: new Map(),
+	sessionStreaming: new Map(),
 	isAgentRunning: false,
 	error: null,
 };

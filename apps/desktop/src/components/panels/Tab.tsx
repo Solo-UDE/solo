@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils';
 import type { PanelInstance, TileId, PanelInstanceId, TabDragItem } from '@/lib/panels/types';
 import { DragItemTypes } from '@/lib/panels/types';
 import { useIsSessionStreaming } from '@/stores/agentStore';
-import { BUILTIN_PANEL_TYPES } from '@/lib/panels/builtinPanels';
+import { BUILTIN_PANEL_TYPES } from '@/lib/panels/constants';
 
 interface TabProps {
   instance: PanelInstance;

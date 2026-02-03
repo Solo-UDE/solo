@@ -11,6 +11,7 @@ use solo_agent::{
     AgentManager, CredentialManager, CredentialSource, ProviderType,
 };
 use solo_protocol::{AgentMessage, AgentToolCall, ToolCallWithStatus, ToolResult};
+use std::collections::HashMap;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, State};
 use tokio::sync::RwLock;

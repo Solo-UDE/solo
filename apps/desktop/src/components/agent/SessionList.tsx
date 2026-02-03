@@ -8,7 +8,7 @@ import { Plus, MessageSquare, MoreHorizontal, Pencil, Trash2, Search } from 'luc
 import { useAgentStore, useSessions, useActiveSessionId } from '@/stores/agentStore';
 import type { Message } from '@/stores/agentStore';
 import { usePanelTabsStore } from '@/stores/panelTabsStore';
-import { BUILTIN_PANEL_TYPES } from '@/lib/panels';
+import { BUILTIN_PANEL_TYPES } from '@/lib/panels/constants';
 import { cn } from '@/lib/utils';
 import {
   DropdownMenu,

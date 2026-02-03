@@ -14,7 +14,7 @@ import { SettingsModal } from "./components/settings";
 import { useAutosave } from "./hooks/useAutosave";
 import { useColorScheme } from "./hooks/useColorScheme";
 import { useTitlebarStyle } from "./hooks/usePlatform";
-import { initializeAgentStreamListener } from "./hooks/useAgentStream";
+import { useAgentStream } from "./hooks/useAgentStream";
 import { SIDEBAR } from "./lib/constants";
 import { cn } from "./lib/utils";
 
@@ -67,10 +67,12 @@ function AppContent() {
     });
   }, [initializeProviders]);
 
-  // Load persisted agent sessions and initialize stream listener on startup
+  // Set up agent event stream listener (hook manages its own lifecycle)
+  useAgentStream();
+
+  // Load persisted agent sessions on startup
   useEffect(() => {
     loadPersistedSessions();
-    initializeAgentStreamListener();
   }, [loadPersistedSessions]);
 
   // Open a file in the panel system

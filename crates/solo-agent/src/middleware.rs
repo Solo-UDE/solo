@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
-use tracing::{debug, info, warn, error, instrument, span, Level};
+use tracing::{debug, info, warn, error, span, Level};
 
 use crate::provider::ProviderResult;
 use solo_protocol::{AgentMessage, BackendEvent};

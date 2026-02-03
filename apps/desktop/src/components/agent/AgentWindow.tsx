@@ -7,6 +7,8 @@ import { convertToMessageGroups } from './messageAdapter';
 import { useAgentSession } from '../../hooks/useAgentSession';
 import { useProviderStore } from '../../stores/provider-store';
 import { useAgentStore } from '../../stores/agentStore';
+import { usePanelTabsStore } from '../../stores/panelTabsStore';
+import { BUILTIN_PANEL_TYPES } from '../../lib/panels/constants';
 
 import type { FC } from 'react';
 import type { MessageMode } from '../../stores/agentStore';

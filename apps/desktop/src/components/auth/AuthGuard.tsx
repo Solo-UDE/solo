@@ -17,43 +17,45 @@ interface AuthGuardProps {
   children: React.ReactNode;
 }
 
+/**
+ * In dev mode, bypass auth entirely so we can test without deep link OAuth.
+ * In production, delegate to the real auth guard.
+ */
 export function AuthGuard({ children }: AuthGuardProps) {
-  // const initialize = useAuthStore((state) => state.initialize);
-  // const handleAuthCallback = useAuthStore((state) => state.handleAuthCallback);
-
-  // const isAuthenticated = useIsAuthenticated();
-  // const isInitializing = useIsAuthInitializing();
-
-  // Initialize auth on mount (skip in dev mode)
-  useEffect(() => {
-    if (!import.meta.env.DEV) {
-      initialize();
-    }
-  }, [initialize]);
-
-  // Listen for auth callback deep links (skip in dev mode)
-  useEffect(() => {
-    if (import.meta.env.DEV) return;
-
-    let unlisten: (() => void) | undefined;
-
-  //   const setupListener = async () => {
-  //     unlisten = await onAuthCallback((code) => {
-  //       handleAuthCallback(code);
-  //     });
-  //   };
-
-  //   setupListener();
-
-  //   return () => {
-  //     unlisten?.();
-  //   };
-  // }, [handleAuthCallback]);
-
-  // In dev mode, bypass auth so we can test without deep link OAuth
   if (import.meta.env.DEV) {
     return <>{children}</>;
   }
+
+  return <AuthGuardInner>{children}</AuthGuardInner>;
+}
+
+function AuthGuardInner({ children }: AuthGuardProps) {
+  const initialize = useAuthStore((state) => state.initialize);
+  const handleAuthCallback = useAuthStore((state) => state.handleAuthCallback);
+  const isAuthenticated = useIsAuthenticated();
+  const isInitializing = useIsAuthInitializing();
+
+  // Initialize auth on mount
+  useEffect(() => {
+    initialize();
+  }, [initialize]);
+
+  // Listen for auth callback deep links
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+
+    const setupListener = async () => {
+      unlisten = await onAuthCallback((code) => {
+        handleAuthCallback(code);
+      });
+    };
+
+    setupListener();
+
+    return () => {
+      unlisten?.();
+    };
+  }, [handleAuthCallback]);
 
   // Show loading spinner during initialization
   if (isInitializing) {
@@ -67,10 +69,10 @@ export function AuthGuard({ children }: AuthGuardProps) {
     );
   }
 
-  // // Show login screen if not authenticated
-  // if (!isAuthenticated) {
-  //   return <LoginScreen />;
-  // }
+  // Show login screen if not authenticated
+  if (!isAuthenticated) {
+    return <LoginScreen />;
+  }
 
   // Render children if authenticated
   return <>{children}</>;
