@@ -5,10 +5,14 @@ import { LexicalErrorBoundary } from '@lexical/react/LexicalErrorBoundary';
 import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin';
 import { OnChangePlugin } from '@lexical/react/LexicalOnChangePlugin';
 import { PlainTextPlugin } from '@lexical/react/LexicalPlainTextPlugin';
-import { $getRoot } from 'lexical';
-import { useEffect } from 'react';
+import { $createParagraphNode, $getRoot } from 'lexical';
+import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
 
-import type { EditorState } from 'lexical';
+import type { EditorState, LexicalEditor as LexicalEditorType } from 'lexical';
+
+export interface LexicalEditorHandle {
+  clear: () => void;
+}
 
 export interface LexicalEditorProps {
   onChange: (value: string) => void;
@@ -50,13 +54,37 @@ function KeyDownPlugin({ onKeyDown }: { onKeyDown?: (event: React.KeyboardEvent)
   return null;
 }
 
-export const LexicalEditor: React.FC<LexicalEditorProps> = ({
+function EditorRefPlugin({ editorRef }: { editorRef: React.MutableRefObject<LexicalEditorType | null> }): null {
+  const [editor] = useLexicalComposerContext();
+
+  useEffect(() => {
+    editorRef.current = editor;
+  }, [editor, editorRef]);
+
+  return null;
+}
+
+export const LexicalEditor = forwardRef<LexicalEditorHandle, LexicalEditorProps>(({
   onChange,
   onKeyDown,
   placeholder = 'Type something...',
   disabled = false,
   className = '',
-}) => {
+}, ref) => {
+  const editorRef = useRef<LexicalEditorType | null>(null);
+
+  useImperativeHandle(ref, () => ({
+    clear: () => {
+      const editor = editorRef.current;
+      if (editor) {
+        editor.update(() => {
+          const root = $getRoot();
+          root.clear();
+          root.append($createParagraphNode());
+        });
+      }
+    },
+  }));
   const initialConfig = {
     namespace: 'ChatInput',
     theme: {
@@ -97,9 +125,12 @@ export const LexicalEditor: React.FC<LexicalEditorProps> = ({
           />
           <HistoryPlugin />
           <OnChangePluginWrapper onChange={onChange} />
+          <EditorRefPlugin editorRef={editorRef} />
           {onKeyDown ? <KeyDownPlugin onKeyDown={onKeyDown} /> : null}
         </div>
       </LexicalComposer>
     </div>
   );
-};
+});
+
+LexicalEditor.displayName = 'LexicalEditor';
