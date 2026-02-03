@@ -12,6 +12,7 @@ import {
 	loadSessions,
 	createDebouncedSessionSave,
 } from '../lib/sessionPersistence';
+import { DEFAULT_MODEL_ID } from '../lib/constants';
 
 // Enable Map and Set support in Immer
 enableMapSet();
@@ -208,7 +209,7 @@ export const useAgentStore = create<AgentStore>()(
 					state.sessions.set(sessionId, {
 						id: sessionId,
 						createdAt: new Date(),
-						model: model || 'claude-sonnet-4-5-20250929',
+						model: model || DEFAULT_MODEL_ID,
 					});
 					state.messages.set(sessionId, []);
 					state.sessionStreaming.set(sessionId, createDefaultStreamState());

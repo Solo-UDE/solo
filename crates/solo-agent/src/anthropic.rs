@@ -10,7 +10,7 @@ use tracing::{debug, info, error};
 
 use std::time::Duration;
 
-use crate::models::ANTHROPIC_MODELS;
+use crate::models::{ANTHROPIC_MODELS, find_model};
 use crate::provider::{AIProvider, ProviderError, ProviderResult, ProviderType, ToolDefinition};
 
 const ANTHROPIC_API_URL: &str = "https://api.anthropic.com/v1/messages";
@@ -153,9 +153,13 @@ impl AIProvider for AnthropicProvider {
         let (tx, rx) = mpsc::channel(100);
         let conversation_id = conversation_id.to_string();
 
+        let max_tokens = find_model(model)
+            .map(|m| m.capabilities.max_output_tokens)
+            .unwrap_or(4096);
+
         let request = AnthropicRequest {
             model: model.to_string(),
-            max_tokens: 64_000,
+            max_tokens,
             messages: Self::convert_messages(messages),
             system: system_prompt.map(|s| s.to_string()),
             tools: self.convert_tools(),
@@ -194,7 +198,10 @@ impl AIProvider for AnthropicProvider {
             .header("anthropic-version", ANTHROPIC_VERSION)
             .header("content-type", "application/json")
             .json(&serde_json::json!({
-                "model": "claude-haiku-4-5-20251001",
+                "model": ANTHROPIC_MODELS.iter()
+                    .find(|m| m.alias == "haiku")
+                    .map(|m| m.id.as_str())
+                    .unwrap_or("claude-haiku-4-5-20251001"),
                 "max_tokens": 1,
                 "messages": [{"role": "user", "content": "test"}]
             }))

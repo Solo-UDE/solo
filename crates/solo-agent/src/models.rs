@@ -87,13 +87,13 @@ lazy_static::lazy_static! {
             provider: ProviderType::Anthropic,
             capabilities: ModelCapabilities {
                 context_window: 200_000,
-                max_output_tokens: 64_000,
+                max_output_tokens: 4096,
                 supports_vision: true,
                 supports_tools: true,
                 supports_streaming: true,
                 supports_thinking: true,
             },
-            is_default: true,
+            is_default: false,
             description: "Best balance of intelligence and speed".to_string(),
         },
         AIModel {
@@ -103,13 +103,13 @@ lazy_static::lazy_static! {
             provider: ProviderType::Anthropic,
             capabilities: ModelCapabilities {
                 context_window: 200_000,
-                max_output_tokens: 64_000,
+                max_output_tokens: 4096,
                 supports_vision: true,
                 supports_tools: true,
                 supports_streaming: true,
                 supports_thinking: true,
             },
-            is_default: false,
+            is_default: true,
             description: "Most capable model for complex tasks".to_string(),
         },
         AIModel {
@@ -119,7 +119,7 @@ lazy_static::lazy_static! {
             provider: ProviderType::Anthropic,
             capabilities: ModelCapabilities {
                 context_window: 200_000,
-                max_output_tokens: 64_000,
+                max_output_tokens: 4096,
                 supports_vision: true,
                 supports_tools: true,
                 supports_streaming: true,
@@ -267,7 +267,7 @@ mod tests {
     #[test]
     fn test_get_default_model() {
         let anthropic_default = get_default_model(ProviderType::Anthropic);
-        assert_eq!(anthropic_default.alias, "sonnet");
+        assert_eq!(anthropic_default.alias, "opus");
 
         let openai_default = get_default_model(ProviderType::OpenAI);
         assert_eq!(openai_default.id, "gpt-4.1");

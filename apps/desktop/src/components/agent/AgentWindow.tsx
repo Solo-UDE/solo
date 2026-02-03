@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useMemo } from 'react';
+import { useEffect, useCallback, useMemo, useRef } from 'react';
 import { Plus } from 'lucide-react';
 
 import { MessageFeed } from './messages';
@@ -81,9 +81,11 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 		}
 	}, [sessionId, initialSessionId, instanceId]);
 
-	// Sync model selection to the active session
+	// Sync model selection to the active session (skip redundant calls)
+	const prevModelRef = useRef<string | null>(null);
 	useEffect(() => {
-		if (sessionId && selectedModel) {
+		if (sessionId && selectedModel && selectedModel !== prevModelRef.current) {
+			prevModelRef.current = selectedModel;
 			updateSessionModel(sessionId, selectedModel);
 		}
 	}, [sessionId, selectedModel, updateSessionModel]);

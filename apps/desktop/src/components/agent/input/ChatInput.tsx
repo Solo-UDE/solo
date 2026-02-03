@@ -3,6 +3,7 @@ import { Send, Brain, Zap, ChevronDown } from 'lucide-react';
 
 import type { FC, KeyboardEvent } from 'react';
 import type { MessageMode } from '../../../stores/agentStore';
+import { CLAUDE_SONNET_4_5, CLAUDE_OPUS_4_5, CLAUDE_HAIKU_4_5, CLAUDE_MODELS } from '../../../lib/constants';
 
 export interface ChatInputProps {
 	onSubmit: (content: string) => void;
@@ -201,9 +202,9 @@ export const ChatInput: FC<ChatInputProps> = ({
 // Helper function to get display name from model ID
 function getModelDisplayName(modelId: string): string {
 	const displayNames: Record<string, string> = {
-		'claude-sonnet-4-5-20250929': 'Sonnet 4.5',
-		'claude-opus-4-5-20251101': 'Opus 4.5',
-		'claude-haiku-4-5-20251001': 'Haiku 4.5',
+		[CLAUDE_SONNET_4_5]: 'Sonnet 4.5',
+		[CLAUDE_OPUS_4_5]: 'Opus 4.5',
+		[CLAUDE_HAIKU_4_5]: 'Haiku 4.5',
 		'gpt-4.1': 'GPT-4.1',
 		'gpt-4.1-mini': 'GPT-4.1 Mini',
 		'gpt-4o': 'GPT-4o',
@@ -219,11 +220,7 @@ interface ModelMenuProps {
 }
 
 const ModelMenu: FC<ModelMenuProps> = ({ selectedModel, onSelect, onClose: _onClose }) => {
-	const models = [
-		{ id: 'claude-sonnet-4-5-20250929', name: 'Claude Sonnet 4.5', description: 'Balanced speed and intelligence' },
-		{ id: 'claude-opus-4-5-20251101', name: 'Claude Opus 4.5', description: 'Most capable' },
-		{ id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5', description: 'Fast and efficient' },
-	];
+	const models = CLAUDE_MODELS;
 
 	return (
 		<div className="absolute bottom-full left-0 mb-1 w-64 py-1 rounded-md border border-border bg-background shadow-lg z-10">

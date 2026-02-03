@@ -358,6 +358,23 @@ impl AgentManager {
         result
     }
 
+    /// Add an assistant message to a session's conversation history.
+    /// Must be called after streaming completes so subsequent turns
+    /// include the assistant's response in the context.
+    pub async fn add_assistant_message(
+        &self,
+        session_id: &str,
+        content: String,
+        tool_calls: Option<Vec<AgentToolCall>>,
+    ) -> ProviderResult<()> {
+        let mut sessions = self.sessions.write().await;
+        let session = sessions
+            .get_mut(session_id)
+            .ok_or_else(|| ProviderError::SessionNotFound(session_id.to_string()))?;
+        session.add_assistant_message(content, tool_calls);
+        Ok(())
+    }
+
     /// Check if a provider has credentials
     pub async fn has_credentials(&self, provider_type: ProviderType) -> bool {
         self.credentials

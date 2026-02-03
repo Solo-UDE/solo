@@ -10,7 +10,7 @@ use solo_agent::{
     },
     AgentManager, CredentialManager, CredentialSource, ProviderType,
 };
-use solo_protocol::{AgentMessage, AgentToolCall, ToolCallWithStatus, ToolResult};
+use solo_protocol::{AgentMessage, AgentToolCall, BackendEvent, ToolCallWithStatus, ToolResult};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, State};
@@ -307,12 +307,25 @@ pub async fn agent_send_message(
 
     // Spawn a task to forward events to the frontend
     let session_id_clone = session_id.clone();
+    let manager = state.manager.clone();
     tokio::spawn(async move {
         let mut event_count = 0u32;
         while let Some(event) = receiver.recv().await {
             event_count += 1;
             // Log every event for debugging
             info!(session_id = %session_id_clone, event_count = event_count, event_type = ?std::mem::discriminant(&event), "Forwarding event to frontend");
+
+            // Persist assistant message to session history so subsequent
+            // turns include it in the conversation context
+            if let BackendEvent::AgentComplete { ref conversation_id, ref message } = event {
+                if let Err(e) = manager.add_assistant_message(
+                    conversation_id,
+                    message.content.clone(),
+                    message.tool_calls.clone(),
+                ).await {
+                    error!(error = %e, session_id = %session_id_clone, "Failed to persist assistant message");
+                }
+            }
 
             if let Err(e) = app.emit("backend-event", &event) {
                 error!(error = %e, session_id = %session_id_clone, "Failed to emit agent event");

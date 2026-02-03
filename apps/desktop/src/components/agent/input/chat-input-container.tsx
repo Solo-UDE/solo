@@ -6,6 +6,7 @@ import { ModeSelector } from './mode-selector';
 import { ModelPicker } from './model-picker';
 import { SubmitButton } from './submit-button';
 import { useProviderStore } from '../../../stores/provider-store';
+import { DEFAULT_MODEL_ID } from '../../../lib/constants';
 
 export interface ChatInputContainerProps {
   onSubmit: (content: string, mode: 'planning' | 'fast', model: string) => void;
@@ -24,7 +25,7 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
 
   const handleSubmit = (): void => {
     if (content.trim() && !isAgentRunning) {
-      onSubmit(content, mode, selectedModel || 'claude-sonnet-4-5-20250929');
+      onSubmit(content, mode, selectedModel || DEFAULT_MODEL_ID);
       setContent('');
     }
   };

@@ -8,29 +8,8 @@ import {
   DropdownMenuTrigger,
 } from '../../ui/dropdown-menu';
 
-export interface ModelOption {
-  id: string;
-  name: string;
-  description: string;
-}
-
-export const CLAUDE_MODELS: ModelOption[] = [
-  {
-    id: 'claude-opus-4-5-20251101',
-    name: 'Claude Opus 4.5',
-    description: 'Most capable model',
-  },
-  {
-    id: 'claude-sonnet-4-5-20250929',
-    name: 'Claude Sonnet 4.5',
-    description: 'Balanced performance',
-  },
-  {
-    id: 'claude-haiku-4-5-20251001',
-    name: 'Claude Haiku 4.5',
-    description: 'Fastest responses',
-  },
-];
+export { CLAUDE_MODELS } from '../../../lib/constants';
+export type { ModelOption } from '../../../lib/constants';
 
 export interface ModelSelectorProps {
   value: string;
