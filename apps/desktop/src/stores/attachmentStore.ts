@@ -1,23 +1,23 @@
 /**
  * Attachment Store
- * Transient Zustand store for compose-time attachments and mentions.
+ * Transient Zustand store for compose-time attachments.
  * Cleared on message submit.
+ *
+ * Note: Mentions are tracked via editor state (onMentionsChange) rather than
+ * this store, to keep a single source of truth derived from the Lexical DOM.
  */
 
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import type { Attachment, FileMention } from './agentStore';
+import type { Attachment } from './agentStore';
 
 interface AttachmentState {
 	attachments: Attachment[];
-	mentions: FileMention[];
 }
 
 interface AttachmentActions {
 	addAttachment: (attachment: Attachment) => void;
 	removeAttachment: (id: string) => void;
-	addMention: (mention: FileMention) => void;
-	removeMention: (path: string) => void;
 	clear: () => void;
 }
 
@@ -26,7 +26,6 @@ type AttachmentStore = AttachmentState & AttachmentActions;
 export const useAttachmentStore = create<AttachmentStore>()(
 	immer((set) => ({
 		attachments: [],
-		mentions: [],
 
 		addAttachment: (attachment: Attachment) => {
 			set((state) => {
@@ -43,24 +42,9 @@ export const useAttachmentStore = create<AttachmentStore>()(
 			});
 		},
 
-		addMention: (mention: FileMention) => {
-			set((state) => {
-				if (!state.mentions.some((m) => m.path === mention.path)) {
-					state.mentions.push(mention);
-				}
-			});
-		},
-
-		removeMention: (path: string) => {
-			set((state) => {
-				state.mentions = state.mentions.filter((m) => m.path !== path);
-			});
-		},
-
 		clear: () => {
 			set((state) => {
 				state.attachments = [];
-				state.mentions = [];
 			});
 		},
 	}))

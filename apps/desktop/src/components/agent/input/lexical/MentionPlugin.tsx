@@ -20,7 +20,6 @@ import { createPortal } from 'react-dom';
 
 import { fuzzySearchFiles } from '../../../../lib/fuzzySearch';
 import { useWorkspaceFiles } from '../../../../hooks/useWorkspaceFiles';
-import { useAttachmentStore } from '../../../../stores/attachmentStore';
 import { $createMentionNode } from './MentionNode';
 import { MentionDropdown } from './MentionDropdown';
 
@@ -81,7 +80,6 @@ function getCursorPosition(): { bottom: number; left: number } | null {
 export const MentionPlugin: FC = () => {
 	const [editor] = useLexicalComposerContext();
 	const { files } = useWorkspaceFiles();
-	const addMention = useAttachmentStore((s) => s.addMention);
 
 	const [isOpen, setIsOpen] = useState(false);
 	const [query, setQuery] = useState('');
@@ -94,6 +92,8 @@ export const MentionPlugin: FC = () => {
 	// Listen for editor updates to detect @ trigger
 	useEffect(() => {
 		return editor.registerUpdateListener(({ editorState }) => {
+			let mentionMatch: MentionMatch | null = null;
+
 			editorState.read(() => {
 				const selection = $getSelection();
 				if (!$isRangeSelection(selection) || !selection.isCollapsed()) {
@@ -111,23 +111,27 @@ export const MentionPlugin: FC = () => {
 
 				const textContent = node.getTextContent();
 				const offset = anchor.offset;
-				const mentionMatch = getMentionMatch(textContent, offset);
+				mentionMatch = getMentionMatch(textContent, offset);
 
-				if (mentionMatch) {
-					setMatch(mentionMatch);
-					setQuery(mentionMatch.query);
-					setSelectedIndex(0);
-
-					const cursorPos = getCursorPosition();
-					if (cursorPos) {
-						setPosition(cursorPos);
-					}
-					setIsOpen(true);
-				} else {
+				if (!mentionMatch) {
 					setIsOpen(false);
 					setMatch(null);
 				}
 			});
+
+			// Read cursor position after DOM has been flushed
+			if (mentionMatch) {
+				requestAnimationFrame(() => {
+					const cursorPos = getCursorPosition();
+					if (cursorPos) {
+						setPosition(cursorPos);
+					}
+					setMatch(mentionMatch);
+					setQuery((mentionMatch as MentionMatch).query);
+					setSelectedIndex(0);
+					setIsOpen(true);
+				});
+			}
 		});
 	}, [editor]);
 
@@ -179,17 +183,10 @@ export const MentionPlugin: FC = () => {
 				}
 			});
 
-			// Add to attachment store
-			addMention({
-				path: result.path,
-				name: result.name,
-				relativePath: result.relativePath,
-			});
-
 			setIsOpen(false);
 			setMatch(null);
 		},
-		[editor, match, addMention]
+		[editor, match]
 	);
 
 	// Keyboard navigation when dropdown is open

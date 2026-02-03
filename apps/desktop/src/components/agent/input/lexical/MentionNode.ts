@@ -63,6 +63,10 @@ export class MentionNode extends DecoratorNode<ReactElement> {
 		return true;
 	}
 
+	getTextContent(): string {
+		return `@${this.__fileName}`;
+	}
+
 	getFilePath(): string {
 		return this.__filePath;
 	}

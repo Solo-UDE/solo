@@ -14,25 +14,9 @@ import {
 	DropdownMenuTrigger,
 } from '../../ui/dropdown-menu';
 import { useAttachmentStore } from '../../../stores/attachmentStore';
+import { IMAGE_EXTENSIONS, isImageFile, getFileName, createAttachmentId } from '../../../lib/attachmentHelpers';
 
 import type { Attachment } from '../../../stores/agentStore';
-
-const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'];
-
-function isImageFile(path: string): boolean {
-	const dot = path.lastIndexOf('.');
-	if (dot < 0) return false;
-	return IMAGE_EXTENSIONS.includes(path.slice(dot + 1).toLowerCase());
-}
-
-function getFileName(path: string): string {
-	const lastSlash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
-	return lastSlash >= 0 ? path.slice(lastSlash + 1) : path;
-}
-
-function createAttachmentId(): string {
-	return `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
 
 export interface ContextMenuProps {
 	onMentionTrigger?: () => void;

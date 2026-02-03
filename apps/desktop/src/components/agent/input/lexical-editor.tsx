@@ -6,7 +6,7 @@ import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin';
 import { OnChangePlugin } from '@lexical/react/LexicalOnChangePlugin';
 import { PlainTextPlugin } from '@lexical/react/LexicalPlainTextPlugin';
 import { $getRoot, $getSelection, $isRangeSelection, $isElementNode, $createParagraphNode } from 'lexical';
-import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
 
 import { MentionNode, $isMentionNode } from './lexical/MentionNode';
 import { MentionPlugin } from './lexical/MentionPlugin';
@@ -110,6 +110,19 @@ function EditorRefPlugin({
 	return null;
 }
 
+/**
+ * Syncs the disabled prop to Lexical's editable state after mount.
+ */
+function EditorDisabledPlugin({ disabled }: { disabled: boolean }): null {
+	const [editor] = useLexicalComposerContext();
+
+	useEffect(() => {
+		editor.setEditable(!disabled);
+	}, [editor, disabled]);
+
+	return null;
+}
+
 export const LexicalEditor = forwardRef<LexicalEditorHandle, LexicalEditorProps>(
 	function LexicalEditor(
 		{
@@ -155,22 +168,28 @@ export const LexicalEditor = forwardRef<LexicalEditorHandle, LexicalEditorProps>
 			},
 		}));
 
-		const initialConfig = {
-			namespace: 'ChatInput',
-			theme: {
-				paragraph: 'mb-1',
-				text: {
-					bold: 'font-bold',
-					italic: 'italic',
-					underline: 'underline',
+		// Memoize so LexicalComposer only sees the initial config once.
+		// Disabled state is synced via EditorDisabledPlugin instead.
+		const initialConfig = useMemo(
+			() => ({
+				namespace: 'ChatInput',
+				theme: {
+					paragraph: 'mb-1',
+					text: {
+						bold: 'font-bold',
+						italic: 'italic',
+						underline: 'underline',
+					},
 				},
-			},
-			nodes: [MentionNode],
-			onError: (error: Error) => {
-				console.error('Lexical error:', error);
-			},
-			editable: !disabled,
-		};
+				nodes: [MentionNode],
+				onError: (error: Error) => {
+					console.error('Lexical error:', error);
+				},
+				editable: !disabled,
+			}),
+			// eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only on mount
+			[]
+		);
 
 		const borderClass = mode === 'planning'
 			? 'border-dashed border-primary/50'
@@ -203,6 +222,7 @@ export const LexicalEditor = forwardRef<LexicalEditorHandle, LexicalEditorProps>
 						<OnChangePluginWrapper onChange={onChange} onMentionsChange={onMentionsChange} />
 						{onKeyDown ? <KeyDownPlugin onKeyDown={onKeyDown} /> : null}
 						<EditorRefPlugin editorRef={editorInstanceRef} />
+						<EditorDisabledPlugin disabled={disabled} />
 						<MentionPlugin />
 						<SlashCommandPlugin
 							onLocalCommand={onLocalCommand}

@@ -125,9 +125,6 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 			case 'clear':
 				handleNewSession();
 				break;
-			case 'restart':
-				handleNewSession();
-				break;
 			default:
 				sendMessage(`/${commandId}`, 'planning' as MessageMode);
 				break;

@@ -27,7 +27,6 @@ import {
 	MessageSquare,
 	Minimize2,
 	Puzzle,
-	RotateCcw,
 	Search,
 	Server,
 	Shield,
@@ -45,7 +44,6 @@ import type { FC } from 'react';
 const SLASH_COMMANDS: SlashCommand[] = [
 	// Local commands (UI actions)
 	{ id: 'clear', label: '/clear', description: 'Close tab and start fresh chat', category: 'local', icon: Trash2 },
-	{ id: 'restart', label: '/restart', description: 'Restart the agent process', category: 'local', icon: RotateCcw },
 	{ id: 'keybindings-help', label: '/keybindings-help', description: 'Customize keyboard shortcuts', category: 'local', icon: Keyboard },
 	{ id: 'mcp-status', label: '/mcp-status', description: 'View MCP server connection status', category: 'local', icon: Server },
 	{ id: 'mcp', label: '/mcp', description: 'Manage MCP servers', category: 'local', icon: Server },
@@ -95,6 +93,9 @@ export const SlashCommandPlugin: FC<SlashCommandPluginProps> = ({
 	// Listen for editor updates to detect / trigger
 	useEffect(() => {
 		return editor.registerUpdateListener(({ editorState }) => {
+			let shouldOpen = false;
+			let commandQuery = '';
+
 			editorState.read(() => {
 				const selection = $getSelection();
 				if (!$isRangeSelection(selection) || !selection.isCollapsed()) {
@@ -110,10 +111,10 @@ export const SlashCommandPlugin: FC<SlashCommandPluginProps> = ({
 					return;
 				}
 
-				// Check if this is the first text node in the first paragraph
+				// Only trigger when the node is inside the first paragraph
 				const root = $getRoot();
 				const firstChild = root.getFirstChild();
-				if (!firstChild) {
+				if (!firstChild || node.getParent()?.getKey() !== firstChild.getKey()) {
 					setIsOpen(false);
 					return;
 				}
@@ -125,22 +126,30 @@ export const SlashCommandPlugin: FC<SlashCommandPluginProps> = ({
 
 				// Check if text starts with '/'
 				if (textUpToCursor.startsWith('/')) {
-					const commandQuery = textUpToCursor.slice(1);
-					setQuery(commandQuery);
-					setSelectedIndex(0);
-
-					// Position dropdown
-					const sel = window.getSelection();
-					if (sel && sel.rangeCount > 0) {
-						const range = sel.getRangeAt(0);
-						const rect = range.getBoundingClientRect();
-						setPosition({ bottom: window.innerHeight - rect.top + 4, left: rect.left - (commandQuery.length * 7) });
-					}
-					setIsOpen(true);
+					commandQuery = textUpToCursor.slice(1);
+					shouldOpen = true;
 				} else {
 					setIsOpen(false);
 				}
 			});
+
+			if (shouldOpen) {
+				// Position dropdown after DOM flush, anchored to the '/' character
+				requestAnimationFrame(() => {
+					const sel = window.getSelection();
+					if (sel && sel.rangeCount > 0) {
+						const range = sel.getRangeAt(0).cloneRange();
+						// Collapse to start of text node to get position of '/'
+						range.setStart(range.startContainer, 0);
+						range.collapse(true);
+						const rect = range.getBoundingClientRect();
+						setPosition({ bottom: window.innerHeight - rect.top + 4, left: rect.left });
+					}
+					setQuery(commandQuery);
+					setSelectedIndex(0);
+					setIsOpen(true);
+				});
+			}
 		});
 	}, [editor]);
 

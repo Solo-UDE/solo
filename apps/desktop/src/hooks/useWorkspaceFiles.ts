@@ -47,6 +47,9 @@ function shouldSkipFile(name: string): boolean {
 	return IGNORED_EXTENSIONS.has(getExtension(name));
 }
 
+/** Maximum number of files to collect before stopping the scan */
+const MAX_FILE_COUNT = 10_000;
+
 export function useWorkspaceFiles(): {
 	files: FileEntry[];
 	isLoading: boolean;
@@ -70,7 +73,7 @@ export function useWorkspaceFiles(): {
 			const result: FileEntry[] = [];
 			const queue: string[] = [rootPath];
 
-			while (queue.length > 0) {
+			while (queue.length > 0 && result.length < MAX_FILE_COUNT) {
 				const dirPath = queue.shift()!;
 
 				try {
@@ -95,6 +98,7 @@ export function useWorkspaceFiles(): {
 									name: entry.name,
 									relativePath,
 								});
+								if (result.length >= MAX_FILE_COUNT) break;
 							}
 						}
 					}

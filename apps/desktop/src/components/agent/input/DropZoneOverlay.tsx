@@ -1,30 +1,20 @@
 /**
  * DropZoneOverlay - Drag-and-drop zone that wraps the editor area.
- * Handles both react-dnd drops (from file tree) and native HTML5 drops (from OS).
+ * Handles both react-dnd drops (from file tree) and native Tauri v2 drops (from OS).
  */
 
 import { useDrop } from 'react-dnd';
 import { Upload } from 'lucide-react';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { convertFileSrc } from '@tauri-apps/api/core';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { DND_ITEM_TYPES } from '../../file-explorer/FileTreeNode';
 import { useAttachmentStore } from '../../../stores/attachmentStore';
+import { isImageFile, createAttachmentId, getFileName } from '../../../lib/attachmentHelpers';
 
 import type { FileTreeDragItem } from '../../file-explorer/FileTreeNode';
 import type { Attachment } from '../../../stores/agentStore';
 import type { FC, ReactNode } from 'react';
-
-const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.ico']);
-
-function isImageFile(name: string): boolean {
-	const dot = name.lastIndexOf('.');
-	if (dot < 0) return false;
-	return IMAGE_EXTENSIONS.has(name.slice(dot).toLowerCase());
-}
-
-function createAttachmentId(): string {
-	return `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
 
 export interface DropZoneOverlayProps {
 	disabled?: boolean;
@@ -33,9 +23,10 @@ export interface DropZoneOverlayProps {
 
 export const DropZoneOverlay: FC<DropZoneOverlayProps> = ({ disabled, children }) => {
 	const [isNativeDragOver, setIsNativeDragOver] = useState(false);
-	const dragCounterRef = useRef(0);
 	const containerRef = useRef<HTMLDivElement>(null);
 	const addAttachment = useAttachmentStore((s) => s.addAttachment);
+	const disabledRef = useRef(disabled);
+	disabledRef.current = disabled;
 
 	const handleFileTreeDrop = useCallback(
 		(item: FileTreeDragItem) => {
@@ -74,73 +65,51 @@ export const DropZoneOverlay: FC<DropZoneOverlayProps> = ({ disabled, children }
 		[dropRef]
 	);
 
-	// Native drag handlers for OS file drops
-	const handleDragEnter = useCallback(
-		(e: React.DragEvent) => {
-			e.preventDefault();
-			e.stopPropagation();
-			dragCounterRef.current++;
-			if (e.dataTransfer.types.includes('Files')) {
-				setIsNativeDragOver(true);
-			}
-		},
-		[]
-	);
+	// Tauri v2 native drag-drop event listener for OS file drops
+	useEffect(() => {
+		let unlisten: (() => void) | undefined;
 
-	const handleDragOver = useCallback((e: React.DragEvent) => {
-		e.preventDefault();
-		e.stopPropagation();
-	}, []);
+		getCurrentWindow()
+			.onDragDropEvent((event) => {
+				const { type } = event.payload;
 
-	const handleDragLeave = useCallback((e: React.DragEvent) => {
-		e.preventDefault();
-		e.stopPropagation();
-		dragCounterRef.current--;
-		if (dragCounterRef.current === 0) {
-			setIsNativeDragOver(false);
-		}
-	}, []);
+				if (type === 'enter') {
+					setIsNativeDragOver(true);
+				} else if (type === 'leave') {
+					setIsNativeDragOver(false);
+				} else if (type === 'drop') {
+					setIsNativeDragOver(false);
+					if (disabledRef.current) return;
 
-	const handleDrop = useCallback(
-		(e: React.DragEvent) => {
-			e.preventDefault();
-			e.stopPropagation();
-			dragCounterRef.current = 0;
-			setIsNativeDragOver(false);
+					const { paths } = event.payload;
+					for (const filePath of paths) {
+						const name = getFileName(filePath);
+						const isImage = isImageFile(name);
+						const attachment: Attachment = {
+							id: createAttachmentId(),
+							type: isImage ? 'image' : 'file',
+							path: filePath,
+							name,
+							thumbnailUrl: isImage ? convertFileSrc(filePath) : undefined,
+						};
+						addAttachment(attachment);
+					}
+				}
+			})
+			.then((fn) => {
+				unlisten = fn;
+			});
 
-			if (disabled) return;
-
-			const files = Array.from(e.dataTransfer.files);
-			for (const file of files) {
-				const isImage = isImageFile(file.name);
-				// In Tauri, dropped files may have a .path property with the full filesystem path
-				const tauriPath = (file as File & { path?: string }).path;
-				const filePath = tauriPath || file.webkitRelativePath || file.name;
-
-				const attachment: Attachment = {
-					id: createAttachmentId(),
-					type: isImage ? 'image' : 'file',
-					path: filePath,
-					name: file.name,
-					mimeType: file.type || undefined,
-					size: file.size,
-					thumbnailUrl: isImage && tauriPath ? convertFileSrc(filePath) : undefined,
-				};
-				addAttachment(attachment);
-			}
-		},
-		[disabled, addAttachment]
-	);
+		return () => {
+			unlisten?.();
+		};
+	}, [addAttachment]);
 
 	const showOverlay = isNativeDragOver || isDndOver;
 
 	return (
 		<div
 			ref={combinedDropRef}
-			onDragEnter={handleDragEnter}
-			onDragOver={handleDragOver}
-			onDragLeave={handleDragLeave}
-			onDrop={handleDrop}
 			className="relative"
 		>
 			{children}
