@@ -19,19 +19,19 @@ export const ProgressStep: FC<ProgressStepProps> = ({
     switch (status) {
       case 'completed':
         return (
-          <div className="w-5 h-5 rounded-full bg-success-muted flex items-center justify-center">
+          <div className="w-5 h-5 rounded-full bg-success-muted flex items-center justify-center animate-in zoom-in-50 duration-200">
             <Check className="w-3 h-3 text-success" />
           </div>
         );
       case 'in_progress':
         return (
-          <div className="w-5 h-5 rounded-full bg-info-muted flex items-center justify-center">
+          <div className="w-5 h-5 rounded-full bg-info-muted flex items-center justify-center animate-in fade-in-0 duration-200">
             <CircleNotch weight="bold" className="w-3 h-3 text-info animate-spin" />
           </div>
         );
       case 'failed':
         return (
-          <div className="w-5 h-5 rounded-full bg-destructive/10 flex items-center justify-center">
+          <div className="w-5 h-5 rounded-full bg-destructive/10 flex items-center justify-center animate-in zoom-in-50 duration-200">
             <X className="w-3 h-3 text-destructive" />
           </div>
         );

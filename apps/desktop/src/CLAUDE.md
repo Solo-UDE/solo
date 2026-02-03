@@ -7,6 +7,8 @@
 
 | ID | Time | T | Title | Read |
 |----|------|---|-------|------|
+| #623 | 5:43 PM | ⚖️ | Root Cause Identified for Terminal Animation Failure | ~426 |
+| #622 | " | 🔵 | Terminal Panel Already Has Ease-In/Ease-Out Animation Implemented | ~159 |
 | #585 | 5:32 PM | 🔵 | App.tsx Root Layout Manages Sidebar/Terminal Resizing with Transition-Colors | ~617 |
 | #558 | 5:26 PM | 🔵 | Solo App Global CSS Configuration and Custom Easing Curves | ~604 |
 | #226 | 3:37 PM | 🔵 | App.tsx Application Initialization and Global Event Setup | ~523 |

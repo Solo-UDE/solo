@@ -84,15 +84,12 @@ pub fn run() {
                 use tauri::window::{Effect, EffectState, EffectsBuilder};
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.set_traffic_lights_inset(13.0, 13.0);
-                    if window.set_effects(
+                    let _ = window.set_effects(
                         EffectsBuilder::new()
                             .effect(Effect::Sidebar)
                             .state(EffectState::FollowsWindowActiveState)
                             .build(),
-                    ).is_ok() {
-                        // Signal to CSS that native vibrancy is active
-                        let _ = window.eval("document.documentElement.setAttribute('data-vibrancy','true')");
-                    }
+                    );
                 }
             }
 

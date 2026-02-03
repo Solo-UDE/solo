@@ -36,11 +36,10 @@ export const CopyButton: FC<CopyButtonProps> = ({ text, className = '' }) => {
       `}
       title={isCopied ? 'Copied!' : 'Copy to clipboard'}
     >
-      {isCopied ? (
-        <Check className="h-4 w-4 text-success" />
-      ) : (
-        <Copy className="h-4 w-4" />
-      )}
+      <span className="relative w-4 h-4 inline-flex">
+        <Copy className={`h-4 w-4 absolute inset-0 transition-opacity duration-150 ${isCopied ? 'opacity-0' : 'opacity-100'}`} />
+        <Check className={`h-4 w-4 absolute inset-0 transition-opacity duration-150 text-success ${isCopied ? 'opacity-100' : 'opacity-0'}`} />
+      </span>
     </button>
   );
 };

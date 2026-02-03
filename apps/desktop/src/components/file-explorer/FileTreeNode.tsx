@@ -3,7 +3,7 @@
  */
 
 import React, { memo, useCallback, useEffect, useState } from 'react';
-import { CaretRight, CaretDown, CircleNotch } from '@phosphor-icons/react';
+import { CaretRight, CircleNotch } from '@phosphor-icons/react';
 import { FileIcon, FolderIcon } from '@react-symbols/icons/utils';
 import { Git } from '@react-symbols/icons/files';
 import { FolderGray, FolderGithub } from '@react-symbols/icons/folders';
@@ -155,10 +155,8 @@ export const FileTreeNode = memo(function FileTreeNode({
           >
             {isLoading ? (
               <CircleNotch weight="bold" className="w-3 h-3 animate-spin text-muted-foreground" />
-            ) : isExpanded ? (
-              <CaretDown className="w-3 h-3 text-muted-foreground" />
             ) : (
-              <CaretRight className="w-3 h-3 text-muted-foreground" />
+              <CaretRight className={`w-3 h-3 text-muted-foreground transition-transform duration-150 ${isExpanded ? 'rotate-90' : ''}`} />
             )}
           </button>
         ) : (

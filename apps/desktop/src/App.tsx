@@ -57,6 +57,14 @@ function AppContent() {
   // Apply color scheme to document
   useColorScheme();
 
+  // Set vibrancy attribute from React (Rust's window.eval fires before DOM is ready)
+  useEffect(() => {
+    const isMac = navigator.platform.startsWith('Mac') || navigator.userAgent.includes('Macintosh');
+    if (isMac) {
+      document.documentElement.setAttribute('data-vibrancy', 'true');
+    }
+  }, []);
+
   // Platform-aware titlebar padding
   const titlebarStyle = useTitlebarStyle();
 
@@ -278,8 +286,11 @@ function AppContent() {
             <MosaicLayout />
           </div>
 
-          {terminalPanelOpen && (
-            <>
+          <div className={cn(
+            'grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]',
+            terminalPanelOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]',
+          )}>
+            <div className="overflow-hidden min-h-0">
               <div
                 className={cn(
                   'h-1.5 shrink-0 cursor-row-resize flex items-center justify-center hover:bg-primary/20 transition-colors',
@@ -291,13 +302,13 @@ function AppContent() {
               </div>
 
               <div
-                className="shrink-0 overflow-hidden"
+                className="overflow-hidden"
                 style={{ height: terminalPanelHeight }}
               >
                 <SidebarTerminal />
               </div>
-            </>
-          )}
+            </div>
+          </div>
         </div>
       </div>
 

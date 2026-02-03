@@ -382,9 +382,13 @@ export const SessionList: FC<SessionListProps> = ({
             </div>
           ) : (
             <div className="space-y-1">
-              {filteredSessions.map((session) => (
-                <SessionItem
+              {filteredSessions.map((session, i) => (
+                <div
                   key={session.id}
+                  className="animate-in fade-in-0 slide-in-from-bottom-1 duration-200"
+                  style={{ animationDelay: `${Math.min(i * 30, 300)}ms`, animationFillMode: 'backwards' }}
+                >
+                <SessionItem
                   session={session}
                   isActive={activeSessionId === session.id}
                   isStreaming={streamingIds.has(session.id)}
@@ -400,6 +404,7 @@ export const SessionList: FC<SessionListProps> = ({
                   onRenameChange={rename.setRenameValue}
                   onRequestDelete={() => handleRequestDelete(session.id)}
                 />
+                </div>
               ))}
             </div>
           )}

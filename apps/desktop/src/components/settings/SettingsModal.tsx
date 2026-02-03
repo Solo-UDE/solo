@@ -190,7 +190,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
             {/* Content - scrollable area */}
             <div className="flex-1 overflow-y-auto overflow-x-hidden px-6 pt-4 pb-6">
-              {renderTabContent()}
+              <div key={activeTab} className="animate-in fade-in-0 duration-150">
+                {renderTabContent()}
+              </div>
             </div>
           </div>
         </div>

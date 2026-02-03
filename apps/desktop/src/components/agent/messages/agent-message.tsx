@@ -83,7 +83,7 @@ export const AgentMessage: FC<AgentMessageProps> = ({
   };
 
   return (
-    <div className={`flex gap-3 px-4 ${className}`}>
+    <div className={`flex gap-3 px-4 animate-in fade-in-0 slide-in-from-bottom-2 duration-200 ${className}`}>
       {/* Avatar */}
       <div className="flex-shrink-0 w-8 h-8 rounded-full bg-secondary flex items-center justify-center overflow-hidden">
         {avatarUrl ? (
