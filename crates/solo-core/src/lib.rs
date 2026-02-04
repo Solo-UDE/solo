@@ -106,12 +106,14 @@ pub struct AgentConfig {
     pub max_tokens: u32,
 }
 
+pub const DEFAULT_MODEL_ID: &str = "claude-opus-4-5-20251101";
+
 impl Default for AgentConfig {
     fn default() -> Self {
         Self {
             api_key: None,
-            model: "claude-sonnet-4-20250514".to_string(),
-            max_tokens: 8192,
+            model: DEFAULT_MODEL_ID.to_string(),
+            max_tokens: 4096,
         }
     }
 }
@@ -125,6 +127,6 @@ mod tests {
         let config = SoloConfig::default();
         assert!(config.workspace_root.is_none());
         assert_eq!(config.terminal.font_size, 14);
-        assert_eq!(config.agent.model, "claude-sonnet-4-20250514");
+        assert_eq!(config.agent.model, DEFAULT_MODEL_ID);
     }
 }

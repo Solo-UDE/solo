@@ -3,6 +3,7 @@ import { PaperPlaneTilt, Brain, Lightning, CaretDown } from '@phosphor-icons/rea
 
 import type { FC, KeyboardEvent } from 'react';
 import type { MessageMode } from '../../../stores/agentStore';
+import { CLAUDE_SONNET_4_5, CLAUDE_OPUS_4_5, CLAUDE_HAIKU_4_5, CLAUDE_MODELS } from '../../../lib/constants';
 
 export interface ChatInputProps {
 	onSubmit: (content: string) => void;
@@ -201,12 +202,12 @@ export const ChatInput: FC<ChatInputProps> = ({
 // Helper function to get display name from model ID
 function getModelDisplayName(modelId: string): string {
 	const displayNames: Record<string, string> = {
-		'claude-sonnet-4-20250514': 'Sonnet 4',
-		'claude-opus-4-20250514': 'Opus 4',
-		'claude-3-5-haiku-latest': 'Haiku 3.5',
-		'gpt-4.1': 'GPT-4.1',
-		'gpt-4.1-mini': 'GPT-4.1 Mini',
-		'gpt-4o': 'GPT-4o',
+		[CLAUDE_SONNET_4_5]: 'Sonnet 4.5',
+		[CLAUDE_OPUS_4_5]: 'Opus 4.5',
+		[CLAUDE_HAIKU_4_5]: 'Haiku 4.5',
+		'gpt-5.2-high': 'GPT-5.2 High',
+		'gpt-5.2-medium': 'GPT-5.2 Medium',
+		'gpt-5.2-low': 'GPT-5.2 Low',
 	};
 	return displayNames[modelId] || modelId;
 }
@@ -219,11 +220,7 @@ interface ModelMenuProps {
 }
 
 const ModelMenu: FC<ModelMenuProps> = ({ selectedModel, onSelect, onClose: _onClose }) => {
-	const models = [
-		{ id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4', description: 'Balanced speed and intelligence' },
-		{ id: 'claude-opus-4-20250514', name: 'Claude Opus 4', description: 'Most capable' },
-		{ id: 'claude-3-5-haiku-latest', name: 'Claude 3.5 Haiku', description: 'Fast and efficient' },
-	];
+	const models = CLAUDE_MODELS;
 
 	return (
 		<div className="absolute bottom-full left-0 mb-1 w-64 py-1 rounded-md border border-border bg-background shadow-lg z-10">

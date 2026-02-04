@@ -18,6 +18,9 @@ export interface AgentEventHandlers {
 	onToolApprovalNeeded?: (conversationId: string, toolCall: ToolCallWithStatus) => void;
 	onComplete?: (conversationId: string, message: AgentMessage) => void;
 	onError?: (conversationId: string, error: string) => void;
+	onTurnStart?: (conversationId: string, turnNumber: number) => void;
+	onLoopComplete?: (conversationId: string, totalTurns: number) => void;
+	onAborted?: (conversationId: string, reason: string) => void;
 }
 
 // =============================================================================
@@ -91,6 +94,27 @@ export async function listenToAgentEvents(
 					payload.payload.error
 				);
 				break;
+
+			case 'agent:turn_start':
+				handlers.onTurnStart?.(
+					payload.payload.conversation_id,
+					payload.payload.turn_number
+				);
+				break;
+
+			case 'agent:loop_complete':
+				handlers.onLoopComplete?.(
+					payload.payload.conversation_id,
+					payload.payload.total_turns
+				);
+				break;
+
+			case 'agent:aborted':
+				handlers.onAborted?.(
+					payload.payload.conversation_id,
+					payload.payload.reason
+				);
+				break;
 		}
 	});
 }
@@ -124,6 +148,15 @@ export async function listenToSessionEvents(
 		},
 		onError: (id, error) => {
 			if (id === sessionId) handlers.onError?.(id, error);
+		},
+		onTurnStart: (id, turnNumber) => {
+			if (id === sessionId) handlers.onTurnStart?.(id, turnNumber);
+		},
+		onLoopComplete: (id, totalTurns) => {
+			if (id === sessionId) handlers.onLoopComplete?.(id, totalTurns);
+		},
+		onAborted: (id, reason) => {
+			if (id === sessionId) handlers.onAborted?.(id, reason);
 		},
 	});
 }

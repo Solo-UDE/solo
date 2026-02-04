@@ -40,7 +40,7 @@ impl Default for ModelCapabilities {
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../apps/desktop/src/bindings/")]
 pub struct AIModel {
-    /// Model ID (e.g., "claude-sonnet-4-20250514")
+    /// Model ID (e.g., "claude-sonnet-4-5-20250929")
     pub id: String,
     /// Display name (e.g., "Claude Sonnet 4")
     pub display_name: String,
@@ -56,152 +56,134 @@ pub struct AIModel {
     pub description: String,
 }
 
-/// Static model registry
-pub static MODEL_REGISTRY: &[AIModel] = &[
-    // Anthropic Models
-    AIModel {
-        id: String::new(), // Will be set at runtime
-        display_name: String::new(),
-        alias: String::new(),
-        provider: ProviderType::Anthropic,
-        capabilities: ModelCapabilities {
-            context_window: 200_000,
-            max_output_tokens: 8192,
-            supports_vision: true,
-            supports_tools: true,
-            supports_streaming: true,
-            supports_thinking: false,
-        },
-        is_default: true,
-        description: String::new(),
-    },
-];
-
-// Since we can't use String in const, we use a function to get models
+// Since we can't use String in const, we use lazy_static to get models
 lazy_static::lazy_static! {
     pub static ref ANTHROPIC_MODELS: Vec<AIModel> = vec![
         AIModel {
-            id: "claude-sonnet-4-20250514".to_string(),
-            display_name: "Claude Sonnet 4".to_string(),
+            id: "claude-sonnet-4-5-20250929".to_string(),
+            display_name: "Claude Sonnet 4.5".to_string(),
             alias: "sonnet".to_string(),
             provider: ProviderType::Anthropic,
             capabilities: ModelCapabilities {
                 context_window: 200_000,
-                max_output_tokens: 8192,
-                supports_vision: true,
-                supports_tools: true,
-                supports_streaming: true,
-                supports_thinking: false,
-            },
-            is_default: true,
-            description: "Best balance of intelligence and speed".to_string(),
-        },
-        AIModel {
-            id: "claude-opus-4-20250514".to_string(),
-            display_name: "Claude Opus 4".to_string(),
-            alias: "opus".to_string(),
-            provider: ProviderType::Anthropic,
-            capabilities: ModelCapabilities {
-                context_window: 200_000,
-                max_output_tokens: 8192,
+                max_output_tokens: 50_000,
                 supports_vision: true,
                 supports_tools: true,
                 supports_streaming: true,
                 supports_thinking: true,
             },
             is_default: false,
+            description: "Best balance of intelligence and speed".to_string(),
+        },
+        AIModel {
+            id: "claude-opus-4-5-20251101".to_string(),
+            display_name: "Claude Opus 4.5".to_string(),
+            alias: "opus".to_string(),
+            provider: ProviderType::Anthropic,
+            capabilities: ModelCapabilities {
+                context_window: 200_000,
+                max_output_tokens: 50_000,
+                supports_vision: true,
+                supports_tools: true,
+                supports_streaming: true,
+                supports_thinking: true,
+            },
+            is_default: true,
             description: "Most capable model for complex tasks".to_string(),
         },
         AIModel {
-            id: "claude-3-5-haiku-latest".to_string(),
-            display_name: "Claude 3.5 Haiku".to_string(),
+            id: "claude-haiku-4-5-20251001".to_string(),
+            display_name: "Claude Haiku 4.5".to_string(),
             alias: "haiku".to_string(),
             provider: ProviderType::Anthropic,
             capabilities: ModelCapabilities {
                 context_window: 200_000,
-                max_output_tokens: 8192,
+                max_output_tokens: 50_000,
                 supports_vision: true,
                 supports_tools: true,
                 supports_streaming: true,
-                supports_thinking: false,
+                supports_thinking: true,
             },
             is_default: false,
             description: "Fast and efficient for simple tasks".to_string(),
         },
     ];
 
-    pub static ref OPENAI_MODELS: Vec<AIModel> = vec![
+    pub static ref GEMINI_MODELS: Vec<AIModel> = vec![
         AIModel {
-            id: "gpt-4.1".to_string(),
-            display_name: "GPT-4.1".to_string(),
-            alias: "gpt4".to_string(),
-            provider: ProviderType::OpenAI,
+            id: "gemini-3-pro".to_string(),
+            display_name: "Gemini 3 Pro".to_string(),
+            alias: "gemini-pro".to_string(),
+            provider: ProviderType::Gemini,
             capabilities: ModelCapabilities {
                 context_window: 1_000_000,
-                max_output_tokens: 32768,
-                supports_vision: true,
-                supports_tools: true,
-                supports_streaming: true,
-                supports_thinking: false,
-            },
-            is_default: true,
-            description: "Flagship model with 1M context".to_string(),
-        },
-        AIModel {
-            id: "gpt-4.1-mini".to_string(),
-            display_name: "GPT-4.1 Mini".to_string(),
-            alias: "gpt4-mini".to_string(),
-            provider: ProviderType::OpenAI,
-            capabilities: ModelCapabilities {
-                context_window: 1_000_000,
-                max_output_tokens: 32768,
-                supports_vision: true,
-                supports_tools: true,
-                supports_streaming: true,
-                supports_thinking: false,
-            },
-            is_default: false,
-            description: "Smaller, faster GPT-4.1 variant".to_string(),
-        },
-        AIModel {
-            id: "o3".to_string(),
-            display_name: "o3".to_string(),
-            alias: "o3".to_string(),
-            provider: ProviderType::OpenAI,
-            capabilities: ModelCapabilities {
-                context_window: 200_000,
-                max_output_tokens: 100_000,
-                supports_vision: true,
-                supports_tools: true,
-                supports_streaming: true,
-                supports_thinking: true,
-            },
-            is_default: false,
-            description: "Advanced reasoning model".to_string(),
-        },
-        AIModel {
-            id: "o4-mini".to_string(),
-            display_name: "o4 Mini".to_string(),
-            alias: "o4-mini".to_string(),
-            provider: ProviderType::OpenAI,
-            capabilities: ModelCapabilities {
-                context_window: 200_000,
                 max_output_tokens: 65536,
                 supports_vision: true,
                 supports_tools: true,
                 supports_streaming: true,
                 supports_thinking: true,
             },
-            is_default: false,
-            description: "Fast reasoning model".to_string(),
+            is_default: true,
+            description: "Advanced reasoning".to_string(),
         },
         AIModel {
-            id: "gpt-4o".to_string(),
-            display_name: "GPT-4o".to_string(),
-            alias: "4o".to_string(),
+            id: "gemini-3-flash".to_string(),
+            display_name: "Gemini 3 Flash".to_string(),
+            alias: "flash".to_string(),
+            provider: ProviderType::Gemini,
+            capabilities: ModelCapabilities {
+                context_window: 1_000_000,
+                max_output_tokens: 8192,
+                supports_vision: true,
+                supports_tools: true,
+                supports_streaming: true,
+                supports_thinking: false,
+            },
+            is_default: false,
+            description: "Fast multimodal model".to_string(),
+        },
+    ];
+
+    pub static ref OPENAI_MODELS: Vec<AIModel> = vec![
+        AIModel {
+            id: "gpt-5.2-high".to_string(),
+            display_name: "GPT-5.2 High".to_string(),
+            alias: "gpt5-high".to_string(),
             provider: ProviderType::OpenAI,
             capabilities: ModelCapabilities {
-                context_window: 128_000,
+                context_window: 1_000_000,
+                max_output_tokens: 32768,
+                supports_vision: true,
+                supports_tools: true,
+                supports_streaming: true,
+                supports_thinking: true,
+            },
+            is_default: true,
+            description: "Most capable reasoning".to_string(),
+        },
+        AIModel {
+            id: "gpt-5.2-medium".to_string(),
+            display_name: "GPT-5.2 Medium".to_string(),
+            alias: "gpt5-medium".to_string(),
+            provider: ProviderType::OpenAI,
+            capabilities: ModelCapabilities {
+                context_window: 1_000_000,
+                max_output_tokens: 32768,
+                supports_vision: true,
+                supports_tools: true,
+                supports_streaming: true,
+                supports_thinking: false,
+            },
+            is_default: false,
+            description: "Balanced performance".to_string(),
+        },
+        AIModel {
+            id: "gpt-5.2-low".to_string(),
+            display_name: "GPT-5.2 Low".to_string(),
+            alias: "gpt5-low".to_string(),
+            provider: ProviderType::OpenAI,
+            capabilities: ModelCapabilities {
+                context_window: 200_000,
                 max_output_tokens: 16384,
                 supports_vision: true,
                 supports_tools: true,
@@ -209,7 +191,7 @@ lazy_static::lazy_static! {
                 supports_thinking: false,
             },
             is_default: false,
-            description: "Multimodal model with audio support".to_string(),
+            description: "Fast and cost-effective".to_string(),
         },
     ];
 }
@@ -219,6 +201,7 @@ pub fn get_models_for_provider(provider: ProviderType) -> &'static [AIModel] {
     match provider {
         ProviderType::Anthropic => &ANTHROPIC_MODELS,
         ProviderType::OpenAI => &OPENAI_MODELS,
+        ProviderType::Gemini => &GEMINI_MODELS,
     }
 }
 
@@ -249,6 +232,13 @@ pub fn find_model(identifier: &str) -> Option<&'static AIModel> {
         return Some(model);
     }
 
+    // Search Gemini models
+    if let Some(model) = GEMINI_MODELS.iter().find(|m| {
+        m.id.to_lowercase() == identifier_lower || m.alias.to_lowercase() == identifier_lower
+    }) {
+        return Some(model);
+    }
+
     None
 }
 
@@ -257,6 +247,7 @@ pub fn get_all_models() -> Vec<&'static AIModel> {
     let mut models: Vec<&'static AIModel> = Vec::new();
     models.extend(ANTHROPIC_MODELS.iter());
     models.extend(OPENAI_MODELS.iter());
+    models.extend(GEMINI_MODELS.iter());
     models
 }
 
@@ -267,17 +258,17 @@ mod tests {
     #[test]
     fn test_get_default_model() {
         let anthropic_default = get_default_model(ProviderType::Anthropic);
-        assert_eq!(anthropic_default.alias, "sonnet");
+        assert_eq!(anthropic_default.alias, "opus");
 
         let openai_default = get_default_model(ProviderType::OpenAI);
-        assert_eq!(openai_default.id, "gpt-4.1");
+        assert_eq!(openai_default.id, "gpt-5.2-high");
     }
 
     #[test]
     fn test_find_model() {
         assert!(find_model("sonnet").is_some());
-        assert!(find_model("claude-sonnet-4-20250514").is_some());
-        assert!(find_model("gpt-4.1").is_some());
+        assert!(find_model("claude-sonnet-4-5-20250929").is_some());
+        assert!(find_model("gpt-5.2-high").is_some());
         assert!(find_model("nonexistent").is_none());
     }
 }

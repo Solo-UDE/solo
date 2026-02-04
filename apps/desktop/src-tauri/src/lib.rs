@@ -126,7 +126,9 @@ pub fn run() {
             agent_commands::get_models,
             agent_commands::get_models_for_provider_cmd,
             agent_commands::agent_create_session,
+            agent_commands::agent_update_session_model,
             agent_commands::agent_send_message,
+            agent_commands::agent_abort_session,
             agent_commands::agent_get_history,
             agent_commands::agent_clear_history,
             // Tool commands
@@ -135,6 +137,20 @@ pub fn run() {
             agent_commands::approve_tool_call,
             agent_commands::reject_tool_call,
             agent_commands::tool_requires_approval,
+            // Auth method commands
+            agent_commands::get_auth_method,
+            // OAuth commands
+            agent_commands::start_oauth_flow,
+            agent_commands::complete_oauth_flow,
+            agent_commands::wait_for_oauth_callback,
+            agent_commands::disconnect_oauth,
+            // Manual OAuth token command
+            agent_commands::set_oauth_token_manual,
+            // Claude Code CLI commands
+            agent_commands::check_claude_auth_status,
+            agent_commands::check_claude_cli_installed,
+            agent_commands::start_claude_login,
+            agent_commands::install_claude_cli,
             // Parse commands
             parse_commands::parse_file,
             parse_commands::parse_content,

@@ -524,7 +524,7 @@ impl CredentialManager {
 
         let new_token = match provider {
             ProviderType::Anthropic => AnthropicOAuthConfig::refresh_token(&refresh_token).await?,
-            ProviderType::OpenAI => unreachable!(), // Handled above
+            ProviderType::OpenAI | ProviderType::Gemini => unreachable!(), // Handled above
         };
 
         // Store the new token

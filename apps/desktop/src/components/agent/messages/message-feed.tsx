@@ -14,6 +14,7 @@ export interface MessageGroup {
 export interface MessageFeedProps {
   messageGroups: MessageGroup[];
   autoScroll?: boolean;
+  isStreaming?: boolean;
   onToolApproval?: (toolCallId: string, approved: boolean) => void;
   className?: string;
 }
@@ -21,6 +22,7 @@ export interface MessageFeedProps {
 export const MessageFeed: FC<MessageFeedProps> = ({
   messageGroups,
   autoScroll = true,
+  isStreaming = false,
   onToolApproval,
   className = '',
 }) => {
@@ -65,6 +67,19 @@ export const MessageFeed: FC<MessageFeedProps> = ({
       element.removeEventListener('scroll', handleScroll);
     };
   }, []);
+
+  // Auto-scroll during streaming via interval
+  useEffect(() => {
+    if (!isStreaming || !shouldAutoScroll.current) return;
+
+    const interval = setInterval(() => {
+      if (!shouldAutoScroll.current || !parentRef.current) return;
+      const el = parentRef.current;
+      el.scrollTop = el.scrollHeight;
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, [isStreaming]);
 
   return (
     <div
