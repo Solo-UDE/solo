@@ -138,6 +138,9 @@ interface AgentActions {
 	resolveToolApproval: (toolCallId: string, approved: boolean) => void;
 	handleAgentComplete: (conversationId: string, message: AgentMessage) => void;
 	handleAgentError: (conversationId: string, error: string) => void;
+	handleTurnStart: (conversationId: string, turnNumber: number) => void;
+	handleLoopComplete: (conversationId: string, totalTurns: number) => void;
+	handleAborted: (conversationId: string, reason: string) => void;
 
 	// Persistence
 	loadPersistedSessions: () => void;
@@ -427,19 +430,27 @@ export const useAgentStore = create<AgentStore>()(
 				// Track in pending approvals map
 				state.pendingToolApprovals.set(toolCall.tool_call.id, toolCall);
 
-				// Also add to the streaming message's tool calls as pending_approval
+				// Update existing tool call status to pending_approval, or add it
+				const streamState = getOrCreateStreamState(state.sessionStreaming, conversationId);
 				const messages = state.messages.get(conversationId);
-				if (messages && state.streamingMessageId) {
-					const msg = messages.find((m) => m.id === state.streamingMessageId);
+				if (messages && streamState.streamingMessageId) {
+					const msg = messages.find((m) => m.id === streamState.streamingMessageId);
 					if (msg) {
 						if (!msg.toolCalls) msg.toolCalls = [];
-						msg.toolCalls.push({
-							id: toolCall.tool_call.id,
-							name: toolCall.tool_call.name,
-							arguments: toolCall.tool_call.arguments,
-							status: 'pending_approval',
-							needsApproval: true,
-						});
+						// Check if tool call already exists (added by handleAgentToolStart)
+						const existing = msg.toolCalls.find((tc) => tc.id === toolCall.tool_call.id);
+						if (existing) {
+							existing.status = 'pending_approval';
+							existing.needsApproval = true;
+						} else {
+							msg.toolCalls.push({
+								id: toolCall.tool_call.id,
+								name: toolCall.tool_call.name,
+								arguments: toolCall.tool_call.arguments,
+								status: 'pending_approval',
+								needsApproval: true,
+							});
+						}
 					}
 				}
 			});
@@ -471,31 +482,31 @@ export const useAgentStore = create<AgentStore>()(
 			set((state) => {
 				const streamState = getOrCreateStreamState(state.sessionStreaming, conversationId);
 
-				// Finalize the streaming message
+				// Finalize the streaming message text content
 				const messages = state.messages.get(conversationId);
 				if (messages && streamState.streamingMessageId) {
 					const msg = messages.find((m) => m.id === streamState.streamingMessageId);
 					if (msg) {
 						console.log('[Store] Finalizing message, content length:', message.content.length);
-						msg.content = message.content;
+						// Use pre-computed text field, or extract text from ContentBlock[]
+						msg.content = message.text
+							?? (Array.isArray(message.content)
+								? message.content
+									.filter((block: { type: string }) => block.type === 'text')
+									.map((block: { type: string; text?: string }) => block.text ?? '')
+									.join('')
+								: String(message.content));
 						msg.isStreaming = false;
-						if (message.tool_calls) {
-							msg.toolCalls = message.tool_calls.map((tc: AgentToolCall) => ({
-								id: tc.id,
-								name: tc.name,
-								arguments: tc.arguments,
-								status: 'completed' as const,
-								result: streamState.activeToolCalls.get(tc.id)?.result,
-							}));
-						}
+						// Do NOT overwrite tool calls here — they have live statuses
+						// from handleAgentToolStart and will be updated by
+						// handleToolApprovalNeeded / handleAgentToolEnd.
 					}
 				}
 
-				// Reset per-session streaming state
-				streamState.streamingMessageId = null;
+				// Reset streaming content (text accumulation is done) but keep
+				// streamingMessageId alive so tool events can still reference it.
+				// Full reset happens in handleLoopComplete.
 				streamState.streamingContent = '';
-				streamState.activeToolCalls = new Map();
-				streamState.isStreaming = false;
 			});
 
 			// Persist after message completion
@@ -519,6 +530,66 @@ export const useAgentStore = create<AgentStore>()(
 					}
 				}
 
+				streamState.streamingMessageId = null;
+				streamState.streamingContent = '';
+				streamState.activeToolCalls = new Map();
+			});
+		},
+
+		handleTurnStart: (conversationId: string, turnNumber: number) => {
+			console.log('[Store TURN_START] conversationId:', conversationId, 'turn:', turnNumber);
+			set((state) => {
+				const streamState = getOrCreateStreamState(state.sessionStreaming, conversationId);
+				const messages = state.messages.get(conversationId) || [];
+
+				// Create a new assistant placeholder message for this turn
+				const newMsgId = `msg-${Date.now()}-assistant-t${turnNumber}`;
+				messages.push({
+					id: newMsgId,
+					role: 'assistant',
+					content: '',
+					timestamp: new Date(),
+					isStreaming: true,
+				});
+				state.messages.set(conversationId, messages);
+
+				streamState.streamingMessageId = newMsgId;
+				streamState.streamingContent = '';
+				streamState.activeToolCalls = new Map();
+				streamState.isStreaming = true;
+			});
+		},
+
+		handleLoopComplete: (conversationId: string, totalTurns: number) => {
+			console.log('[Store LOOP_COMPLETE] conversationId:', conversationId, 'totalTurns:', totalTurns);
+			set((state) => {
+				const streamState = getOrCreateStreamState(state.sessionStreaming, conversationId);
+
+				// Mark current streaming message as done if still active
+				const messages = state.messages.get(conversationId);
+				if (messages && streamState.streamingMessageId) {
+					const msg = messages.find((m) => m.id === streamState.streamingMessageId);
+					if (msg) {
+						msg.isStreaming = false;
+					}
+				}
+
+				// Full reset of streaming state
+				streamState.streamingMessageId = null;
+				streamState.streamingContent = '';
+				streamState.activeToolCalls = new Map();
+				streamState.isStreaming = false;
+			});
+
+			get().persistSessions();
+		},
+
+		handleAborted: (conversationId: string, reason: string) => {
+			console.log('[Store ABORTED] conversationId:', conversationId, 'reason:', reason);
+			set((state) => {
+				const streamState = getOrCreateStreamState(state.sessionStreaming, conversationId);
+				streamState.error = `Aborted: ${reason}`;
+				streamState.isStreaming = false;
 				streamState.streamingMessageId = null;
 				streamState.streamingContent = '';
 				streamState.activeToolCalls = new Map();

@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use futures::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use solo_protocol::{AgentMessage, AgentToolCall, BackendEvent};
+use solo_protocol::{AgentMessage, AgentToolCall, BackendEvent, ContentBlock};
 use tokio::sync::mpsc;
 
 use crate::models::OPENAI_MODELS;
@@ -34,6 +34,10 @@ impl OpenAIProvider {
     }
 
     /// Convert messages to OpenAI chat format
+    /// OpenAI expects:
+    /// - Text: { role: "user"|"assistant", content: "text" }
+    /// - Assistant with tools: { role: "assistant", content: "text", tool_calls: [...] }
+    /// - Tool results: { role: "tool", tool_call_id: "...", content: "..." }
     fn convert_to_chat_messages(
         messages: &[AgentMessage],
         system_prompt: Option<&str>,
@@ -51,22 +55,63 @@ impl OpenAIProvider {
         }
 
         for msg in messages {
+            // Check if this message has tool result blocks
+            let tool_results: Vec<&ContentBlock> = msg
+                .content
+                .iter()
+                .filter(|b| matches!(b, ContentBlock::ToolResult { .. }))
+                .collect();
+
+            if !tool_results.is_empty() {
+                // Each tool result becomes a separate "tool" role message for OpenAI
+                for block in tool_results {
+                    if let ContentBlock::ToolResult {
+                        tool_use_id,
+                        content,
+                        ..
+                    } = block
+                    {
+                        result.push(OpenAIChatMessage {
+                            role: "tool".to_string(),
+                            content: Some(content.clone()),
+                            tool_calls: None,
+                            tool_call_id: Some(tool_use_id.clone()),
+                        });
+                    }
+                }
+                continue;
+            }
+
+            // Check if this message has tool use blocks (assistant with tool calls)
+            let tool_uses: Vec<OpenAIToolCall> = msg
+                .content
+                .iter()
+                .filter_map(|b| match b {
+                    ContentBlock::ToolUse {
+                        id,
+                        name,
+                        arguments,
+                    } => Some(OpenAIToolCall {
+                        id: id.clone(),
+                        r#type: "function".to_string(),
+                        function: OpenAIFunctionCall {
+                            name: name.clone(),
+                            arguments: arguments.clone(),
+                        },
+                    }),
+                    _ => None,
+                })
+                .collect();
+
+            let text = msg.display_text();
             result.push(OpenAIChatMessage {
                 role: msg.role.clone(),
-                content: Some(msg.content.clone()),
-                tool_calls: msg.tool_calls.as_ref().map(|calls| {
-                    calls
-                        .iter()
-                        .map(|c| OpenAIToolCall {
-                            id: c.id.clone(),
-                            r#type: "function".to_string(),
-                            function: OpenAIFunctionCall {
-                                name: c.name.clone(),
-                                arguments: c.arguments.clone(),
-                            },
-                        })
-                        .collect()
-                }),
+                content: if text.is_empty() { None } else { Some(text) },
+                tool_calls: if tool_uses.is_empty() {
+                    None
+                } else {
+                    Some(tool_uses)
+                },
                 tool_call_id: None,
             });
         }
@@ -294,29 +339,25 @@ async fn stream_openai_response(
                 if let Some(data) = line.strip_prefix("data: ") {
                     if data == "[DONE]" {
                         // Stream complete - emit final message
-                        let final_tool_calls: Option<Vec<AgentToolCall>> = if tool_calls.is_empty() {
-                            None
+                        let final_tool_calls: Vec<AgentToolCall> = tool_calls
+                            .values()
+                            .map(|(id, name, args)| AgentToolCall {
+                                id: id.clone(),
+                                name: name.clone(),
+                                arguments: args.clone(),
+                            })
+                            .collect();
+
+                        let message = if final_tool_calls.is_empty() {
+                            AgentMessage::text("assistant", &accumulated_text)
                         } else {
-                            Some(
-                                tool_calls
-                                    .values()
-                                    .map(|(id, name, args)| AgentToolCall {
-                                        id: id.clone(),
-                                        name: name.clone(),
-                                        arguments: args.clone(),
-                                    })
-                                    .collect(),
-                            )
+                            AgentMessage::assistant_with_tools(&accumulated_text, &final_tool_calls)
                         };
 
                         let _ = tx
                             .send(BackendEvent::AgentComplete {
                                 conversation_id: conversation_id.clone(),
-                                message: AgentMessage {
-                                    role: "assistant".to_string(),
-                                    content: accumulated_text.clone(),
-                                    tool_calls: final_tool_calls,
-                                },
+                                message,
                             })
                             .await;
                         continue;
@@ -388,15 +429,30 @@ mod tests {
 
     #[test]
     fn test_convert_messages() {
-        let messages = vec![AgentMessage {
-            role: "user".to_string(),
-            content: "Hello".to_string(),
-            tool_calls: None,
-        }];
+        let messages = vec![AgentMessage::text("user", "Hello")];
 
         let converted = OpenAIProvider::convert_to_chat_messages(&messages, Some("You are helpful"));
         assert_eq!(converted.len(), 2);
         assert_eq!(converted[0].role, "system");
         assert_eq!(converted[1].role, "user");
+    }
+
+    #[test]
+    fn test_convert_tool_result_messages() {
+        let messages = vec![
+            AgentMessage::text("user", "Read test.txt"),
+            AgentMessage::assistant_with_tools("", &[AgentToolCall {
+                id: "tc-1".to_string(),
+                name: "read_file".to_string(),
+                arguments: r#"{"path":"/tmp/test.txt"}"#.to_string(),
+            }]),
+            AgentMessage::tool_result("tc-1", "file contents", false),
+        ];
+
+        let converted = OpenAIProvider::convert_to_chat_messages(&messages, None);
+        assert_eq!(converted.len(), 3);
+        // Tool result should become role: "tool"
+        assert_eq!(converted[2].role, "tool");
+        assert_eq!(converted[2].tool_call_id, Some("tc-1".to_string()));
     }
 }

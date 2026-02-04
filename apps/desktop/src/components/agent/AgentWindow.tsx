@@ -195,6 +195,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 			<MessageFeed
 				messageGroups={messageGroups}
 				autoScroll={true}
+				isStreaming={isRunning}
 				onToolApproval={handleToolApproval}
 				className="flex-1"
 			/>

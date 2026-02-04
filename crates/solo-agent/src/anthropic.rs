@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use futures::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use solo_protocol::{AgentMessage, AgentToolCall, BackendEvent};
+use solo_protocol::{AgentMessage, AgentToolCall, BackendEvent, ContentBlock};
 use tokio::sync::mpsc;
 use tracing::{debug, info, error};
 
@@ -23,30 +23,98 @@ const INITIAL_BACKOFF_MS: u64 = 1000;
 /// Maximum backoff delay in milliseconds
 const MAX_BACKOFF_MS: u64 = 30_000;
 
+/// How the Anthropic provider should authenticate requests
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AnthropicAuthMode {
+    /// Traditional API key: sent as `x-api-key` header
+    ApiKey,
+    /// OAuth token: sent as `Authorization: Bearer <token>` header
+    OAuthToken,
+}
+
 /// Anthropic provider implementation
 pub struct AnthropicProvider {
     api_key: String,
+    auth_mode: AnthropicAuthMode,
     client: Client,
     tools: Vec<ToolDefinition>,
 }
 
 impl AnthropicProvider {
     /// Create a new Anthropic provider
-    pub fn new(api_key: String) -> Self {
+    pub fn new(api_key: String, auth_mode: AnthropicAuthMode) -> Self {
         Self {
             api_key,
+            auth_mode,
             client: Client::new(),
             tools: Vec::new(),
         }
     }
 
+    /// Apply authentication headers based on auth mode
+    fn apply_auth(&self, request: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        match self.auth_mode {
+            AnthropicAuthMode::ApiKey => request.header("x-api-key", &self.api_key),
+            AnthropicAuthMode::OAuthToken => {
+                request.header("Authorization", format!("Bearer {}", self.api_key))
+            }
+        }
+    }
+
     /// Convert AgentMessage to Anthropic format
+    /// Anthropic expects:
+    /// - Text messages: { role, content: "text" } or { role, content: [{type: "text", text}] }
+    /// - Assistant with tools: { role: "assistant", content: [{type: "text", text}, {type: "tool_use", id, name, input}] }
+    /// - Tool results: { role: "user", content: [{type: "tool_result", tool_use_id, content}] }
     fn convert_messages(messages: &[AgentMessage]) -> Vec<AnthropicMessage> {
         messages
             .iter()
-            .map(|m| AnthropicMessage {
-                role: m.role.clone(),
-                content: m.content.clone(),
+            .filter(|m| m.role != "system") // system messages are handled separately
+            .map(|m| {
+                // Check if message has tool-related content blocks
+                let has_tool_content = m.content.iter().any(|b| {
+                    matches!(b, ContentBlock::ToolUse { .. } | ContentBlock::ToolResult { .. })
+                });
+
+                if has_tool_content {
+                    // Build structured content array for Anthropic
+                    let content_blocks: Vec<serde_json::Value> = m.content.iter().map(|block| {
+                        match block {
+                            ContentBlock::Text { text } => serde_json::json!({
+                                "type": "text",
+                                "text": text
+                            }),
+                            ContentBlock::ToolUse { id, name, arguments } => {
+                                let input: serde_json::Value = serde_json::from_str(arguments)
+                                    .unwrap_or_else(|_| serde_json::json!({}));
+                                serde_json::json!({
+                                    "type": "tool_use",
+                                    "id": id,
+                                    "name": name,
+                                    "input": input
+                                })
+                            },
+                            ContentBlock::ToolResult { tool_use_id, content, is_error } => serde_json::json!({
+                                "type": "tool_result",
+                                "tool_use_id": tool_use_id,
+                                "content": content,
+                                "is_error": is_error
+                            }),
+                        }
+                    }).collect();
+
+                    AnthropicMessage {
+                        role: m.role.clone(),
+                        content: serde_json::Value::Array(content_blocks),
+                    }
+                } else {
+                    // Simple text message
+                    let text = m.display_text();
+                    AnthropicMessage {
+                        role: m.role.clone(),
+                        content: serde_json::Value::String(text),
+                    }
+                }
             })
             .collect()
     }
@@ -69,7 +137,7 @@ impl AnthropicProvider {
 #[derive(Debug, Clone, Serialize)]
 struct AnthropicMessage {
     role: String,
-    content: String,
+    content: serde_json::Value,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -167,10 +235,11 @@ impl AIProvider for AnthropicProvider {
         };
 
         let api_key = self.api_key.clone();
+        let auth_mode = self.auth_mode;
         let client = self.client.clone();
 
         tokio::spawn(async move {
-            let result = stream_anthropic_response(client, api_key, request, conversation_id.clone(), tx.clone()).await;
+            let result = stream_anthropic_response(client, api_key, auth_mode, request, conversation_id.clone(), tx.clone()).await;
 
             if let Err(e) = result {
                 let _ = tx
@@ -190,11 +259,10 @@ impl AIProvider for AnthropicProvider {
     }
 
     async fn validate_credentials(&self) -> ProviderResult<bool> {
-        // Send a minimal request to validate the API key
-        let response = self
+        // Send a minimal request to validate the API key or OAuth token
+        let request = self
             .client
             .post(ANTHROPIC_API_URL)
-            .header("x-api-key", &self.api_key)
             .header("anthropic-version", ANTHROPIC_VERSION)
             .header("content-type", "application/json")
             .json(&serde_json::json!({
@@ -204,9 +272,8 @@ impl AIProvider for AnthropicProvider {
                     .unwrap_or("claude-haiku-4-5-20251001"),
                 "max_tokens": 1,
                 "messages": [{"role": "user", "content": "test"}]
-            }))
-            .send()
-            .await?;
+            }));
+        let response = self.apply_auth(request).send().await?;
 
         match response.status().as_u16() {
             200 | 201 => Ok(true),
@@ -262,6 +329,7 @@ fn parse_retry_after(response: &reqwest::Response) -> Option<Duration> {
 async fn stream_anthropic_response(
     client: Client,
     api_key: String,
+    auth_mode: AnthropicAuthMode,
     request: AnthropicRequest,
     conversation_id: String,
     tx: mpsc::Sender<BackendEvent>,
@@ -271,14 +339,20 @@ async fn stream_anthropic_response(
     let mut last_error: Option<ProviderError> = None;
 
     for attempt in 0..=MAX_RETRIES {
-        let response = match client
+        let mut req_builder = client
             .post(ANTHROPIC_API_URL)
-            .header("x-api-key", &api_key)
             .header("anthropic-version", ANTHROPIC_VERSION)
             .header("content-type", "application/json")
-            .json(&request)
-            .send()
-            .await
+            .json(&request);
+
+        req_builder = match auth_mode {
+            AnthropicAuthMode::ApiKey => req_builder.header("x-api-key", &api_key),
+            AnthropicAuthMode::OAuthToken => {
+                req_builder.header("Authorization", format!("Bearer {}", api_key))
+            }
+        };
+
+        let response = match req_builder.send().await
         {
             Ok(resp) => resp,
             Err(e) => {
@@ -414,11 +488,7 @@ async fn stream_anthropic_response(
                                     let _ = tx
                                         .send(BackendEvent::AgentComplete {
                                             conversation_id: conversation_id.clone(),
-                                            message: AgentMessage {
-                                                role: "assistant".to_string(),
-                                                content: accumulated_text.clone(),
-                                                tool_calls: None, // Tool calls are sent separately
-                                            },
+                                            message: AgentMessage::text("assistant", &accumulated_text),
                                         })
                                         .await;
                                 }
@@ -488,15 +558,30 @@ mod tests {
 
     #[test]
     fn test_convert_messages() {
-        let messages = vec![AgentMessage {
-            role: "user".to_string(),
-            content: "Hello".to_string(),
-            tool_calls: None,
-        }];
+        let messages = vec![AgentMessage::text("user", "Hello")];
 
         let converted = AnthropicProvider::convert_messages(&messages);
         assert_eq!(converted.len(), 1);
         assert_eq!(converted[0].role, "user");
-        assert_eq!(converted[0].content, "Hello");
+        assert_eq!(converted[0].content, serde_json::Value::String("Hello".to_string()));
+    }
+
+    #[test]
+    fn test_convert_tool_result_messages() {
+        let messages = vec![
+            AgentMessage::text("user", "Read test.txt"),
+            AgentMessage::assistant_with_tools("", &[AgentToolCall {
+                id: "tc-1".to_string(),
+                name: "read_file".to_string(),
+                arguments: r#"{"path":"/tmp/test.txt"}"#.to_string(),
+            }]),
+            AgentMessage::tool_result("tc-1", "file contents", false),
+        ];
+
+        let converted = AnthropicProvider::convert_messages(&messages);
+        assert_eq!(converted.len(), 3);
+        // Tool result should be structured content
+        assert_eq!(converted[2].role, "user");
+        assert!(converted[2].content.is_array());
     }
 }

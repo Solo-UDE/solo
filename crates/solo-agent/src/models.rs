@@ -130,6 +130,57 @@ lazy_static::lazy_static! {
         },
     ];
 
+    pub static ref GEMINI_MODELS: Vec<AIModel> = vec![
+        AIModel {
+            id: "gemini-2.0-flash".to_string(),
+            display_name: "Gemini 2.0 Flash".to_string(),
+            alias: "flash".to_string(),
+            provider: ProviderType::Gemini,
+            capabilities: ModelCapabilities {
+                context_window: 1_000_000,
+                max_output_tokens: 8192,
+                supports_vision: true,
+                supports_tools: true,
+                supports_streaming: true,
+                supports_thinking: false,
+            },
+            is_default: true,
+            description: "Fast and versatile model".to_string(),
+        },
+        AIModel {
+            id: "gemini-2.5-pro-preview-06-05".to_string(),
+            display_name: "Gemini 2.5 Pro".to_string(),
+            alias: "gemini-pro".to_string(),
+            provider: ProviderType::Gemini,
+            capabilities: ModelCapabilities {
+                context_window: 1_000_000,
+                max_output_tokens: 65536,
+                supports_vision: true,
+                supports_tools: true,
+                supports_streaming: true,
+                supports_thinking: true,
+            },
+            is_default: false,
+            description: "Most capable Gemini model with thinking".to_string(),
+        },
+        AIModel {
+            id: "gemini-2.0-flash-lite".to_string(),
+            display_name: "Gemini 2.0 Flash Lite".to_string(),
+            alias: "flash-lite".to_string(),
+            provider: ProviderType::Gemini,
+            capabilities: ModelCapabilities {
+                context_window: 1_000_000,
+                max_output_tokens: 8192,
+                supports_vision: true,
+                supports_tools: true,
+                supports_streaming: true,
+                supports_thinking: false,
+            },
+            is_default: false,
+            description: "Lightweight and efficient".to_string(),
+        },
+    ];
+
     pub static ref OPENAI_MODELS: Vec<AIModel> = vec![
         AIModel {
             id: "gpt-4.1".to_string(),
@@ -219,6 +270,7 @@ pub fn get_models_for_provider(provider: ProviderType) -> &'static [AIModel] {
     match provider {
         ProviderType::Anthropic => &ANTHROPIC_MODELS,
         ProviderType::OpenAI => &OPENAI_MODELS,
+        ProviderType::Gemini => &GEMINI_MODELS,
     }
 }
 
@@ -249,6 +301,13 @@ pub fn find_model(identifier: &str) -> Option<&'static AIModel> {
         return Some(model);
     }
 
+    // Search Gemini models
+    if let Some(model) = GEMINI_MODELS.iter().find(|m| {
+        m.id.to_lowercase() == identifier_lower || m.alias.to_lowercase() == identifier_lower
+    }) {
+        return Some(model);
+    }
+
     None
 }
 
@@ -257,6 +316,7 @@ pub fn get_all_models() -> Vec<&'static AIModel> {
     let mut models: Vec<&'static AIModel> = Vec::new();
     models.extend(ANTHROPIC_MODELS.iter());
     models.extend(OPENAI_MODELS.iter());
+    models.extend(GEMINI_MODELS.iter());
     models
 }
 

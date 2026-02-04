@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 
 import { ContextMenu } from './context-menu';
+import { ContextTracker } from './context-tracker';
 import { LexicalEditor } from './lexical-editor';
 
 import type { LexicalEditorHandle } from './lexical-editor';
@@ -61,6 +62,7 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
             <ContextMenu disabled={isAgentRunning} />
             <ModeSelector value={mode} onChange={setMode} disabled={isAgentRunning} />
             <ModelPicker side="top" disabled={isAgentRunning} />
+            <ContextTracker disabled={isAgentRunning} />
           </div>
 
           <SubmitButton

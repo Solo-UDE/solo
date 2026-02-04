@@ -9,10 +9,12 @@ pub mod models;
 pub mod credentials;
 pub mod anthropic;
 pub mod openai;
+pub mod gemini;
 pub mod tools;
 pub mod middleware;
 pub mod telemetry;
 pub mod oauth;
+pub mod system_prompt;
 
 // Re-export main types
 pub use provider::{AIProvider, ProviderType, ProviderConfig, ProviderError, ProviderResult, ToolDefinition};
@@ -20,6 +22,7 @@ pub use models::{AIModel, ModelCapabilities, MODEL_REGISTRY};
 pub use credentials::{CredentialManager, CredentialSource};
 pub use anthropic::AnthropicProvider;
 pub use openai::OpenAIProvider;
+pub use gemini::GeminiProvider;
 pub use tools::{ToolRegistry, ToolExecutor, ToolError, create_default_registry};
 pub use middleware::{
     Middleware, MiddlewareChain, MiddlewareContext, MiddlewareResponse,
@@ -30,6 +33,7 @@ pub use telemetry::{
     TelemetryCollector, TelemetryEvent, TelemetryValue, SpanTracker,
     AITelemetry, TelemetrySummary,
 };
+pub use system_prompt::build_system_prompt;
 
 use solo_protocol::{AgentMessage, AgentToolCall, BackendEvent, ToolCallWithStatus, ToolResult};
 use std::sync::Arc;
@@ -65,11 +69,7 @@ impl AgentSession {
         system_prompt: Option<String>,
     ) -> ProviderResult<tokio::sync::mpsc::Receiver<BackendEvent>> {
         // Add user message to history
-        self.messages.push(AgentMessage {
-            role: "user".to_string(),
-            content: content.clone(),
-            tool_calls: None,
-        });
+        self.messages.push(AgentMessage::text("user", &content));
 
         // Send to provider
         let receiver = self
@@ -85,23 +85,40 @@ impl AgentSession {
         Ok(receiver)
     }
 
-    /// Add an assistant message (called after streaming completes)
-    pub fn add_assistant_message(&mut self, content: String, tool_calls: Option<Vec<AgentToolCall>>) {
-        self.messages.push(AgentMessage {
-            role: "assistant".to_string(),
-            content,
-            tool_calls,
-        });
+    /// Continue the session by re-sending the current history to the LLM
+    /// (used by the agentic loop after adding tool results)
+    pub async fn continue_conversation(
+        &self,
+        system_prompt: Option<String>,
+    ) -> ProviderResult<tokio::sync::mpsc::Receiver<BackendEvent>> {
+        let receiver = self
+            .provider
+            .send_message(
+                &self.session_id,
+                &self.model,
+                &self.messages,
+                system_prompt.as_deref(),
+            )
+            .await?;
+
+        Ok(receiver)
     }
 
-    /// Add a tool result message
-    pub fn add_tool_result(&mut self, tool_call_id: &str, result: &str) {
-        // For Anthropic, tool results are user messages with special content
-        self.messages.push(AgentMessage {
-            role: "user".to_string(),
-            content: format!("[Tool Result for {}]: {}", tool_call_id, result),
-            tool_calls: None,
-        });
+    /// Add an arbitrary message to the conversation history
+    pub fn add_message(&mut self, message: AgentMessage) {
+        self.messages.push(message);
+    }
+
+    /// Add an assistant message with text and optional tool calls
+    pub fn add_assistant_message(&mut self, text: &str, tool_calls: &[AgentToolCall]) {
+        self.messages
+            .push(AgentMessage::assistant_with_tools(text, tool_calls));
+    }
+
+    /// Add a tool result message (proper format for all providers)
+    pub fn add_tool_result(&mut self, tool_call_id: &str, result: &str, is_error: bool) {
+        self.messages
+            .push(AgentMessage::tool_result(tool_call_id, result, is_error));
     }
 
     /// Get conversation history
@@ -213,19 +230,38 @@ impl AgentManager {
         self.tool_registry.read().await.reject(tool_call_id).await
     }
 
-    /// Initialize a provider with credentials
+    /// Initialize a provider with credentials and register tools from the registry
     pub async fn initialize_provider(&self, provider_type: ProviderType) -> ProviderResult<()> {
-        let api_key = self
+        let credential_info = self
             .credentials
-            .get_credentials(provider_type)
+            .get_credentials_with_source(provider_type)
             .await?
             .ok_or_else(|| ProviderError::CredentialsNotFound(provider_type))?;
 
-        let provider: Arc<dyn AIProvider> = match provider_type {
-            ProviderType::Anthropic => Arc::new(AnthropicProvider::new(api_key)),
-            ProviderType::OpenAI => Arc::new(OpenAIProvider::new(api_key)),
+        // Get tool definitions from registry to set on the provider
+        let tools = self.tool_registry.read().await.definitions();
+
+        let mut provider: Box<dyn AIProvider> = match provider_type {
+            ProviderType::Anthropic => {
+                use crate::anthropic::AnthropicAuthMode;
+                let auth_mode = match credential_info.source {
+                    CredentialSource::ClaudeOAuth | CredentialSource::SoloOAuth => {
+                        AnthropicAuthMode::OAuthToken
+                    }
+                    CredentialSource::Keychain | CredentialSource::Environment => {
+                        AnthropicAuthMode::ApiKey
+                    }
+                };
+                Box::new(AnthropicProvider::new(credential_info.api_key, auth_mode))
+            }
+            ProviderType::OpenAI => Box::new(OpenAIProvider::new(credential_info.api_key)),
+            ProviderType::Gemini => Box::new(GeminiProvider::new(credential_info.api_key)),
         };
 
+        // Set tools before wrapping in Arc (since set_tools requires &mut self)
+        provider.set_tools(tools);
+
+        let provider: Arc<dyn AIProvider> = Arc::from(provider);
         self.providers.write().await.insert(provider_type, provider);
         Ok(())
     }
@@ -289,6 +325,33 @@ impl AgentManager {
         }
     }
 
+    /// Add a message to a session's history (used by the agentic loop)
+    pub async fn add_message_to_session(
+        &self,
+        session_id: &str,
+        message: AgentMessage,
+    ) -> ProviderResult<()> {
+        let mut sessions = self.sessions.write().await;
+        let session = sessions
+            .get_mut(session_id)
+            .ok_or_else(|| ProviderError::SessionNotFound(session_id.to_string()))?;
+        session.add_message(message);
+        Ok(())
+    }
+
+    /// Continue a session by re-sending history to the LLM (no new user message)
+    pub async fn continue_session(
+        &self,
+        session_id: &str,
+        system_prompt: Option<String>,
+    ) -> ProviderResult<tokio::sync::mpsc::Receiver<BackendEvent>> {
+        let sessions = self.sessions.read().await;
+        let session = sessions
+            .get(session_id)
+            .ok_or_else(|| ProviderError::SessionNotFound(session_id.to_string()))?;
+        session.continue_conversation(system_prompt).await
+    }
+
     /// Send a message in a session, running middleware before/after
     pub async fn send_message(
         &self,
@@ -297,11 +360,7 @@ impl AgentManager {
         system_prompt: Option<String>,
     ) -> ProviderResult<tokio::sync::mpsc::Receiver<BackendEvent>> {
         // Build middleware context
-        let messages = vec![AgentMessage {
-            role: "user".to_string(),
-            content: content.clone(),
-            tool_calls: None,
-        }];
+        let messages = vec![AgentMessage::text("user", &content)];
         let model = {
             let sessions = self.sessions.read().await;
             sessions
@@ -364,8 +423,8 @@ impl AgentManager {
     pub async fn add_assistant_message(
         &self,
         session_id: &str,
-        content: String,
-        tool_calls: Option<Vec<AgentToolCall>>,
+        content: &str,
+        tool_calls: &[AgentToolCall],
     ) -> ProviderResult<()> {
         let mut sessions = self.sessions.write().await;
         let session = sessions
