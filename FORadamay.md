@@ -56,12 +56,14 @@ Solo's architecture splits into three distinct layers:
 
 ### Tauri vs Electron: The Lightweight Champion
 
-| Aspect | Electron | Tauri |
-|--------|----------|-------|
-| Bundle Size | ~150MB | ~10MB |
-| Memory Usage | High (full Chromium) | Low (native webview) |
-| Backend Language | JavaScript/Node.js | Rust |
-| Startup Time | Slower | Faster |
+
+| Aspect           | Electron             | Tauri                |
+| ---------------- | -------------------- | -------------------- |
+| Bundle Size      | ~150MB               | ~10MB                |
+| Memory Usage     | High (full Chromium) | Low (native webview) |
+| Backend Language | JavaScript/Node.js   | Rust                 |
+| Startup Time     | Slower               | Faster               |
+
 
 Electron bundles an entire Chromium browser. Tauri uses your OS's native webview (WebKit on macOS, WebView2 on Windows). It's like driving a sports car vs hauling a semi-truck for groceries.
 
@@ -84,6 +86,7 @@ React's component model maps perfectly to IDE panels: file explorer, editor tabs
 Redux requires: action types, action creators, reducers, selectors, middleware configuration...
 
 Zustand requires:
+
 ```typescript
 const useStore = create((set) => ({
   count: 0,
@@ -177,6 +180,7 @@ pub fn read_directory(path: &Path, depth: u32) -> FsResult<FileTreeEntry> {
 ```
 
 When you expand a folder:
+
 1. Frontend calls `readDirectory(path, 1)`
 2. Backend returns just that folder's immediate children
 3. Children with `children: None` show expand arrows but haven't loaded their contents yet
@@ -228,6 +232,7 @@ The `entries` Map enables O(1) updates when file events arrive. Without this, up
 ## The IPC Protocol: Frontend to Backend Communication
 
 Think of IPC like a restaurant:
+
 - **Customer (frontend)**: "I'd like the file contents, please"
 - **Waiter (Tauri)**: Takes the order, writes it down (JSON serialization)
 - **Kitchen (Rust backend)**: Prepares the response
@@ -300,6 +305,7 @@ let reserved = ["CON", "PRN", "AUX", "NUL", "COM1", "COM2", ...];
 Try creating a file called `CON.txt` on Windows—it's a reserved name for the console device. Solo blocks these to prevent cross-platform issues.
 
 Other checks:
+
 - No null bytes (can truncate paths in C-based systems)
 - No leading/trailing whitespace (causes confusion in terminals)
 - No path separators in filenames
@@ -313,6 +319,7 @@ Other checks:
 **TOCTOU** = "Time Of Check to Time Of Use"
 
 Original code:
+
 ```rust
 // Check if directory is empty
 if fs::read_dir(&path)?.count() > 0 {
@@ -498,6 +505,7 @@ The file could be deleted between your check and your action. Just do the operat
 Using `portable-pty` for cross-platform PTY (pseudo-terminal) management. The terminal panel will embed `xterm.js` for the UI.
 
 Challenges:
+
 - PTY resizing when panel resizes
 - Flow control (what if output comes faster than we can render?)
 - Shell integration (detecting current directory, command status)
@@ -505,6 +513,7 @@ Challenges:
 ### Code Editor
 
 CodeMirror 6 for the editor—it's fast, extensible, and has good TypeScript support. Key features to implement:
+
 - Syntax highlighting via TreeSitter
 - Multiple cursors
 - Find/replace with regex
@@ -513,6 +522,7 @@ CodeMirror 6 for the editor—it's fast, extensible, and has good TypeScript sup
 ### AI Agent Integration
 
 The core vision: Claude as an integrated assistant that can:
+
 - See your file tree and current file
 - Execute commands (with permission)
 - Edit files with proposed diffs
@@ -539,6 +549,7 @@ There are no perfect choices, only trade-offs made consciously.
 ### The Importance of Good Error Handling
 
 80% of code in a production system is error handling. What happens when:
+
 - The file doesn't exist?
 - Permission is denied?
 - The disk is full?

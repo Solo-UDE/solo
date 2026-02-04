@@ -1,6 +1,7 @@
 import { CaretDown, Lightning, Brain } from '@phosphor-icons/react';
 import React from 'react';
 
+import { cn } from '../../../lib/utils';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -66,10 +67,10 @@ export const ModeSelector: React.FC<ModeSelectorProps> = ({
               onClick={() => {
                 onChange(key as Mode);
               }}
-              className={`
-                flex items-start gap-3 cursor-pointer p-3
-                ${value === key ? 'bg-primary/10' : ''}
-              `}
+              className={cn(
+                'items-start gap-3 p-3',
+                value === key && 'bg-accent'
+              )}
             >
               <ModeIcon className="h-4 w-4 mt-0.5 text-foreground" />
               <div className="flex flex-col">

@@ -9,12 +9,14 @@ mod parse_commands;
 mod auth_commands;
 mod embedding_commands;
 mod terminal_commands;
+mod worktree_commands;
 
 use fs_commands::FsState;
 use agent_commands::AgentState;
 use auth_commands::AuthState;
 use embedding_commands::EmbeddingState;
 use terminal_commands::TerminalState;
+use worktree_commands::WorktreeState;
 use tauri::Emitter;
 #[cfg(target_os = "macos")]
 use tauri_plugin_decorum::WebviewWindowExt;
@@ -100,6 +102,7 @@ pub fn run() {
         .manage(AuthState::new())
         .manage(EmbeddingState::new())
         .manage(TerminalState::new())
+        .manage(WorktreeState::new())
         .invoke_handler(tauri::generate_handler![
             // Core commands
             commands::ping,
@@ -175,6 +178,15 @@ pub fn run() {
             terminal_commands::write_pty,
             terminal_commands::resize_pty,
             terminal_commands::kill_pty,
+            // Worktree commands
+            worktree_commands::worktree_list,
+            worktree_commands::worktree_create,
+            worktree_commands::worktree_remove,
+            worktree_commands::worktree_get,
+            worktree_commands::worktree_set_active,
+            worktree_commands::worktree_get_active,
+            worktree_commands::worktree_lock,
+            worktree_commands::worktree_unlock,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

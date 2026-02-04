@@ -3,7 +3,7 @@
  */
 
 export const SIDEBAR = {
-  collapsed: 40,
+  collapsed: 0,
   expanded: 256,
   min: 180,
   max: 400,

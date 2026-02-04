@@ -23,7 +23,7 @@ pub use credentials::{CredentialManager, CredentialSource};
 pub use anthropic::AnthropicProvider;
 pub use openai::OpenAIProvider;
 pub use gemini::GeminiProvider;
-pub use tools::{ToolRegistry, ToolExecutor, ToolError, SharedWorkspaceRoot, create_default_registry};
+pub use tools::{ToolRegistry, ToolExecutor, ToolError, ToolContext, SharedWorkspaceRoot, create_default_registry};
 pub use middleware::{
     Middleware, MiddlewareChain, MiddlewareContext, MiddlewareResponse,
     LoggingMiddleware, RateLimitMiddleware, GuardrailsMiddleware, MetricsMiddleware,

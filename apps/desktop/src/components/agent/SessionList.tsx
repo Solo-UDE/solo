@@ -18,7 +18,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { ConfirmDialog } from '@/components/file-explorer/ConfirmDialog';
 
 import type { FC } from 'react';
 import type { AgentSession } from '@/stores/agentStore';
@@ -252,7 +251,6 @@ const SessionItem: FC<{
                   e.stopPropagation();
                   onStartRename();
                 }}
-                className="flex items-center gap-2 cursor-pointer"
               >
                 <PencilSimple className="h-3.5 w-3.5" />
                 <span>Rename</span>
@@ -263,7 +261,7 @@ const SessionItem: FC<{
                   e.stopPropagation();
                   onRequestDelete();
                 }}
-                className="flex items-center gap-2 cursor-pointer text-destructive focus:text-destructive"
+                className="text-destructive focus:text-destructive"
               >
                 <Trash className="h-3.5 w-3.5" />
                 <span>Delete</span>
@@ -299,9 +297,6 @@ export const SessionList: FC<SessionListProps> = ({
   // Rename state (shared hook)
   const rename = useInlineRename((id, value) => renameSession(id, value));
 
-  // Delete confirmation state
-  const [deleteConfirmSessionId, setDeleteConfirmSessionId] = useState<string | null>(null);
-
   // Filter sessions by search query
   const filteredSessions = useMemo(() => {
     if (!searchQuery.trim()) return sessions;
@@ -312,21 +307,9 @@ export const SessionList: FC<SessionListProps> = ({
     });
   }, [sessions, searchQuery, messagesMap]);
 
-  // Delete handlers
-  const handleRequestDelete = useCallback((sessionId: string) => {
-    setDeleteConfirmSessionId(sessionId);
-  }, []);
-
-  const handleConfirmDelete = useCallback(() => {
-    if (deleteConfirmSessionId) {
-      deleteSession(deleteConfirmSessionId);
-      setDeleteConfirmSessionId(null);
-    }
-  }, [deleteConfirmSessionId, deleteSession]);
-
-  const handleCancelDelete = useCallback(() => {
-    setDeleteConfirmSessionId(null);
-  }, []);
+  const handleDeleteSession = useCallback((sessionId: string) => {
+    deleteSession(sessionId);
+  }, [deleteSession]);
 
   // Empty state
   if (sessions.length === 0) {
@@ -347,7 +330,6 @@ export const SessionList: FC<SessionListProps> = ({
   }
 
   return (
-    <>
       <div className={cn('flex flex-col h-full', className)}>
         {/* New Session Button */}
         <div className="p-2 border-b border-border/30">
@@ -402,7 +384,7 @@ export const SessionList: FC<SessionListProps> = ({
                   onCommitRename={rename.commitRename}
                   onCancelRename={rename.cancelRename}
                   onRenameChange={rename.setRenameValue}
-                  onRequestDelete={() => handleRequestDelete(session.id)}
+                  onRequestDelete={() => handleDeleteSession(session.id)}
                 />
                 </div>
               ))}
@@ -410,18 +392,5 @@ export const SessionList: FC<SessionListProps> = ({
           )}
         </div>
       </div>
-
-      {/* Delete Confirmation Dialog */}
-      <ConfirmDialog
-        isOpen={deleteConfirmSessionId !== null}
-        title="Delete Session"
-        message="Are you sure you want to delete this session? This action cannot be undone."
-        confirmLabel="Delete"
-        cancelLabel="Cancel"
-        variant="destructive"
-        onConfirm={handleConfirmDelete}
-        onCancel={handleCancelDelete}
-      />
-    </>
   );
 };
