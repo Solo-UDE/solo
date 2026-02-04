@@ -13,6 +13,7 @@ use ts_rs::TS;
 pub enum ProviderType {
     Anthropic,
     OpenAI,
+    Gemini,
 }
 
 impl ProviderType {
@@ -21,6 +22,7 @@ impl ProviderType {
         match self {
             ProviderType::Anthropic => "anthropic",
             ProviderType::OpenAI => "openai",
+            ProviderType::Gemini => "gemini",
         }
     }
 
@@ -29,6 +31,7 @@ impl ProviderType {
         match self {
             ProviderType::Anthropic => "Anthropic (Claude)",
             ProviderType::OpenAI => "OpenAI",
+            ProviderType::Gemini => "Google (Gemini)",
         }
     }
 
@@ -37,6 +40,7 @@ impl ProviderType {
         match self {
             ProviderType::Anthropic => "ANTHROPIC_API_KEY",
             ProviderType::OpenAI => "OPENAI_API_KEY",
+            ProviderType::Gemini => "GOOGLE_API_KEY",
         }
     }
 
@@ -45,6 +49,7 @@ impl ProviderType {
         match s.to_lowercase().as_str() {
             "anthropic" | "claude" => Some(ProviderType::Anthropic),
             "openai" | "gpt" => Some(ProviderType::OpenAI),
+            "gemini" | "google" => Some(ProviderType::Gemini),
             _ => None,
         }
     }
@@ -80,7 +85,7 @@ impl Default for ProviderConfig {
             api_key: None,
             api_base_url: None,
             default_model: None,
-            max_tokens: Some(8192),
+            max_tokens: Some(64_000),
         }
     }
 }
@@ -205,6 +210,8 @@ mod tests {
         assert_eq!(ProviderType::from_str("claude"), Some(ProviderType::Anthropic));
         assert_eq!(ProviderType::from_str("openai"), Some(ProviderType::OpenAI));
         assert_eq!(ProviderType::from_str("gpt"), Some(ProviderType::OpenAI));
+        assert_eq!(ProviderType::from_str("gemini"), Some(ProviderType::Gemini));
+        assert_eq!(ProviderType::from_str("google"), Some(ProviderType::Gemini));
         assert_eq!(ProviderType::from_str("invalid"), None);
     }
 
@@ -213,6 +220,6 @@ mod tests {
         let config = ProviderConfig::default();
         assert_eq!(config.provider_type, ProviderType::Anthropic);
         assert!(config.api_key.is_none());
-        assert_eq!(config.max_tokens, Some(8192));
+        assert_eq!(config.max_tokens, Some(64_000));
     }
 }

@@ -108,9 +108,9 @@ pub trait AIProvider: Send + Sync {
 ## Model Support
 
 ### Anthropic Models
-- `claude-sonnet-4-20250514` (sonnet) - Default
-- `claude-opus-4-20250514` (opus)
-- `claude-3-5-haiku-latest` (haiku)
+- `claude-sonnet-4-5-20250929` (sonnet) - Default
+- `claude-opus-4-5-20251101` (opus)
+- `claude-haiku-4-5-20251001` (haiku)
 
 ### OpenAI Models
 - `gpt-4.1` - Default (1M context, coding-focused)
@@ -179,7 +179,7 @@ const unlisten = await listenBackendEvents((event) => {
 // Send message
 const conversationId = await sendAgentMessage("Hello!", {
   provider: "Anthropic",
-  model: "claude-sonnet-4-20250514",
+  model: "claude-sonnet-4-5-20250929",
 });
 
 // Cleanup

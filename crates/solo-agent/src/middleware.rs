@@ -62,7 +62,7 @@ impl MiddlewareContext {
 
     /// Get total content length
     pub fn total_content_length(&self) -> usize {
-        self.messages.iter().map(|m| m.content.len()).sum()
+        self.messages.iter().map(|m| m.display_text().len()).sum()
     }
 }
 
@@ -396,13 +396,14 @@ impl Middleware for GuardrailsMiddleware {
     async fn before_request(&self, ctx: &mut MiddlewareContext) -> ProviderResult<MiddlewareResponse> {
         // Check message length
         for (i, msg) in ctx.messages.iter().enumerate() {
-            if msg.content.len() > self.max_message_length {
+            let msg_len = msg.display_text().len();
+            if msg_len > self.max_message_length {
                 let error_event = BackendEvent::AgentError {
                     conversation_id: ctx.conversation_id.clone(),
                     error: format!(
                         "Message {} exceeds maximum length ({} > {})",
                         i,
-                        msg.content.len(),
+                        msg_len,
                         self.max_message_length
                     ),
                 };
@@ -425,7 +426,7 @@ impl Middleware for GuardrailsMiddleware {
 
         // Check blocked patterns
         for msg in &ctx.messages {
-            let content_lower = msg.content.to_lowercase();
+            let content_lower = msg.display_text().to_lowercase();
             for pattern in &self.blocked_patterns {
                 if content_lower.contains(&pattern.to_lowercase()) {
                     warn!(
@@ -577,11 +578,7 @@ mod tests {
         let ctx = MiddlewareContext::new(
             "test-conv".to_string(),
             "gpt-4".to_string(),
-            vec![AgentMessage {
-                role: "user".to_string(),
-                content: "Hello".to_string(),
-                tool_calls: None,
-            }],
+            vec![AgentMessage::text("user", "Hello")],
             None,
         );
 

@@ -3,4 +3,4 @@
 /**
  * AI Provider types
  */
-export type ProviderType = "anthropic" | "openai";
+export type ProviderType = "anthropic" | "openai" | "gemini";

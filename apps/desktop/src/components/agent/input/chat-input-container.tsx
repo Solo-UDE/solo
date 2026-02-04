@@ -1,11 +1,15 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 
 import { ContextMenu } from './context-menu';
+import { ContextTracker } from './context-tracker';
 import { LexicalEditor } from './lexical-editor';
+
+import type { LexicalEditorHandle } from './lexical-editor';
 import { ModeSelector } from './mode-selector';
 import { ModelPicker } from './model-picker';
 import { SubmitButton } from './submit-button';
 import { useProviderStore } from '../../../stores/provider-store';
+import { DEFAULT_MODEL_ID } from '../../../lib/constants';
 
 export interface ChatInputContainerProps {
   onSubmit: (content: string, mode: 'planning' | 'fast', model: string) => void;
@@ -21,11 +25,13 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
   const [content, setContent] = useState('');
   const [mode, setMode] = useState<'planning' | 'fast'>('planning');
   const selectedModel = useProviderStore((state) => state.selectedModel);
+  const editorRef = useRef<LexicalEditorHandle>(null);
 
   const handleSubmit = (): void => {
     if (content.trim() && !isAgentRunning) {
-      onSubmit(content, mode, selectedModel || 'claude-sonnet-4-5-20250514');
+      onSubmit(content, mode, selectedModel || DEFAULT_MODEL_ID);
       setContent('');
+      editorRef.current?.clear();
     }
   };
 
@@ -42,6 +48,7 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
         {/* Editor */}
         <div className="mb-3">
           <LexicalEditor
+            ref={editorRef}
             onChange={setContent}
             onKeyDown={handleKeyDown}
             placeholder="Ask anything, @ for context"
@@ -55,6 +62,7 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
             <ContextMenu disabled={isAgentRunning} />
             <ModeSelector value={mode} onChange={setMode} disabled={isAgentRunning} />
             <ModelPicker side="top" disabled={isAgentRunning} />
+            <ContextTracker disabled={isAgentRunning} />
           </div>
 
           <SubmitButton

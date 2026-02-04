@@ -1,4 +1,4 @@
-import { Terminal, ArrowSquareOut, CaretRight } from '@phosphor-icons/react';
+import { Terminal, CaretRight } from '@phosphor-icons/react';
 import { useState } from 'react';
 
 import type { FC } from 'react';
@@ -8,7 +8,6 @@ export interface ToolCallBlockProps {
   cwd: string;
   exitCode?: number;
   output?: string;
-  onOpenTerminal?: (cwd: string, command: string) => void;
   className?: string;
 }
 
@@ -17,7 +16,6 @@ export const ToolCallBlock: FC<ToolCallBlockProps> = ({
   cwd,
   exitCode,
   output,
-  onOpenTerminal,
   className = '',
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -46,23 +44,12 @@ export const ToolCallBlock: FC<ToolCallBlockProps> = ({
           </div>
         </div>
 
-        {/* Actions & Status */}
-        <div className="flex items-center justify-between gap-2">
-          <button
-            onClick={() => onOpenTerminal?.(cwd, command)}
-            className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline"
-            disabled={!onOpenTerminal}
-          >
-            <ArrowSquareOut className="w-3 h-3" />
-            <span>Open Terminal</span>
-          </button>
-
-          {exitCode !== undefined && (
-            <div className={`text-xs font-medium ${getExitCodeColor(exitCode)}`}>
-              Exit Code: {exitCode}
-            </div>
-          )}
-        </div>
+        {/* Status */}
+        {exitCode !== undefined && (
+          <div className={`text-xs font-medium ${getExitCodeColor(exitCode)}`}>
+            Exit Code: {exitCode}
+          </div>
+        )}
       </div>
 
       {/* Output Section */}
