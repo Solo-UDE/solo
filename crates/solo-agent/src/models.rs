@@ -66,7 +66,7 @@ pub static MODEL_REGISTRY: &[AIModel] = &[
         provider: ProviderType::Anthropic,
         capabilities: ModelCapabilities {
             context_window: 200_000,
-            max_output_tokens: 8192,
+            max_output_tokens: 50_000,
             supports_vision: true,
             supports_tools: true,
             supports_streaming: true,
@@ -87,7 +87,7 @@ lazy_static::lazy_static! {
             provider: ProviderType::Anthropic,
             capabilities: ModelCapabilities {
                 context_window: 200_000,
-                max_output_tokens: 4096,
+                max_output_tokens: 50_000,
                 supports_vision: true,
                 supports_tools: true,
                 supports_streaming: true,
@@ -103,7 +103,7 @@ lazy_static::lazy_static! {
             provider: ProviderType::Anthropic,
             capabilities: ModelCapabilities {
                 context_window: 200_000,
-                max_output_tokens: 4096,
+                max_output_tokens: 50_000,
                 supports_vision: true,
                 supports_tools: true,
                 supports_streaming: true,
@@ -119,7 +119,7 @@ lazy_static::lazy_static! {
             provider: ProviderType::Anthropic,
             capabilities: ModelCapabilities {
                 context_window: 200_000,
-                max_output_tokens: 4096,
+                max_output_tokens: 50_000,
                 supports_vision: true,
                 supports_tools: true,
                 supports_streaming: true,
