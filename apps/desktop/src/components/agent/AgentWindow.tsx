@@ -1,5 +1,5 @@
-import { useEffect, useCallback, useMemo } from 'react';
-import { Plus } from 'lucide-react';
+import { useEffect, useCallback, useMemo, useRef } from 'react';
+import { Plus } from '@phosphor-icons/react';
 
 import { MessageFeed } from './messages';
 import { ChatInputContainer } from './input';
@@ -69,6 +69,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 
 	// Provider state for model selection
 	const selectedModel = useProviderStore((state) => state.selectedModel);
+	const updateSessionModel = useAgentStore((state) => state.updateSessionModel);
 
 	// Panel system for opening new tabs
 	const openPanel = usePanelTabsStore((state) => state.openPanel);
@@ -79,6 +80,15 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 			usePanelTabsStore.getState().updateData(instanceId, { sessionId });
 		}
 	}, [sessionId, initialSessionId, instanceId]);
+
+	// Sync model selection to the active session (skip redundant calls)
+	const prevModelRef = useRef<string | null>(null);
+	useEffect(() => {
+		if (sessionId && selectedModel && selectedModel !== prevModelRef.current) {
+			prevModelRef.current = selectedModel;
+			updateSessionModel(sessionId, selectedModel);
+		}
+	}, [sessionId, selectedModel, updateSessionModel]);
 
 	// Convert messages to message groups for the new MessageFeed
 	const messageGroups = useMemo(
@@ -185,6 +195,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 			<MessageFeed
 				messageGroups={messageGroups}
 				autoScroll={true}
+				isStreaming={isRunning}
 				onToolApproval={handleToolApproval}
 				className="flex-1"
 			/>

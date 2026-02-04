@@ -43,7 +43,7 @@ export interface PanelInstance {
   panelType: string;
   /** Display title shown in tab */
   title: string;
-  /** Lucide icon name */
+  /** Icon name */
   icon?: string;
   /** Whether the panel has unsaved changes */
   isDirty: boolean;
@@ -87,7 +87,7 @@ export interface PanelTypeRegistration<TData = Record<string, unknown>> {
   id: string;
   /** Display name shown in UI */
   displayName: string;
-  /** Default icon (lucide icon name) */
+  /** Default icon name */
   defaultIcon?: string;
   /** The React component to render */
   component: FC<PanelProps<TData>>;

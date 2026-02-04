@@ -7,7 +7,7 @@ import type { ProviderType } from "./ProviderType";
  */
 export type AIModel = { 
 /**
- * Model ID (e.g., "claude-sonnet-4-20250514")
+ * Model ID (e.g., "claude-sonnet-4-5-20250929")
  */
 id: string, 
 /**

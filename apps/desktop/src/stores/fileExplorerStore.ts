@@ -56,6 +56,9 @@ interface FileTreeState {
   selected: Set<string>;
   // Path being renamed (if any)
   renamingPath: string | null;
+  // Inline creation state
+  creatingInPath: string | null;
+  creatingType: 'file' | 'folder' | null;
   // Loading directories
   loading: Set<string>;
   // Error state
@@ -87,6 +90,11 @@ interface FileTreeActions {
   startRename: (path: string) => void;
   cancelRename: () => void;
 
+  // Inline creation mode
+  startCreating: (parentPath: string, type: 'file' | 'folder') => Promise<void>;
+  cancelCreating: () => void;
+  submitCreating: (name: string) => Promise<void>;
+
   // File watcher events
   handleFileCreated: (path: string) => void;
   handleFileDeleted: (path: string) => void;
@@ -105,6 +113,8 @@ const initialState: FileTreeState = {
   expanded: new Set(),
   selected: new Set(),
   renamingPath: null,
+  creatingInPath: null,
+  creatingType: null,
   loading: new Set(),
   error: null,
 };
@@ -419,6 +429,8 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
     startRename: (path: string) => {
       set((state) => {
         state.renamingPath = path;
+        state.creatingInPath = null;
+        state.creatingType = null;
       });
     },
 
@@ -426,6 +438,42 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
       set((state) => {
         state.renamingPath = null;
       });
+    },
+
+    startCreating: async (parentPath: string, type: 'file' | 'folder') => {
+      set((state) => {
+        state.renamingPath = null;
+        state.creatingInPath = null;
+        state.creatingType = null;
+      });
+      await get().expandDirectory(parentPath);
+      set((state) => {
+        state.creatingInPath = parentPath;
+        state.creatingType = type;
+      });
+    },
+
+    cancelCreating: () => {
+      set((state) => {
+        state.creatingInPath = null;
+        state.creatingType = null;
+      });
+    },
+
+    submitCreating: async (name: string) => {
+      const { creatingInPath, creatingType } = get();
+      if (!creatingInPath || !creatingType) return;
+
+      set((state) => {
+        state.creatingInPath = null;
+        state.creatingType = null;
+      });
+
+      if (creatingType === 'file') {
+        await get().createFile(creatingInPath, name);
+      } else {
+        await get().createDirectory(creatingInPath, name);
+      }
     },
 
     handleFileCreated: (path: string) => {
@@ -536,26 +584,37 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
   }))
 );
 
+// Discriminated union for flattened tree items
+export type FlatTreeItem =
+  | { kind: 'entry'; entry: FileTreeEntry; depth: number }
+  | { kind: 'creating'; parentPath: string; type: 'file' | 'folder'; depth: number };
+
 // Selector for flattened tree items
-export function useFlattenedTree() {
+export function useFlattenedTree(): FlatTreeItem[] {
   // Subscribe to the entire store state to ensure we re-render on any change
   // This is necessary because Map/Set changes need special handling in Zustand
   const store = useFileExplorerStore();
-  const { rootPath, entries, expanded } = store;
+  const { rootPath, entries, expanded, creatingInPath, creatingType } = store;
 
   if (!rootPath) return [];
 
-  const result: Array<{ entry: FileTreeEntry; depth: number }> = [];
+  const result: FlatTreeItem[] = [];
 
   function traverse(path: string, depth: number) {
     const entry = entries.get(path);
     if (!entry) return;
 
-    result.push({ entry, depth });
+    result.push({ kind: 'entry', entry, depth });
 
-    if (entry.is_dir && expanded.has(path) && entry.children) {
-      for (const child of entry.children) {
-        traverse(child.path, depth + 1);
+    if (entry.is_dir && expanded.has(path)) {
+      // Inject ghost creation row as first child of the target directory
+      if (creatingInPath === path && creatingType) {
+        result.push({ kind: 'creating', parentPath: path, type: creatingType, depth: depth + 1 });
+      }
+      if (entry.children) {
+        for (const child of entry.children) {
+          traverse(child.path, depth + 1);
+        }
       }
     }
   }

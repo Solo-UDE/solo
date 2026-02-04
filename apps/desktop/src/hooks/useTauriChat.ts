@@ -8,7 +8,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
-import type { BackendEvent, AgentToolCall, ToolCallWithStatus } from '../bindings';
+import type { BackendEvent, AgentToolCall, ToolCallWithStatus, ContentBlock } from '../bindings';
 
 // =============================================================================
 // Types
@@ -74,7 +74,7 @@ export function useTauriChat(options: UseTauriChatOptions = {}): UseTauriChatRet
 				unlistenRef.current();
 			}
 
-			unlistenRef.current = await listen<BackendEvent>('backend-event', (event) => {
+			unlistenRef.current = await listen<BackendEvent>('agent-event', (event) => {
 				const payload = event.payload;
 
 				// Only process events for our session
@@ -142,8 +142,10 @@ export function useTauriChat(options: UseTauriChatOptions = {}): UseTauriChatRet
 									...prev.slice(0, -1),
 									{
 										...lastMessage,
-										content: payload.payload.message.content,
-										toolCalls: payload.payload.message.tool_calls ?? undefined,
+										content: payload.payload.message.text ?? '',
+										toolCalls: payload.payload.message.content
+											.filter((b): b is Extract<ContentBlock, { type: 'tool_use' }> => b.type === 'tool_use')
+											.map(b => ({ id: b.id, name: b.name, arguments: b.arguments })),
 										isStreaming: false,
 									},
 								];

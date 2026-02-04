@@ -1,4 +1,4 @@
-import { Terminal, ExternalLink, ChevronDown, ChevronRight } from 'lucide-react';
+import { Terminal, CaretRight } from '@phosphor-icons/react';
 import { useState } from 'react';
 
 import type { FC } from 'react';
@@ -8,7 +8,6 @@ export interface ToolCallBlockProps {
   cwd: string;
   exitCode?: number;
   output?: string;
-  onOpenTerminal?: (cwd: string, command: string) => void;
   className?: string;
 }
 
@@ -17,7 +16,6 @@ export const ToolCallBlock: FC<ToolCallBlockProps> = ({
   cwd,
   exitCode,
   output,
-  onOpenTerminal,
   className = '',
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -46,23 +44,12 @@ export const ToolCallBlock: FC<ToolCallBlockProps> = ({
           </div>
         </div>
 
-        {/* Actions & Status */}
-        <div className="flex items-center justify-between gap-2">
-          <button
-            onClick={() => onOpenTerminal?.(cwd, command)}
-            className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline"
-            disabled={!onOpenTerminal}
-          >
-            <ExternalLink className="w-3 h-3" />
-            <span>Open Terminal</span>
-          </button>
-
-          {exitCode !== undefined && (
-            <div className={`text-xs font-medium ${getExitCodeColor(exitCode)}`}>
-              Exit Code: {exitCode}
-            </div>
-          )}
-        </div>
+        {/* Status */}
+        {exitCode !== undefined && (
+          <div className={`text-xs font-medium ${getExitCodeColor(exitCode)}`}>
+            Exit Code: {exitCode}
+          </div>
+        )}
       </div>
 
       {/* Output Section */}
@@ -75,22 +62,20 @@ export const ToolCallBlock: FC<ToolCallBlockProps> = ({
               }}
               className="w-full px-3 py-2 flex items-center gap-2 text-xs font-medium text-muted-foreground hover:bg-muted/50 transition-colors"
             >
-              {isExpanded ? (
-                <ChevronDown className="w-3 h-3" />
-              ) : (
-                <ChevronRight className="w-3 h-3" />
-              )}
+              <CaretRight className={`w-3 h-3 transition-transform duration-150 ${isExpanded ? 'rotate-90' : ''}`} />
               <span>Output</span>
             </button>
           </div>
 
-          {isExpanded ? (
-            <div className="border-t border-border bg-background p-3 max-h-[400px] overflow-auto">
-              <pre className="text-xs font-mono text-foreground whitespace-pre-wrap break-words">
-                {output}
-              </pre>
+          <div className={`grid transition-[grid-template-rows] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] ${isExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
+            <div className="overflow-hidden">
+              <div className="border-t border-border bg-background p-3 max-h-[400px] overflow-auto">
+                <pre className="text-xs font-mono text-foreground whitespace-pre-wrap break-words">
+                  {output}
+                </pre>
+              </div>
             </div>
-          ) : null}
+          </div>
         </>
       ) : null}
     </div>

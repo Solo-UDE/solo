@@ -6,7 +6,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Editor, { OnMount, BeforeMount } from '@monaco-editor/react';
 import type * as Monaco from 'monaco-editor';
-import { FileText, Loader2, AlertCircle } from 'lucide-react';
+import { FileText, CircleNotch, WarningCircle } from '@phosphor-icons/react';
 import * as fs from '../../lib/tauri/fs';
 import { useEditorStore, isMarkdownFile, useMarkdownPreview } from '../../stores/editorStore';
 import { useSettingsStore } from '../../stores/settingsStore';
@@ -358,7 +358,7 @@ export function CodeEditor({ filePath, className = '' }: CodeEditorProps) {
         <EditorTabs />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center space-y-4">
-            <Loader2 className="w-8 h-8 text-primary animate-spin mx-auto" />
+            <CircleNotch weight="bold" className="w-8 h-8 text-primary animate-spin mx-auto" />
             <p className="text-sm text-muted-foreground">Loading file...</p>
           </div>
         </div>
@@ -373,7 +373,7 @@ export function CodeEditor({ filePath, className = '' }: CodeEditorProps) {
         <EditorTabs />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center space-y-4 max-w-md px-4">
-            <AlertCircle className="w-8 h-8 text-destructive mx-auto" />
+            <WarningCircle className="w-8 h-8 text-destructive mx-auto" />
             <p className="text-sm text-destructive">Failed to load file</p>
             <p className="text-xs text-muted-foreground break-all">{error}</p>
           </div>

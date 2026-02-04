@@ -1,4 +1,4 @@
-import { Info, AlertTriangle, XCircle, CheckCircle } from 'lucide-react';
+import { Info, Warning, XCircle, CheckCircle } from '@phosphor-icons/react';
 
 import type { FC } from 'react';
 
@@ -26,7 +26,7 @@ export const NotifyUserCard: FC<NotifyUserCardProps> = ({
       case 'success':
         return <CheckCircle className="w-4 h-4" />;
       case 'warning':
-        return <AlertTriangle className="w-4 h-4" />;
+        return <Warning className="w-4 h-4" />;
       case 'error':
         return <XCircle className="w-4 h-4" />;
       case 'info':

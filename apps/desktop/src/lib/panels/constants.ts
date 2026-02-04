@@ -57,4 +57,5 @@ export const BUILTIN_PANEL_TYPES = {
   FILE_VIEWER: 'file-viewer',
   WELCOME: 'welcome',
   AGENT: 'agent',
+  TERMINAL: 'terminal',
 } as const;

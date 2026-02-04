@@ -4,7 +4,7 @@
  */
 
 import { useMemo, type ReactNode } from 'react';
-import { ChevronRight, FileText } from 'lucide-react';
+import { CaretRight, FileText } from '@phosphor-icons/react';
 import type { Symbol } from '../../lib/tauri/parse';
 import { getSymbolIcon } from '../../lib/tauri/parse';
 
@@ -55,7 +55,7 @@ export function Breadcrumbs({
         {dirPath && (
           <>
             <span className="text-muted-foreground/70 truncate max-w-[200px]">{dirPath}</span>
-            <ChevronRight className="w-3 h-3 text-muted-foreground/50 shrink-0" />
+            <CaretRight className="w-3 h-3 text-muted-foreground/50 shrink-0" />
           </>
         )}
 
@@ -71,7 +71,7 @@ export function Breadcrumbs({
         {/* Symbol path */}
         {symbolPath.map((symbol, i) => (
           <div key={i} className="flex items-center gap-1">
-            <ChevronRight className="w-3 h-3 text-muted-foreground/50 shrink-0" />
+            <CaretRight className="w-3 h-3 text-muted-foreground/50 shrink-0" />
             <button
               onClick={() => onSymbolClick?.(symbol)}
               className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors duration-150"

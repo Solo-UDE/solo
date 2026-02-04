@@ -4,6 +4,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react';
+import { motion } from 'framer-motion';
 import type { MosaicBranch } from 'react-mosaic-component';
 import { usePanelTabsStore, useTabsForTile, useActiveTabId } from '@/stores/panelTabsStore';
 import { usePanelLayoutStore } from '@/stores/panelLayoutStore';
@@ -267,14 +268,19 @@ export function TabbedContainer({ tileId }: TabbedContainerProps) {
 function EmptyTile() {
   return (
     <div className="h-full flex items-center justify-center">
-      <div className="text-center space-y-2">
+      <motion.div
+        className="text-center space-y-2"
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+      >
         <p className="text-muted-foreground text-sm">
           No panels open
         </p>
         <p className="text-muted-foreground/60 text-xs">
           Open a file from the explorer
         </p>
-      </div>
+      </motion.div>
     </div>
   );
 }

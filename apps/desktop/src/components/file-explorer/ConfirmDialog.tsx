@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertTriangle, X } from 'lucide-react';
+import { Warning, X } from '@phosphor-icons/react';
 
 interface ConfirmDialogProps {
   isOpen: boolean;
@@ -64,7 +64,7 @@ export function ConfirmDialog({
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             {variant === 'destructive' && (
-              <AlertTriangle className="w-4 h-4 text-destructive" />
+              <Warning className="w-4 h-4 text-destructive" />
             )}
             <h3 className="text-sm font-medium text-foreground">{title}</h3>
           </div>

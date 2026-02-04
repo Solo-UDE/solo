@@ -99,7 +99,7 @@ export const PrimarySidebar: FC<PrimarySidebarProps> = ({ width, onFileOpen }) =
 
   return (
     <aside
-      className="h-full flex flex-col border-r border-border/30 bg-sidebar overflow-hidden"
+      className="h-full flex flex-col border-r border-white/[0.06] bg-sidebar overflow-hidden pt-[38px]"
       style={{
         width,
         transition: `width ${TRANSITIONS.sidebar}`,
@@ -114,11 +114,13 @@ export const PrimarySidebar: FC<PrimarySidebarProps> = ({ width, onFileOpen }) =
             onTabChange={handleTabChange}
           />
         )}
-        <SidebarToggle className={isCollapsed ? 'mx-auto' : ''} />
+        <div className="flex items-center gap-0.5">
+          <SidebarToggle className={isCollapsed ? 'mx-auto' : ''} />
+        </div>
       </div>
 
       {/* Tab Content - Sliding Reel */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 min-h-0 overflow-hidden">
         <div
           className="flex h-full transition-transform duration-300 ease-[cubic-bezier(0.18,1.14,0.5,1.18)]"
           style={{

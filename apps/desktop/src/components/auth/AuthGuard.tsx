@@ -4,7 +4,7 @@
  */
 
 import { useEffect } from "react";
-import { Loader2 } from "lucide-react";
+import { CircleNotch } from "@phosphor-icons/react";
 import {
   useAuthStore,
   useIsAuthenticated,
@@ -62,7 +62,7 @@ function AuthGuardInner({ children }: AuthGuardProps) {
     return (
       <div className="h-screen w-screen bg-background flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          <CircleNotch weight="bold" className="w-8 h-8 animate-spin text-primary" />
           <p className="text-sm text-muted-foreground">Loading...</p>
         </div>
       </div>

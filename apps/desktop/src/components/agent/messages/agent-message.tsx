@@ -1,4 +1,4 @@
-import { Bot } from 'lucide-react';
+import { Robot } from '@phosphor-icons/react';
 
 import { AgentNarrative } from './agent-narrative';
 import { MessageFeedback } from './message-feedback';
@@ -83,13 +83,13 @@ export const AgentMessage: FC<AgentMessageProps> = ({
   };
 
   return (
-    <div className={`flex gap-3 px-4 ${className}`}>
+    <div className={`flex gap-3 px-4 animate-in fade-in-0 slide-in-from-bottom-2 duration-200 ${className}`}>
       {/* Avatar */}
       <div className="flex-shrink-0 w-8 h-8 rounded-full bg-secondary flex items-center justify-center overflow-hidden">
         {avatarUrl ? (
           <img src={avatarUrl} alt={agentName} className="w-full h-full object-cover" />
         ) : (
-          <Bot className="w-4 h-4 text-secondary-foreground" />
+          <Robot className="w-4 h-4 text-secondary-foreground" />
         )}
       </div>
 

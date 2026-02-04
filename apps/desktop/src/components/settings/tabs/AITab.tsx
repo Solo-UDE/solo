@@ -4,12 +4,13 @@
  */
 
 import { useCallback, useState, useEffect, useMemo } from 'react';
-import { CheckCircle, AlertCircle, Loader2, Clock, Terminal, Sparkles } from 'lucide-react';
+import { CheckCircle, WarningCircle, CircleNotch, Clock, Terminal, Sparkle, CaretDown, CaretRight } from '@phosphor-icons/react';
 import { useSettingsStore } from '../../../stores/settingsStore';
 import { useProviderStore, useOAuthPending } from '../../../stores/provider-store';
 import { useShallow } from 'zustand/react/shallow';
 import { SettingRow, SelectDropdown, ToggleSwitch, NumberInput, PasswordInput } from '../controls';
 import { ClaudeLoginModal } from '../ClaudeLoginModal';
+import { setOAuthTokenManual } from '../../../lib/backend';
 import type { ProviderType, AuthMethodInfo } from '../../../lib/backend';
 
 /**
@@ -34,7 +35,7 @@ function ConnectionStatusBadge({
   if (!authInfo || authInfo.authType === 'none') {
     return (
       <div className="flex items-center gap-1.5 text-xs text-amber-600">
-        <AlertCircle className="w-3.5 h-3.5" />
+        <WarningCircle className="w-3.5 h-3.5" />
         Not configured
       </div>
     );
@@ -51,7 +52,7 @@ function ConnectionStatusBadge({
       {isOAuth && authInfo.expiresInSeconds !== null && (
         <div className="flex items-center gap-1 text-xs text-muted-foreground">
           <Clock className="w-3 h-3" />
-          {formatExpiryTime(authInfo.expiresInSeconds)}
+          {formatExpiryTime(Number(authInfo.expiresInSeconds))}
         </div>
       )}
     </div>
@@ -74,6 +75,8 @@ interface ProviderCardProps {
   onApiKeySave: () => void;
   isSaving: boolean;
   hasCredentials: boolean;
+  showOAuthTokenPaste?: boolean;
+  onOAuthTokenSaved?: () => void;
 }
 
 function ProviderCard({
@@ -89,11 +92,19 @@ function ProviderCard({
   onApiKeySave,
   isSaving,
   hasCredentials,
+  showOAuthTokenPaste,
+  onOAuthTokenSaved,
 }: ProviderCardProps) {
   const isAnthropic = provider === 'anthropic';
   const isClaudeCodeAuth = authInfo?.authType === 'claude-o-auth';
   const isOpenAIOAuth = provider === 'openai' && authInfo?.authType === 'o-auth';
-  const isConnectedViaOAuth = isClaudeCodeAuth || isOpenAIOAuth;
+  const isSoloOAuth = authInfo?.credentialSource === 'solo-oauth';
+  const isConnectedViaOAuth = isClaudeCodeAuth || isOpenAIOAuth || isSoloOAuth;
+
+  // OAuth token paste state
+  const [showTokenPaste, setShowTokenPaste] = useState(false);
+  const [oauthTokenInput, setOauthTokenInput] = useState('');
+  const [isSavingToken, setIsSavingToken] = useState(false);
 
   const providerConfig = isAnthropic
     ? {
@@ -106,7 +117,7 @@ function ProviderCard({
       }
     : {
         name: 'OpenAI',
-        icon: Sparkles,
+        icon: Sparkle,
         iconColor: 'text-[#10a37f]',
         buttonColor: 'bg-[#10a37f] hover:bg-[#0d8c6d]',
         buttonText: 'Sign in with ChatGPT',
@@ -162,7 +173,7 @@ function ProviderCard({
           >
             {isOAuthPending ? (
               <>
-                <Loader2 className="w-4 h-4 animate-spin" />
+                <CircleNotch weight="bold" className="w-4 h-4 animate-spin" />
                 Waiting for sign in...
               </>
             ) : (
@@ -249,6 +260,60 @@ function ProviderCard({
           </button>
         </div>
       </div>
+
+      {/* OAuth Token Paste (Anthropic only) */}
+      {showOAuthTokenPaste && (
+        <div>
+          <button
+            type="button"
+            onClick={() => setShowTokenPaste(!showTokenPaste)}
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {showTokenPaste ? (
+              <CaretDown className="w-3 h-3" />
+            ) : (
+              <CaretRight className="w-3 h-3" />
+            )}
+            Paste OAuth token
+          </button>
+          {showTokenPaste && (
+            <div className="mt-2">
+              <div className="text-xs text-muted-foreground mb-2">
+                Paste a token from <code className="px-1 py-0.5 bg-muted rounded text-[11px]">claude setup-token</code> to use your Anthropic subscription
+              </div>
+              <div className="flex items-center gap-2">
+                <PasswordInput
+                  value={oauthTokenInput}
+                  onChange={setOauthTokenInput}
+                  placeholder="Paste OAuth token..."
+                  disabled={isSavingToken}
+                />
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!oauthTokenInput.trim()) return;
+                    setIsSavingToken(true);
+                    try {
+                      await setOAuthTokenManual('Anthropic', oauthTokenInput.trim());
+                      setOauthTokenInput('');
+                      setShowTokenPaste(false);
+                      onOAuthTokenSaved?.();
+                    } catch (err) {
+                      console.error('Failed to save OAuth token:', err);
+                    } finally {
+                      setIsSavingToken(false);
+                    }
+                  }}
+                  disabled={!oauthTokenInput.trim() || isSavingToken}
+                  className="px-3 py-1.5 bg-primary text-primary-foreground rounded-none text-sm font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {isSavingToken ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -347,7 +412,7 @@ export function AITab() {
 
     setSavingProvider(provider);
     try {
-      const providerType: ProviderType = provider === 'anthropic' ? 'Anthropic' : 'OpenAI';
+      const providerType: ProviderType = provider === 'anthropic' ? 'anthropic' : 'openai';
       await setCredentials(providerType, apiKey.trim());
       await refreshAuthMethod(provider);
       setApiKeyInputs((prev) => ({ ...prev, [provider]: '' }));
@@ -389,7 +454,7 @@ export function AITab() {
   if (!isInitialized && isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+        <CircleNotch weight="bold" className="w-6 h-6 animate-spin text-muted-foreground" />
       </div>
     );
   }
@@ -415,6 +480,8 @@ export function AITab() {
             onApiKeySave={() => handleApiKeySubmit('anthropic')}
             isSaving={savingProvider === 'anthropic'}
             hasCredentials={allProviderStatus['anthropic']?.has_credentials ?? false}
+            showOAuthTokenPaste
+            onOAuthTokenSaved={() => refreshAuthMethod('anthropic')}
           />
 
           {/* OpenAI Card */}

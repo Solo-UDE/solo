@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { X, Key, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { X, Key, Eye, EyeSlash, CircleNotch } from '@phosphor-icons/react';
 
 import { useProviderStore } from '../../../stores/provider-store';
 
@@ -120,7 +120,7 @@ export const ApiKeyDialog: FC<ApiKeyDialogProps> = ({
 								className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-muted/60"
 							>
 								{showKey ? (
-									<EyeOff className="w-4 h-4 text-muted-foreground" />
+									<EyeSlash className="w-4 h-4 text-muted-foreground" />
 								) : (
 									<Eye className="w-4 h-4 text-muted-foreground" />
 								)}
@@ -159,7 +159,7 @@ export const ApiKeyDialog: FC<ApiKeyDialogProps> = ({
 							${isSubmitting || !apiKey.trim() ? 'opacity-50 cursor-not-allowed' : ''}
 						`}
 					>
-						{isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
+						{isSubmitting && <CircleNotch weight="bold" className="w-4 h-4 animate-spin" />}
 						{isSubmitting ? 'Saving...' : 'Save API Key'}
 					</button>
 				</div>

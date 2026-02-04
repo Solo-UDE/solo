@@ -2,7 +2,7 @@
  * SidebarToggle - Button to collapse/expand the left sidebar
  */
 
-import { PanelLeft, PanelLeftClose } from 'lucide-react';
+import { SidebarSimple } from '@phosphor-icons/react';
 import type { FC } from 'react';
 import { useUIStore, useIsLeftSidebarCollapsed } from '@/stores/uiStore';
 
@@ -21,12 +21,14 @@ export const SidebarToggle: FC<SidebarToggleProps> = ({ className }) => {
       title={isCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
       aria-label={isCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
     >
-      <PanelLeft
+      <SidebarSimple
+        weight="regular"
         className={`h-4 w-4 absolute transition-all duration-150 ease-[cubic-bezier(0.4,0,0.2,1)] ${
           isCollapsed ? 'opacity-100 scale-100' : 'opacity-0 scale-90'
         }`}
       />
-      <PanelLeftClose
+      <SidebarSimple
+        weight="fill"
         className={`h-4 w-4 absolute transition-all duration-150 ease-[cubic-bezier(0.4,0,0.2,1)] ${
           isCollapsed ? 'opacity-0 scale-90' : 'opacity-100 scale-100'
         }`}

@@ -3,7 +3,7 @@
  * Shows PanelRight/PanelRightClose icon based on preview state
  */
 
-import { PanelRight, PanelRightClose } from 'lucide-react';
+import { SidebarSimple } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 
 interface MarkdownToggleProps {
@@ -30,11 +30,7 @@ export function MarkdownToggle({ enabled, onToggle, className }: MarkdownToggleP
       aria-label={enabled ? 'Hide markdown preview' : 'Show markdown preview'}
       aria-pressed={enabled}
     >
-      {enabled ? (
-        <PanelRightClose className="w-4 h-4" />
-      ) : (
-        <PanelRight className="w-4 h-4" />
-      )}
+      <SidebarSimple mirrored className="w-4 h-4" />
     </button>
   );
 }

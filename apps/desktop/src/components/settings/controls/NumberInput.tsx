@@ -4,7 +4,7 @@
  */
 
 import { useCallback } from 'react';
-import { Minus, Plus } from 'lucide-react';
+import { Minus, Plus } from '@phosphor-icons/react';
 import { cn } from '../../../lib/utils';
 
 interface NumberInputProps {

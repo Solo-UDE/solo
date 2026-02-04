@@ -2,25 +2,18 @@
  * FileExplorer - Main file explorer container component
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import {
   FolderOpen,
-  RefreshCw,
+  ArrowsClockwise,
   FilePlus,
   FolderPlus,
   X,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import { FileTree } from './FileTree';
-import { InputDialog } from './InputDialog';
 import { useFileExplorerStore, getParentPath } from '../../stores/fileExplorerStore';
 import type { BackendEvent } from '../../bindings';
-
-interface InputDialogState {
-  isOpen: boolean;
-  type: 'file' | 'folder';
-  targetDir: string;
-}
 
 interface FileExplorerProps {
   onFileOpen?: (path: string) => void;
@@ -36,20 +29,12 @@ export function FileExplorer({ onFileOpen, className = '' }: FileExplorerProps) 
   const closeFolder = useFileExplorerStore((s) => s.closeFolder);
   const setRootPath = useFileExplorerStore((s) => s.setRootPath);
   const setError = useFileExplorerStore((s) => s.setError);
-  const createFile = useFileExplorerStore((s) => s.createFile);
-  const createDirectory = useFileExplorerStore((s) => s.createDirectory);
+  const startCreating = useFileExplorerStore((s) => s.startCreating);
 
   const handleFileCreated = useFileExplorerStore((s) => s.handleFileCreated);
   const handleFileDeleted = useFileExplorerStore((s) => s.handleFileDeleted);
   const handleFileChanged = useFileExplorerStore((s) => s.handleFileChanged);
   const handleFileRenamed = useFileExplorerStore((s) => s.handleFileRenamed);
-
-  // Input dialog state for New File/Folder
-  const [inputDialog, setInputDialog] = useState<InputDialogState>({
-    isOpen: false,
-    type: 'file',
-    targetDir: '',
-  });
 
   // Subscribe to backend file events
   useEffect(() => {
@@ -102,40 +87,14 @@ export function FileExplorer({ onFileOpen, className = '' }: FileExplorerProps) 
   const handleNewFile = useCallback(() => {
     const targetDir = getTargetDirectory();
     if (!targetDir) return;
-
-    setInputDialog({
-      isOpen: true,
-      type: 'file',
-      targetDir,
-    });
-  }, [getTargetDirectory]);
+    startCreating(targetDir, 'file');
+  }, [getTargetDirectory, startCreating]);
 
   const handleNewFolder = useCallback(() => {
     const targetDir = getTargetDirectory();
     if (!targetDir) return;
-
-    setInputDialog({
-      isOpen: true,
-      type: 'folder',
-      targetDir,
-    });
-  }, [getTargetDirectory]);
-
-  const handleInputDialogSubmit = useCallback(
-    (name: string) => {
-      if (inputDialog.type === 'file') {
-        createFile(inputDialog.targetDir, name);
-      } else {
-        createDirectory(inputDialog.targetDir, name);
-      }
-      setInputDialog((prev) => ({ ...prev, isOpen: false }));
-    },
-    [inputDialog.type, inputDialog.targetDir, createFile, createDirectory]
-  );
-
-  const handleInputDialogCancel = useCallback(() => {
-    setInputDialog((prev) => ({ ...prev, isOpen: false }));
-  }, []);
+    startCreating(targetDir, 'folder');
+  }, [getTargetDirectory, startCreating]);
 
   const folderName = rootPath?.split('/').pop() ?? '';
 
@@ -180,7 +139,7 @@ export function FileExplorer({ onFileOpen, className = '' }: FileExplorerProps) 
               className="p-1.5 rounded hover:bg-muted transition-colors"
               title="Refresh"
             >
-              <RefreshCw className="w-4 h-4 text-muted-foreground" />
+              <ArrowsClockwise className="w-4 h-4 text-muted-foreground" />
             </button>
             <button
               onClick={closeFolder}
@@ -225,15 +184,6 @@ export function FileExplorer({ onFileOpen, className = '' }: FileExplorerProps) 
           </div>
         )}
       </div>
-
-      {/* Input Dialog for New File/Folder */}
-      <InputDialog
-        isOpen={inputDialog.isOpen}
-        title={inputDialog.type === 'file' ? 'New File' : 'New Folder'}
-        placeholder={inputDialog.type === 'file' ? 'filename.txt' : 'folder-name'}
-        onSubmit={handleInputDialogSubmit}
-        onCancel={handleInputDialogCancel}
-      />
     </div>
   );
 }

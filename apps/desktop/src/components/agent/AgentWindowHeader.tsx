@@ -1,4 +1,4 @@
-import { Bot, Settings, Plus } from 'lucide-react';
+import { Robot, GearSix, Plus } from '@phosphor-icons/react';
 
 import type { FC } from 'react';
 
@@ -26,7 +26,7 @@ export const AgentWindowHeader: FC<AgentWindowHeaderProps> = ({
 			{/* Left: Agent info */}
 			<div className="flex items-center gap-3">
 				<div className="w-7 h-7 rounded-full bg-secondary flex items-center justify-center">
-					<Bot className="w-4 h-4 text-secondary-foreground" />
+					<Robot className="w-4 h-4 text-secondary-foreground" />
 				</div>
 				<div className="flex flex-col">
 					<span className="text-sm font-medium text-foreground">{agentName}</span>
@@ -53,7 +53,7 @@ export const AgentWindowHeader: FC<AgentWindowHeaderProps> = ({
 						className="p-1.5 rounded-md hover:bg-muted/60 transition-colors"
 						title="Settings"
 					>
-						<Settings className="w-4 h-4 text-muted-foreground" />
+						<GearSix className="w-4 h-4 text-muted-foreground" />
 					</button>
 				)}
 			</div>

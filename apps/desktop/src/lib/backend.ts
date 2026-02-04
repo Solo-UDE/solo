@@ -32,6 +32,7 @@ export interface ModelInfo {
 	provider: ProviderType;
 	is_default: boolean;
 	description: string;
+	context_window: number;
 }
 
 // Re-export for convenience
@@ -92,6 +93,15 @@ export async function setCredentials(provider: ProviderType, apiKey: string): Pr
 	return invoke('set_credentials', { provider, apiKey });
 }
 
+/**
+ * Set an OAuth token manually (e.g. from `claude setup-token`)
+ * @param provider - Provider type
+ * @param token - OAuth access token
+ */
+export async function setOAuthTokenManual(provider: string, token: string): Promise<void> {
+	return invoke('set_oauth_token_manual', { provider, token });
+}
+
 // =============================================================================
 // Model Commands
 // =============================================================================
@@ -124,6 +134,15 @@ export async function getModelsForProvider(provider: string): Promise<ModelInfo[
  */
 export async function createAgentSession(model?: string): Promise<string> {
 	return invoke<string>('agent_create_session', { model });
+}
+
+/**
+ * Update the model for an existing session
+ * @param sessionId - Session ID
+ * @param model - New model ID
+ */
+export async function updateSessionModel(sessionId: string, model: string): Promise<void> {
+	return invoke<void>('agent_update_session_model', { sessionId, model });
 }
 
 /**

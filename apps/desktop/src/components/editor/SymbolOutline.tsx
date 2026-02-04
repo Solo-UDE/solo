@@ -4,7 +4,7 @@
  */
 
 import { useState, useCallback } from 'react';
-import { ChevronRight, ChevronDown, Loader2 } from 'lucide-react';
+import { CaretRight, CaretDown, CircleNotch } from '@phosphor-icons/react';
 import type { Symbol, SymbolKind } from '../../lib/tauri/parse';
 import { getSymbolIcon, getSymbolKindName } from '../../lib/tauri/parse';
 
@@ -90,9 +90,9 @@ function SymbolNode({ symbol, depth, onSymbolClick }: SymbolNodeProps) {
               className="p-0.5 hover:bg-muted rounded-md transition-colors duration-150"
             >
               {expanded ? (
-                <ChevronDown className="w-3 h-3 text-muted-foreground" />
+                <CaretDown className="w-3 h-3 text-muted-foreground" />
               ) : (
-                <ChevronRight className="w-3 h-3 text-muted-foreground" />
+                <CaretRight className="w-3 h-3 text-muted-foreground" />
               )}
             </button>
           ) : null}
@@ -144,7 +144,7 @@ export function SymbolOutline({
         className={`flex items-center justify-center h-full bg-background ${className}`}
       >
         <div className="text-center space-y-2">
-          <Loader2 className="w-5 h-5 text-primary animate-spin mx-auto" />
+          <CircleNotch weight="bold" className="w-5 h-5 text-primary animate-spin mx-auto" />
           <p className="text-xs text-muted-foreground">Parsing...</p>
         </div>
       </div>

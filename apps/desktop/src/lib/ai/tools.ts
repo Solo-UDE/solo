@@ -24,7 +24,7 @@ export interface ToolDefinition<T extends z.ZodType = z.ZodType> {
 	needsApproval: boolean;
 	/** Category for grouping in UI */
 	category: ToolCategory;
-	/** Optional icon name (lucide-react) */
+	/** Optional icon name */
 	icon?: string;
 }
 

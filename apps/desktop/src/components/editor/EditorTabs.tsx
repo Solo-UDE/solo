@@ -4,7 +4,7 @@
  */
 
 import { useCallback, useState } from 'react';
-import { X, FileText } from 'lucide-react';
+import { X, FileText } from '@phosphor-icons/react';
 import { useEditorStore, getFileName } from '../../stores/editorStore';
 import { ConfirmDialog } from '../file-explorer/ConfirmDialog';
 

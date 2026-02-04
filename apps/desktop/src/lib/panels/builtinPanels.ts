@@ -7,6 +7,7 @@ import { panelRegistry } from './registry';
 import { FileViewerPanel } from '@/components/panels/FileViewerPanel';
 import { WelcomePanel } from '@/components/panels/WelcomePanel';
 import { AgentPanel } from '@/components/panels/AgentPanel';
+import { TerminalPanel } from '@/components/panels/TerminalPanel';
 
 /**
  * Register all built-in panel types
@@ -59,6 +60,18 @@ export function registerBuiltinPanels(): void {
     preferredRegion: 'editor',
     serializeData: (data) => ({ sessionId: data.sessionId }),
     deserializeData: (raw) => ({ sessionId: raw.sessionId as string | undefined }),
+  });
+
+  // Terminal Panel — no serialization: terminals can't survive app restarts
+  // because backend PTY processes are gone. Serializing would create zombie tabs.
+  panelRegistry.register({
+    id: 'terminal',
+    displayName: 'Terminal',
+    defaultIcon: 'terminal',
+    component: TerminalPanel,
+    getDefaultTitle: () => 'Terminal',
+    allowMultiple: true,
+    preferredRegion: 'editor',
   });
 }
 

@@ -8,7 +8,7 @@
 
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
-import type { BackendEvent, AgentMessage, AgentToolCall } from '../../bindings';
+import type { BackendEvent, AgentMessage, AgentToolCall, ContentBlock } from '../../bindings';
 
 // =============================================================================
 // Types
@@ -69,7 +69,7 @@ export function createTauriChatTransport(sessionId: string) {
 
 		currentCallbacks = callbacks;
 
-		unlisten = await listen<BackendEvent>('backend-event', (event) => {
+		unlisten = await listen<BackendEvent>('agent-event', (event) => {
 			const payload = event.payload;
 
 			switch (payload.type) {
@@ -213,9 +213,12 @@ export function createChatAdapter(options: ChatAdapterOptions) {
 				},
 				onComplete: (message) => {
 					if (currentAssistantMessage) {
-						currentAssistantMessage.content = message.content;
-						if (message.tool_calls) {
-							currentAssistantMessage.toolCalls = message.tool_calls;
+						currentAssistantMessage.content = message.text ?? '';
+						const toolUseBlocks = message.content
+							.filter((b): b is Extract<ContentBlock, { type: 'tool_use' }> => b.type === 'tool_use')
+							.map(b => ({ id: b.id, name: b.name, arguments: b.arguments }));
+						if (toolUseBlocks.length > 0) {
+							currentAssistantMessage.toolCalls = toolUseBlocks;
 						}
 						onMessage?.(currentAssistantMessage);
 					}

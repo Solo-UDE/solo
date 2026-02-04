@@ -6,11 +6,11 @@ import { useCallback, useEffect, useRef } from 'react';
 import {
   FilePlus,
   FolderPlus,
-  Pencil,
-  Trash2,
+  PencilSimple,
+  Trash,
   Copy,
   FolderOpen,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 
 interface ContextMenuPosition {
   x: number;
@@ -158,7 +158,7 @@ export function FileContextMenu({
       {selectedPath && (
         <>
           <MenuItem
-            icon={<Pencil className="w-4 h-4" />}
+            icon={<PencilSimple className="w-4 h-4" />}
             label="Rename"
             shortcut="F2"
             onClick={() => {
@@ -167,7 +167,7 @@ export function FileContextMenu({
             }}
           />
           <MenuItem
-            icon={<Trash2 className="w-4 h-4" />}
+            icon={<Trash className="w-4 h-4" />}
             label="Delete"
             shortcut="Del"
             danger

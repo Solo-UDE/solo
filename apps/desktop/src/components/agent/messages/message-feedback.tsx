@@ -1,4 +1,4 @@
-import { ThumbsUp, ThumbsDown } from 'lucide-react';
+import { ThumbsUp, ThumbsDown } from '@phosphor-icons/react';
 import { useState } from 'react';
 
 import type { FC } from 'react';

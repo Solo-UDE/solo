@@ -1,4 +1,4 @@
-import { Plus, Image, AtSign } from 'lucide-react';
+import { Plus, Image, At } from '@phosphor-icons/react';
 import React from 'react';
 
 import {
@@ -48,7 +48,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
           onClick={onMentionSelect}
           className="flex items-center gap-2 cursor-pointer"
         >
-          <AtSign className="h-4 w-4" />
+          <At className="h-4 w-4" />
           <span>Mentions</span>
         </DropdownMenuItem>
       </DropdownMenuContent>

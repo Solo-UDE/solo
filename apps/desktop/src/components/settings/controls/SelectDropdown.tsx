@@ -3,7 +3,7 @@
  * Updated with sharp corners and improved styling
  */
 
-import { ChevronDown } from 'lucide-react';
+import { CaretDown } from '@phosphor-icons/react';
 import { cn } from '../../../lib/utils';
 
 interface Option<T extends string | number> {
@@ -54,7 +54,7 @@ export function SelectDropdown<T extends string | number>({
           </option>
         ))}
       </select>
-      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+      <CaretDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
     </div>
   );
 }
