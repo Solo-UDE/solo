@@ -85,9 +85,13 @@ export const useUIStore = create<UIStore>()(
 
     setTerminalPanelHeight: (height: number): void => {
       set((state) => {
+        const dynamicMax = Math.min(
+          TERMINAL_SECTION.maxHeight,
+          Math.floor(window.innerHeight * 0.6),
+        );
         state.terminalPanelHeight = Math.max(
           TERMINAL_SECTION.minHeight,
-          Math.min(height, TERMINAL_SECTION.maxHeight),
+          Math.min(height, dynamicMax),
         );
       });
     },

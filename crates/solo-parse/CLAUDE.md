@@ -7,5 +7,5 @@
 
 | ID | Time | T | Title | Read |
 |----|------|---|-------|------|
-| #1133 | 2:14 PM | 🔵 | Lexical Rich Text Editor Integration for Agent Input | ~673 |
+| #1082 | 1:59 PM | 🔵 | Solo Parse: Tree-Sitter Based Multi-Language Code Analysis | ~504 |
 </claude-mem-context>

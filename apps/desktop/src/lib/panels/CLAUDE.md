@@ -7,5 +7,5 @@
 
 | ID | Time | T | Title | Read |
 |----|------|---|-------|------|
-| #1133 | 2:14 PM | 🔵 | Lexical Rich Text Editor Integration for Agent Input | ~673 |
+| #1141 | 2:17 PM | 🔵 | Panel Registry: Extensible Panel Type System | ~488 |
 </claude-mem-context>

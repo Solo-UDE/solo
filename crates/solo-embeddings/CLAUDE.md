@@ -7,5 +7,5 @@
 
 | ID | Time | T | Title | Read |
 |----|------|---|-------|------|
-| #1133 | 2:14 PM | 🔵 | Lexical Rich Text Editor Integration for Agent Input | ~673 |
+| #1083 | 1:59 PM | 🔵 | Solo Embeddings: Vector Embedding Provider for AI Features | ~503 |
 </claude-mem-context>

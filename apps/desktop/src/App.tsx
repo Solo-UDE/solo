@@ -18,9 +18,9 @@ import { useTitlebarStyle } from "./hooks/usePlatform";
 import { useAgentStream } from "./hooks/useAgentStream";
 import { useTerminalStream } from "./hooks/useTerminalStream";
 import { useWorktreeStream } from "./hooks/useWorktreeStream";
-import { useTerminalStore } from "./stores/terminalStore";
+import { useTerminalStore, clearActiveTerminal, findInActiveTerminal } from "./stores/terminalStore";
 import { useFileExplorerStore } from "./stores/fileExplorerStore";
-import { createTerminal } from "./lib/tauri/terminal";
+import { createTerminal, killTerminal } from "./lib/tauri/terminal";
 import { SIDEBAR } from "./lib/constants";
 import { cn } from "./lib/utils";
 
@@ -124,13 +124,16 @@ function AppContent() {
     uiState.toggleTerminalPanel();
   }, []);
 
-  // Keyboard shortcuts: Ctrl+` toggle terminal, Cmd+, toggle settings
+  // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl/Cmd+` — toggle terminal
       if (e.key === '`' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
         handleToggleTerminal();
+        return;
       }
+      // Cmd+, — toggle settings
       if (e.key === ',' && e.metaKey) {
         e.preventDefault();
         if (settingsOpen) {
@@ -138,6 +141,63 @@ function AppContent() {
         } else {
           openSettings();
         }
+        return;
+      }
+
+      // Terminal-specific shortcuts (only when terminal panel is open)
+      const isTerminalOpen = useUIStore.getState().terminalPanelOpen;
+      if (!isTerminalOpen) return;
+
+      // Cmd+T — new terminal
+      if (e.key === 't' && e.metaKey && !e.shiftKey) {
+        e.preventDefault();
+        const cwd = useFileExplorerStore.getState().rootPath ?? undefined;
+        createTerminal(cwd)
+          .then(({ id, shell }) => {
+            useTerminalStore.getState().addTerminal(id, cwd, shell);
+          })
+          .catch((err) => console.error('Failed to create terminal:', err));
+        return;
+      }
+
+      // Cmd+W — close active terminal tab
+      if (e.key === 'w' && e.metaKey && !e.shiftKey) {
+        e.preventDefault();
+        const { activeTerminalId: aid } = useTerminalStore.getState();
+        if (aid) {
+          killTerminal(aid).catch(() => {});
+          useTerminalStore.getState().removeTerminal(aid);
+          if (useTerminalStore.getState().terminals.size === 0) {
+            useUIStore.getState().toggleTerminalPanel();
+          }
+        }
+        return;
+      }
+
+      // Cmd+Shift+[ or ] — switch terminal tabs
+      if (e.key === '[' && e.metaKey && e.shiftKey) {
+        e.preventDefault();
+        useTerminalStore.getState().cycleTerminal('prev');
+        return;
+      }
+      if (e.key === ']' && e.metaKey && e.shiftKey) {
+        e.preventDefault();
+        useTerminalStore.getState().cycleTerminal('next');
+        return;
+      }
+
+      // Cmd+K — clear terminal
+      if (e.key === 'k' && e.metaKey && !e.shiftKey) {
+        e.preventDefault();
+        clearActiveTerminal();
+        return;
+      }
+
+      // Cmd+F — find in terminal
+      if (e.key === 'f' && e.metaKey && !e.shiftKey) {
+        e.preventDefault();
+        findInActiveTerminal();
+        return;
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -240,18 +300,18 @@ function AppContent() {
           >
             <SidebarSimple
               weight={isCollapsed ? 'regular' : 'fill'}
-              className="w-3.5 h-3.5 text-muted-foreground"
+              className="w-4 h-4 text-muted-foreground"
             />
           </button>
         </div>
 
-        <span className="text-xs font-medium text-muted-foreground/60" data-tauri-drag-region>
+        <span className="text-sm font-medium text-muted-foreground/60" data-tauri-drag-region>
           Solo
         </span>
 
-        <div className="flex-1 flex items-center justify-end gap-1.5">
+        <div className="flex-1 flex items-center justify-end gap-2">
           <div
-            className={`w-1.5 h-1.5 rounded-full ${
+            className={`w-2 h-2 rounded-full ${
               backendStatus.includes("connected")
                 ? "bg-status-success"
                 : backendStatus.includes("error")
@@ -260,7 +320,7 @@ function AppContent() {
             }`}
           />
           {user?.email && (
-            <span className="text-[11px] text-muted-foreground/70 truncate max-w-28">
+            <span className="text-xs text-muted-foreground/70 truncate max-w-28">
               {user.email}
             </span>
           )}
@@ -272,21 +332,21 @@ function AppContent() {
             )}
             title="Toggle Terminal (⌘`)"
           >
-            <Terminal className="w-3.5 h-3.5 text-muted-foreground" />
+            <Terminal className="w-4 h-4 text-muted-foreground" />
           </button>
           <button
             onClick={() => openSettings()}
             className="p-1 rounded hover:bg-foreground/[0.08] transition-colors"
             title="Settings (⌘,)"
           >
-            <GearSix className="w-3.5 h-3.5 text-muted-foreground" />
+            <GearSix className="w-4 h-4 text-muted-foreground" />
           </button>
           <button
             onClick={signOut}
             className="p-1 rounded hover:bg-foreground/[0.08] transition-colors"
             title="Sign out"
           >
-            <SignOut className="w-3.5 h-3.5 text-muted-foreground" />
+            <SignOut className="w-4 h-4 text-muted-foreground" />
           </button>
         </div>
       </div>

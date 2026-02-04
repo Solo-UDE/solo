@@ -7,5 +7,5 @@
 
 | ID | Time | T | Title | Read |
 |----|------|---|-------|------|
-| #1133 | 2:14 PM | 🔵 | Lexical Rich Text Editor Integration for Agent Input | ~673 |
+| #1129 | 2:13 PM | 🔵 | Git Worktree Manager with libgit2 Integration | ~788 |
 </claude-mem-context>

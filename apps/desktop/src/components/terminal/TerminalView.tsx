@@ -5,14 +5,17 @@
  * and handles resize via ResizeObserver + FitAddon.
  */
 
-import { useEffect, useLayoutEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
+import { SearchAddon } from '@xterm/addon-search';
+import { MagnifyingGlass, X, ArrowUp, ArrowDown } from '@phosphor-icons/react';
 import '@xterm/xterm/css/xterm.css';
 
 import { writeTerminal, resizeTerminal } from '@/lib/tauri/terminal';
 import { registerTerminalCallbacks } from '@/hooks/useTerminalStream';
+import { registerTerminalActions } from '@/stores/terminalStore';
 
 interface TerminalViewProps {
 	terminalId: string;
@@ -97,7 +100,41 @@ export function TerminalView({ terminalId, isActive, onExit }: TerminalViewProps
 	const containerRef = useRef<HTMLDivElement>(null);
 	const termRef = useRef<Terminal | null>(null);
 	const fitRef = useRef<FitAddon | null>(null);
+	const searchRef = useRef<SearchAddon | null>(null);
 	const onExitRef = useRef(onExit);
+	const searchInputRef = useRef<HTMLInputElement>(null);
+
+	const [searchOpen, setSearchOpen] = useState(false);
+	const [searchQuery, setSearchQuery] = useState('');
+
+	const openSearch = useCallback(() => {
+		setSearchOpen(true);
+		requestAnimationFrame(() => searchInputRef.current?.focus());
+	}, []);
+
+	const closeSearch = useCallback(() => {
+		setSearchOpen(false);
+		setSearchQuery('');
+		searchRef.current?.clearDecorations();
+		termRef.current?.focus();
+	}, []);
+
+	const handleSearchChange = useCallback((value: string) => {
+		setSearchQuery(value);
+		if (value) {
+			searchRef.current?.findNext(value);
+		} else {
+			searchRef.current?.clearDecorations();
+		}
+	}, []);
+
+	const handleSearchNext = useCallback(() => {
+		if (searchQuery) searchRef.current?.findNext(searchQuery);
+	}, [searchQuery]);
+
+	const handleSearchPrev = useCallback(() => {
+		if (searchQuery) searchRef.current?.findPrevious(searchQuery);
+	}, [searchQuery]);
 
 	// Keep the onExit ref current so the registered callback never goes stale
 	useEffect(() => {
@@ -111,6 +148,7 @@ export function TerminalView({ terminalId, isActive, onExit }: TerminalViewProps
 
 		const fitAddon = new FitAddon();
 		const webLinksAddon = new WebLinksAddon();
+		const searchAddon = new SearchAddon();
 
 		const term = new Terminal({
 			cursorBlink: true,
@@ -124,10 +162,12 @@ export function TerminalView({ terminalId, isActive, onExit }: TerminalViewProps
 
 		term.loadAddon(fitAddon);
 		term.loadAddon(webLinksAddon);
+		term.loadAddon(searchAddon);
 		term.open(container);
 
 		termRef.current = term;
 		fitRef.current = fitAddon;
+		searchRef.current = searchAddon;
 
 		// Fit after open (needs a frame for layout)
 		requestAnimationFrame(() => {
@@ -140,6 +180,13 @@ export function TerminalView({ terminalId, isActive, onExit }: TerminalViewProps
 				console.error('Failed to write to terminal:', err);
 			});
 		});
+
+		// Register imperative actions (clear, find)
+		const unregisterActions = registerTerminalActions(
+			terminalId,
+			() => term.clear(),
+			() => openSearch(),
+		);
 
 		// Register for backend PTY output (call through ref to avoid stale closure)
 		const unregister = registerTerminalCallbacks(
@@ -182,9 +229,11 @@ export function TerminalView({ terminalId, isActive, onExit }: TerminalViewProps
 			themeObserver.disconnect();
 			dataDisposable.dispose();
 			unregister();
+			unregisterActions();
 			term.dispose();
 			termRef.current = null;
 			fitRef.current = null;
+			searchRef.current = null;
 		};
 	}, [terminalId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -198,10 +247,54 @@ export function TerminalView({ terminalId, isActive, onExit }: TerminalViewProps
 	}, [isActive]);
 
 	return (
-		<div
-			ref={containerRef}
-			className="h-full w-full"
-			style={{ padding: 4 }}
-		/>
+		<div className="h-full w-full relative">
+			{/* Search bar overlay */}
+			{searchOpen && (
+				<div className="absolute top-1 right-2 z-10 flex items-center gap-1 bg-sidebar border border-border/50 rounded-md px-2 py-1 shadow-sm">
+					<MagnifyingGlass className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+					<input
+						ref={searchInputRef}
+						type="text"
+						value={searchQuery}
+						onChange={(e) => handleSearchChange(e.target.value)}
+						onKeyDown={(e) => {
+							if (e.key === 'Enter') {
+								e.shiftKey ? handleSearchPrev() : handleSearchNext();
+							} else if (e.key === 'Escape') {
+								closeSearch();
+							}
+						}}
+						className="bg-transparent text-xs text-foreground outline-none w-40 placeholder:text-muted-foreground/50"
+						placeholder="Find..."
+					/>
+					<button
+						onClick={handleSearchPrev}
+						className="p-0.5 rounded hover:bg-muted-foreground/20 text-muted-foreground"
+						aria-label="Previous match"
+					>
+						<ArrowUp className="w-3 h-3" />
+					</button>
+					<button
+						onClick={handleSearchNext}
+						className="p-0.5 rounded hover:bg-muted-foreground/20 text-muted-foreground"
+						aria-label="Next match"
+					>
+						<ArrowDown className="w-3 h-3" />
+					</button>
+					<button
+						onClick={closeSearch}
+						className="p-0.5 rounded hover:bg-muted-foreground/20 text-muted-foreground"
+						aria-label="Close search"
+					>
+						<X className="w-3 h-3" />
+					</button>
+				</div>
+			)}
+			<div
+				ref={containerRef}
+				className="h-full w-full"
+				style={{ padding: 4 }}
+			/>
+		</div>
 	);
 }

@@ -7,5 +7,6 @@
 
 | ID | Time | T | Title | Read |
 |----|------|---|-------|------|
-| #1133 | 2:14 PM | 🔵 | Lexical Rich Text Editor Integration for Agent Input | ~673 |
+| #1105 | 2:05 PM | 🔵 | Shared UI Package Design Tokens | ~542 |
+| #1104 | " | 🔵 | Shared UI Package Component Exports | ~326 |
 </claude-mem-context>

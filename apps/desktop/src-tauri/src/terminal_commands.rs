@@ -11,8 +11,11 @@ use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, State};
 use tracing::{debug, error, info, warn};
+
+const BATCH_FLUSH_INTERVAL: Duration = Duration::from_millis(16);
 
 const SHELL_CONFIG_VERSION: &str = "# solo-shell-v1";
 
@@ -276,7 +279,24 @@ pub fn spawn_pty(
     Ok(SpawnResult { id, shell: shell_name })
 }
 
+/// Emit accumulated terminal data as a single IPC event.
+fn flush_batch(batch: &mut String, id: &str, app: &AppHandle, last_flush: &mut Instant) {
+    if batch.is_empty() {
+        return;
+    }
+    let event = BackendEvent::TerminalData {
+        id: id.to_string(),
+        data: batch.clone(),
+    };
+    if let Err(e) = app.emit("terminal-event", &event) {
+        error!(id = %id, error = %e, "Failed to emit terminal data");
+    }
+    batch.clear();
+    *last_flush = Instant::now();
+}
+
 /// Blocking read loop that forwards PTY output to the frontend.
+/// Batches output and flushes at most once per ~16ms to avoid IPC flooding.
 /// On exit, waits for the child process to get the exit code and removes
 /// the terminal entry from the shared map to prevent resource leaks.
 fn read_loop(
@@ -287,8 +307,9 @@ fn read_loop(
     terminals: &TerminalsMap,
 ) {
     let mut buf = [0u8; 4096];
-    // Carry-over buffer for incomplete UTF-8 sequences at read boundaries
     let mut carry: Vec<u8> = Vec::new();
+    let mut batch = String::with_capacity(16384);
+    let mut last_flush = Instant::now();
 
     loop {
         match reader.read(&mut buf) {
@@ -297,7 +318,6 @@ fn read_loop(
                 break;
             }
             Ok(n) => {
-                // Prepend any leftover bytes from a previous incomplete UTF-8 sequence
                 let chunk = if carry.is_empty() {
                     &buf[..n]
                 } else {
@@ -305,22 +325,18 @@ fn read_loop(
                     carry.as_slice()
                 };
 
-                // Find the last valid UTF-8 boundary
                 let (valid, remainder) = split_utf8(chunk);
 
                 if !valid.is_empty() {
-                    let data = String::from_utf8_lossy(valid).into_owned();
-                    let event = BackendEvent::TerminalData {
-                        id: id.to_string(),
-                        data,
-                    };
-                    if let Err(e) = app.emit("terminal-event", &event) {
-                        error!(id = %id, error = %e, "Failed to emit terminal data");
-                    }
+                    batch.push_str(&String::from_utf8_lossy(valid));
                 }
 
-                // Save incomplete trailing bytes for the next read
                 carry = remainder.to_vec();
+
+                // Flush if enough time has elapsed or the batch is large
+                if last_flush.elapsed() >= BATCH_FLUSH_INTERVAL || batch.len() >= 65536 {
+                    flush_batch(&mut batch, id, app, &mut last_flush);
+                }
             }
             Err(e) => {
                 warn!(id = %id, error = %e, "PTY read error");
@@ -329,15 +345,11 @@ fn read_loop(
         }
     }
 
-    // Flush any remaining carry bytes (lossy — should be rare)
+    // Flush remaining batch + carry bytes
     if !carry.is_empty() {
-        let data = String::from_utf8_lossy(&carry).into_owned();
-        let event = BackendEvent::TerminalData {
-            id: id.to_string(),
-            data,
-        };
-        let _ = app.emit("terminal-event", &event);
+        batch.push_str(&String::from_utf8_lossy(&carry));
     }
+    flush_batch(&mut batch, id, app, &mut last_flush);
 
     // Wait for the child process to get the exit code
     let exit_code = match child.lock() {

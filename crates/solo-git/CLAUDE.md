@@ -7,5 +7,5 @@
 
 | ID | Time | T | Title | Read |
 |----|------|---|-------|------|
-| #1133 | 2:14 PM | 🔵 | Lexical Rich Text Editor Integration for Agent Input | ~673 |
+| #1084 | 2:00 PM | 🔵 | Solo Git: Version Control Integration with Worktree Support | ~495 |
 </claude-mem-context>
