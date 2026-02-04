@@ -22,6 +22,12 @@ pub struct WorktreeMetadata {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct WorktreeConfig {
     pub worktrees: HashMap<String, WorktreeMetadata>,
+    /// Shell commands to run in new worktrees after creation
+    #[serde(default)]
+    pub setup_commands: Vec<String>,
+    /// Auto-prune worktrees older than this many days (None = disabled)
+    #[serde(default)]
+    pub max_age_days: Option<u32>,
 }
 
 impl WorktreeConfig {

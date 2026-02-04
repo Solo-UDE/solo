@@ -9,23 +9,29 @@ import { ModeSelector } from './mode-selector';
 import { ModelPicker } from './model-picker';
 import { SubmitButton } from './submit-button';
 import { useProviderStore } from '../../../stores/provider-store';
+import { useWorktreeList } from '../../../stores/worktreeStore';
 import { DEFAULT_MODEL_ID } from '../../../lib/constants';
 
 export interface ChatInputContainerProps {
   onSubmit: (content: string, mode: 'planning' | 'fast', model: string) => void;
   isAgentRunning?: boolean;
   className?: string;
+  worktreeId?: string | null;
+  onWorktreeChange?: (id: string | null) => void;
 }
 
 export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
   onSubmit,
   isAgentRunning = false,
   className = '',
+  worktreeId,
+  onWorktreeChange,
 }) => {
   const [content, setContent] = useState('');
   const [mode, setMode] = useState<'planning' | 'fast'>('planning');
   const selectedModel = useProviderStore((state) => state.selectedModel);
   const editorRef = useRef<LexicalEditorHandle>(null);
+  const worktrees = useWorktreeList();
 
   const handleSubmit = (): void => {
     if (content.trim() && !isAgentRunning) {
@@ -41,6 +47,9 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
       handleSubmit();
     }
   };
+
+  // Only show the selector when there are linked worktrees (more than just main)
+  const showWorktreeSelector = onWorktreeChange && worktrees.length > 1;
 
   return (
     <div className={`border-t border-border bg-background ${className}`}>
@@ -63,6 +72,23 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
             <ModeSelector value={mode} onChange={setMode} disabled={isAgentRunning} />
             <ModelPicker side="top" disabled={isAgentRunning} />
             <ContextTracker disabled={isAgentRunning} />
+
+            {showWorktreeSelector && (
+              <select
+                value={worktreeId ?? ''}
+                onChange={(e) => onWorktreeChange(e.target.value || null)}
+                disabled={isAgentRunning}
+                className="h-7 px-2 text-xs rounded bg-muted/50 border border-border/50 text-foreground disabled:opacity-50 outline-none focus:ring-1 focus:ring-ring"
+                title="Worktree"
+              >
+                <option value="">Main workspace</option>
+                {worktrees.filter((wt) => !wt.is_main).map((wt) => (
+                  <option key={wt.id} value={wt.id}>
+                    {wt.branch ?? wt.id}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
 
           <SubmitButton

@@ -3,7 +3,7 @@
 //! This module contains all git worktree related IPC commands.
 
 use solo_git::WorktreeManager;
-use solo_protocol::{BackendEvent, CreateWorktreeRequest, RemoveWorktreeRequest, WorktreeInfo};
+use solo_protocol::{BackendEvent, CreateWorktreeRequest, RemoveWorktreeRequest, WorktreeInfo, WorktreeSetupConfig};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use tauri::{AppHandle, Emitter, State};
@@ -72,7 +72,7 @@ pub async fn worktree_list(
     manager.list().map_err(|e| e.to_string())
 }
 
-/// Create a new worktree
+/// Create a new worktree, then run setup commands if configured
 #[tauri::command]
 pub async fn worktree_create(
     request: CreateWorktreeRequest,
@@ -99,6 +99,78 @@ pub async fn worktree_create(
                 worktree_id: info.id.clone(),
                 info: info.clone(),
             });
+
+            // Run setup commands in background if configured
+            let setup_commands = manager.get_setup_commands().unwrap_or_default();
+            if !setup_commands.is_empty() {
+                let wt_id = info.id.clone();
+                let wt_path = info.path.clone();
+                let app_clone = app.clone();
+
+                tokio::spawn(async move {
+                    for cmd in &setup_commands {
+                        let _ = app_clone.emit("backend-event", &BackendEvent::WorktreeSetupProgress {
+                            worktree_id: wt_id.clone(),
+                            command: cmd.clone(),
+                            output: format!("Running: {}", cmd),
+                            is_error: false,
+                            is_complete: false,
+                        });
+
+                        let output = tokio::process::Command::new("sh")
+                            .args(["-c", cmd])
+                            .current_dir(&wt_path)
+                            .output()
+                            .await;
+
+                        match output {
+                            Ok(out) => {
+                                let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+                                let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+                                let is_error = !out.status.success();
+
+                                if !stdout.is_empty() {
+                                    let _ = app_clone.emit("backend-event", &BackendEvent::WorktreeSetupProgress {
+                                        worktree_id: wt_id.clone(),
+                                        command: cmd.clone(),
+                                        output: stdout,
+                                        is_error: false,
+                                        is_complete: false,
+                                    });
+                                }
+                                if !stderr.is_empty() || is_error {
+                                    let _ = app_clone.emit("backend-event", &BackendEvent::WorktreeSetupProgress {
+                                        worktree_id: wt_id.clone(),
+                                        command: cmd.clone(),
+                                        output: if stderr.is_empty() { "Command failed".to_string() } else { stderr },
+                                        is_error,
+                                        is_complete: false,
+                                    });
+                                }
+                            }
+                            Err(e) => {
+                                let _ = app_clone.emit("backend-event", &BackendEvent::WorktreeSetupProgress {
+                                    worktree_id: wt_id.clone(),
+                                    command: cmd.clone(),
+                                    output: format!("Failed to run command: {}", e),
+                                    is_error: true,
+                                    is_complete: false,
+                                });
+                            }
+                        }
+                    }
+
+                    // Signal all setup commands complete
+                    let _ = app_clone.emit("backend-event", &BackendEvent::WorktreeSetupProgress {
+                        worktree_id: wt_id,
+                        command: String::new(),
+                        output: "Setup complete".to_string(),
+                        is_error: false,
+                        is_complete: true,
+                    });
+                });
+            }
+
             Ok(info)
         }
         Err(e) => {
@@ -247,4 +319,63 @@ pub async fn worktree_unlock(
     let manager = managers.get(&repo_path).unwrap();
 
     manager.unlock(&id).map_err(|e| e.to_string())
+}
+
+/// Prune stale worktrees (missing dirs or exceeding max age)
+#[tauri::command]
+pub async fn worktree_prune(
+    wt_state: State<'_, WorktreeState>,
+    fs_state: State<'_, FsState>,
+) -> Result<Vec<String>, String> {
+    info!("Pruning stale worktrees");
+
+    let repo_path = get_manager(&wt_state, &fs_state).await?;
+    let managers = wt_state.managers.read().await;
+    let manager = managers.get(&repo_path).unwrap();
+
+    let pruned = manager.prune_stale().map_err(|e| e.to_string())?;
+
+    // Clear active worktree if it was pruned
+    if !pruned.is_empty() {
+        let mut active = wt_state.active_worktree_id.write().await;
+        if let Some(ref active_id) = *active {
+            if pruned.contains(active_id) {
+                *active = None;
+            }
+        }
+    }
+
+    Ok(pruned)
+}
+
+/// Set setup commands for new worktrees
+#[tauri::command]
+pub async fn worktree_set_setup_commands(
+    config: WorktreeSetupConfig,
+    wt_state: State<'_, WorktreeState>,
+    fs_state: State<'_, FsState>,
+) -> Result<(), String> {
+    info!(count = config.commands.len(), "Setting worktree setup commands");
+
+    let repo_path = get_manager(&wt_state, &fs_state).await?;
+    let managers = wt_state.managers.read().await;
+    let manager = managers.get(&repo_path).unwrap();
+
+    manager.set_setup_commands(config.commands).map_err(|e| e.to_string())
+}
+
+/// Get setup commands for new worktrees
+#[tauri::command]
+pub async fn worktree_get_setup_commands(
+    wt_state: State<'_, WorktreeState>,
+    fs_state: State<'_, FsState>,
+) -> Result<WorktreeSetupConfig, String> {
+    debug!("Getting worktree setup commands");
+
+    let repo_path = get_manager(&wt_state, &fs_state).await?;
+    let managers = wt_state.managers.read().await;
+    let manager = managers.get(&repo_path).unwrap();
+
+    let commands = manager.get_setup_commands().map_err(|e| e.to_string())?;
+    Ok(WorktreeSetupConfig { commands })
 }

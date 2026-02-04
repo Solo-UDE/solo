@@ -8,8 +8,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
-import { WebLinksAddon } from '@xterm/addon-web-links';
-import { SearchAddon } from '@xterm/addon-search';
+import type { SearchAddon } from '@xterm/addon-search';
 import { MagnifyingGlass, X, ArrowUp, ArrowDown } from '@phosphor-icons/react';
 import '@xterm/xterm/css/xterm.css';
 
@@ -107,10 +106,21 @@ export function TerminalView({ terminalId, isActive, onExit }: TerminalViewProps
 	const [searchOpen, setSearchOpen] = useState(false);
 	const [searchQuery, setSearchQuery] = useState('');
 
+	const ensureSearchAddon = useCallback(async () => {
+		if (!searchRef.current && termRef.current) {
+			const { SearchAddon } = await import('@xterm/addon-search');
+			const addon = new SearchAddon();
+			termRef.current.loadAddon(addon);
+			searchRef.current = addon;
+		}
+		return searchRef.current;
+	}, []);
+
 	const openSearch = useCallback(() => {
 		setSearchOpen(true);
+		ensureSearchAddon();
 		requestAnimationFrame(() => searchInputRef.current?.focus());
-	}, []);
+	}, [ensureSearchAddon]);
 
 	const closeSearch = useCallback(() => {
 		setSearchOpen(false);
@@ -122,11 +132,11 @@ export function TerminalView({ terminalId, isActive, onExit }: TerminalViewProps
 	const handleSearchChange = useCallback((value: string) => {
 		setSearchQuery(value);
 		if (value) {
-			searchRef.current?.findNext(value);
+			ensureSearchAddon().then((s) => s?.findNext(value));
 		} else {
 			searchRef.current?.clearDecorations();
 		}
-	}, []);
+	}, [ensureSearchAddon]);
 
 	const handleSearchNext = useCallback(() => {
 		if (searchQuery) searchRef.current?.findNext(searchQuery);
@@ -146,12 +156,19 @@ export function TerminalView({ terminalId, isActive, onExit }: TerminalViewProps
 		const container = containerRef.current;
 		if (!container) return;
 
-		const fitAddon = new FitAddon();
-		const webLinksAddon = new WebLinksAddon();
-		const searchAddon = new SearchAddon();
+		const DEV = import.meta.env.DEV;
+		if (DEV) performance.mark('terminal:mount-start');
 
+		if (DEV) performance.mark('terminal:addon-create-start');
+		const fitAddon = new FitAddon();
+		if (DEV) performance.mark('terminal:addon-create-end');
+
+		if (DEV) performance.mark('terminal:instance-start');
 		const term = new Terminal({
 			cursorBlink: true,
+			cursorStyle: 'bar',
+			cursorWidth: 2,
+			cursorInactiveStyle: 'outline',
 			fontSize: 13,
 			fontFamily: '"MesloLGS NF", "Hack Nerd Font", "FiraCode Nerd Font", "JetBrainsMono Nerd Font", ui-monospace, "SF Mono", Menlo, Monaco, "Cascadia Code", monospace',
 			theme: buildTerminalTheme(),
@@ -159,19 +176,43 @@ export function TerminalView({ terminalId, isActive, onExit }: TerminalViewProps
 			allowProposedApi: true,
 			scrollback: 5000,
 		});
+		if (DEV) performance.mark('terminal:instance-end');
 
+		if (DEV) performance.mark('terminal:addon-load-start');
 		term.loadAddon(fitAddon);
-		term.loadAddon(webLinksAddon);
-		term.loadAddon(searchAddon);
+		if (DEV) performance.mark('terminal:addon-load-end');
+
+		if (DEV) performance.mark('terminal:dom-open-start');
 		term.open(container);
+		if (DEV) performance.mark('terminal:dom-open-end');
+
+		// Defer WebLinksAddon — not needed at mount time
+		const scheduleIdle = globalThis.requestIdleCallback ?? ((cb: () => void) => setTimeout(cb, 150));
+		scheduleIdle(() => {
+			import('@xterm/addon-web-links').then(({ WebLinksAddon }) => {
+				term.loadAddon(new WebLinksAddon());
+			});
+		});
 
 		termRef.current = term;
 		fitRef.current = fitAddon;
-		searchRef.current = searchAddon;
 
 		// Fit after open (needs a frame for layout)
 		requestAnimationFrame(() => {
+			if (DEV) performance.mark('terminal:fit-start');
 			fitAddon.fit();
+			if (DEV) {
+				performance.mark('terminal:fit-end');
+				performance.measure('terminal:addon-create', 'terminal:addon-create-start', 'terminal:addon-create-end');
+				performance.measure('terminal:instance', 'terminal:instance-start', 'terminal:instance-end');
+				performance.measure('terminal:addon-load', 'terminal:addon-load-start', 'terminal:addon-load-end');
+				performance.measure('terminal:dom-open', 'terminal:dom-open-start', 'terminal:dom-open-end');
+				performance.measure('terminal:fit', 'terminal:fit-start', 'terminal:fit-end');
+				performance.measure('terminal:total-mount', 'terminal:mount-start', 'terminal:fit-end');
+				const entries = performance.getEntriesByType('measure')
+					.filter((e) => e.name.startsWith('terminal:'));
+				console.table(entries.map((e) => ({ name: e.name, ms: +e.duration.toFixed(2) })));
+			}
 		});
 
 		// Forward user keystrokes to PTY
@@ -233,7 +274,7 @@ export function TerminalView({ terminalId, isActive, onExit }: TerminalViewProps
 			term.dispose();
 			termRef.current = null;
 			fitRef.current = null;
-			searchRef.current = null;
+			searchRef.current = null; // may be null if search was never opened
 		};
 	}, [terminalId]); // eslint-disable-line react-hooks/exhaustive-deps
 

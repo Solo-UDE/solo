@@ -17,6 +17,10 @@ interface WorktreeEventPayload {
 		message?: string;
 		info?: WorktreeInfo;
 		error?: string;
+		command?: string;
+		output?: string;
+		is_error?: boolean;
+		is_complete?: boolean;
 	};
 }
 
@@ -25,6 +29,7 @@ export function useWorktreeStream(): void {
 	const handleReady = useWorktreeStore((s) => s.handleWorktreeReady);
 	const handleError = useWorktreeStore((s) => s.handleWorktreeError);
 	const handleRemoved = useWorktreeStore((s) => s.handleWorktreeRemoved);
+	const handleSetupProgress = useWorktreeStore((s) => s.handleSetupProgress);
 
 	const cleanupRef = useRef<UnlistenFn | null>(null);
 
@@ -47,6 +52,13 @@ export function useWorktreeStream(): void {
 				case 'worktree:removed':
 					handleRemoved(payload.payload.worktree_id);
 					break;
+				case 'worktree:setup_progress':
+					handleSetupProgress(
+						payload.payload.worktree_id,
+						payload.payload.output ?? '',
+						payload.payload.is_complete ?? false,
+					);
+					break;
 			}
 		}).then((unlisten) => {
 			cleanupRef.current = unlisten;
@@ -60,5 +72,5 @@ export function useWorktreeStream(): void {
 				cleanupRef.current = null;
 			}
 		};
-	}, [handleProgress, handleReady, handleError, handleRemoved]);
+	}, [handleProgress, handleReady, handleError, handleRemoved, handleSetupProgress]);
 }

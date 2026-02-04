@@ -344,7 +344,11 @@ html[data-vibrancy] .titlebar-glass {
 }
 
 html[data-vibrancy] .terminal-panel {
-  background: transparent;
+  background: transparent !important;
+}
+
+html[data-vibrancy] .terminal-panel .xterm-viewport {
+  background-color: transparent !important;
 }
 
 /* Disable text selection on UI elements */

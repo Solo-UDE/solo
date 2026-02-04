@@ -187,6 +187,9 @@ pub fn run() {
             worktree_commands::worktree_get_active,
             worktree_commands::worktree_lock,
             worktree_commands::worktree_unlock,
+            worktree_commands::worktree_prune,
+            worktree_commands::worktree_set_setup_commands,
+            worktree_commands::worktree_get_setup_commands,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -7,5 +7,7 @@
 
 | ID | Time | T | Title | Read |
 |----|------|---|-------|------|
+| #1146 | 2:19 PM | 🔵 | Markdown Editor: Tiptap Rich Text Editor with Extensions | ~723 |
+| #1144 | " | 🔵 | Code Editor: Monaco Editor Integration with Full IDE Features | ~778 |
 | #1132 | 2:14 PM | 🔵 | File Viewer: Read-Only File Display with Syntax Highlighting | ~584 |
 </claude-mem-context>

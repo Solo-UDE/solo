@@ -392,6 +392,84 @@ impl WorktreeManager {
     pub fn repo_path(&self) -> &Path {
         &self.repo_path
     }
+
+    /// Set the setup commands that run after worktree creation.
+    pub fn set_setup_commands(&self, commands: Vec<String>) -> Result<(), GitError> {
+        let mut config = WorktreeConfig::load(&self.config_path)?;
+        config.setup_commands = commands;
+        config.save(&self.config_path)
+    }
+
+    /// Get the current setup commands.
+    pub fn get_setup_commands(&self) -> Result<Vec<String>, GitError> {
+        let config = WorktreeConfig::load(&self.config_path)?;
+        Ok(config.setup_commands)
+    }
+
+    /// Prune stale worktrees whose directories no longer exist or that exceed max_age_days.
+    /// Returns the IDs of pruned worktrees.
+    pub fn prune_stale(&self) -> Result<Vec<String>, GitError> {
+        let mut config = WorktreeConfig::load(&self.config_path)?;
+        let max_age_days = config.max_age_days;
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        let mut pruned = Vec::new();
+        let ids: Vec<String> = config.worktrees.keys().cloned().collect();
+
+        for id in ids {
+            let meta = config.worktrees.get(&id).unwrap();
+            let path = Path::new(&meta.path);
+
+            // Skip locked worktrees
+            if meta.is_locked {
+                continue;
+            }
+
+            let should_prune = if !path.exists() {
+                // Directory gone — always prune
+                info!(id = %id, "Pruning worktree with missing directory");
+                true
+            } else if let Some(max_days) = max_age_days {
+                let age_secs = now.saturating_sub(meta.created_at);
+                let age_days = age_secs / 86400;
+                if age_days > max_days as u64 {
+                    info!(id = %id, age_days, max_days, "Pruning stale worktree");
+                    true
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
+            if should_prune {
+                // Try to remove via git CLI if the directory exists
+                if path.exists() {
+                    let output = std::process::Command::new("git")
+                        .current_dir(&self.repo_path)
+                        .args(["worktree", "remove", "--force", &meta.path])
+                        .output();
+                    if let Err(e) = output {
+                        warn!(id = %id, error = %e, "Failed to git worktree remove during prune");
+                    }
+                }
+                pruned.push(id.clone());
+                config.worktrees.remove(&id);
+            }
+        }
+
+        // Run git worktree prune for any remaining stale refs
+        let _ = std::process::Command::new("git")
+            .current_dir(&self.repo_path)
+            .args(["worktree", "prune"])
+            .output();
+
+        config.save(&self.config_path)?;
+        Ok(pruned)
+    }
 }
 
 #[cfg(test)]

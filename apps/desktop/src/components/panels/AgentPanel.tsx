@@ -6,10 +6,12 @@
 import { useEffect } from 'react';
 import { AgentWindow } from '@/components/agent';
 import { useAgentStore } from '@/stores/agentStore';
+import { useWorktreeStore } from '@/stores/worktreeStore';
 import type { PanelProps } from '@/lib/panels/types';
 
 interface AgentPanelData {
   sessionId?: string;
+  worktreeId?: string | null;
 }
 
 /**
@@ -46,13 +48,17 @@ export function AgentPanel({
   onTitleChange,
 }: PanelProps<AgentPanelData>) {
   const sessionId = data?.sessionId;
+  const worktreeId = data?.worktreeId;
 
-  // Sync activeSessionId when this tab is focused
+  // Sync activeSessionId and active worktree when this tab is focused
   useEffect(() => {
     if (isActive && sessionId) {
       useAgentStore.getState().setActiveSession(sessionId);
     }
-  }, [isActive, sessionId]);
+    if (isActive) {
+      useWorktreeStore.getState().setActive(worktreeId ?? null);
+    }
+  }, [isActive, sessionId, worktreeId]);
 
   // Update title based on session content
   useEffect(() => {
@@ -79,6 +85,7 @@ export function AgentPanel({
     <AgentWindow
       instanceId={instanceId}
       initialSessionId={sessionId}
+      initialWorktreeId={worktreeId}
       className="h-full"
     />
   );

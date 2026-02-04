@@ -497,6 +497,14 @@ pub struct RemoveWorktreeRequest {
     pub force: bool,
 }
 
+/// Setup commands to run after worktree creation (e.g., package install)
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct WorktreeSetupConfig {
+    /// Shell commands to run in the new worktree directory
+    pub commands: Vec<String>,
+}
+
 // =============================================================================
 // Backend Events (sent from Rust to TypeScript)
 // =============================================================================
@@ -621,6 +629,16 @@ pub enum BackendEvent {
     /// Worktree was removed
     #[serde(rename = "worktree:removed")]
     WorktreeRemoved { worktree_id: String },
+
+    /// Worktree setup command progress (streamed during post-create hooks)
+    #[serde(rename = "worktree:setup_progress")]
+    WorktreeSetupProgress {
+        worktree_id: String,
+        command: String,
+        output: String,
+        is_error: bool,
+        is_complete: bool,
+    },
 }
 
 // =============================================================================
