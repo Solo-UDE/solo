@@ -20,7 +20,7 @@ pub use models::{AIModel, ModelCapabilities, MODEL_REGISTRY};
 pub use credentials::{CredentialManager, CredentialSource};
 pub use anthropic::AnthropicProvider;
 pub use openai::OpenAIProvider;
-pub use tools::{ToolRegistry, ToolExecutor, ToolError, create_default_registry};
+pub use tools::{ToolRegistry, ToolExecutor, ToolError, ToolContext, create_default_registry};
 pub use middleware::{
     Middleware, MiddlewareChain, MiddlewareContext, MiddlewareResponse,
     LoggingMiddleware, RateLimitMiddleware, GuardrailsMiddleware, MetricsMiddleware,

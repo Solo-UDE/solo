@@ -313,6 +313,60 @@ pub struct FileOperationError {
 }
 
 // =============================================================================
+// Worktree Protocol
+// =============================================================================
+
+/// Information about a git worktree
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct WorktreeInfo {
+    /// Unique worktree identifier
+    pub id: String,
+    /// Filesystem path to the worktree
+    pub path: String,
+    /// Branch checked out in this worktree
+    pub branch: Option<String>,
+    /// HEAD commit SHA
+    pub head_sha: String,
+    /// Whether this is the main (primary) worktree
+    pub is_main: bool,
+    /// Whether the worktree is locked
+    pub is_locked: bool,
+    /// Reason for locking
+    pub lock_reason: Option<String>,
+    /// Whether the worktree has uncommitted changes
+    pub is_dirty: bool,
+    /// Agent session ID currently using this worktree
+    pub agent_session_id: Option<String>,
+    /// Creation timestamp (Unix epoch seconds)
+    pub created_at: u64,
+}
+
+/// Request to create a new worktree
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct CreateWorktreeRequest {
+    /// Branch name for the worktree
+    pub branch: String,
+    /// Optional custom path (default: auto-generated)
+    pub path: Option<String>,
+    /// Whether to create a new branch
+    pub create_branch: bool,
+    /// Base branch/ref to create from (default: HEAD)
+    pub base: Option<String>,
+}
+
+/// Request to remove a worktree
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct RemoveWorktreeRequest {
+    /// Worktree ID to remove
+    pub id: String,
+    /// Force removal even if dirty or locked
+    pub force: bool,
+}
+
+// =============================================================================
 // Backend Events (sent from Rust to TypeScript)
 // =============================================================================
 
@@ -399,6 +453,22 @@ pub enum BackendEvent {
     /// Parse completed for a file
     #[serde(rename = "parse:complete")]
     ParseComplete { path: String, symbol_count: u32 },
+
+    /// Worktree operation progress
+    #[serde(rename = "worktree:progress")]
+    WorktreeProgress { worktree_id: String, message: String },
+
+    /// Worktree is ready
+    #[serde(rename = "worktree:ready")]
+    WorktreeReady { worktree_id: String, info: WorktreeInfo },
+
+    /// Worktree operation error
+    #[serde(rename = "worktree:error")]
+    WorktreeError { worktree_id: String, error: String },
+
+    /// Worktree was removed
+    #[serde(rename = "worktree:removed")]
+    WorktreeRemoved { worktree_id: String },
 }
 
 // =============================================================================

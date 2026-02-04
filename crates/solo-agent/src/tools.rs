@@ -120,14 +120,30 @@ fn validate_path(path_str: &str, workspace_root: Option<&Path>) -> Result<std::p
 }
 
 // =============================================================================
+// Tool Context
+// =============================================================================
+
+/// Context passed to tool execution, providing workspace scoping.
+/// When an agent operates in a worktree, `workspace_root` points to the worktree path.
+pub struct ToolContext {
+    pub workspace_root: Option<std::path::PathBuf>,
+}
+
+impl ToolContext {
+    pub fn new(workspace_root: Option<std::path::PathBuf>) -> Self {
+        Self { workspace_root }
+    }
+}
+
+// =============================================================================
 // Tool Executor Trait
 // =============================================================================
 
 /// Trait for implementing tool execution
 #[async_trait::async_trait]
 pub trait ToolExecutor: Send + Sync {
-    /// Execute the tool with the given arguments
-    async fn execute(&self, args: serde_json::Value) -> ToolResult_;
+    /// Execute the tool with the given arguments and context
+    async fn execute(&self, args: serde_json::Value, ctx: &ToolContext) -> ToolResult_;
 
     /// Get the tool definition
     fn definition(&self) -> ToolDefinition;
@@ -271,17 +287,20 @@ impl ToolRegistry {
     }
 
     /// Execute a tool call. Looks up the executor, clones the Arc, then drops
-    /// the registry borrow before awaiting execution.
+    /// the registry borrow before awaiting execution. Builds a ToolContext from
+    /// the registry's workspace_root.
     pub async fn execute(&self, tool_call: &AgentToolCall) -> ToolResult {
         // Clone the Arc<dyn ToolExecutor> so we don't hold any borrow during await
         let executor = self.tools.get(&tool_call.name).cloned();
+        let workspace_root = self.workspace_root.read().await.clone();
+        let ctx = ToolContext::new(workspace_root);
 
         match executor {
             Some(executor) => {
                 let args: serde_json::Value = serde_json::from_str(&tool_call.arguments)
                     .unwrap_or_else(|_| serde_json::json!({}));
 
-                match executor.execute(args).await {
+                match executor.execute(args, &ctx).await {
                     Ok(result) => ToolResult {
                         tool_call_id: tool_call.id.clone(),
                         success: true,
@@ -317,25 +336,23 @@ impl Default for ToolRegistry {
 // =============================================================================
 
 /// Read file tool with path validation
-pub struct ReadFileTool {
-    workspace_root: Option<std::path::PathBuf>,
-}
+pub struct ReadFileTool;
 
 impl ReadFileTool {
-    pub fn new(workspace_root: Option<std::path::PathBuf>) -> Self {
-        Self { workspace_root }
+    pub fn new() -> Self {
+        Self
     }
 }
 
 #[async_trait::async_trait]
 impl ToolExecutor for ReadFileTool {
-    async fn execute(&self, args: serde_json::Value) -> ToolResult_ {
+    async fn execute(&self, args: serde_json::Value, ctx: &ToolContext) -> ToolResult_ {
         let path_str = args
             .get("path")
             .and_then(|v| v.as_str())
             .ok_or_else(|| ToolError::ExecutionFailed("Missing 'path' argument".to_string()))?;
 
-        let path = validate_path(path_str, self.workspace_root.as_deref())?;
+        let path = validate_path(path_str, ctx.workspace_root.as_deref())?;
         let content = tokio::fs::read_to_string(&path).await?;
         Ok(content)
     }
@@ -366,19 +383,17 @@ impl ToolExecutor for ReadFileTool {
 }
 
 /// Write file tool with path validation
-pub struct WriteFileTool {
-    workspace_root: Option<std::path::PathBuf>,
-}
+pub struct WriteFileTool;
 
 impl WriteFileTool {
-    pub fn new(workspace_root: Option<std::path::PathBuf>) -> Self {
-        Self { workspace_root }
+    pub fn new() -> Self {
+        Self
     }
 }
 
 #[async_trait::async_trait]
 impl ToolExecutor for WriteFileTool {
-    async fn execute(&self, args: serde_json::Value) -> ToolResult_ {
+    async fn execute(&self, args: serde_json::Value, ctx: &ToolContext) -> ToolResult_ {
         let path_str = args
             .get("path")
             .and_then(|v| v.as_str())
@@ -389,7 +404,7 @@ impl ToolExecutor for WriteFileTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| ToolError::ExecutionFailed("Missing 'content' argument".to_string()))?;
 
-        let path = validate_path(path_str, self.workspace_root.as_deref())?;
+        let path = validate_path(path_str, ctx.workspace_root.as_deref())?;
         tokio::fs::write(&path, content).await?;
         Ok(format!("Successfully wrote {} bytes to {}", content.len(), path.display()))
     }
@@ -418,25 +433,23 @@ impl ToolExecutor for WriteFileTool {
 }
 
 /// List directory tool with path validation
-pub struct ListDirectoryTool {
-    workspace_root: Option<std::path::PathBuf>,
-}
+pub struct ListDirectoryTool;
 
 impl ListDirectoryTool {
-    pub fn new(workspace_root: Option<std::path::PathBuf>) -> Self {
-        Self { workspace_root }
+    pub fn new() -> Self {
+        Self
     }
 }
 
 #[async_trait::async_trait]
 impl ToolExecutor for ListDirectoryTool {
-    async fn execute(&self, args: serde_json::Value) -> ToolResult_ {
+    async fn execute(&self, args: serde_json::Value, ctx: &ToolContext) -> ToolResult_ {
         let path_str = args
             .get("path")
             .and_then(|v| v.as_str())
             .ok_or_else(|| ToolError::ExecutionFailed("Missing 'path' argument".to_string()))?;
 
-        let path = validate_path(path_str, self.workspace_root.as_deref())?;
+        let path = validate_path(path_str, ctx.workspace_root.as_deref())?;
 
         let mut entries = Vec::new();
         let mut read_dir = tokio::fs::read_dir(&path).await?;
@@ -533,7 +546,7 @@ impl Default for BashTool {
 
 #[async_trait::async_trait]
 impl ToolExecutor for BashTool {
-    async fn execute(&self, args: serde_json::Value) -> ToolResult_ {
+    async fn execute(&self, args: serde_json::Value, ctx: &ToolContext) -> ToolResult_ {
         let command = args
             .get("command")
             .and_then(|v| v.as_str())
@@ -551,8 +564,11 @@ impl ToolExecutor for BashTool {
         let mut cmd = tokio::process::Command::new("sh");
         cmd.arg("-c").arg(command);
 
+        // Use explicit cwd if provided, otherwise default to workspace root
         if let Some(dir) = cwd {
             cmd.current_dir(dir);
+        } else if let Some(ref root) = ctx.workspace_root {
+            cmd.current_dir(root);
         }
 
         // Execute with timeout
@@ -629,17 +645,27 @@ pub struct GrepTool;
 
 #[async_trait::async_trait]
 impl ToolExecutor for GrepTool {
-    async fn execute(&self, args: serde_json::Value) -> ToolResult_ {
+    async fn execute(&self, args: serde_json::Value, ctx: &ToolContext) -> ToolResult_ {
         let pattern = args
             .get("pattern")
             .and_then(|v| v.as_str())
             .ok_or_else(|| ToolError::ExecutionFailed("Missing 'pattern' argument".to_string()))?;
 
-        let path = args.get("path").and_then(|v| v.as_str()).unwrap_or(".");
+        let arg_path = args.get("path").and_then(|v| v.as_str()).unwrap_or(".");
+
+        // Default "." to workspace root when available
+        let search_path = if arg_path == "." {
+            ctx.workspace_root.as_ref()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| ".".to_string())
+        } else {
+            arg_path.to_string()
+        };
+
         let max_results = args.get("maxResults").and_then(|v| v.as_u64()).unwrap_or(50);
 
         let output = tokio::process::Command::new("grep")
-            .args(["-rn", "--include=*", "-m", &max_results.to_string(), pattern, path])
+            .args(["-rn", "--include=*", "-m", &max_results.to_string(), pattern, &search_path])
             .output()
             .await?;
 
@@ -687,9 +713,9 @@ impl ToolExecutor for GrepTool {
 /// Create a default tool registry with built-in tools
 pub fn create_default_registry() -> ToolRegistry {
     let mut registry = ToolRegistry::new();
-    registry.register(ReadFileTool::new(None));
-    registry.register(WriteFileTool::new(None));
-    registry.register(ListDirectoryTool::new(None));
+    registry.register(ReadFileTool::new());
+    registry.register(WriteFileTool::new());
+    registry.register(ListDirectoryTool::new());
     registry.register(BashTool::new());
     registry.register(GrepTool);
     registry

@@ -113,6 +113,7 @@ export function TerminalView({ terminalId, isActive, onExit }: TerminalViewProps
 			fontSize: 13,
 			fontFamily: '"MesloLGS NF", "Hack Nerd Font", "FiraCode Nerd Font", "JetBrainsMono Nerd Font", ui-monospace, "SF Mono", Menlo, Monaco, "Cascadia Code", monospace',
 			theme: buildTerminalTheme(),
+			allowTransparency: false,
 			allowProposedApi: true,
 			scrollback: 5000,
 		});

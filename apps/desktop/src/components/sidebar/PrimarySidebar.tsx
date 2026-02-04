@@ -6,7 +6,6 @@ import { useState, useCallback, useMemo } from 'react';
 import type { FC } from 'react';
 import { FileExplorer } from '@/components/file-explorer';
 import { SessionList, ApiKeyDialog } from '@/components/agent';
-import { SidebarToggle } from './SidebarToggle';
 import { TabGroup } from './TabButton';
 import { TRANSITIONS } from '@/lib/constants';
 import { useUIStore, useIsLeftSidebarCollapsed } from '@/stores/uiStore';
@@ -114,9 +113,6 @@ export const PrimarySidebar: FC<PrimarySidebarProps> = ({ width, onFileOpen }) =
             onTabChange={handleTabChange}
           />
         )}
-        <div className="flex items-center gap-0.5">
-          <SidebarToggle className={isCollapsed ? 'mx-auto' : ''} />
-        </div>
       </div>
 
       {/* Tab Content - Sliding Reel */}

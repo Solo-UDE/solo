@@ -1,0 +1,21 @@
+[package]
+name = "solo-git"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Git operations for Solo IDE, including worktree management"
+
+[dependencies]
+solo-core = { path = "../solo-core" }
+solo-protocol = { path = "../solo-protocol" }
+
+git2 = "0.19"
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing = "0.1"
+uuid = { version = "1.0", features = ["v4"] }
+
+[dev-dependencies]
+tempfile = "3"

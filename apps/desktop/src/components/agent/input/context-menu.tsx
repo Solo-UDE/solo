@@ -37,17 +37,11 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
         <Plus className="h-4 w-4 text-foreground" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-48">
-        <DropdownMenuItem
-          onClick={onImageSelect}
-          className="flex items-center gap-2 cursor-pointer"
-        >
+        <DropdownMenuItem onClick={onImageSelect}>
           <Image className="h-4 w-4" />
           <span>Images</span>
         </DropdownMenuItem>
-        <DropdownMenuItem
-          onClick={onMentionSelect}
-          className="flex items-center gap-2 cursor-pointer"
-        >
+        <DropdownMenuItem onClick={onMentionSelect}>
           <At className="h-4 w-4" />
           <span>Mentions</span>
         </DropdownMenuItem>

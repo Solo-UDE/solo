@@ -141,7 +141,7 @@ export const ModelPicker: FC<ModelPickerProps> = ({
         <DropdownMenuContent
           align="start"
           side={side}
-          className="w-56 bg-popover border border-border flex flex-col gap-0.5 p-1"
+          className="w-56 flex flex-col gap-0.5"
         >
           {MODEL_OPTIONS.map((option) => {
             const isSelected = option.value === selectedModel;
@@ -152,10 +152,8 @@ export const ModelPicker: FC<ModelPickerProps> = ({
                   void handleModelSelect(option.value);
                 }}
                 className={cn(
-                  'flex items-start gap-2.5 px-2 py-1.5 rounded-md cursor-pointer transition-colors',
-                  isSelected
-                    ? 'bg-accent-foreground/10'
-                    : 'hover:bg-accent-foreground/5 focus:bg-accent-foreground/5'
+                  'items-start gap-2.5',
+                  isSelected && 'bg-accent'
                 )}
               >
                 <div className="mt-0.5 shrink-0">

@@ -23,6 +23,7 @@ solo-fs = { path = "../../../crates/solo-fs" }
 solo-agent = { path = "../../../crates/solo-agent" }
 solo-parse = { path = "../../../crates/solo-parse" }
 solo-embeddings = { path = "../../../crates/solo-embeddings" }
+solo-git = { path = "../../../crates/solo-git" }
 
 tauri = { workspace = true, features = ["macos-private-api"] }
 uuid = { version = "1.11", features = ["v4"] }

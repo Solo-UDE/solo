@@ -20,6 +20,7 @@ export function useSyncedScroll({
   // Track which pane initiated the current scroll to prevent feedback loops
   const scrollSourceRef = useRef<'editor' | 'preview' | null>(null);
   const scrollTimeoutRef = useRef<number | null>(null);
+  const prevEnabledRef = useRef(false);
 
   // Sync preview scroll position when editor scrolls
   const syncPreviewToEditor = useCallback(() => {
@@ -73,6 +74,32 @@ export function useSyncedScroll({
       scrollSourceRef.current = null;
     }, 150);
   }, [enabled, editor, previewElement]);
+
+  // Initial sync when enabled transitions to true (delay past split-pane animation)
+  useEffect(() => {
+    if (!enabled || !editor || !previewElement) {
+      prevEnabledRef.current = enabled;
+      return;
+    }
+    if (!prevEnabledRef.current) {
+      const timer = window.setTimeout(() => syncPreviewToEditor(), 350);
+      prevEnabledRef.current = true;
+      return () => clearTimeout(timer);
+    }
+    prevEnabledRef.current = enabled;
+  }, [enabled, editor, previewElement, syncPreviewToEditor]);
+
+  // ResizeObserver: re-sync when preview scroll dimensions change (Shiki load, images, animation)
+  useEffect(() => {
+    if (!enabled || !previewElement) return;
+    const observer = new ResizeObserver(() => {
+      if (scrollSourceRef.current === null) {
+        requestAnimationFrame(syncPreviewToEditor);
+      }
+    });
+    observer.observe(previewElement);
+    return () => observer.disconnect();
+  }, [enabled, previewElement, syncPreviewToEditor]);
 
   // Subscribe to editor scroll events
   useEffect(() => {

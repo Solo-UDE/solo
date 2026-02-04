@@ -1,6 +1,7 @@
 import { CaretDown, Sparkle } from '@phosphor-icons/react';
 import React from 'react';
 
+import { cn } from '../../../lib/utils';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -74,10 +75,10 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
             onClick={() => {
               onChange(model.id);
             }}
-            className={`
-              flex items-start gap-3 cursor-pointer p-3
-              ${value === model.id ? 'bg-primary/10' : ''}
-            `}
+            className={cn(
+              'items-start gap-3 p-3',
+              value === model.id && 'bg-accent'
+            )}
           >
             <Sparkle className="h-4 w-4 mt-0.5 text-foreground" />
             <div className="flex flex-col">

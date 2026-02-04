@@ -1,22 +1,23 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { GearSix, SignOut, Terminal } from "@phosphor-icons/react";
+import { GearSix, SidebarSimple, SignOut, Terminal } from "@phosphor-icons/react";
 import { PrimarySidebar } from "./components/sidebar";
 import { SidebarTerminal } from "./components/sidebar";
 import { MosaicLayout } from "./components/panels";
 import { AuthGuard } from "./components/auth";
-import { useUIStore } from "./stores/uiStore";
+import { useUIStore, useIsLeftSidebarCollapsed } from "./stores/uiStore";
 import { usePanelTabsStore } from "./stores/panelTabsStore";
 import { useProviderStore } from "./stores/provider-store";
 import { useAgentStore } from "./stores/agentStore";
 import { useAuthStore, useUser } from "./stores/authStore";
 import { registerBuiltinPanels, BUILTIN_PANEL_TYPES } from "./lib/panels";
-import { SettingsModal } from "./components/settings";
+import { SettingsView } from "./components/settings";
 import { useAutosave } from "./hooks/useAutosave";
 import { useColorScheme } from "./hooks/useColorScheme";
 import { useTitlebarStyle } from "./hooks/usePlatform";
 import { useAgentStream } from "./hooks/useAgentStream";
 import { useTerminalStream } from "./hooks/useTerminalStream";
+import { useWorktreeStream } from "./hooks/useWorktreeStream";
 import { useTerminalStore } from "./stores/terminalStore";
 import { useFileExplorerStore } from "./stores/fileExplorerStore";
 import { createTerminal } from "./lib/tauri/terminal";
@@ -28,7 +29,6 @@ registerBuiltinPanels();
 
 function AppContent() {
   const [backendStatus, setBackendStatus] = useState<string>("Connecting...");
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const dragStartX = useRef<number>(0);
   const dragStartWidth = useRef<number>(0);
@@ -40,7 +40,12 @@ function AppContent() {
 
   const leftSidebarWidth = useUIStore((state) => state.leftSidebarWidth);
   const setLeftSidebarWidth = useUIStore((state) => state.setLeftSidebarWidth);
+  const isCollapsed = useIsLeftSidebarCollapsed();
+  const toggleSidebar = useUIStore((s) => s.toggleLeftSidebar);
   const terminalPanelOpen = useUIStore((s) => s.terminalPanelOpen);
+  const settingsOpen = useUIStore((s) => s.settingsOpen);
+  const openSettings = useUIStore((s) => s.openSettings);
+  const closeSettings = useUIStore((s) => s.closeSettings);
   const terminalPanelHeight = useUIStore((s) => s.terminalPanelHeight);
   const setTerminalPanelHeight = useUIStore((s) => s.setTerminalPanelHeight);
   const initializeProviders = useProviderStore((state) => state.initialize);
@@ -91,6 +96,7 @@ function AppContent() {
   // Set up event stream listeners (hooks manage their own lifecycle)
   useAgentStream();
   useTerminalStream();
+  useWorktreeStream();
 
   // Load persisted agent sessions on startup
   useEffect(() => {
@@ -118,17 +124,25 @@ function AppContent() {
     uiState.toggleTerminalPanel();
   }, []);
 
-  // Keyboard shortcut: Ctrl+` (Cmd+` on Mac) to toggle terminal panel
+  // Keyboard shortcuts: Ctrl+` toggle terminal, Cmd+, toggle settings
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === '`' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
         handleToggleTerminal();
       }
+      if (e.key === ',' && e.metaKey) {
+        e.preventDefault();
+        if (settingsOpen) {
+          closeSettings();
+        } else {
+          openSettings();
+        }
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleToggleTerminal]);
+  }, [handleToggleTerminal, settingsOpen, openSettings, closeSettings]);
 
   // Open a file in the panel system
   const handleFileOpen = useCallback((path: string) => {
@@ -218,7 +232,18 @@ function AppContent() {
         style={titlebarStyle}
         className="absolute top-0 inset-x-0 h-[38px] flex items-center z-50 backdrop-blur-md bg-background/70 titlebar-glass"
       >
-        <div className="flex-1" data-tauri-drag-region />
+        <div className="flex-1 flex items-center" data-tauri-drag-region>
+          <button
+            onClick={toggleSidebar}
+            className="p-1 rounded hover:bg-foreground/[0.08] transition-colors ml-1.5"
+            title={isCollapsed ? 'Expand Sidebar (⌘B)' : 'Collapse Sidebar (⌘B)'}
+          >
+            <SidebarSimple
+              weight={isCollapsed ? 'regular' : 'fill'}
+              className="w-3.5 h-3.5 text-muted-foreground"
+            />
+          </button>
+        </div>
 
         <span className="text-xs font-medium text-muted-foreground/60" data-tauri-drag-region>
           Solo
@@ -250,9 +275,9 @@ function AppContent() {
             <Terminal className="w-3.5 h-3.5 text-muted-foreground" />
           </button>
           <button
-            onClick={() => setIsSettingsOpen(true)}
+            onClick={() => openSettings()}
             className="p-1 rounded hover:bg-foreground/[0.08] transition-colors"
-            title="Settings"
+            title="Settings (⌘,)"
           >
             <GearSix className="w-3.5 h-3.5 text-muted-foreground" />
           </button>
@@ -267,52 +292,56 @@ function AppContent() {
       </div>
 
       {/* Full-height content — sidebar bg extends behind titlebar */}
-      <div className="flex h-full">
-        <PrimarySidebar width={leftSidebarWidth} onFileOpen={handleFileOpen} />
-
-        <div
-          className={cn('split-divider', isDragging && 'dragging')}
-          onMouseDown={handleMouseDown}
-          onDoubleClick={handleDoubleClick}
-        >
-          <div className="split-divider-grip">
-            <span /><span /><span />
-          </div>
+      {settingsOpen ? (
+        <div className="flex h-full pt-[38px]">
+          <SettingsView />
         </div>
+      ) : (
+        <div className="flex h-full">
+          <PrimarySidebar width={leftSidebarWidth} onFileOpen={handleFileOpen} />
 
-        {/* Right column: opaque background covers vibrancy for editor area */}
-        <div className="flex-1 flex flex-col overflow-hidden min-h-0 pt-[38px] bg-background">
-          <div className="flex-1 overflow-hidden min-h-0">
-            <MosaicLayout />
+          <div
+            className={cn('split-divider', isDragging && 'dragging', isCollapsed && 'hidden')}
+            onMouseDown={handleMouseDown}
+            onDoubleClick={handleDoubleClick}
+          >
+            <div className="split-divider-grip">
+              <span /><span /><span />
+            </div>
           </div>
 
-          <div className={cn(
-            'grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]',
-            terminalPanelOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]',
-          )}>
-            <div className="overflow-hidden min-h-0">
-              <div
-                className={cn(
-                  'h-1.5 shrink-0 cursor-row-resize flex items-center justify-center hover:bg-primary/20 transition-colors',
-                  isDraggingTerminal && 'bg-primary/30',
-                )}
-                onMouseDown={handleTerminalDragStart}
-              >
-                <div className="w-8 h-px bg-border/60 rounded-full" />
-              </div>
+          {/* Right column: opaque background covers vibrancy for editor area */}
+          <div className="flex-1 flex flex-col overflow-hidden min-h-0 pt-[38px] bg-background">
+            <div className="flex-1 overflow-hidden min-h-0">
+              <MosaicLayout />
+            </div>
 
-              <div
-                className="overflow-hidden"
-                style={{ height: terminalPanelHeight }}
-              >
-                <SidebarTerminal />
+            <div className={cn(
+              'grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]',
+              terminalPanelOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]',
+            )}>
+              <div className="overflow-hidden min-h-0">
+                <div
+                  className={cn(
+                    'h-1.5 shrink-0 cursor-row-resize flex items-center justify-center hover:bg-primary/20 transition-colors',
+                    isDraggingTerminal && 'bg-primary/30',
+                  )}
+                  onMouseDown={handleTerminalDragStart}
+                >
+                  <div className="w-8 h-px bg-border/60 rounded-full" />
+                </div>
+
+                <div
+                  className="overflow-hidden"
+                  style={{ height: terminalPanelHeight }}
+                >
+                  <SidebarTerminal />
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
-
-      <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+      )}
     </div>
   );
 }

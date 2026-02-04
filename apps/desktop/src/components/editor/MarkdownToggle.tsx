@@ -1,36 +1,54 @@
 /**
- * MarkdownToggle - Button to toggle markdown preview pane
- * Shows PanelRight/PanelRightClose icon based on preview state
+ * MarkdownToggle - Single button that cycles through markdown modes.
+ * Cycle: off → split → rendered → raw → off
  */
 
-import { SidebarSimple } from '@phosphor-icons/react';
+import { SidebarSimple, Eye, Code, Columns } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 
+import type { MarkdownMode } from '@/stores/editorStore';
+
 interface MarkdownToggleProps {
-  enabled: boolean;
-  onToggle: () => void;
+  mode: MarkdownMode;
+  onCycle: () => void;
   className?: string;
 }
 
-export function MarkdownToggle({ enabled, onToggle, className }: MarkdownToggleProps) {
+const MODE_ICONS: Record<MarkdownMode, typeof Eye> = {
+  off: SidebarSimple,
+  split: Columns,
+  rendered: Eye,
+  raw: Code,
+};
+
+const MODE_LABELS: Record<MarkdownMode, string> = {
+  off: 'Preview off',
+  split: 'Split view',
+  rendered: 'Preview only',
+  raw: 'Source only',
+};
+
+export function MarkdownToggle({ mode, onCycle, className }: MarkdownToggleProps) {
+  const Icon = MODE_ICONS[mode];
+  const label = MODE_LABELS[mode];
+
   return (
     <button
-      onClick={onToggle}
+      onClick={onCycle}
       className={cn(
-        'flex items-center justify-center gap-1.5',
+        'flex items-center justify-center',
         'h-7 px-2 rounded-lg',
         'text-muted-foreground',
         'hover:bg-muted/60 hover:text-foreground',
         'hover:scale-[1.02] active:scale-[0.97]',
         'transition-all duration-200',
-        enabled && 'bg-primary/10 text-primary',
-        className
+        mode !== 'off' && 'bg-primary/10 text-primary',
+        className,
       )}
-      title={enabled ? 'Hide preview' : 'Show preview'}
-      aria-label={enabled ? 'Hide markdown preview' : 'Show markdown preview'}
-      aria-pressed={enabled}
+      title={`${label} (Cmd+Shift+M to cycle)`}
+      aria-label={`Markdown: ${label}. Click to cycle.`}
     >
-      <SidebarSimple mirrored className="w-4 h-4" />
+      <Icon className="w-4 h-4" />
     </button>
   );
 }

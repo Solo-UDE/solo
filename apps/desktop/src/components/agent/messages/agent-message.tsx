@@ -45,6 +45,7 @@ export interface AgentMessageContent {
     }[];
   }[];
   autoProceed?: boolean;
+  isStreaming?: boolean;
 }
 
 export interface AgentMessageProps {
@@ -103,7 +104,7 @@ export const AgentMessage: FC<AgentMessageProps> = ({
         </div>
 
         {/* Narrative */}
-        {content.narrative ? <AgentNarrative content={content.narrative} /> : null}
+        {content.narrative ? <AgentNarrative content={content.narrative} isStreaming={content.isStreaming} /> : null}
 
         {/* Task Phase Cards */}
         {content.taskPhases && content.taskPhases.length > 0 ? (

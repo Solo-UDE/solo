@@ -122,7 +122,7 @@ export function MarkdownSplitPane({
   return (
     <div ref={containerRef} className={cn('flex h-full', className)}>
       <div
-        className={cn('overflow-hidden', paneTransitionClass)}
+        className={cn('overflow-hidden min-w-0', paneTransitionClass)}
         style={{ width: `${displayPosition}%` }}
       >
         {left}
@@ -143,7 +143,7 @@ export function MarkdownSplitPane({
           </div>
 
           <div
-            className={cn('overflow-hidden', paneTransitionClass)}
+            className={cn('overflow-hidden min-w-0', paneTransitionClass)}
             style={{ width: `${100 - displayPosition}%` }}
           >
             {right}

@@ -142,34 +142,33 @@ export function CodeEditor({ filePath, className = '' }: CodeEditorProps) {
 
   // Markdown preview state
   const isMarkdown = useMemo(() => isMarkdownFile(activeTab), [activeTab]);
-  const { enabled: markdownPreviewEnabled, splitPosition } = useMarkdownPreview(activeTab);
+  const { enabled: markdownPreviewEnabled, splitPosition, mode: markdownMode } = useMarkdownPreview(activeTab);
 
-  // Force word wrap when markdown preview is open (editor pane shrinks)
+  // Force word wrap in split mode (editor pane shrinks)
   const effectiveWordWrap = useMemo(() => {
-    if (isMarkdown && markdownPreviewEnabled) {
+    if (isMarkdown && markdownMode === 'split') {
       return true;
     }
     return editorSettings.wordWrap;
-  }, [isMarkdown, markdownPreviewEnabled, editorSettings.wordWrap]);
+  }, [isMarkdown, markdownMode, editorSettings.wordWrap]);
 
-  // Synchronized scrolling between editor and preview
+  // Synchronized scrolling between editor and preview (only in split mode)
   useSyncedScroll({
     editor: editorInstance,
     previewElement,
-    enabled: isMarkdown && markdownPreviewEnabled,
+    enabled: isMarkdown && markdownMode === 'split',
   });
 
   // Sync selection from preview to editor
   useSyncedSelection({
     editor: editorInstance,
     previewElement,
-    enabled: isMarkdown && markdownPreviewEnabled,
+    enabled: isMarkdown && markdownMode === 'split',
   });
 
-  // Markdown preview handlers
-  const handleToggleMarkdownPreview = useCallback(() => {
+  const handleCycleMarkdownMode = useCallback(() => {
     if (activeTab) {
-      storeRef.current.toggleMarkdownPreview(activeTab);
+      storeRef.current.cycleMarkdownMode(activeTab);
     }
   }, [activeTab]);
 
@@ -302,7 +301,7 @@ export function CodeEditor({ filePath, className = '' }: CodeEditorProps) {
     };
   }, [filePath, hasTab]);
 
-  // Global keyboard shortcut for save (backup in case editor doesn't have focus)
+  // Global keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 's') {
@@ -311,11 +310,18 @@ export function CodeEditor({ filePath, className = '' }: CodeEditorProps) {
           saveFile(activeTab);
         }
       }
+      // Cmd+Shift+M: cycle markdown mode
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'M') {
+        e.preventDefault();
+        if (activeTab && isMarkdown) {
+          storeRef.current.cycleMarkdownMode(activeTab);
+        }
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeTab, saveFile]);
+  }, [activeTab, saveFile, isMarkdown]);
 
   // Update Monaco options when settings change
   useEffect(() => {
@@ -434,7 +440,10 @@ export function CodeEditor({ filePath, className = '' }: CodeEditorProps) {
         onSymbolClick={navigateToSymbol}
         rightContent={
           isMarkdown ? (
-            <MarkdownToggle enabled={markdownPreviewEnabled} onToggle={handleToggleMarkdownPreview} />
+            <MarkdownToggle
+              mode={markdownMode}
+              onCycle={handleCycleMarkdownMode}
+            />
           ) : null
         }
       />
@@ -442,13 +451,17 @@ export function CodeEditor({ filePath, className = '' }: CodeEditorProps) {
       {/* Editor content - use split pane for markdown files to keep editor in stable tree position */}
       <div className="flex-1 overflow-hidden">
         {isMarkdown ? (
-          <MarkdownSplitPane
-            left={monacoEditor}
-            right={<MarkdownPreview ref={previewRefCallback} content={currentTabContent} />}
-            splitPosition={markdownPreviewEnabled ? splitPosition : 100}
-            onSplitChange={handleSplitPositionChange}
-            isOpen={markdownPreviewEnabled}
-          />
+          markdownMode === 'rendered' ? (
+            <MarkdownPreview ref={previewRefCallback} content={currentTabContent} />
+          ) : (
+            <MarkdownSplitPane
+              left={monacoEditor}
+              right={<MarkdownPreview ref={previewRefCallback} content={currentTabContent} />}
+              splitPosition={markdownMode === 'split' ? splitPosition : 100}
+              onSplitChange={handleSplitPositionChange}
+              isOpen={markdownMode === 'split'}
+            />
+          )
         ) : (
           monacoEditor
         )}

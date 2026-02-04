@@ -330,6 +330,8 @@ html.dark {
    attribute is set from the Rust setup closure on macOS. */
 html[data-vibrancy] {
   --sidebar: transparent;
+  --popover: oklch(0.22 0.015 58 / 70%);
+  --card: oklch(0.20 0.015 58 / 70%);
   background-color: transparent !important;
 }
 
@@ -428,6 +430,8 @@ html.dark ::-webkit-scrollbar-thumb:hover {
   flex: 1;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
 }
 
 /* Split/resize handles */
