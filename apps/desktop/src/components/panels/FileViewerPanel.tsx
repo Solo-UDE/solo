@@ -6,16 +6,12 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import Editor, { OnMount, BeforeMount } from '@monaco-editor/react';
-import type * as Monaco from 'monaco-editor';
 import { CircleNotch, WarningCircle } from '@phosphor-icons/react';
 import * as fs from '@/lib/tauri/fs';
 import { registerSoloTheme, SOLO_THEME_NAME } from '@/components/editor/theme';
 import { MarkdownPreview } from '@/components/editor/MarkdownPreview';
-import { MarkdownSplitPane } from '@/components/editor/MarkdownSplitPane';
 import { MarkdownToggle } from '@/components/editor/MarkdownToggle';
 import type { PanelProps } from '@/lib/panels/types';
-import { useSyncedScroll } from '@/hooks/useSyncedScroll';
-import { useSyncedSelection } from '@/hooks/useSyncedSelection';
 import type { MarkdownMode } from '@/stores/editorStore';
 
 interface FileViewerData {
@@ -106,42 +102,20 @@ export function FileViewerPanel({
   onTitleChange,
   onDirtyChange,
 }: PanelProps<FileViewerData>) {
-  const [editorInstance, setEditorInstance] = useState<Monaco.editor.IStandaloneCodeEditor | null>(null);
-  const [previewElement, setPreviewElement] = useState<HTMLDivElement | null>(null);
   const [content, setContent] = useState<string>('');
   const [originalContent, setOriginalContent] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [cursorPosition, setCursorPosition] = useState({ line: 1, col: 1 });
 
-  // Callback ref that updates state when preview mounts/unmounts
-  const previewRefCallback = useCallback((node: HTMLDivElement | null) => {
-    setPreviewElement(node);
-  }, []);
-
-  // Markdown mode state
-  const [markdownMode, setMarkdownMode] = useState<MarkdownMode>('off');
-  const [splitPosition, setSplitPosition] = useState(50);
+  // Markdown mode state — defaults to 'preview' for markdown files
+  const [markdownMode, setMarkdownMode] = useState<MarkdownMode>('preview');
 
   const filePath = data?.filePath;
   const fileName = data?.fileName ?? (filePath ? filePath.split('/').pop() : undefined) ?? 'Untitled';
 
   // Check if current file is markdown
   const isMarkdown = useMemo(() => isMarkdownFile(filePath), [filePath]);
-
-  const syncEnabled = isMarkdown && markdownMode === 'split';
-
-  useSyncedScroll({
-    editor: editorInstance,
-    previewElement,
-    enabled: syncEnabled,
-  });
-
-  useSyncedSelection({
-    editor: editorInstance,
-    previewElement,
-    enabled: syncEnabled,
-  });
 
   // Update title based on file name
   useEffect(() => {
@@ -208,8 +182,6 @@ export function FileViewerPanel({
   // Handle editor mount
   const handleEditorMount: OnMount = useCallback(
     (editor, monaco) => {
-      setEditorInstance(editor);
-
       // Add save command (Cmd+S / Ctrl+S)
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
         saveFile();
@@ -246,14 +218,8 @@ export function FileViewerPanel({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [saveFile]);
 
-  const handleCycleMarkdownMode = useCallback(() => {
-    const cycle: Record<MarkdownMode, MarkdownMode> = {
-      off: 'split',
-      split: 'rendered',
-      rendered: 'raw',
-      raw: 'off',
-    };
-    setMarkdownMode((prev) => cycle[prev]);
+  const handleSetMarkdownMode = useCallback((mode: MarkdownMode) => {
+    setMarkdownMode(mode);
   }, []);
 
   if (loading) {
@@ -285,6 +251,7 @@ export function FileViewerPanel({
   // Monaco editor component
   const monacoEditor = (
     <Editor
+      className="monaco-mount"
       height="100%"
       language={language}
       value={content}
@@ -329,25 +296,15 @@ export function FileViewerPanel({
         {isMarkdown && (
           <MarkdownToggle
             mode={markdownMode}
-            onCycle={handleCycleMarkdownMode}
+            onModeChange={handleSetMarkdownMode}
           />
         )}
       </div>
 
-      {/* Editor content - either split pane or Monaco only */}
+      {/* Editor content */}
       <div className="flex-1 overflow-hidden">
-        {isMarkdown && markdownMode !== 'off' ? (
-          markdownMode === 'rendered' ? (
-            <MarkdownPreview ref={previewRefCallback} content={content} />
-          ) : (
-            <MarkdownSplitPane
-              left={monacoEditor}
-              right={<MarkdownPreview ref={previewRefCallback} content={content} />}
-              splitPosition={markdownMode === 'split' ? splitPosition : 100}
-              onSplitChange={setSplitPosition}
-              isOpen={markdownMode === 'split'}
-            />
-          )
+        {isMarkdown && markdownMode === 'preview' ? (
+          <MarkdownPreview content={content} />
         ) : (
           monacoEditor
         )}

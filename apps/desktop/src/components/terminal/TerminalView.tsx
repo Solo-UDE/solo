@@ -73,6 +73,10 @@ function getCssVarHex(name: string): string {
 	return raw ? cssColorToHex(raw) : '';
 }
 
+function isVibrancy(): boolean {
+	return document.documentElement.hasAttribute('data-vibrancy');
+}
+
 function buildTerminalTheme(): Record<string, string> {
 	const dark = document.documentElement.classList.contains('dark');
 	const bg = getCssVarHex('--background');
@@ -80,7 +84,7 @@ function buildTerminalTheme(): Record<string, string> {
 	const muted = getCssVarHex('--muted');
 
 	return {
-		background: bg,
+		background: isVibrancy() ? '#00000000' : bg,
 		foreground: fg,
 		cursor: fg,
 		cursorAccent: bg,
@@ -113,7 +117,7 @@ export function TerminalView({ terminalId, isActive, onExit }: TerminalViewProps
 			fontSize: 13,
 			fontFamily: '"MesloLGS NF", "Hack Nerd Font", "FiraCode Nerd Font", "JetBrainsMono Nerd Font", ui-monospace, "SF Mono", Menlo, Monaco, "Cascadia Code", monospace',
 			theme: buildTerminalTheme(),
-			allowTransparency: false,
+			allowTransparency: isVibrancy(),
 			allowProposedApi: true,
 			scrollback: 5000,
 		});

@@ -310,9 +310,9 @@ function AppContent() {
             </div>
           </div>
 
-          {/* Right column: opaque background covers vibrancy for editor area */}
-          <div className="flex-1 flex flex-col overflow-hidden min-h-0 pt-[38px] bg-background">
-            <div className="flex-1 overflow-hidden min-h-0">
+          {/* Right column: transparent so terminal vibrancy shows through */}
+          <div className="flex-1 flex flex-col overflow-hidden min-h-0 pt-[38px]">
+            <div className="flex-1 overflow-hidden min-h-0 bg-background">
               <MosaicLayout />
             </div>
 

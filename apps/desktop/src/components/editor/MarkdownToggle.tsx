@@ -1,54 +1,54 @@
 /**
- * MarkdownToggle - Single button that cycles through markdown modes.
- * Cycle: off → split → rendered → raw → off
+ * MarkdownToggle - Segmented control for switching between Preview and Markdown (code) modes.
  */
 
-import { SidebarSimple, Eye, Code, Columns } from '@phosphor-icons/react';
+import { Eye, Code } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 
 import type { MarkdownMode } from '@/stores/editorStore';
 
 interface MarkdownToggleProps {
   mode: MarkdownMode;
-  onCycle: () => void;
+  onModeChange: (mode: MarkdownMode) => void;
   className?: string;
 }
 
-const MODE_ICONS: Record<MarkdownMode, typeof Eye> = {
-  off: SidebarSimple,
-  split: Columns,
-  rendered: Eye,
-  raw: Code,
-};
-
-const MODE_LABELS: Record<MarkdownMode, string> = {
-  off: 'Preview off',
-  split: 'Split view',
-  rendered: 'Preview only',
-  raw: 'Source only',
-};
-
-export function MarkdownToggle({ mode, onCycle, className }: MarkdownToggleProps) {
-  const Icon = MODE_ICONS[mode];
-  const label = MODE_LABELS[mode];
-
+export function MarkdownToggle({ mode, onModeChange, className }: MarkdownToggleProps) {
   return (
-    <button
-      onClick={onCycle}
+    <div
       className={cn(
-        'flex items-center justify-center',
-        'h-7 px-2 rounded-lg',
-        'text-muted-foreground',
-        'hover:bg-muted/60 hover:text-foreground',
-        'hover:scale-[1.02] active:scale-[0.97]',
-        'transition-all duration-200',
-        mode !== 'off' && 'bg-primary/10 text-primary',
+        'flex items-center rounded-md bg-muted/50 p-0.5 gap-0.5',
         className,
       )}
-      title={`${label} (Cmd+Shift+M to cycle)`}
-      aria-label={`Markdown: ${label}. Click to cycle.`}
     >
-      <Icon className="w-4 h-4" />
-    </button>
+      <button
+        onClick={() => onModeChange('preview')}
+        className={cn(
+          'flex items-center gap-1 px-2 h-5 rounded text-[11px] transition-all duration-150',
+          mode === 'preview'
+            ? 'bg-background text-foreground shadow-sm'
+            : 'text-muted-foreground hover:text-foreground',
+        )}
+        title="Preview (Cmd+Shift+M)"
+        aria-label="Preview mode"
+      >
+        <Eye className="w-3 h-3" />
+        <span>Preview</span>
+      </button>
+      <button
+        onClick={() => onModeChange('code')}
+        className={cn(
+          'flex items-center gap-1 px-2 h-5 rounded text-[11px] transition-all duration-150',
+          mode === 'code'
+            ? 'bg-background text-foreground shadow-sm'
+            : 'text-muted-foreground hover:text-foreground',
+        )}
+        title="Markdown (Cmd+Shift+M)"
+        aria-label="Markdown mode"
+      >
+        <Code className="w-3 h-3" />
+        <span>Markdown</span>
+      </button>
+    </div>
   );
 }

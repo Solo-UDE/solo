@@ -73,7 +73,7 @@ export const SidebarTerminal: FC = () => {
   const terminalList = [...terminals.values()];
 
   return (
-    <div className="flex flex-col h-full bg-background">
+    <div className="flex flex-col h-full bg-background terminal-panel">
       {/* Header / tab bar */}
       <div
         className="flex items-center justify-between px-1.5 shrink-0 border-b border-border/30 bg-sidebar"

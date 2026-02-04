@@ -343,6 +343,10 @@ html[data-vibrancy] .titlebar-glass {
   background: rgb(255 255 255 / 0.03);
 }
 
+html[data-vibrancy] .terminal-panel {
+  background: transparent;
+}
+
 /* Disable text selection on UI elements */
 button,
 [role="button"],
@@ -425,7 +429,7 @@ html.dark ::-webkit-scrollbar-thumb:hover {
   display: none;
 }
 
-.mosaic-window-body {
+.mosaic-window .mosaic-window-body {
   background: transparent;
   flex: 1;
   display: flex;
@@ -488,6 +492,14 @@ html.dark ::-webkit-scrollbar-thumb:hover {
   border-radius: var(--radius-sm);
   z-index: 20;
   pointer-events: none;
+}
+
+/* Fix Monaco horizontal overflow in @monaco-editor/react's internal row flex.
+   The library wraps the editor in display:flex (row) — the mount div
+   defaults to min-width:auto, preventing shrink below content width. */
+.monaco-mount {
+  min-width: 0;
+  overflow: hidden;
 }
 
 /* Zero state (no tiles) */

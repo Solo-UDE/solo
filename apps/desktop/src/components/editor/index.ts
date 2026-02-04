@@ -5,6 +5,5 @@ export { SymbolOutline } from './SymbolOutline';
 export { Breadcrumbs } from './Breadcrumbs';
 export { EditorErrorBoundary } from './EditorErrorBoundary';
 export { MarkdownPreview } from './MarkdownPreview';
-export { MarkdownSplitPane } from './MarkdownSplitPane';
 export { MarkdownToggle } from './MarkdownToggle';
 export { CodeBlockWithCopy, MarkdownCode } from './CodeBlockWithCopy';
