@@ -9,7 +9,7 @@ import Editor, { OnMount, BeforeMount } from '@monaco-editor/react';
 import { CircleNotch, WarningCircle } from '@phosphor-icons/react';
 import * as fs from '@/lib/tauri/fs';
 import { registerSoloTheme, SOLO_THEME_NAME } from '@/components/editor/theme';
-import { MarkdownPreview } from '@/components/editor/MarkdownPreview';
+import { MarkdownEditor } from '@/components/editor/MarkdownEditor';
 import { MarkdownToggle } from '@/components/editor/MarkdownToggle';
 import type { PanelProps } from '@/lib/panels/types';
 import type { MarkdownMode } from '@/stores/editorStore';
@@ -304,7 +304,11 @@ export function FileViewerPanel({
       {/* Editor content */}
       <div className="flex-1 overflow-hidden">
         {isMarkdown && markdownMode === 'preview' ? (
-          <MarkdownPreview content={content} />
+          <MarkdownEditor
+            key={filePath}
+            content={content}
+            onContentChange={(md) => setContent(md)}
+          />
         ) : (
           monacoEditor
         )}

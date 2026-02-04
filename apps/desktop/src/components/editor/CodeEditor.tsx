@@ -14,7 +14,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useParseResults, getSymbolPath } from '../../hooks/useParseResults';
 import { EditorTabs } from './EditorTabs';
 import { Breadcrumbs } from './Breadcrumbs';
-import { MarkdownPreview } from './MarkdownPreview';
+import { MarkdownEditor } from './MarkdownEditor';
 import { MarkdownToggle } from './MarkdownToggle';
 import { registerSoloTheme, SOLO_THEME_NAME } from './theme';
 import type { Symbol } from '../../lib/tauri/parse';
@@ -134,6 +134,16 @@ export function CodeEditor({ filePath, className = '' }: CodeEditorProps) {
     (mode: import('../../stores/editorStore').MarkdownMode) => {
       if (activeTab) {
         storeRef.current.setMarkdownMode(activeTab, mode);
+      }
+    },
+    [activeTab]
+  );
+
+  // WYSIWYG → store: push serialized markdown back
+  const handleWysiwygChange = useCallback(
+    (md: string) => {
+      if (activeTab) {
+        storeRef.current.updateContent(activeTab, md);
       }
     },
     [activeTab]
@@ -410,7 +420,11 @@ export function CodeEditor({ filePath, className = '' }: CodeEditorProps) {
       {/* Editor content */}
       <div className="flex-1 overflow-hidden">
         {isMarkdown && markdownMode === 'preview' ? (
-          <MarkdownPreview content={currentTabContent} />
+          <MarkdownEditor
+            key={activeTab}
+            content={currentTabContent}
+            onContentChange={handleWysiwygChange}
+          />
         ) : (
           monacoEditor
         )}
