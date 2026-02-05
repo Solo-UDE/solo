@@ -27,6 +27,8 @@ pub enum CredentialSource {
     ClaudeOAuth,
     /// Solo IDE OAuth token
     SoloOAuth,
+    /// From Claude Code credentials file (~/.claude/.credentials.json)
+    ClaudeOAuthFile,
 }
 
 impl std::fmt::Display for CredentialSource {
@@ -36,6 +38,7 @@ impl std::fmt::Display for CredentialSource {
             CredentialSource::Environment => write!(f, "environment"),
             CredentialSource::ClaudeOAuth => write!(f, "claude-oauth"),
             CredentialSource::SoloOAuth => write!(f, "solo-oauth"),
+            CredentialSource::ClaudeOAuthFile => write!(f, "claude-oauth-file"),
         }
     }
 }
@@ -177,12 +180,18 @@ impl CredentialManager {
             }));
         }
 
-        // 3. For Anthropic, try Claude Code OAuth
+        // 3. For Anthropic, try Claude Code OAuth (keychain then file)
         if provider == ProviderType::Anthropic {
             if let Some(key) = self.get_claude_oauth().await? {
                 return Ok(Some(CredentialInfo {
                     api_key: key,
                     source: CredentialSource::ClaudeOAuth,
+                }));
+            }
+            if let Some(key) = self.get_claude_oauth_from_file()? {
+                return Ok(Some(CredentialInfo {
+                    api_key: key,
+                    source: CredentialSource::ClaudeOAuthFile,
                 }));
             }
         }
@@ -305,6 +314,145 @@ impl CredentialManager {
                 Ok(None)
             }
         }
+    }
+
+    /// Read Claude Code credentials from ~/.claude/.credentials.json
+    ///
+    /// This is a fallback when keychain access fails. Claude Code may write
+    /// credentials here as an alternative storage mechanism.
+    fn get_claude_oauth_from_file(&self) -> ProviderResult<Option<String>> {
+        let home = std::env::var("HOME").unwrap_or_default();
+        if home.is_empty() {
+            return Ok(None);
+        }
+        let path = std::path::PathBuf::from(&home)
+            .join(".claude")
+            .join(".credentials.json");
+
+        let content = match std::fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(_) => return Ok(None),
+        };
+
+        match serde_json::from_str::<serde_json::Value>(&content) {
+            Ok(value) => {
+                if let Some(access_token) = value
+                    .get("claudeAiOauth")
+                    .and_then(|oauth| oauth.get("accessToken"))
+                    .and_then(|t| t.as_str())
+                {
+                    if let Some(expires_at) = value
+                        .get("claudeAiOauth")
+                        .and_then(|oauth| oauth.get("expiresAt"))
+                        .and_then(|exp| exp.as_i64())
+                    {
+                        let now = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis() as i64;
+
+                        if expires_at <= now {
+                            tracing::debug!("Claude Code file OAuth token expired");
+                            return Ok(None);
+                        }
+                    }
+                    Ok(Some(access_token.to_string()))
+                } else {
+                    Ok(None)
+                }
+            }
+            Err(e) => {
+                tracing::warn!("Failed to parse ~/.claude/.credentials.json: {}", e);
+                Ok(None)
+            }
+        }
+    }
+
+    /// Get detailed Claude OAuth credential info (token + expiry + source).
+    ///
+    /// Used by `verify_claude_setup` to return structured status.
+    /// Returns (access_token, expires_at_ms, source, raw_oauth_json).
+    pub async fn get_claude_oauth_detailed(
+        &self,
+    ) -> ProviderResult<Option<(String, Option<i64>, CredentialSource, serde_json::Value)>> {
+        // Try keychain first
+        let keychain_result = Command::new("security")
+            .args([
+                "find-generic-password",
+                "-s",
+                "Claude Code-credentials",
+                "-w",
+            ])
+            .output();
+
+        if let Ok(output) = keychain_result {
+            if output.status.success() {
+                let json_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !json_str.is_empty() {
+                    if let Ok(value) = serde_json::from_str::<serde_json::Value>(&json_str) {
+                        if let Some(access_token) = value
+                            .get("claudeAiOauth")
+                            .and_then(|oauth| oauth.get("accessToken"))
+                            .and_then(|t| t.as_str())
+                        {
+                            let expires_at = value
+                                .get("claudeAiOauth")
+                                .and_then(|oauth| oauth.get("expiresAt"))
+                                .and_then(|exp| exp.as_i64());
+
+                            let oauth_obj = value
+                                .get("claudeAiOauth")
+                                .cloned()
+                                .unwrap_or(serde_json::Value::Null);
+
+                            return Ok(Some((
+                                access_token.to_string(),
+                                expires_at,
+                                CredentialSource::ClaudeOAuth,
+                                oauth_obj,
+                            )));
+                        }
+                    }
+                }
+            }
+        }
+
+        // Try file fallback
+        let home = std::env::var("HOME").unwrap_or_default();
+        if !home.is_empty() {
+            let path = std::path::PathBuf::from(&home)
+                .join(".claude")
+                .join(".credentials.json");
+
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                if let Ok(value) = serde_json::from_str::<serde_json::Value>(&content) {
+                    if let Some(access_token) = value
+                        .get("claudeAiOauth")
+                        .and_then(|oauth| oauth.get("accessToken"))
+                        .and_then(|t| t.as_str())
+                    {
+                        let expires_at = value
+                            .get("claudeAiOauth")
+                            .and_then(|oauth| oauth.get("expiresAt"))
+                            .and_then(|exp| exp.as_i64());
+
+                        let oauth_obj = value
+                            .get("claudeAiOauth")
+                            .cloned()
+                            .unwrap_or(serde_json::Value::Null);
+
+                        return Ok(Some((
+                            access_token.to_string(),
+                            expires_at,
+                            CredentialSource::ClaudeOAuthFile,
+                            oauth_obj,
+                        )));
+                    }
+                }
+            }
+        }
+
+        Ok(None)
     }
 
     /// Get credentials from environment variable
@@ -734,7 +882,7 @@ impl CredentialManager {
             let auth_type = match info.source {
                 CredentialSource::Keychain => AuthType::ApiKey,
                 CredentialSource::Environment => AuthType::ApiKey,
-                CredentialSource::ClaudeOAuth => AuthType::ClaudeOAuth,
+                CredentialSource::ClaudeOAuth | CredentialSource::ClaudeOAuthFile => AuthType::ClaudeOAuth,
                 CredentialSource::SoloOAuth => AuthType::OAuth,
             };
 
@@ -796,5 +944,6 @@ mod tests {
         assert_eq!(CredentialSource::Environment.to_string(), "environment");
         assert_eq!(CredentialSource::ClaudeOAuth.to_string(), "claude-oauth");
         assert_eq!(CredentialSource::SoloOAuth.to_string(), "solo-oauth");
+        assert_eq!(CredentialSource::ClaudeOAuthFile.to_string(), "claude-oauth-file");
     }
 }

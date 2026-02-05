@@ -3,4 +3,4 @@
 /**
  * Source of credentials
  */
-export type CredentialSource = "keychain" | "environment" | "claude-o-auth" | "solo-o-auth";
+export type CredentialSource = "keychain" | "environment" | "claude-o-auth" | "solo-o-auth" | "claude-o-auth-file";

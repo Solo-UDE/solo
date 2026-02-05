@@ -4,14 +4,14 @@
  */
 
 import { useCallback, useState, useEffect, useMemo } from 'react';
-import { CheckCircle, WarningCircle, CircleNotch, Clock, Terminal, Sparkle, CaretDown, CaretRight } from '@phosphor-icons/react';
+import { CheckCircle, WarningCircle, CircleNotch, Clock, Terminal, Sparkle, CaretDown, CaretRight, ArrowClockwise, XCircle, ShieldCheck } from '@phosphor-icons/react';
 import { useSettingsStore } from '../../../stores/settingsStore';
 import { useProviderStore, useOAuthPending } from '../../../stores/provider-store';
 import { useShallow } from 'zustand/react/shallow';
 import { SettingRow, SelectDropdown, ToggleSwitch, NumberInput, PasswordInput } from '../controls';
 import { ClaudeLoginModal } from '../ClaudeLoginModal';
-import { setOAuthTokenManual } from '../../../lib/backend';
-import type { ProviderType, AuthMethodInfo } from '../../../lib/backend';
+import { setOAuthTokenManual, verifyClaudeSetup } from '../../../lib/backend';
+import type { ProviderType, AuthMethodInfo, ClaudeSetupStatus } from '../../../lib/backend';
 
 /**
  * Format seconds into a human-readable string
@@ -318,6 +318,146 @@ function ProviderCard({
   );
 }
 
+/**
+ * Diagnostic panel showing Claude Code CLI setup status
+ */
+function ClaudeSetupDiagnostic() {
+  const [status, setStatus] = useState<ClaudeSetupStatus | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const runCheck = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await verifyClaudeSetup();
+      setStatus(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Run on mount
+  useEffect(() => {
+    runCheck();
+  }, [runCheck]);
+
+  const StatusRow = ({ label, children }: { label: string; children: React.ReactNode }) => (
+    <div className="flex items-center justify-between py-1.5">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="text-xs font-mono">{children}</span>
+    </div>
+  );
+
+  const StatusIcon = ({ ok }: { ok: boolean | null | undefined }) => {
+    if (ok === null || ok === undefined) {
+      return <span className="text-muted-foreground">—</span>;
+    }
+    return ok ? (
+      <CheckCircle className="w-3.5 h-3.5 text-green-600 inline" />
+    ) : (
+      <XCircle className="w-3.5 h-3.5 text-red-500 inline" />
+    );
+  };
+
+  return (
+    <div className="p-4 rounded-none border border-border bg-card/50 space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <ShieldCheck className="w-4 h-4 text-muted-foreground" />
+          <span className="text-sm font-medium text-foreground">Claude Code Setup</span>
+        </div>
+        <button
+          type="button"
+          onClick={runCheck}
+          disabled={loading}
+          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+        >
+          <ArrowClockwise className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+          {loading ? 'Checking...' : 'Recheck'}
+        </button>
+      </div>
+
+      {error && (
+        <div className="text-xs text-red-500 bg-red-500/10 px-2 py-1 rounded-none">
+          {error}
+        </div>
+      )}
+
+      {status && (
+        <div className="divide-y divide-border/50">
+          <StatusRow label="CLI installed">
+            <span className="flex items-center gap-1.5">
+              <StatusIcon ok={status.cliInstalled} />
+              {status.cliPath ?? 'Not found'}
+            </span>
+          </StatusRow>
+          <StatusRow label="Credentials">
+            <span className="flex items-center gap-1.5">
+              <StatusIcon ok={status.credentialsFound} />
+              {status.credentialSource ?? 'None'}
+            </span>
+          </StatusRow>
+          {status.requiresCliMode && (
+            <StatusRow label="Mode">
+              <span className="flex items-center gap-1.5">
+                <StatusIcon ok={status.cliModeAvailable} />
+                {status.cliModeAvailable ? 'CLI Mode (Subscription)' : 'CLI required'}
+              </span>
+            </StatusRow>
+          )}
+          <StatusRow label="Token expiry">
+            <span className="flex items-center gap-1.5">
+              <StatusIcon ok={status.credentialsFound ? !status.tokenExpired : null} />
+              {status.tokenExpiresInSeconds != null
+                ? status.tokenExpiresInSeconds > 0
+                  ? formatExpiryTime(status.tokenExpiresInSeconds)
+                  : 'Expired'
+                : '—'}
+            </span>
+          </StatusRow>
+          {status.scopes && (
+            <StatusRow label="Scopes">
+              <span className="text-[10px] text-muted-foreground">
+                {status.scopes.join(', ')}
+              </span>
+            </StatusRow>
+          )}
+          <StatusRow label="Status">
+            <span className="flex items-center gap-1.5">
+              <StatusIcon ok={status.apiVerified} />
+              {status.apiVerified === true
+                ? status.requiresCliMode ? 'Ready (via CLI)' : 'Working'
+                : status.apiVerified === false
+                  ? 'Failed'
+                  : 'Not checked'}
+            </span>
+          </StatusRow>
+          {status.error && (
+            <div className="pt-1.5 text-[10px] text-red-500/80 break-all">
+              {status.error}
+            </div>
+          )}
+          {status.requiresCliMode && !status.cliInstalled && (
+            <div className="pt-2 text-[10px] text-amber-600 bg-amber-500/10 px-2 py-1.5 rounded-none">
+              Subscription tokens require the Claude CLI. Install with:<br />
+              <code className="text-[10px]">npm i -g @anthropic-ai/claude-code</code>
+            </div>
+          )}
+        </div>
+      )}
+
+      {!status && !loading && !error && (
+        <div className="text-xs text-muted-foreground text-center py-2">
+          Click Recheck to verify setup
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function AITab() {
   // Per-provider API key input state
   const [apiKeyInputs, setApiKeyInputs] = useState<Record<string, string>>({
@@ -500,6 +640,14 @@ export function AITab() {
             hasCredentials={allProviderStatus['openai']?.has_credentials ?? false}
           />
         </div>
+      </div>
+
+      {/* Claude Code Setup Diagnostic */}
+      <div>
+        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+          Diagnostics
+        </h3>
+        <ClaudeSetupDiagnostic />
       </div>
 
       {/* Model Selection - show when there are models for the active provider */}

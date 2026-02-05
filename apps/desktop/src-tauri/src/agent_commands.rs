@@ -14,7 +14,7 @@ use solo_agent::{
     },
     AgentManager, CredentialManager, ProviderType,
 };
-use solo_protocol::{AgentMessage, AgentToolCall, BackendEvent, ToolCallStatus, ToolCallWithStatus, ToolResult};
+use solo_protocol::{AgentMessage, AgentToolCall, BackendEvent, ClaudeSetupStatus, ToolCallStatus, ToolCallWithStatus, ToolResult};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -639,8 +639,24 @@ pub async fn agent_create_session(
     // Get the active provider type
     let provider_type = state.manager.get_active_provider().await;
 
-    // Auto-initialize provider if it has credentials but isn't initialized yet
-    if !state.manager.is_provider_initialized(provider_type).await {
+    // For Anthropic, always re-initialize to ensure correct provider type
+    // (CLI vs Direct API) based on current credentials. This handles the case
+    // where the user runs `claude login` after the app starts.
+    if provider_type == ProviderType::Anthropic {
+        if state.credentials.has_credentials(provider_type).await {
+            info!(provider = %provider_type.as_str(), "Re-initializing Anthropic provider to ensure correct mode");
+            state.manager
+                .reinitialize_provider(provider_type)
+                .await
+                .map_err(|e| e.to_string())?;
+        } else {
+            return Err(format!(
+                "No credentials found for {}. Please add an API key or run `claude login`.",
+                provider_type.display_name()
+            ));
+        }
+    } else if !state.manager.is_provider_initialized(provider_type).await {
+        // Other providers: only initialize if not already done
         if state.credentials.has_credentials(provider_type).await {
             info!(provider = %provider_type.as_str(), "Auto-initializing provider with existing credentials");
             state.manager
@@ -1154,15 +1170,18 @@ pub async fn check_claude_cli_installed() -> Result<bool, String> {
     Ok(output.status.success())
 }
 
-/// Open Terminal and run claude to trigger native login flow
+/// Open Terminal and run `claude login` to trigger the native login flow
 #[tauri::command]
 pub async fn start_claude_login() -> Result<(), String> {
     info!("Starting Claude Code login");
 
-    std::process::Command::new("open")
-        .args(["-a", "Terminal"])
+    std::process::Command::new("osascript")
+        .args([
+            "-e",
+            "tell application \"Terminal\" to do script \"claude login\"",
+        ])
         .spawn()
-        .map_err(|e| format!("Failed to open Terminal: {}", e))?;
+        .map_err(|e| format!("Failed to open Terminal with claude login: {}", e))?;
 
     Ok(())
 }
@@ -1183,4 +1202,139 @@ pub async fn install_claude_cli() -> Result<(), String> {
     }
 
     Ok(())
+}
+
+/// Verify Claude Code CLI setup: CLI presence, credential parsing, and optional API validation.
+///
+/// Returns a structured `ClaudeSetupStatus` with all discoverable information
+/// rather than a bare boolean.
+#[tauri::command]
+pub async fn verify_claude_setup(
+    state: State<'_, AgentState>,
+) -> Result<ClaudeSetupStatus, String> {
+    info!("Verifying Claude Code setup");
+
+    let mut status = ClaudeSetupStatus {
+        cli_installed: false,
+        cli_path: None,
+        credentials_found: false,
+        credential_source: None,
+        token_expired: false,
+        token_expires_at: None,
+        token_expires_in_seconds: None,
+        scopes: None,
+        api_verified: None,
+        error: None,
+        cli_mode_available: false,
+        requires_cli_mode: false,
+    };
+
+    // 1. Check CLI installation
+    match std::process::Command::new("which").arg("claude").output() {
+        Ok(output) if output.status.success() => {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            status.cli_installed = true;
+            if !path.is_empty() {
+                status.cli_path = Some(path);
+            }
+        }
+        _ => {}
+    }
+
+    // 2. Read credentials (keychain then file fallback) with full detail
+    let detailed = state
+        .credentials
+        .get_claude_oauth_detailed()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let access_token = if let Some((token, expires_at, source, oauth_obj)) = detailed {
+        status.credentials_found = true;
+        status.credential_source = Some(source.to_string());
+        status.token_expires_at = expires_at;
+
+        // Extract scopes if present
+        if let Some(scopes_val) = oauth_obj.get("scopes") {
+            if let Some(arr) = scopes_val.as_array() {
+                let scopes: Vec<String> = arr
+                    .iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect();
+                if !scopes.is_empty() {
+                    status.scopes = Some(scopes);
+                }
+            }
+        }
+
+        // Check expiry
+        if let Some(exp) = expires_at {
+            let now_ms = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as i64;
+
+            let diff_seconds = (exp - now_ms) / 1000;
+            status.token_expires_in_seconds = Some(diff_seconds);
+            status.token_expired = exp <= now_ms;
+        }
+
+        Some(token)
+    } else {
+        None
+    };
+
+    // 3. Determine if this is a subscription token that requires CLI mode
+    // Claude Code OAuth tokens cannot be used for direct API calls - they must
+    // go through the CLI which handles subscription billing.
+    if status.credentials_found {
+        let source = status.credential_source.as_deref().unwrap_or("");
+        status.requires_cli_mode = source == "claude-oauth" || source == "claude-oauth-file";
+    }
+
+    // 4. CLI mode is available when CLI is installed and credentials exist
+    status.cli_mode_available = status.cli_installed && status.credentials_found && !status.token_expired;
+
+    // 5. API verification — skip for subscription tokens since they require CLI mode
+    // Direct API calls with OAuth tokens will fail with billing errors
+    if status.requires_cli_mode {
+        // Don't verify API directly - subscription tokens can't be used this way
+        if !status.cli_installed {
+            status.error = Some(
+                "Subscription token detected but Claude CLI not installed. \
+                 Install with: npm i -g @anthropic-ai/claude-code"
+                    .to_string(),
+            );
+        } else if status.cli_mode_available {
+            // CLI mode is available, mark as working
+            status.api_verified = Some(true);
+        }
+    } else if let Some(ref token) = access_token {
+        // For non-subscription tokens (Solo OAuth), verify API directly
+        if !status.token_expired {
+            match reqwest::Client::new()
+                .get("https://api.anthropic.com/v1/models")
+                .header("Authorization", format!("Bearer {}", token))
+                .header("anthropic-version", "2023-06-01")
+                .header("anthropic-beta", "oauth-2025-04-20")
+                .send()
+                .await
+            {
+                Ok(resp) => {
+                    let code = resp.status().as_u16();
+                    if code == 200 {
+                        status.api_verified = Some(true);
+                    } else {
+                        status.api_verified = Some(false);
+                        status.error = Some(format!("API returned HTTP {}", code));
+                    }
+                }
+                Err(e) => {
+                    // Network error — leave api_verified as None
+                    status.error = Some(format!("Network error: {}", e));
+                }
+            }
+        }
+    }
+
+    Ok(status)
 }

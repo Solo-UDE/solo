@@ -14,6 +14,7 @@
 
 | ID | Time | T | Title | Read |
 |----|------|---|-------|------|
+| #1229 | 4:56 PM | 🔵 | AnthropicProvider API Key vs CLI Mode Separation | ~457 |
 | #1114 | 2:08 PM | 🔵 | Complete Multi-Provider Model Registry | ~652 |
 | #1109 | 2:07 PM | 🔵 | AI Model Registry with Capabilities and Defaults | ~698 |
 | #1108 | 2:06 PM | 🔵 | AI Provider Abstraction and Error Handling | ~668 |

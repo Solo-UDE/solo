@@ -154,6 +154,7 @@ pub fn run() {
             agent_commands::check_claude_cli_installed,
             agent_commands::start_claude_login,
             agent_commands::install_claude_cli,
+            agent_commands::verify_claude_setup,
             // Parse commands
             parse_commands::parse_file,
             parse_commands::parse_content,
