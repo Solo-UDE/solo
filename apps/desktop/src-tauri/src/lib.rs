@@ -189,6 +189,10 @@ pub fn run() {
             git_commands::git_discard_file,
             git_commands::git_discard_all,
             git_commands::git_cleanup_locks,
+            git_commands::git_stage_file,
+            git_commands::git_unstage_file,
+            git_commands::git_stage_all,
+            git_commands::git_unstage_all,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

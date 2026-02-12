@@ -20,4 +20,8 @@ insertions: number,
 /**
  * Number of deleted lines
  */
-deletions: number, };
+deletions: number, 
+/**
+ * Whether the file is staged (in the git index)
+ */
+is_staged: boolean, };

@@ -65,3 +65,19 @@ export const gitDiscardAll = (branch?: string) =>
 /** Clean up stale git lock files */
 export const gitCleanupLocks = () =>
   invoke<void>('git_cleanup_locks');
+
+/** Stage a file (git add) */
+export const gitStageFile = (filePath: string) =>
+  invoke<void>('git_stage_file', { filePath });
+
+/** Unstage a file (git reset HEAD -- file) */
+export const gitUnstageFile = (filePath: string) =>
+  invoke<void>('git_unstage_file', { filePath });
+
+/** Stage all files (git add .) */
+export const gitStageAll = () =>
+  invoke<void>('git_stage_all');
+
+/** Unstage all files (git reset HEAD) */
+export const gitUnstageAll = () =>
+  invoke<void>('git_unstage_all');

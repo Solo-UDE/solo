@@ -11,6 +11,10 @@ import {
   gitPull,
   gitDiscardFile,
   gitDiscardAll,
+  gitStageFile,
+  gitUnstageFile,
+  gitStageAll,
+  gitUnstageAll,
 } from '@/lib/tauri/git';
 import { useFileExplorerStore } from '@/stores/fileExplorerStore';
 import type { GitRepoStatus } from '@/bindings/GitRepoStatus';
@@ -45,6 +49,10 @@ interface GitActions {
   pull: (accessToken: string, forceReset?: boolean) => Promise<void>;
   discardFile: (filePath: string) => Promise<void>;
   discardAll: () => Promise<void>;
+  stageFile: (filePath: string) => Promise<void>;
+  unstageFile: (filePath: string) => Promise<void>;
+  stageAllFiles: () => Promise<void>;
+  unstageAllFiles: () => Promise<void>;
   setCommitMessage: (message: string) => void;
   setCurrentBranch: (branch: string) => void;
   setGithubRepoUrl: (url: string) => void;
@@ -163,6 +171,46 @@ export const useGitStore = create<GitState & GitActions>()(
         await get().fetchChanges();
       } catch (err) {
         set((state) => { state.isDiscarding = false; });
+        throw err;
+      }
+    },
+
+    stageFile: async (filePath: string) => {
+      try {
+        await gitStageFile(filePath);
+        await get().fetchChanges();
+      } catch (err) {
+        console.error('Failed to stage file:', err);
+        throw err;
+      }
+    },
+
+    unstageFile: async (filePath: string) => {
+      try {
+        await gitUnstageFile(filePath);
+        await get().fetchChanges();
+      } catch (err) {
+        console.error('Failed to unstage file:', err);
+        throw err;
+      }
+    },
+
+    stageAllFiles: async () => {
+      try {
+        await gitStageAll();
+        await get().fetchChanges();
+      } catch (err) {
+        console.error('Failed to stage all files:', err);
+        throw err;
+      }
+    },
+
+    unstageAllFiles: async () => {
+      try {
+        await gitUnstageAll();
+        await get().fetchChanges();
+      } catch (err) {
+        console.error('Failed to unstage all files:', err);
         throw err;
       }
     },

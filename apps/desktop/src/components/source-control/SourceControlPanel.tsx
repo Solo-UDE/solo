@@ -2,7 +2,7 @@
  * SourceControlPanel — main sidebar panel for git source control
  */
 
-import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import type { FC } from 'react';
 import {
   ArrowsClockwise,
@@ -11,6 +11,8 @@ import {
   CaretRight,
   CloudArrowUp,
   GitBranch,
+  Minus,
+  Plus,
 } from '@phosphor-icons/react';
 import { useGitStore } from '@/stores/gitStore';
 import { usePanelTabsStore } from '@/stores/panelTabsStore';
@@ -25,6 +27,7 @@ interface SourceControlPanelProps {
 }
 
 export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) => {
+  const [stagedOpen, setStagedOpen] = useState(true);
   const [changesOpen, setChangesOpen] = useState(true);
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
@@ -32,8 +35,6 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
     message: string;
     onConfirm: () => void;
   }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
-
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Store selectors
   const repoStatus = useGitStore((s) => s.repoStatus);
@@ -48,8 +49,22 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
   const fetchChanges = useGitStore((s) => s.fetchChanges);
   const discardFile = useGitStore((s) => s.discardFile);
   const discardAll = useGitStore((s) => s.discardAll);
+  const stageFile = useGitStore((s) => s.stageFile);
+  const unstageFile = useGitStore((s) => s.unstageFile);
+  const stageAllFiles = useGitStore((s) => s.stageAllFiles);
+  const unstageAllFiles = useGitStore((s) => s.unstageAllFiles);
 
   const openPanel = useMemo(() => usePanelTabsStore.getState().openPanel, []);
+
+  // Split files into staged and unstaged
+  const stagedFiles = useMemo(
+    () => changedFiles.filter((f) => f.is_staged),
+    [changedFiles],
+  );
+  const unstagedFiles = useMemo(
+    () => changedFiles.filter((f) => !f.is_staged),
+    [changedFiles],
+  );
 
   // Start polling when mounted
   useEffect(() => {
@@ -114,7 +129,7 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
     setConfirmDialog({
       isOpen: true,
       title: 'Discard All Changes',
-      message: `Are you sure you want to discard all ${changedFiles.length} changed files? This cannot be undone.`,
+      message: `Are you sure you want to discard all ${unstagedFiles.length} changed files? This cannot be undone.`,
       onConfirm: () => {
         setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
         discardAll().catch((err) => {
@@ -122,7 +137,46 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
         });
       },
     });
-  }, [changedFiles.length, discardAll]);
+  }, [unstagedFiles.length, discardAll]);
+
+  // Stage/Unstage handlers
+  const handleStageFile = useCallback(
+    (filePath: string) => {
+      stageFile(filePath).catch((err) => {
+        console.error('Failed to stage file:', err);
+      });
+    },
+    [stageFile],
+  );
+
+  const handleUnstageFile = useCallback(
+    (filePath: string) => {
+      unstageFile(filePath).catch((err) => {
+        console.error('Failed to unstage file:', err);
+      });
+    },
+    [unstageFile],
+  );
+
+  const handleStageAll = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      stageAllFiles().catch((err) => {
+        console.error('Failed to stage all:', err);
+      });
+    },
+    [stageAllFiles],
+  );
+
+  const handleUnstageAll = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      unstageAllFiles().catch((err) => {
+        console.error('Failed to unstage all:', err);
+      });
+    },
+    [unstageAllFiles],
+  );
 
   const closeConfirmDialog = useCallback(() => {
     setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
@@ -169,7 +223,6 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
           {/* Commit Section */}
           <div className="px-3 pb-2 shrink-0">
             <textarea
-              ref={textareaRef}
               value={commitMessage}
               onChange={handleMessageChange}
               onKeyDown={handleKeyDown}
@@ -182,7 +235,7 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
               )}
             />
             <button
-              disabled={!commitMessage.trim() || isPushing}
+              disabled={!commitMessage.trim() || isPushing || stagedFiles.length === 0}
               className={cn(
                 'w-full h-[34px] mt-1.5 rounded-[10px] text-xs font-medium',
                 'flex items-center justify-center gap-1.5',
@@ -191,6 +244,7 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
                 'disabled:opacity-40 disabled:pointer-events-none',
                 'transition-all duration-200',
               )}
+              title={stagedFiles.length === 0 ? 'Stage files before committing' : undefined}
             >
               {isPushing ? (
                 <ArrowsClockwise className="w-3.5 h-3.5 animate-spin" />
@@ -201,8 +255,62 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
             </button>
           </div>
 
-          {/* Changes Section */}
+          {/* Staged Changes Section */}
           <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+            {stagedFiles.length > 0 && (
+              <>
+                {/* Staged header */}
+                <button
+                  onClick={() => setStagedOpen((prev) => !prev)}
+                  className={cn(
+                    'group flex items-center gap-1.5 h-7 px-3 shrink-0',
+                    'text-xs font-medium text-muted-foreground',
+                    'hover:text-foreground transition-colors duration-150',
+                  )}
+                >
+                  {stagedOpen ? (
+                    <CaretDown className="w-3 h-3" weight="bold" />
+                  ) : (
+                    <CaretRight className="w-3 h-3" weight="bold" />
+                  )}
+                  Staged Changes
+                  <span
+                    className={cn(
+                      'ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold',
+                      'bg-emerald-400/10 text-emerald-400',
+                    )}
+                  >
+                    {stagedFiles.length}
+                  </span>
+                  <span
+                    className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={handleUnstageAll}
+                  >
+                    <Minus
+                      className="w-3.5 h-3.5 text-muted-foreground hover:text-foreground transition-colors"
+                      weight="bold"
+                    />
+                  </span>
+                </button>
+
+                {/* Staged file list */}
+                {stagedOpen && (
+                  <div className="overflow-y-auto px-1">
+                    {stagedFiles.map((file) => (
+                      <FileChangeItem
+                        key={`staged-${file.path}`}
+                        file={file}
+                        onDiscard={handleDiscardFile}
+                        onViewDiff={handleViewDiff}
+                        onStage={handleStageFile}
+                        onUnstage={handleUnstageFile}
+                      />
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+
             {/* Changes header */}
             <button
               onClick={() => setChangesOpen((prev) => !prev)}
@@ -218,18 +326,18 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
                 <CaretRight className="w-3 h-3" weight="bold" />
               )}
               Changes
-              {changedFiles.length > 0 && (
+              {unstagedFiles.length > 0 && (
                 <span
                   className={cn(
                     'ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold',
                     'bg-primary/10 text-primary',
                   )}
                 >
-                  {changedFiles.length}
+                  {unstagedFiles.length}
                 </span>
               )}
               {changesSummary && (changesSummary.insertions > 0 || changesSummary.deletions > 0) && (
-                <span className="ml-auto flex items-center gap-1 text-[10px]">
+                <span className="ml-1 flex items-center gap-1 text-[10px]">
                   {changesSummary.insertions > 0 && (
                     <span className="text-emerald-400">+{changesSummary.insertions}</span>
                   )}
@@ -238,36 +346,45 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
                   )}
                 </span>
               )}
-              {changedFiles.length > 0 && (
-                <span
-                  className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDiscardAll();
-                  }}
-                >
-                  <ArrowCounterClockwise
-                    className="w-3.5 h-3.5 text-muted-foreground hover:text-destructive transition-colors"
-                    weight="bold"
-                  />
+              {unstagedFiles.length > 0 && (
+                <span className="ml-auto flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <span onClick={handleStageAll}>
+                    <Plus
+                      className="w-3.5 h-3.5 text-muted-foreground hover:text-foreground transition-colors"
+                      weight="bold"
+                    />
+                  </span>
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDiscardAll();
+                    }}
+                  >
+                    <ArrowCounterClockwise
+                      className="w-3.5 h-3.5 text-muted-foreground hover:text-destructive transition-colors"
+                      weight="bold"
+                    />
+                  </span>
                 </span>
               )}
             </button>
 
-            {/* File list */}
+            {/* Unstaged file list */}
             {changesOpen && (
               <div className="flex-1 overflow-y-auto px-1">
-                {changedFiles.length === 0 ? (
+                {unstagedFiles.length === 0 ? (
                   <div className="px-3 py-4 text-center">
                     <p className="text-[11px] text-muted-foreground/50">No changes detected</p>
                   </div>
                 ) : (
-                  changedFiles.map((file) => (
+                  unstagedFiles.map((file) => (
                     <FileChangeItem
                       key={file.path}
                       file={file}
                       onDiscard={handleDiscardFile}
                       onViewDiff={handleViewDiff}
+                      onStage={handleStageFile}
+                      onUnstage={handleUnstageFile}
                     />
                   ))
                 )}

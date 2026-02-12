@@ -285,16 +285,12 @@ pub async fn git_push(
 			// Check if we have any commits
 			let has_commits = repo.head().is_ok();
 
-			// Stage all files
+			// Only commit what's already staged in the index (user stages files via git_stage_file)
 			let mut index = repo.index().map_err(|e| format!("Failed to get index: {}", e))?;
-			index
-				.add_all(["*"].iter(), IndexAddOption::DEFAULT, None)
-				.map_err(|e| format!("Failed to stage files: {}", e))?;
-			index.write().map_err(|e| format!("Failed to write index: {}", e))?;
 
 			// Check if there are staged changes
 			let statuses = repo
-				.statuses(Some(StatusOptions::new().include_untracked(true)))
+				.statuses(Some(StatusOptions::new().include_untracked(false)))
 				.map_err(|e| format!("Failed to get status: {}", e))?;
 
 			let has_changes = statuses.iter().any(|entry| {
@@ -303,10 +299,7 @@ pub async fn git_push(
 					git2::Status::INDEX_NEW
 						| git2::Status::INDEX_MODIFIED
 						| git2::Status::INDEX_DELETED
-						| git2::Status::INDEX_RENAMED
-						| git2::Status::WT_NEW
-						| git2::Status::WT_MODIFIED
-						| git2::Status::WT_DELETED,
+						| git2::Status::INDEX_RENAMED,
 				)
 			});
 
@@ -804,6 +797,7 @@ pub async fn git_get_changes(
 											status,
 											insertions: 0,
 											deletions: 0,
+											is_staged: false,
 										});
 								}
 							}
@@ -854,6 +848,7 @@ pub async fn git_get_changes(
 							status: GitFileStatus::Added,
 							insertions: 0,
 							deletions: 0,
+							is_staged: false,
 						});
 				}
 			}
@@ -869,6 +864,7 @@ pub async fn git_get_changes(
 							status: GitFileStatus::Added,
 							insertions: 0,
 							deletions: 0,
+							is_staged: false,
 						});
 				}
 			}
@@ -908,6 +904,7 @@ pub async fn git_get_changes(
 							status,
 							insertions: 0,
 							deletions: 0,
+							is_staged: false,
 						});
 				}
 			}
@@ -945,7 +942,31 @@ pub async fn git_get_changes(
 			}
 		}
 
-		let files: Vec<GitChangedFile> = files_map.into_values().collect();
+		// Detect staging state from git index
+		let statuses = repo
+			.statuses(Some(StatusOptions::new().include_untracked(true).recurse_untracked_dirs(true)))
+			.ok();
+
+		if let Some(ref statuses) = statuses {
+			for entry in statuses.iter() {
+				if let Some(path) = entry.path() {
+					let s = entry.status();
+					let is_staged = s.intersects(
+						git2::Status::INDEX_NEW
+							| git2::Status::INDEX_MODIFIED
+							| git2::Status::INDEX_DELETED
+							| git2::Status::INDEX_RENAMED,
+					);
+					if let Some(file) = files_map.get_mut(path) {
+						file.is_staged = is_staged;
+					}
+				}
+			}
+		}
+
+		let mut files: Vec<GitChangedFile> = files_map.into_values().collect();
+		files.sort_by(|a, b| a.path.cmp(&b.path));
+
 		let summary = GitChangesSummary {
 			insertions: files.iter().map(|f| f.insertions).sum(),
 			deletions: files.iter().map(|f| f.deletions).sum(),
@@ -1204,6 +1225,178 @@ pub async fn git_cleanup_locks(
 
 	tokio::task::spawn_blocking(move || {
 		cleanup_git_locks(&workspace_path);
+		Ok(())
+	})
+	.await
+	.map_err(|e| format!("Task join error: {}", e))?
+}
+
+/// Stage a file (git add)
+#[tauri::command]
+pub async fn git_stage_file(
+	fs_state: State<'_, crate::fs_commands::FsState>,
+	app: AppHandle,
+	file_path: String,
+) -> Result<(), String> {
+	let workspace_path = get_workspace_path(&fs_state).await?;
+
+	tokio::task::spawn_blocking(move || {
+		let repo = Repository::open(&workspace_path)
+			.map_err(|e| format!("Failed to open repo: {}", e))?;
+
+		let mut index = repo.index().map_err(|e| format!("Failed to get index: {}", e))?;
+
+		let full_path = workspace_path.join(&file_path);
+		if full_path.exists() {
+			index
+				.add_path(Path::new(&file_path))
+				.map_err(|e| format!("Failed to stage file: {}", e))?;
+		} else {
+			// File was deleted — remove from index
+			index
+				.remove_path(Path::new(&file_path))
+				.map_err(|e| format!("Failed to stage deleted file: {}", e))?;
+		}
+
+		index.write().map_err(|e| format!("Failed to write index: {}", e))?;
+
+		emit_git_changes_updated(&app);
+		Ok(())
+	})
+	.await
+	.map_err(|e| format!("Task join error: {}", e))?
+}
+
+/// Unstage a file (git reset HEAD -- file)
+#[tauri::command]
+pub async fn git_unstage_file(
+	fs_state: State<'_, crate::fs_commands::FsState>,
+	app: AppHandle,
+	file_path: String,
+) -> Result<(), String> {
+	let workspace_path = get_workspace_path(&fs_state).await?;
+
+	tokio::task::spawn_blocking(move || {
+		let repo = Repository::open(&workspace_path)
+			.map_err(|e| format!("Failed to open repo: {}", e))?;
+
+		// Try to reset from HEAD; if no HEAD (fresh repo), remove from index
+		let head_result = repo.head();
+		let mut index = repo.index().map_err(|e| format!("Failed to get index: {}", e))?;
+
+		if let Ok(head) = head_result {
+			if let Ok(commit) = head.peel_to_commit() {
+				if let Ok(tree) = commit.tree() {
+					// Check if file exists in HEAD
+					if let Ok(entry) = tree.get_path(Path::new(&file_path)) {
+						// Restore the index entry from HEAD
+						let obj = entry.to_object(&repo)
+							.map_err(|e| format!("Failed to get object: {}", e))?;
+						let blob = obj.peel_to_blob()
+							.map_err(|e| format!("Failed to get blob: {}", e))?;
+
+						let idx_entry = git2::IndexEntry {
+							ctime: git2::IndexTime::new(0, 0),
+							mtime: git2::IndexTime::new(0, 0),
+							dev: 0,
+							ino: 0,
+							mode: entry.filemode() as u32,
+							uid: 0,
+							gid: 0,
+							file_size: blob.size() as u32,
+							id: blob.id(),
+							flags: 0,
+							flags_extended: 0,
+							path: file_path.as_bytes().to_vec(),
+						};
+						index.add(&idx_entry)
+							.map_err(|e| format!("Failed to restore index entry: {}", e))?;
+					} else {
+						// File doesn't exist in HEAD — remove from index
+						index.remove_path(Path::new(&file_path))
+							.map_err(|e| format!("Failed to remove from index: {}", e))?;
+					}
+				}
+			}
+		} else {
+			// No HEAD (fresh repo) — just remove from index
+			index.remove_path(Path::new(&file_path))
+				.map_err(|e| format!("Failed to remove from index: {}", e))?;
+		}
+
+		index.write().map_err(|e| format!("Failed to write index: {}", e))?;
+
+		emit_git_changes_updated(&app);
+		Ok(())
+	})
+	.await
+	.map_err(|e| format!("Task join error: {}", e))?
+}
+
+/// Stage all files (git add .)
+#[tauri::command]
+pub async fn git_stage_all(
+	fs_state: State<'_, crate::fs_commands::FsState>,
+	app: AppHandle,
+) -> Result<(), String> {
+	let workspace_path = get_workspace_path(&fs_state).await?;
+
+	tokio::task::spawn_blocking(move || {
+		let repo = Repository::open(&workspace_path)
+			.map_err(|e| format!("Failed to open repo: {}", e))?;
+
+		let mut index = repo.index().map_err(|e| format!("Failed to get index: {}", e))?;
+		index
+			.add_all(["*"].iter(), IndexAddOption::DEFAULT, None)
+			.map_err(|e| format!("Failed to stage all files: {}", e))?;
+
+		// Also handle deleted files
+		let statuses = repo
+			.statuses(Some(StatusOptions::new().include_untracked(false)))
+			.map_err(|e| format!("Failed to get status: {}", e))?;
+		for entry in statuses.iter() {
+			let s = entry.status();
+			if s.contains(git2::Status::WT_DELETED) {
+				if let Some(path) = entry.path() {
+					let _ = index.remove_path(Path::new(path));
+				}
+			}
+		}
+
+		index.write().map_err(|e| format!("Failed to write index: {}", e))?;
+
+		emit_git_changes_updated(&app);
+		Ok(())
+	})
+	.await
+	.map_err(|e| format!("Task join error: {}", e))?
+}
+
+/// Unstage all files (git reset HEAD)
+#[tauri::command]
+pub async fn git_unstage_all(
+	fs_state: State<'_, crate::fs_commands::FsState>,
+	app: AppHandle,
+) -> Result<(), String> {
+	let workspace_path = get_workspace_path(&fs_state).await?;
+
+	tokio::task::spawn_blocking(move || {
+		let repo = Repository::open(&workspace_path)
+			.map_err(|e| format!("Failed to open repo: {}", e))?;
+
+		if let Ok(head) = repo.head() {
+			if let Ok(obj) = head.peel(git2::ObjectType::Commit) {
+				repo.reset(&obj, ResetType::Mixed, None)
+					.map_err(|e| format!("Failed to unstage all: {}", e))?;
+			}
+		} else {
+			// No HEAD — clear the index entirely
+			let mut index = repo.index().map_err(|e| format!("Failed to get index: {}", e))?;
+			index.clear().map_err(|e| format!("Failed to clear index: {}", e))?;
+			index.write().map_err(|e| format!("Failed to write index: {}", e))?;
+		}
+
+		emit_git_changes_updated(&app);
 		Ok(())
 	})
 	.await

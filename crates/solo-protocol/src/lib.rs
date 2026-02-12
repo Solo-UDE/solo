@@ -470,6 +470,8 @@ pub struct GitChangedFile {
     pub insertions: u32,
     /// Number of deleted lines
     pub deletions: u32,
+    /// Whether the file is staged (in the git index)
+    pub is_staged: bool,
 }
 
 /// Summary of all changes

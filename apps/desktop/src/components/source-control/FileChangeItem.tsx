@@ -4,7 +4,7 @@
 
 import { useState, useCallback } from 'react';
 import type { FC } from 'react';
-import { ArrowCounterClockwise } from '@phosphor-icons/react';
+import { ArrowCounterClockwise, Plus, Minus } from '@phosphor-icons/react';
 import type { GitChangedFile } from '@/bindings/GitChangedFile';
 import type { GitFileStatus } from '@/bindings/GitFileStatus';
 import { cn } from '@/lib/utils';
@@ -13,6 +13,8 @@ interface FileChangeItemProps {
   readonly file: GitChangedFile;
   readonly onDiscard: (filePath: string) => void;
   readonly onViewDiff: (filePath: string) => void;
+  readonly onStage?: (filePath: string) => void;
+  readonly onUnstage?: (filePath: string) => void;
 }
 
 const STATUS_LABELS: Record<GitFileStatus, string> = {
@@ -36,7 +38,7 @@ const STATUS_BG: Record<GitFileStatus, string> = {
   renamed: 'bg-blue-400/10',
 };
 
-export const FileChangeItem: FC<FileChangeItemProps> = ({ file, onDiscard, onViewDiff }) => {
+export const FileChangeItem: FC<FileChangeItemProps> = ({ file, onDiscard, onViewDiff, onStage, onUnstage }) => {
   const [isHovered, setIsHovered] = useState(false);
 
   const fileName = file.path.split('/').pop() ?? file.path;
@@ -54,6 +56,18 @@ export const FileChangeItem: FC<FileChangeItemProps> = ({ file, onDiscard, onVie
       onDiscard(file.path);
     },
     [file.path, onDiscard],
+  );
+
+  const handleStageToggle = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (file.is_staged) {
+        onUnstage?.(file.path);
+      } else {
+        onStage?.(file.path);
+      }
+    },
+    [file.path, file.is_staged, onStage, onUnstage],
   );
 
   return (
@@ -99,19 +113,41 @@ export const FileChangeItem: FC<FileChangeItemProps> = ({ file, onDiscard, onVie
         </span>
       )}
 
-      {/* Discard button (on hover) */}
+      {/* Action buttons (on hover) */}
       {isHovered && (
-        <button
-          onClick={handleDiscard}
-          className={cn(
-            'shrink-0 w-5 h-5 flex items-center justify-center rounded-md',
-            'text-muted-foreground hover:text-destructive hover:bg-destructive/10',
-            'active:scale-[0.9] transition-all duration-150',
+        <span className="flex items-center gap-0.5 shrink-0">
+          {/* Stage / Unstage button */}
+          <button
+            onClick={handleStageToggle}
+            className={cn(
+              'shrink-0 w-5 h-5 flex items-center justify-center rounded-md',
+              'text-muted-foreground hover:text-foreground hover:bg-muted/60',
+              'active:scale-[0.9] transition-all duration-150',
+            )}
+            title={file.is_staged ? 'Unstage' : 'Stage'}
+          >
+            {file.is_staged ? (
+              <Minus className="w-3 h-3" weight="bold" />
+            ) : (
+              <Plus className="w-3 h-3" weight="bold" />
+            )}
+          </button>
+
+          {/* Discard button (only for unstaged files) */}
+          {!file.is_staged && (
+            <button
+              onClick={handleDiscard}
+              className={cn(
+                'shrink-0 w-5 h-5 flex items-center justify-center rounded-md',
+                'text-muted-foreground hover:text-destructive hover:bg-destructive/10',
+                'active:scale-[0.9] transition-all duration-150',
+              )}
+              title="Discard changes"
+            >
+              <ArrowCounterClockwise className="w-3 h-3" weight="bold" />
+            </button>
           )}
-          title="Discard changes"
-        >
-          <ArrowCounterClockwise className="w-3 h-3" weight="bold" />
-        </button>
+        </span>
       )}
     </div>
   );
