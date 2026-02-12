@@ -9,12 +9,14 @@ mod parse_commands;
 mod auth_commands;
 mod embedding_commands;
 mod terminal_commands;
+mod git_commands;
 
 use fs_commands::FsState;
 use agent_commands::AgentState;
 use auth_commands::AuthState;
 use embedding_commands::EmbeddingState;
 use terminal_commands::TerminalState;
+use git_commands::GitState;
 use tauri::Emitter;
 #[cfg(target_os = "macos")]
 use tauri_plugin_decorum::WebviewWindowExt;
@@ -100,6 +102,7 @@ pub fn run() {
         .manage(AuthState::new())
         .manage(EmbeddingState::new())
         .manage(TerminalState::new())
+        .manage(GitState::new())
         .invoke_handler(tauri::generate_handler![
             // Core commands
             commands::ping,
@@ -175,6 +178,17 @@ pub fn run() {
             terminal_commands::write_pty,
             terminal_commands::resize_pty,
             terminal_commands::kill_pty,
+            // Git commands
+            git_commands::git_get_status,
+            git_commands::git_setup,
+            git_commands::git_push,
+            git_commands::git_pull,
+            git_commands::git_get_current_sha,
+            git_commands::git_get_changes,
+            git_commands::git_get_file_diff,
+            git_commands::git_discard_file,
+            git_commands::git_discard_all,
+            git_commands::git_cleanup_locks,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

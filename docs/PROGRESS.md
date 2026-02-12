@@ -1,6 +1,6 @@
 # Solo IDE — Progress Tracker
 
-> **Last updated:** 2026-02-11
+> **Last updated:** 2026-02-12
 
 ---
 
@@ -173,3 +173,14 @@ See `docs/MIGRATION.md` for the full Orchids → Solo migration plan.
 - Dev branch terminal architecture adopted (UUID IDs, SidebarTerminal, TerminalView)
 - Created MIGRATION.md documenting full Orchids → Solo port plan
 - Updated PROGRESS.md to reflect current state
+
+### 2026-02-12
+- Phase 8: Git Integration implemented
+  - `git2` Rust crate for native git operations (no shell dependency)
+  - 10 Tauri commands: status, setup, push, pull, changes, diff, discard, cleanup
+  - 11 Git protocol types in solo-protocol + 2 BackendEvent variants
+  - TypeScript IPC wrappers, Zustand gitStore with 5s polling
+  - Source Control sidebar tab with branch selector, commit UI, file change list
+  - Git diff panel with Monaco DiffEditor (side-by-side)
+  - GitHub REST API client, accounts store, repo setup flow
+  - Confirm dialog for destructive operations (discard file/all)

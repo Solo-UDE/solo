@@ -444,6 +444,139 @@ pub struct FileOperationError {
 }
 
 // =============================================================================
+// Git Protocol
+// =============================================================================
+
+/// Status of a changed file in git
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "snake_case")]
+pub enum GitFileStatus {
+    Modified,
+    Added,
+    Deleted,
+    Renamed,
+}
+
+/// A file that has been changed in git
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct GitChangedFile {
+    /// Relative file path
+    pub path: String,
+    /// Change status
+    pub status: GitFileStatus,
+    /// Number of inserted lines
+    pub insertions: u32,
+    /// Number of deleted lines
+    pub deletions: u32,
+}
+
+/// Summary of all changes
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct GitChangesSummary {
+    /// Total insertions across all files
+    pub insertions: u32,
+    /// Total deletions across all files
+    pub deletions: u32,
+}
+
+/// Response from git_get_changes
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct GitChangesResponse {
+    /// List of changed files
+    pub files: Vec<GitChangedFile>,
+    /// Aggregate summary
+    pub summary: GitChangesSummary,
+}
+
+/// Request to setup GitHub integration
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct GitSetupRequest {
+    /// GitHub repository URL (e.g. https://github.com/user/repo.git)
+    pub github_repo_url: String,
+    /// Git username
+    pub username: String,
+    /// Git email
+    pub email: String,
+}
+
+/// Request to push to GitHub
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct GitPushRequest {
+    /// GitHub access token
+    pub access_token: String,
+    /// GitHub repository URL
+    pub github_repo_url: String,
+    /// Branch name
+    pub branch: String,
+    /// Commit message
+    pub commit_message: String,
+}
+
+/// Response from push
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct GitPushResponse {
+    /// Number of commits pushed
+    pub commits_count: u32,
+}
+
+/// Request to pull from GitHub
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct GitPullRequest {
+    /// GitHub access token
+    pub access_token: String,
+    /// GitHub repository URL
+    pub github_repo_url: String,
+    /// Branch name
+    pub branch: String,
+    /// Whether to force reset (used for branch switching)
+    pub force_reset: bool,
+}
+
+/// Response from pull
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct GitPullResponse {
+    /// Number of new commits pulled
+    pub commits_count: u32,
+    /// Warning message (e.g. stash pop conflict)
+    pub warning: Option<String>,
+}
+
+/// Response from git_get_file_diff
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct GitFileDiffResponse {
+    /// Old file content (from base ref)
+    pub old_content: String,
+    /// New file content (current working tree)
+    pub new_content: String,
+}
+
+/// Status of the git repository
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct GitRepoStatus {
+    /// Whether the workspace is a git repository
+    pub is_repo: bool,
+    /// Current branch name
+    pub current_branch: Option<String>,
+    /// HEAD commit SHA
+    pub head_sha: Option<String>,
+    /// Whether the repo has a github-integ remote
+    pub has_remote: bool,
+    /// Remote URL (if any)
+    pub remote_url: Option<String>,
+}
+
+// =============================================================================
 // Backend Events (sent from Rust to TypeScript)
 // =============================================================================
 
@@ -551,6 +684,14 @@ pub enum BackendEvent {
     /// Parse completed for a file
     #[serde(rename = "parse:complete")]
     ParseComplete { path: String, symbol_count: u32 },
+
+    /// Git operation progress
+    #[serde(rename = "git:progress")]
+    GitProgress { operation: String, message: String },
+
+    /// Git changes updated (signals UI to re-poll)
+    #[serde(rename = "git:changes_updated")]
+    GitChangesUpdated {},
 }
 
 // =============================================================================

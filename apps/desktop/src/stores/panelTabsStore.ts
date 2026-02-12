@@ -94,6 +94,9 @@ interface PanelTabsActions {
 
   /** Close the active tab in a tile */
   closeActiveTab: (tileId: TileId) => void;
+
+  /** Close all panels across all tiles */
+  closeAll: () => void;
 }
 
 type PanelTabsStore = PanelTabsState & PanelTabsActions;
@@ -418,6 +421,17 @@ export const usePanelTabsStore = create<PanelTabsStore>()(
       if (!tileState?.activeTabId) return;
 
       get().closePanelInTile(tileState.activeTabId, tileId);
+    },
+
+    closeAll: () => {
+      // Close all panels in every tile
+      for (const tileId of get().tileTabs.keys()) {
+        get().closeAllInTile(tileId);
+      }
+      set((state) => {
+        state.instances = new Map();
+        state.tileTabs = new Map();
+      });
     },
   }))
 );

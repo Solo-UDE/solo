@@ -6,10 +6,12 @@ import { useState, useCallback, useMemo } from 'react';
 import type { FC } from 'react';
 import { FileExplorer } from '@/components/file-explorer';
 import { SessionList, ApiKeyDialog } from '@/components/agent';
+import { SourceControlPanel } from '@/components/source-control';
 import { SidebarToggle } from './SidebarToggle';
 import { TabGroup } from './TabButton';
 import { TRANSITIONS } from '@/lib/constants';
 import { useUIStore, useIsLeftSidebarCollapsed } from '@/stores/uiStore';
+import type { SidebarTab } from '@/stores/uiStore';
 import { useAgentStore } from '@/stores/agentStore';
 import { usePanelTabsStore } from '@/stores/panelTabsStore';
 import { useHasCredentials, useActiveProvider } from '@/stores/provider-store';
@@ -20,6 +22,9 @@ interface PrimarySidebarProps {
   readonly width: number;
   readonly onFileOpen: (path: string) => void;
 }
+
+const TAB_ORDER: SidebarTab[] = ['explorer', 'sessions', 'source-control'];
+const TAB_LABELS = ['Explorer', 'Sessions', 'Source Control'] as const;
 
 export const PrimarySidebar: FC<PrimarySidebarProps> = ({ width, onFileOpen }) => {
   const isCollapsed = useIsLeftSidebarCollapsed();
@@ -91,11 +96,12 @@ export const PrimarySidebar: FC<PrimarySidebarProps> = ({ width, onFileOpen }) =
     }, 100);
   }, [createSessionAndShow]);
 
-  const tabs = ['Explorer', 'Sessions'] as const;
-  const activeTabIndex = activeTab === 'explorer' ? 0 : 1;
+  const activeTabIndex = TAB_ORDER.indexOf(activeTab);
   const handleTabChange = useCallback((index: number) => {
-    setActiveTab(index === 0 ? 'explorer' : 'sessions');
+    setActiveTab(TAB_ORDER[index]);
   }, [setActiveTab]);
+
+  const translateX = activeTabIndex * (-100 / TAB_ORDER.length);
 
   return (
     <aside
@@ -109,8 +115,8 @@ export const PrimarySidebar: FC<PrimarySidebarProps> = ({ width, onFileOpen }) =
       <div className="h-10 flex items-center justify-between px-2 shrink-0 border-b border-border/30">
         {!isCollapsed && (
           <TabGroup
-            tabs={tabs}
-            activeIndex={activeTabIndex}
+            tabs={TAB_LABELS}
+            activeIndex={activeTabIndex >= 0 ? activeTabIndex : 0}
             onTabChange={handleTabChange}
           />
         )}
@@ -124,12 +130,12 @@ export const PrimarySidebar: FC<PrimarySidebarProps> = ({ width, onFileOpen }) =
         <div
           className="flex h-full transition-transform duration-300 ease-[cubic-bezier(0.18,1.14,0.5,1.18)]"
           style={{
-            width: '200%',
-            transform: activeTab === 'explorer' ? 'translateX(0%)' : 'translateX(-50%)',
+            width: `${TAB_ORDER.length * 100}%`,
+            transform: `translateX(${translateX}%)`,
           }}
         >
           {/* Explorer Panel */}
-          <div className="w-1/2 h-full overflow-hidden">
+          <div style={{ width: `${100 / TAB_ORDER.length}%` }} className="h-full overflow-hidden">
             <FileExplorer
               onFileOpen={onFileOpen}
               className={cn(
@@ -139,13 +145,19 @@ export const PrimarySidebar: FC<PrimarySidebarProps> = ({ width, onFileOpen }) =
             />
           </div>
           {/* Sessions Panel */}
-          <div className="w-1/2 h-full overflow-hidden">
+          <div style={{ width: `${100 / TAB_ORDER.length}%` }} className="h-full overflow-hidden">
             {!isCollapsed && (
               <SessionList
                 onSessionSelect={handleSessionSelect}
                 onNewSession={handleNewSession}
                 className="h-full"
               />
+            )}
+          </div>
+          {/* Source Control Panel */}
+          <div style={{ width: `${100 / TAB_ORDER.length}%` }} className="h-full overflow-hidden">
+            {!isCollapsed && (
+              <SourceControlPanel className="h-full" />
             )}
           </div>
         </div>

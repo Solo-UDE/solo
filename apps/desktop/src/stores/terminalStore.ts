@@ -25,6 +25,7 @@ interface TerminalState {
 	setActiveTerminal: (id: string | null) => void;
 	markExited: (id: string) => void;
 	renameTerminal: (id: string, title: string) => void;
+	closeAll: () => void;
 }
 
 export const useTerminalStore = create<TerminalState>()(
@@ -73,6 +74,12 @@ export const useTerminalStore = create<TerminalState>()(
 				if (terminal) {
 					terminal.title = title;
 				}
+			}),
+
+		closeAll: () =>
+			set((state) => {
+				state.terminals = new Map();
+				state.activeTerminalId = null;
 			}),
 	})),
 );

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { GearSix, SignOut, Terminal } from "@phosphor-icons/react";
+import { WorkspaceSwitcher } from "./components/titlebar/WorkspaceSwitcher";
 import { PrimarySidebar } from "./components/sidebar";
 import { SidebarTerminal } from "./components/sidebar";
 import { MosaicLayout } from "./components/panels";
@@ -17,6 +18,7 @@ import { useColorScheme } from "./hooks/useColorScheme";
 import { useTitlebarStyle } from "./hooks/usePlatform";
 import { useAgentStream } from "./hooks/useAgentStream";
 import { useTerminalStream } from "./hooks/useTerminalStream";
+import { useGitStream } from "./hooks/useGitStream";
 import { useTerminalStore } from "./stores/terminalStore";
 import { useFileExplorerStore } from "./stores/fileExplorerStore";
 import { createTerminal } from "./lib/tauri/terminal";
@@ -91,6 +93,7 @@ function AppContent() {
   // Set up event stream listeners (hooks manage their own lifecycle)
   useAgentStream();
   useTerminalStream();
+  useGitStream();
 
   // Load persisted agent sessions on startup
   useEffect(() => {
@@ -220,9 +223,7 @@ function AppContent() {
       >
         <div className="flex-1" data-tauri-drag-region />
 
-        <span className="text-xs font-medium text-muted-foreground/60" data-tauri-drag-region>
-          Solo
-        </span>
+        <WorkspaceSwitcher />
 
         <div className="flex-1 flex items-center justify-end gap-1.5">
           <div
