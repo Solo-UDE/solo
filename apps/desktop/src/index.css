@@ -341,6 +341,21 @@ html[data-vibrancy] .titlebar-glass {
   background: rgb(255 255 255 / 0.03);
 }
 
+/* Dark mode + vibrancy: semi-transparent dark backgrounds
+   prevent light system vibrancy from bleeding through */
+html.dark[data-vibrancy] {
+  --sidebar: oklch(0.18 0.012 58 / 85%);
+  background-color: oklch(0.16 0.012 60 / 90%) !important;
+}
+
+html.dark[data-vibrancy] #root > div {
+  background: oklch(0.16 0.012 60 / 85%);
+}
+
+html.dark[data-vibrancy] .titlebar-glass {
+  background: rgb(0 0 0 / 0.25);
+}
+
 /* Disable text selection on UI elements */
 button,
 [role="button"],

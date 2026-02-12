@@ -1,15 +1,9 @@
 /**
- * GeneralTab - Color scheme, font settings
+ * GeneralTab - Theme selection, font settings
  */
 
-import { useSettingsStore, FONT_FAMILIES, type ColorScheme } from '../../../stores/settingsStore';
-import { SettingRow, SelectDropdown, NumberInput } from '../controls';
-
-const COLOR_SCHEME_OPTIONS: { label: string; value: ColorScheme }[] = [
-  { label: 'System', value: 'system' },
-  { label: 'Light', value: 'light' },
-  { label: 'Dark', value: 'dark' },
-];
+import { useSettingsStore, FONT_FAMILIES } from '../../../stores/settingsStore';
+import { SettingRow, SelectDropdown, NumberInput, ThemeSelector } from '../controls';
 
 export function GeneralTab() {
   const colorScheme = useSettingsStore((s) => s.general.colorScheme);
@@ -27,18 +21,16 @@ export function GeneralTab() {
         <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4">
           Appearance
         </h3>
-        <div className="divide-y divide-border">
-          <SettingRow
-            label="Color Scheme"
-            description="Choose light, dark, or match your system preference"
-          >
-            <SelectDropdown
-              value={colorScheme}
-              options={COLOR_SCHEME_OPTIONS}
-              onChange={setColorScheme}
-            />
-          </SettingRow>
 
+        <div className="mb-6">
+          <div className="text-sm font-medium text-foreground mb-1">Theme</div>
+          <div className="text-xs text-muted-foreground mb-4">
+            Choose light, dark, or match your system preference
+          </div>
+          <ThemeSelector value={colorScheme} onChange={setColorScheme} />
+        </div>
+
+        <div className="divide-y divide-border">
           <SettingRow
             label="Editor Font"
             description="Monospace font for code editing"
