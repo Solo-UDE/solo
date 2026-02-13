@@ -206,7 +206,10 @@ pub async fn git_get_status(
 
 		let (has_remote, remote_url) = match repo.find_remote("github-integ") {
 			Ok(remote) => (true, remote.url().map(String::from)),
-			Err(_) => (false, None),
+			Err(_) => match repo.find_remote("origin") {
+				Ok(remote) => (true, remote.url().map(String::from)),
+				Err(_) => (false, None),
+			},
 		};
 
 		Ok(GitRepoStatus {

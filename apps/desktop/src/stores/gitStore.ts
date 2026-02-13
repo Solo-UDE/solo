@@ -88,6 +88,9 @@ export const useGitStore = create<GitState & GitActions>()(
           if (status.current_branch) {
             state.currentBranch = status.current_branch;
           }
+          if (status.remote_url) {
+            state.githubRepoUrl = status.remote_url;
+          }
         });
       } catch (err) {
         console.error('Failed to fetch repo status:', err);

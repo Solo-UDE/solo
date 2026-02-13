@@ -9,6 +9,7 @@ import {
   ArrowCounterClockwise,
   CaretDown,
   CaretRight,
+  CloudArrowDown,
   CloudArrowUp,
   GitBranch,
   Minus,
@@ -17,8 +18,10 @@ import {
 import { useGitStore } from '@/stores/gitStore';
 import { usePanelTabsStore } from '@/stores/panelTabsStore';
 import { BUILTIN_PANEL_TYPES } from '@/lib/panels';
+import { getAccessToken } from '@/lib/auth';
 import { BranchSelector } from './BranchSelector';
 import { FileChangeItem } from './FileChangeItem';
+import { GitHubSetup } from './GitHubSetup';
 import { ConfirmDialog } from './ConfirmDialog';
 import { cn } from '@/lib/utils';
 
@@ -51,6 +54,8 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
   const discardAll = useGitStore((s) => s.discardAll);
   const stageFile = useGitStore((s) => s.stageFile);
   const unstageFile = useGitStore((s) => s.unstageFile);
+  const push = useGitStore((s) => s.push);
+  const pull = useGitStore((s) => s.pull);
   const stageAllFiles = useGitStore((s) => s.stageAllFiles);
   const unstageAllFiles = useGitStore((s) => s.unstageAllFiles);
 
@@ -80,16 +85,43 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
     [setCommitMessage],
   );
 
+  // Commit & Push
+  const handleCommitAndPush = useCallback(async () => {
+    if (!commitMessage.trim() || stagedFiles.length === 0) return;
+    try {
+      const token = await getAccessToken();
+      if (!token) {
+        console.error('No access token — connect GitHub first');
+        return;
+      }
+      await push(token, commitMessage.trim());
+      setCommitMessage('');
+    } catch (err) {
+      console.error('Push failed:', err);
+    }
+  }, [commitMessage, stagedFiles.length, push, setCommitMessage]);
+
   // Handle Cmd+Enter in commit textarea
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
-        // TODO: Push when GitHub integration is wired
+        handleCommitAndPush();
       }
     },
-    [],
+    [handleCommitAndPush],
   );
+
+  // Pull
+  const handlePull = useCallback(async () => {
+    try {
+      const token = await getAccessToken();
+      if (!token) return;
+      await pull(token);
+    } catch (err) {
+      console.error('Pull failed:', err);
+    }
+  }, [pull]);
 
   // Refresh
   const handleRefresh = useCallback(() => {
@@ -191,13 +223,24 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
         <BranchSelector />
         <div className="flex items-center gap-0.5">
           <button
-            onClick={handleRefresh}
-            disabled={isPulling}
+            onClick={handlePull}
+            disabled={isPulling || !repoStatus?.has_remote}
             className={cn(
               'w-7 h-7 flex items-center justify-center rounded-lg',
               'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
               'active:scale-[0.9] transition-all duration-200',
-              isPulling && 'animate-spin',
+              isPulling && 'opacity-50',
+            )}
+            title="Pull"
+          >
+            <CloudArrowDown className="w-3.5 h-3.5" weight="bold" />
+          </button>
+          <button
+            onClick={handleRefresh}
+            className={cn(
+              'w-7 h-7 flex items-center justify-center rounded-lg',
+              'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
+              'active:scale-[0.9] transition-all duration-200',
             )}
             title="Refresh"
           >
@@ -235,7 +278,8 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
               )}
             />
             <button
-              disabled={!commitMessage.trim() || isPushing || stagedFiles.length === 0}
+              onClick={handleCommitAndPush}
+              disabled={!commitMessage.trim() || isPushing || stagedFiles.length === 0 || !repoStatus?.has_remote}
               className={cn(
                 'w-full h-[34px] mt-1.5 rounded-[10px] text-xs font-medium',
                 'flex items-center justify-center gap-1.5',
@@ -254,6 +298,9 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
               {isPushing ? 'Pushing...' : 'Commit & Push'}
             </button>
           </div>
+
+          {/* GitHub Setup when no remote */}
+          {!repoStatus.has_remote && <GitHubSetup className="px-3 pb-2" />}
 
           {/* Staged Changes Section */}
           <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
