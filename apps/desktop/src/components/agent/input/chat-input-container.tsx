@@ -3,17 +3,22 @@ import React, { useRef, useState } from 'react';
 import { ContextMenu } from './context-menu';
 import { ContextTracker } from './context-tracker';
 import { LexicalEditor } from './lexical-editor';
+import { AttachmentBar } from './AttachmentBar';
+import { DropZoneOverlay } from './DropZoneOverlay';
 
 import type { LexicalEditorHandle } from './lexical-editor';
+import type { FileMention, Attachment } from '../../../stores/agentStore';
 import { ModeSelector } from './mode-selector';
 import { ModelPicker } from './model-picker';
 import { SubmitButton } from './submit-button';
 import { useProviderStore } from '../../../stores/provider-store';
+import { useAttachmentStore } from '../../../stores/attachmentStore';
 import { useWorktreeList } from '../../../stores/worktreeStore';
 import { DEFAULT_MODEL_ID } from '../../../lib/constants';
 
 export interface ChatInputContainerProps {
-  onSubmit: (content: string, mode: 'planning' | 'fast', model: string) => void;
+  onSubmit: (content: string, mode: 'planning' | 'fast', model: string, attachments?: Attachment[], mentions?: FileMention[]) => void;
+  onLocalCommand?: (commandId: string) => void;
   isAgentRunning?: boolean;
   className?: string;
   worktreeId?: string | null;
@@ -22,6 +27,7 @@ export interface ChatInputContainerProps {
 
 export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
   onSubmit,
+  onLocalCommand,
   isAgentRunning = false,
   className = '',
   worktreeId,
@@ -29,16 +35,32 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
 }) => {
   const [content, setContent] = useState('');
   const [mode, setMode] = useState<'planning' | 'fast'>('planning');
+  const [mentions, setMentions] = useState<FileMention[]>([]);
   const selectedModel = useProviderStore((state) => state.selectedModel);
+  const attachments = useAttachmentStore((s) => s.attachments);
+  const clearAttachments = useAttachmentStore((s) => s.clear);
   const editorRef = useRef<LexicalEditorHandle>(null);
   const worktrees = useWorktreeList();
 
   const handleSubmit = (): void => {
-    if (content.trim() && !isAgentRunning) {
-      onSubmit(content, mode, selectedModel || DEFAULT_MODEL_ID);
+    const hasContent = content.trim() || attachments.length > 0;
+    if (hasContent && !isAgentRunning) {
+      onSubmit(
+        content,
+        mode,
+        selectedModel || DEFAULT_MODEL_ID,
+        attachments.length > 0 ? [...attachments] : undefined,
+        mentions.length > 0 ? [...mentions] : undefined,
+      );
       setContent('');
+      setMentions([]);
+      clearAttachments();
       editorRef.current?.clear();
     }
+  };
+
+  const handleAgentCommand = (commandText: string): void => {
+    onSubmit(commandText, mode, selectedModel || DEFAULT_MODEL_ID);
   };
 
   const handleKeyDown = (event: React.KeyboardEvent): void => {
@@ -56,16 +78,23 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
       <div className="max-w-4xl mx-auto px-4 pb-4 pt-2">
         {/* Floating card wrapping editor + toolbar */}
         <div className="bg-card/95 backdrop-blur-md rounded-[16px] shadow-[0_4px_24px_-4px_rgba(0,0,0,0.15)] ring-1 ring-white/[0.06]">
-          {/* Editor */}
-          <div>
+          {/* Editor with drop zone */}
+          <DropZoneOverlay disabled={isAgentRunning}>
             <LexicalEditor
               ref={editorRef}
               onChange={setContent}
               onKeyDown={handleKeyDown}
+              onMentionsChange={setMentions}
+              onLocalCommand={onLocalCommand}
+              onAgentCommand={handleAgentCommand}
               placeholder="Ask anything, @ for context"
               disabled={isAgentRunning}
+              mode={mode}
             />
-          </div>
+          </DropZoneOverlay>
+
+          {/* Attachment chips/thumbnails */}
+          <AttachmentBar />
 
           {/* Bottom Controls */}
           <div className="flex items-center justify-between px-3 pb-3 pt-1">

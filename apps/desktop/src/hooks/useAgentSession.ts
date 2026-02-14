@@ -37,7 +37,7 @@ export interface UseAgentSessionReturn {
 	/** Create a new session */
 	createSession: (model?: string) => Promise<string>;
 	/** Send a message */
-	sendMessage: (content: string, mode?: MessageMode) => Promise<void>;
+	sendMessage: (content: string, mode?: MessageMode, attachments?: import('../stores/agentStore').Attachment[], mentions?: import('../stores/agentStore').FileMention[]) => Promise<void>;
 	/** Clear any error */
 	clearError: () => void;
 }
@@ -102,9 +102,9 @@ export function useAgentSession(
 	);
 
 	const sendMessage = useCallback(
-		async (content: string, mode: MessageMode = 'planning') => {
-			if (!content.trim() || !effectiveSessionId) return;
-			await storeSendMessage(effectiveSessionId, content, mode);
+		async (content: string, mode: MessageMode = 'planning', attachments?: import('../stores/agentStore').Attachment[], mentions?: import('../stores/agentStore').FileMention[]) => {
+			if (!content.trim() && (!attachments || attachments.length === 0)) return;
+			await storeSendMessage(effectiveSessionId!, content, mode, attachments, mentions);
 		},
 		[storeSendMessage, effectiveSessionId]
 	);
