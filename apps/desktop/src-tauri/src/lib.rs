@@ -10,6 +10,7 @@ mod auth_commands;
 mod embedding_commands;
 mod terminal_commands;
 mod git_commands;
+mod worktree_commands;
 
 use fs_commands::FsState;
 use agent_commands::AgentState;
@@ -17,6 +18,7 @@ use auth_commands::AuthState;
 use embedding_commands::EmbeddingState;
 use terminal_commands::TerminalState;
 use git_commands::GitState;
+use worktree_commands::WorktreeState;
 use tauri::Emitter;
 #[cfg(target_os = "macos")]
 use tauri_plugin_decorum::WebviewWindowExt;
@@ -103,6 +105,7 @@ pub fn run() {
         .manage(EmbeddingState::new())
         .manage(TerminalState::new())
         .manage(GitState::new())
+        .manage(WorktreeState::new())
         .invoke_handler(tauri::generate_handler![
             // Core commands
             commands::ping,
@@ -126,6 +129,7 @@ pub fn run() {
             agent_commands::get_provider_status,
             agent_commands::set_credentials,
             agent_commands::has_credentials,
+            agent_commands::clear_credentials,
             agent_commands::get_models,
             agent_commands::get_models_for_provider_cmd,
             agent_commands::agent_create_session,
@@ -147,13 +151,12 @@ pub fn run() {
             agent_commands::complete_oauth_flow,
             agent_commands::wait_for_oauth_callback,
             agent_commands::disconnect_oauth,
-            // Manual OAuth token command
-            agent_commands::set_oauth_token_manual,
             // Claude Code CLI commands
             agent_commands::check_claude_auth_status,
             agent_commands::check_claude_cli_installed,
             agent_commands::start_claude_login,
             agent_commands::install_claude_cli,
+            agent_commands::verify_claude_setup,
             // Parse commands
             parse_commands::parse_file,
             parse_commands::parse_content,
@@ -195,6 +198,18 @@ pub fn run() {
             git_commands::git_stage_all,
             git_commands::git_unstage_all,
             git_commands::git_create_branch,
+            // Worktree commands
+            worktree_commands::worktree_list,
+            worktree_commands::worktree_create,
+            worktree_commands::worktree_remove,
+            worktree_commands::worktree_get,
+            worktree_commands::worktree_set_active,
+            worktree_commands::worktree_get_active,
+            worktree_commands::worktree_lock,
+            worktree_commands::worktree_unlock,
+            worktree_commands::worktree_prune,
+            worktree_commands::worktree_set_setup_commands,
+            worktree_commands::worktree_get_setup_commands,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

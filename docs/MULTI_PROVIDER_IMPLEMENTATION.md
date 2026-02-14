@@ -108,8 +108,8 @@ pub trait AIProvider: Send + Sync {
 ## Model Support
 
 ### Anthropic Models
-- `claude-sonnet-4-5-20250929` (sonnet) - Default
-- `claude-opus-4-5-20251101` (opus)
+- `claude-opus-4-6` (opus) - Default
+- `claude-sonnet-4-5-20250929` (sonnet)
 - `claude-haiku-4-5-20251001` (haiku)
 
 ### OpenAI Models

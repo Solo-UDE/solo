@@ -1,0 +1,137 @@
+/**
+ * Shared Markdown Table Styles
+ * Used by MarkdownTable component in both editor preview and agent messages.
+ */
+
+/* Wrapper: relative for copy button positioning */
+.md-table-wrapper {
+  position: relative;
+  margin: 1.25em 0;
+}
+
+/* Scroll container */
+.md-table-scroll {
+  overflow-x: auto;
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px var(--border);
+}
+
+/* Scroll shadow indicators */
+.md-table-scroll::before,
+.md-table-scroll::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 24px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 200ms ease;
+  z-index: 2;
+}
+
+.md-table-scroll::before {
+  left: 0;
+  background: linear-gradient(to right, var(--background), transparent);
+  border-radius: 8px 0 0 8px;
+}
+
+.md-table-scroll::after {
+  right: 0;
+  background: linear-gradient(to left, var(--background), transparent);
+  border-radius: 0 8px 8px 0;
+}
+
+.md-table-wrapper.has-scroll-left .md-table-scroll::before {
+  opacity: 1;
+}
+
+.md-table-wrapper.has-scroll-right .md-table-scroll::after {
+  opacity: 1;
+}
+
+/* Table base */
+.md-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.md-table th,
+.md-table td {
+  padding: 0.625rem 0.875rem;
+  border-bottom: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+}
+
+.md-table th:last-child,
+.md-table td:last-child {
+  border-right: none;
+}
+
+.md-table tr:last-child td {
+  border-bottom: none;
+}
+
+.md-table th {
+  font-weight: 600;
+  background-color: var(--muted);
+  text-align: left;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.md-table tbody tr:nth-child(even) {
+  background-color: var(--muted);
+}
+
+/* Compact mode for wide tables (>5 columns) */
+.md-table-compact .md-table th,
+.md-table-compact .md-table td {
+  padding: 0.375rem 0.5rem;
+  font-size: 0.8125rem;
+}
+
+/* Copy button */
+.md-table-copy {
+  position: absolute;
+  top: 0.375rem;
+  right: 0.375rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 6px;
+  background-color: var(--background);
+  box-shadow: 0 1px 4px -1px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  color: var(--muted-foreground);
+  opacity: 0;
+  z-index: 3;
+  transition: all 200ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.md-table-wrapper:hover .md-table-copy {
+  opacity: 0.7;
+}
+
+.md-table-copy:hover {
+  opacity: 1 !important;
+  color: var(--foreground);
+  transform: scale(1.05);
+}
+
+.md-table-copy:active {
+  transform: scale(0.95);
+}
+
+.md-table-copy.copied {
+  opacity: 1 !important;
+  background-color: oklch(0.65 0.2 145);
+  color: white;
+}

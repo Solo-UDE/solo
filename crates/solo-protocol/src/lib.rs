@@ -581,6 +581,108 @@ pub struct GitRepoStatus {
 }
 
 // =============================================================================
+// Worktree Protocol
+// =============================================================================
+
+/// Information about a git worktree
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct WorktreeInfo {
+    /// Unique worktree identifier
+    pub id: String,
+    /// Filesystem path to the worktree
+    pub path: String,
+    /// Branch checked out in this worktree
+    pub branch: Option<String>,
+    /// HEAD commit SHA
+    pub head_sha: String,
+    /// Whether this is the main (primary) worktree
+    pub is_main: bool,
+    /// Whether the worktree is locked
+    pub is_locked: bool,
+    /// Reason for locking
+    pub lock_reason: Option<String>,
+    /// Whether the worktree has uncommitted changes
+    pub is_dirty: bool,
+    /// Agent session ID currently using this worktree
+    pub agent_session_id: Option<String>,
+    /// Creation timestamp (Unix epoch seconds)
+    pub created_at: u64,
+}
+
+/// Request to create a new worktree
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct CreateWorktreeRequest {
+    /// Branch name for the worktree
+    pub branch: String,
+    /// Optional custom path (default: auto-generated)
+    pub path: Option<String>,
+    /// Whether to create a new branch
+    pub create_branch: bool,
+    /// Base branch/ref to create from (default: HEAD)
+    pub base: Option<String>,
+}
+
+/// Request to remove a worktree
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct RemoveWorktreeRequest {
+    /// Worktree ID to remove
+    pub id: String,
+    /// Force removal even if dirty or locked
+    pub force: bool,
+}
+
+/// Setup commands to run after worktree creation (e.g., package install)
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct WorktreeSetupConfig {
+    /// Shell commands to run in the new worktree directory
+    pub commands: Vec<String>,
+}
+
+// =============================================================================
+// Claude Setup Verification
+// =============================================================================
+
+/// Status of Claude Code CLI setup and credential verification
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub struct ClaudeSetupStatus {
+    /// Whether the Claude CLI binary is installed
+    pub cli_installed: bool,
+    /// Path to the Claude CLI binary (e.g. /usr/local/bin/claude)
+    pub cli_path: Option<String>,
+    /// Whether OAuth credentials were found (keychain or file)
+    pub credentials_found: bool,
+    /// Where the credentials came from: "keychain" or "credentials-file"
+    pub credential_source: Option<String>,
+    /// Whether the token is expired
+    pub token_expired: bool,
+    /// Token expiry timestamp (ms since epoch)
+    #[ts(type = "number | null")]
+    pub token_expires_at: Option<i64>,
+    /// Seconds until token expires (negative if already expired)
+    #[ts(type = "number | null")]
+    pub token_expires_in_seconds: Option<i64>,
+    /// OAuth scopes on the token
+    pub scopes: Option<Vec<String>>,
+    /// Whether the token was verified against the API.
+    /// None = not checked, Some(true) = API call succeeded, Some(false) = rejected
+    pub api_verified: Option<bool>,
+    /// Error message if something went wrong
+    pub error: Option<String>,
+    /// Whether CLI mode is available (CLI installed + credentials found).
+    /// Subscription tokens require CLI mode; direct API calls won't work.
+    pub cli_mode_available: bool,
+    /// Whether the credential is a subscription token that requires CLI mode.
+    /// These tokens cannot be used for direct API calls.
+    pub requires_cli_mode: bool,
+}
+
+// =============================================================================
 // Backend Events (sent from Rust to TypeScript)
 // =============================================================================
 
@@ -696,6 +798,32 @@ pub enum BackendEvent {
     /// Git changes updated (signals UI to re-poll)
     #[serde(rename = "git:changes_updated")]
     GitChangesUpdated {},
+
+    /// Worktree operation progress
+    #[serde(rename = "worktree:progress")]
+    WorktreeProgress { worktree_id: String, message: String },
+
+    /// Worktree is ready
+    #[serde(rename = "worktree:ready")]
+    WorktreeReady { worktree_id: String, info: WorktreeInfo },
+
+    /// Worktree operation error
+    #[serde(rename = "worktree:error")]
+    WorktreeError { worktree_id: String, error: String },
+
+    /// Worktree was removed
+    #[serde(rename = "worktree:removed")]
+    WorktreeRemoved { worktree_id: String },
+
+    /// Worktree setup command progress (streamed during post-create hooks)
+    #[serde(rename = "worktree:setup_progress")]
+    WorktreeSetupProgress {
+        worktree_id: String,
+        command: String,
+        output: String,
+        is_error: bool,
+        is_complete: bool,
+    },
 }
 
 // =============================================================================

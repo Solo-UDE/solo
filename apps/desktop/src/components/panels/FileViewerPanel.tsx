@@ -4,16 +4,15 @@
  * Includes markdown preview support
  */
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import Editor, { OnMount, BeforeMount } from '@monaco-editor/react';
-import type * as Monaco from 'monaco-editor';
 import { CircleNotch, WarningCircle } from '@phosphor-icons/react';
 import * as fs from '@/lib/tauri/fs';
 import { registerSoloTheme, SOLO_THEME_NAME } from '@/components/editor/theme';
-import { MarkdownPreview } from '@/components/editor/MarkdownPreview';
-import { MarkdownSplitPane } from '@/components/editor/MarkdownSplitPane';
+import { MarkdownEditor } from '@/components/editor/MarkdownEditor';
 import { MarkdownToggle } from '@/components/editor/MarkdownToggle';
 import type { PanelProps } from '@/lib/panels/types';
+import type { MarkdownMode } from '@/stores/editorStore';
 
 interface FileViewerData {
   filePath: string;
@@ -103,16 +102,14 @@ export function FileViewerPanel({
   onTitleChange,
   onDirtyChange,
 }: PanelProps<FileViewerData>) {
-  const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
   const [content, setContent] = useState<string>('');
   const [originalContent, setOriginalContent] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [cursorPosition, setCursorPosition] = useState({ line: 1, col: 1 });
 
-  // Markdown preview state
-  const [markdownPreviewEnabled, setMarkdownPreviewEnabled] = useState(false);
-  const [splitPosition, setSplitPosition] = useState(50);
+  // Markdown mode state — defaults to 'preview' for markdown files
+  const [markdownMode, setMarkdownMode] = useState<MarkdownMode>('preview');
 
   const filePath = data?.filePath;
   const fileName = data?.fileName ?? (filePath ? filePath.split('/').pop() : undefined) ?? 'Untitled';
@@ -185,8 +182,6 @@ export function FileViewerPanel({
   // Handle editor mount
   const handleEditorMount: OnMount = useCallback(
     (editor, monaco) => {
-      editorRef.current = editor;
-
       // Add save command (Cmd+S / Ctrl+S)
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
         saveFile();
@@ -223,9 +218,8 @@ export function FileViewerPanel({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [saveFile]);
 
-  // Toggle markdown preview
-  const handleToggleMarkdownPreview = useCallback(() => {
-    setMarkdownPreviewEnabled((prev) => !prev);
+  const handleSetMarkdownMode = useCallback((mode: MarkdownMode) => {
+    setMarkdownMode(mode);
   }, []);
 
   if (loading) {
@@ -257,6 +251,7 @@ export function FileViewerPanel({
   // Monaco editor component
   const monacoEditor = (
     <Editor
+      className="monaco-mount"
       height="100%"
       language={language}
       value={content}
@@ -300,20 +295,19 @@ export function FileViewerPanel({
         <span className="text-[11px] text-muted-foreground truncate flex-1">{filePath}</span>
         {isMarkdown && (
           <MarkdownToggle
-            enabled={markdownPreviewEnabled}
-            onToggle={handleToggleMarkdownPreview}
+            mode={markdownMode}
+            onModeChange={handleSetMarkdownMode}
           />
         )}
       </div>
 
-      {/* Editor content - either split pane or Monaco only */}
+      {/* Editor content */}
       <div className="flex-1 overflow-hidden">
-        {isMarkdown && markdownPreviewEnabled ? (
-          <MarkdownSplitPane
-            left={monacoEditor}
-            right={<MarkdownPreview content={content} />}
-            splitPosition={splitPosition}
-            onSplitChange={setSplitPosition}
+        {isMarkdown && markdownMode === 'preview' ? (
+          <MarkdownEditor
+            key={filePath}
+            content={content}
+            onContentChange={(md) => setContent(md)}
           />
         ) : (
           monacoEditor

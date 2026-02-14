@@ -6,7 +6,7 @@ import { useState, useCallback, useMemo, forwardRef } from 'react';
 import { FileExplorer } from '@/components/file-explorer';
 import { SessionList, ApiKeyDialog } from '@/components/agent';
 import { SourceControlPanel } from '@/components/source-control';
-import { SidebarToggle } from './SidebarToggle';
+import { WorktreePanel } from './WorktreePanel';
 import { TabGroup } from './TabButton';
 import { TRANSITIONS } from '@/lib/constants';
 import { useUIStore, useIsLeftSidebarCollapsed } from '@/stores/uiStore';
@@ -22,8 +22,12 @@ interface PrimarySidebarProps {
   readonly onFileOpen: (path: string) => void;
 }
 
-const TAB_ORDER: SidebarTab[] = ['explorer', 'sessions', 'source-control'];
-const TAB_LABELS = ['Explorer', 'Sessions', 'Source Control'] as const;
+const TAB_CONFIG: { label: string; key: SidebarTab }[] = [
+  { label: 'Explorer', key: 'explorer' },
+  { label: 'Sessions', key: 'sessions' },
+  { label: 'Source Control', key: 'source-control' },
+  { label: 'Worktrees', key: 'worktrees' },
+];
 
 export const PrimarySidebar = forwardRef<HTMLElement, PrimarySidebarProps>(({ width, onFileOpen }, ref) => {
   const isCollapsed = useIsLeftSidebarCollapsed();
@@ -95,12 +99,14 @@ export const PrimarySidebar = forwardRef<HTMLElement, PrimarySidebarProps>(({ wi
     }, 100);
   }, [createSessionAndShow]);
 
-  const activeTabIndex = TAB_ORDER.indexOf(activeTab);
+  const tabs = TAB_CONFIG.map((t) => t.label);
+  const activeTabIndex = TAB_CONFIG.findIndex((t) => t.key === activeTab);
   const handleTabChange = useCallback((index: number) => {
-    setActiveTab(TAB_ORDER[index]);
+    setActiveTab(TAB_CONFIG[index].key);
   }, [setActiveTab]);
 
-  const translateX = activeTabIndex * (-100 / TAB_ORDER.length);
+  // Compute translateX for the 4-panel reel
+  const translateX = `${activeTabIndex * -25}%`;
 
   return (
     <aside
@@ -115,14 +121,11 @@ export const PrimarySidebar = forwardRef<HTMLElement, PrimarySidebarProps>(({ wi
       <div className="h-10 flex items-center justify-between px-2 shrink-0 border-b border-border/30">
         {!isCollapsed && (
           <TabGroup
-            tabs={TAB_LABELS}
+            tabs={tabs}
             activeIndex={activeTabIndex >= 0 ? activeTabIndex : 0}
             onTabChange={handleTabChange}
           />
         )}
-        <div className="flex items-center gap-0.5">
-          <SidebarToggle className={isCollapsed ? 'mx-auto' : ''} />
-        </div>
       </div>
 
       {/* Tab Content - Sliding Reel */}
@@ -130,12 +133,12 @@ export const PrimarySidebar = forwardRef<HTMLElement, PrimarySidebarProps>(({ wi
         <div
           className="flex h-full transition-transform duration-300 ease-[cubic-bezier(0.18,1.14,0.5,1.18)]"
           style={{
-            width: `${TAB_ORDER.length * 100}%`,
-            transform: `translateX(${translateX}%)`,
+            width: '400%',
+            transform: `translateX(${translateX})`,
           }}
         >
           {/* Explorer Panel */}
-          <div style={{ width: `${100 / TAB_ORDER.length}%` }} className="h-full overflow-hidden">
+          <div className="w-1/4 h-full overflow-hidden">
             <FileExplorer
               onFileOpen={onFileOpen}
               className={cn(
@@ -145,7 +148,7 @@ export const PrimarySidebar = forwardRef<HTMLElement, PrimarySidebarProps>(({ wi
             />
           </div>
           {/* Sessions Panel */}
-          <div style={{ width: `${100 / TAB_ORDER.length}%` }} className="h-full overflow-hidden">
+          <div className="w-1/4 h-full overflow-hidden">
             {!isCollapsed && (
               <SessionList
                 onSessionSelect={handleSessionSelect}
@@ -155,9 +158,15 @@ export const PrimarySidebar = forwardRef<HTMLElement, PrimarySidebarProps>(({ wi
             )}
           </div>
           {/* Source Control Panel */}
-          <div style={{ width: `${100 / TAB_ORDER.length}%` }} className="h-full overflow-hidden">
+          <div className="w-1/4 h-full overflow-hidden">
             {!isCollapsed && (
               <SourceControlPanel className="h-full" />
+            )}
+          </div>
+          {/* Worktrees Panel */}
+          <div className="w-1/4 h-full overflow-hidden">
+            {!isCollapsed && (
+              <WorktreePanel className="h-full" />
             )}
           </div>
         </div>

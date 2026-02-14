@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useMemo, useRef } from 'react';
+import { useEffect, useCallback, useMemo, useRef, useState } from 'react';
 import { Plus } from '@phosphor-icons/react';
 
 import { MessageFeed } from './messages';
@@ -31,6 +31,8 @@ export interface AgentWindowProps {
 	instanceId: string;
 	/** Initial session ID (optional, will create new if not provided) */
 	initialSessionId?: string;
+	/** Initial worktree ID bound to this agent session */
+	initialWorktreeId?: string | null;
 	/** Callbacks for external integration */
 	callbacks?: AgentWindowCallbacks;
 	/** UI customization */
@@ -48,10 +50,14 @@ export interface AgentWindowProps {
 export const AgentWindow: FC<AgentWindowProps> = ({
 	instanceId,
 	initialSessionId,
+	initialWorktreeId,
 	callbacks,
 	ui: _ui = {},
 	className = '',
 }) => {
+	// Track bound worktree for this agent session
+	const [worktreeId, setWorktreeId] = useState<string | null>(initialWorktreeId ?? null);
+
 	// Session management — scoped to this tab's session
 	const {
 		sessionId,
@@ -77,9 +83,18 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 	// When auto-created, sync session ID back to panel data
 	useEffect(() => {
 		if (sessionId && !initialSessionId) {
-			usePanelTabsStore.getState().updateData(instanceId, { sessionId });
+			usePanelTabsStore.getState().updateData(instanceId, { sessionId, worktreeId });
 		}
-	}, [sessionId, initialSessionId, instanceId]);
+	}, [sessionId, initialSessionId, instanceId, worktreeId]);
+
+	// Persist worktree changes to panel data
+	const handleWorktreeChange = useCallback((newWorktreeId: string | null) => {
+		setWorktreeId(newWorktreeId);
+		usePanelTabsStore.getState().updateData(instanceId, {
+			sessionId: sessionId ?? undefined,
+			worktreeId: newWorktreeId,
+		});
+	}, [instanceId, sessionId]);
 
 	// Sync model selection to the active session (skip redundant calls)
 	const prevModelRef = useRef<string | null>(null);
@@ -172,6 +187,8 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 				<ChatInputContainer
 					onSubmit={handleSubmit}
 					isAgentRunning={isRunning}
+					worktreeId={worktreeId}
+					onWorktreeChange={handleWorktreeChange}
 				/>
 			</div>
 		);
@@ -219,6 +236,8 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 			<ChatInputContainer
 				onSubmit={handleSubmit}
 				isAgentRunning={isRunning}
+				worktreeId={worktreeId}
+				onWorktreeChange={handleWorktreeChange}
 			/>
 		</div>
 	);

@@ -3,10 +3,28 @@
  */
 
 import React, { memo, useCallback, useEffect, useState } from 'react';
-import { CaretRight, CircleNotch } from '@phosphor-icons/react';
+import {
+  CaretRight,
+  CircleNotch,
+  DotsThree,
+  FilePlus,
+  FolderPlus,
+  PencilSimple,
+  Trash,
+  Copy,
+  FolderOpen,
+} from '@phosphor-icons/react';
 import { FileIcon, FolderIcon } from '@react-symbols/icons/utils';
 import { Git } from '@react-symbols/icons/files';
 import { FolderGray, FolderGithub } from '@react-symbols/icons/folders';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut,
+} from '../ui/dropdown-menu';
 import type { FileTreeEntry } from '../../bindings';
 
 interface FileTreeNodeProps {
@@ -20,9 +38,14 @@ interface FileTreeNodeProps {
   onToggle: () => void;
   onClick: (event: React.MouseEvent) => void;
   onDoubleClick: () => void;
-  onContextMenu: (event: React.MouseEvent) => void;
   onRenameSubmit: (newName: string) => void;
   onRenameCancel: () => void;
+  onNewFile: () => void;
+  onNewFolder: () => void;
+  onStartRename: () => void;
+  onDelete: () => void;
+  onCopyPath: () => void;
+  onRevealInFinder: () => void;
 }
 
 // Custom mappings for files without extensions (git internals)
@@ -89,9 +112,14 @@ export const FileTreeNode = memo(function FileTreeNode({
   onToggle,
   onClick,
   onDoubleClick,
-  onContextMenu,
   onRenameSubmit,
   onRenameCancel,
+  onNewFile,
+  onNewFolder,
+  onStartRename,
+  onDelete,
+  onCopyPath,
+  onRevealInFinder,
 }: FileTreeNodeProps) {
   const [renameValue, setRenameValue] = useState(entry.name);
 
@@ -131,14 +159,13 @@ export const FileTreeNode = memo(function FileTreeNode({
     <div
       style={style}
       className={`
-        flex items-center h-7 px-2 cursor-pointer select-none
+        group flex items-center h-7 px-2 cursor-pointer select-none
         hover:bg-muted/50 active:bg-muted/70
         transition-colors duration-100
         ${isSelected ? 'bg-primary/20 hover:bg-primary/30' : ''}
       `}
       onClick={onClick}
       onDoubleClick={onDoubleClick}
-      onContextMenu={onContextMenu}
     >
       <div
         className="flex items-center gap-1 flex-1 min-w-0"
@@ -184,6 +211,49 @@ export const FileTreeNode = memo(function FileTreeNode({
           <span className="truncate text-sm text-foreground">{entry.name}</span>
         )}
       </div>
+
+      {/* Three-dot dropdown menu */}
+      {!isRenaming && (
+        <div className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity duration-150 shrink-0">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className="p-0.5 rounded-sm text-muted-foreground hover:text-foreground transition-colors"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <DotsThree weight="bold" className="h-4 w-4" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent side="right" align="start" className="w-48">
+              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onNewFile(); }}>
+                <FilePlus className="h-3.5 w-3.5" /> New File
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onNewFolder(); }}>
+                <FolderPlus className="h-3.5 w-3.5" /> New Folder
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onStartRename(); }}>
+                <PencilSimple className="h-3.5 w-3.5" /> Rename
+                <DropdownMenuShortcut>F2</DropdownMenuShortcut>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                className="text-destructive focus:text-destructive"
+              >
+                <Trash className="h-3.5 w-3.5" /> Delete
+                <DropdownMenuShortcut>Del</DropdownMenuShortcut>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onCopyPath(); }}>
+                <Copy className="h-3.5 w-3.5" /> Copy Path
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onRevealInFinder(); }}>
+                <FolderOpen className="h-3.5 w-3.5" /> Reveal in Finder
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      )}
     </div>
   );
 });

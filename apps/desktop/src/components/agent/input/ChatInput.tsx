@@ -1,9 +1,10 @@
 import { useState, useCallback } from 'react';
-import { PaperPlaneTilt, Brain, Lightning, CaretDown } from '@phosphor-icons/react';
+import { PaperPlaneTilt, Brain, Lightning, CaretDown, GitBranch } from '@phosphor-icons/react';
 
 import type { FC, KeyboardEvent } from 'react';
 import type { MessageMode } from '../../../stores/agentStore';
-import { CLAUDE_SONNET_4_5, CLAUDE_OPUS_4_5, CLAUDE_HAIKU_4_5, CLAUDE_MODELS } from '../../../lib/constants';
+import type { WorktreeInfo } from '../../../bindings';
+import { CLAUDE_SONNET_4_5, CLAUDE_OPUS_4_6, CLAUDE_HAIKU_4_5, CLAUDE_MODELS } from '../../../lib/constants';
 
 export interface ChatInputProps {
 	onSubmit: (content: string) => void;
@@ -12,6 +13,9 @@ export interface ChatInputProps {
 	onModeChange?: (mode: MessageMode) => void;
 	selectedModel?: string | null;
 	onModelChange?: (model: string) => void;
+	worktrees?: WorktreeInfo[];
+	activeWorktreeId?: string | null;
+	onWorktreeChange?: (id: string | null) => void;
 	placeholder?: string;
 	className?: string;
 }
@@ -23,12 +27,16 @@ export const ChatInput: FC<ChatInputProps> = ({
 	onModeChange,
 	selectedModel,
 	onModelChange,
+	worktrees,
+	activeWorktreeId,
+	onWorktreeChange,
 	placeholder = 'Type a message...',
 	className = '',
 }) => {
 	const [content, setContent] = useState('');
 	const [showModeMenu, setShowModeMenu] = useState(false);
 	const [showModelMenu, setShowModelMenu] = useState(false);
+	const [showWorktreeMenu, setShowWorktreeMenu] = useState(false);
 
 	const handleSubmit = useCallback(() => {
 		if (content.trim() && !isDisabled) {
@@ -174,6 +182,72 @@ export const ChatInput: FC<ChatInputProps> = ({
 								)}
 							</div>
 						)}
+
+						{/* Worktree selector */}
+						{onWorktreeChange && worktrees && worktrees.length > 0 && (
+							<div className="relative">
+								<button
+									onClick={() => setShowWorktreeMenu(!showWorktreeMenu)}
+									disabled={isDisabled}
+									className={`
+										inline-flex items-center gap-2
+										px-3 py-1.5 rounded-md
+										border border-border bg-background
+										hover:bg-muted
+										transition-colors
+										${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}
+									`}
+								>
+									<GitBranch className="h-4 w-4 text-foreground" />
+									<span className="text-sm font-medium text-foreground truncate max-w-[120px]">
+										{activeWorktreeId
+											? worktrees.find((wt) => wt.id === activeWorktreeId)?.branch ?? activeWorktreeId
+											: 'main'}
+									</span>
+									<CaretDown className="h-3 w-3 text-muted-foreground" />
+								</button>
+								{showWorktreeMenu && (
+									<div className="absolute bottom-full left-0 mb-1 w-64 py-1 rounded-md border border-border bg-background shadow-lg z-10">
+										<button
+											onClick={() => {
+												onWorktreeChange(null);
+												setShowWorktreeMenu(false);
+											}}
+											className={`
+												w-full flex flex-col items-start px-3 py-2
+												hover:bg-muted
+												${!activeWorktreeId ? 'bg-primary/10' : ''}
+											`}
+										>
+											<span className="text-sm font-medium">main</span>
+											<span className="text-xs text-muted-foreground">Primary workspace</span>
+										</button>
+										{worktrees
+											.filter((wt) => !wt.is_main)
+											.map((wt) => (
+												<button
+													key={wt.id}
+													onClick={() => {
+														onWorktreeChange(wt.id);
+														setShowWorktreeMenu(false);
+													}}
+													className={`
+														w-full flex flex-col items-start px-3 py-2
+														hover:bg-muted
+														${activeWorktreeId === wt.id ? 'bg-primary/10' : ''}
+													`}
+												>
+													<span className="text-sm font-medium">{wt.branch ?? wt.id}</span>
+													<span className="text-xs text-muted-foreground">
+														{wt.is_dirty ? 'Modified' : 'Clean'}
+														{wt.is_locked ? ' (locked)' : ''}
+													</span>
+												</button>
+											))}
+									</div>
+								)}
+							</div>
+						)}
 					</div>
 
 					{/* Submit button */}
@@ -203,7 +277,7 @@ export const ChatInput: FC<ChatInputProps> = ({
 function getModelDisplayName(modelId: string): string {
 	const displayNames: Record<string, string> = {
 		[CLAUDE_SONNET_4_5]: 'Sonnet 4.5',
-		[CLAUDE_OPUS_4_5]: 'Opus 4.5',
+		[CLAUDE_OPUS_4_6]: 'Opus 4.6',
 		[CLAUDE_HAIKU_4_5]: 'Haiku 4.5',
 		'gpt-5.2-high': 'GPT-5.2 High',
 		'gpt-5.2-medium': 'GPT-5.2 Medium',

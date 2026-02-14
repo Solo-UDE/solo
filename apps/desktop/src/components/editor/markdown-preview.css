@@ -1,7 +1,6 @@
 /**
  * Markdown Preview Styles
  * Uses CSS variables from index.css for theme consistency
- * Design: soft shadows, spring animations, consistent spacing
  */
 
 /* Container with entrance animation */
@@ -32,13 +31,17 @@
   line-height: 1.7;
 }
 
-/* Headers - use box-shadow instead of border-bottom */
+/* ==========================================================================
+   Headers
+   ========================================================================== */
+
 .markdown-body h1,
 .markdown-body h2,
 .markdown-body h3,
 .markdown-body h4,
 .markdown-body h5,
 .markdown-body h6 {
+  position: relative;
   margin-top: 1.5em;
   margin-bottom: 0.75em;
   font-weight: 600;
@@ -58,36 +61,46 @@
   box-shadow: 0 1px 0 var(--border);
 }
 
-.markdown-body h3 {
-  font-size: 1.25rem;
-}
-
-.markdown-body h4 {
-  font-size: 1.1rem;
-}
-
+.markdown-body h3 { font-size: 1.25rem; }
+.markdown-body h4 { font-size: 1.1rem; }
 .markdown-body h5,
-.markdown-body h6 {
-  font-size: 1rem;
-}
+.markdown-body h6 { font-size: 1rem; }
+.markdown-body h6 { color: var(--muted-foreground); }
 
-.markdown-body h6 {
+/* Heading anchor links */
+.heading-anchor {
+  position: absolute;
+  left: -1.25em;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.8em;
   color: var(--muted-foreground);
+  opacity: 0;
+  text-decoration: none;
+  transition: opacity 150ms ease;
 }
 
-/* Paragraphs and text */
-.markdown-body p {
-  margin-bottom: 1em;
+.markdown-body h1:hover .heading-anchor,
+.markdown-body h2:hover .heading-anchor,
+.markdown-body h3:hover .heading-anchor,
+.markdown-body h4:hover .heading-anchor,
+.markdown-body h5:hover .heading-anchor,
+.markdown-body h6:hover .heading-anchor {
+  opacity: 0.5;
 }
 
-.markdown-body strong {
-  font-weight: 600;
+.heading-anchor:hover {
+  opacity: 1 !important;
+  color: var(--primary);
 }
 
-.markdown-body em {
-  font-style: italic;
-}
+/* ==========================================================================
+   Text
+   ========================================================================== */
 
+.markdown-body p { margin-bottom: 1em; }
+.markdown-body strong { font-weight: 600; }
+.markdown-body em { font-style: italic; }
 .markdown-body del {
   text-decoration: line-through;
   color: var(--muted-foreground);
@@ -98,35 +111,39 @@
   color: var(--primary);
   text-decoration: none;
 }
+.markdown-body a:hover { text-decoration: underline; }
 
-.markdown-body a:hover {
-  text-decoration: underline;
-}
+/* ==========================================================================
+   Lists
+   ========================================================================== */
 
-/* Lists */
 .markdown-body ul,
 .markdown-body ol {
   margin-bottom: 1em;
   padding-left: 2em;
 }
 
-.markdown-body li {
-  margin-bottom: 0.25em;
-}
-
+.markdown-body li { margin-bottom: 0.25em; }
 .markdown-body li > ul,
 .markdown-body li > ol {
   margin-top: 0.25em;
   margin-bottom: 0;
 }
 
-/* Task lists */
+/* Task list checkboxes */
 .markdown-body input[type='checkbox'] {
   margin-right: 0.5em;
   accent-color: var(--primary);
+  width: 1em;
+  height: 1em;
+  vertical-align: middle;
+  border-radius: 3px;
 }
 
-/* Blockquotes - rounded corners, subtle border */
+/* ==========================================================================
+   Blockquotes
+   ========================================================================== */
+
 .markdown-body blockquote {
   margin: 1.25em 0;
   padding: 0.75em 1.25em;
@@ -136,11 +153,9 @@
   color: var(--muted-foreground);
 }
 
-.markdown-body blockquote p {
-  margin: 0;
-}
+.markdown-body blockquote p { margin: 0; }
 
-/* Horizontal rule - gradient fade */
+/* Horizontal rule */
 .markdown-body hr {
   margin: 2.5em 0;
   border: none;
@@ -154,7 +169,10 @@
   );
 }
 
-/* Inline code */
+/* ==========================================================================
+   Inline Code
+   ========================================================================== */
+
 .markdown-body .inline-code {
   padding: 0.2em 0.4em;
   font-size: 0.875em;
@@ -163,7 +181,10 @@
   border-radius: 0.25rem;
 }
 
-/* Code blocks - soft shadow, no hard borders */
+/* ==========================================================================
+   Code Blocks (shared CodeBlock component)
+   ========================================================================== */
+
 .code-block-wrapper {
   position: relative;
   margin: 1.25em 0;
@@ -188,14 +209,21 @@
   justify-content: space-between;
   padding: 0.5rem 1rem;
   background-color: var(--accent);
+  border-bottom: 1px solid var(--border);
 }
 
 .code-block-language {
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   font-family: var(--font-mono);
   color: var(--muted-foreground);
   text-transform: uppercase;
   letter-spacing: 0.05em;
+}
+
+.code-block-filename {
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  color: var(--muted-foreground);
 }
 
 .code-block-content {
@@ -206,15 +234,91 @@
   margin: 0;
   padding: 1rem;
   overflow-x: auto;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   line-height: 1.5;
+}
+
+/* Override Shiki's inline background-color so .code-block-wrapper bg shows through */
+.code-block-content pre.shiki {
+  background-color: transparent !important;
 }
 
 .code-block-content code {
   font-family: var(--font-mono);
 }
 
-/* Copy button - always visible (subtle), spring animation */
+/* Word wrap mode */
+.code-block-content.word-wrap pre {
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* Line numbers */
+.code-block-content.with-line-numbers pre .line::before {
+  content: attr(data-line);
+  display: inline-block;
+  width: 2.5em;
+  margin-right: 1em;
+  text-align: right;
+  color: var(--muted-foreground);
+  opacity: 0.4;
+  font-size: 0.75rem;
+  user-select: none;
+}
+
+/* Line highlighting */
+.code-block-content .highlighted-line {
+  background-color: var(--primary);
+  background-color: oklch(from var(--primary) l c h / 10%);
+  margin: 0 -1rem;
+  padding: 0 1rem;
+  border-left: 2px solid var(--primary);
+}
+
+/* Diff coloring */
+.code-block-content .diff-add {
+  background-color: oklch(0.65 0.2 145 / 10%);
+}
+
+.code-block-content .diff-remove {
+  background-color: oklch(0.65 0.2 25 / 10%);
+}
+
+/* Action buttons (copy, wrap) */
+.code-action-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+  color: var(--muted-foreground);
+  transition: all 200ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.code-action-button:hover {
+  background-color: var(--background);
+  color: var(--foreground);
+  transform: scale(1.05);
+}
+
+.code-action-button:active {
+  transform: scale(0.95);
+}
+
+.code-action-button.active {
+  color: var(--primary);
+}
+
+.code-action-button.copied {
+  background-color: oklch(0.65 0.2 145);
+  color: white;
+}
+
+/* Legacy code-copy-button (for any remaining usages) */
 .code-copy-button {
   position: absolute;
   top: 0.5rem;
@@ -242,9 +346,7 @@
   box-shadow: 0 4px 8px -2px rgba(0, 0, 0, 0.15);
 }
 
-.code-copy-button:active {
-  transform: scale(0.95);
-}
+.code-copy-button:active { transform: scale(0.95); }
 
 .code-copy-button.copied {
   opacity: 1;
@@ -252,141 +354,171 @@
   color: white;
 }
 
-/* Tables - rounded corners, contained shadow */
-.markdown-body table {
-  width: 100%;
-  margin: 1.25em 0;
-  border-collapse: separate;
-  border-spacing: 0;
-  border-radius: 8px;
-  overflow: hidden;
-  box-shadow: 0 0 0 1px var(--border);
-}
+/* ==========================================================================
+   Images
+   ========================================================================== */
 
-.markdown-body th,
-.markdown-body td {
-  padding: 0.625rem 0.875rem;
-  border-bottom: 1px solid var(--border);
-  border-right: 1px solid var(--border);
-}
-
-.markdown-body th:last-child,
-.markdown-body td:last-child {
-  border-right: none;
-}
-
-.markdown-body tr:last-child td {
-  border-bottom: none;
-}
-
-.markdown-body th {
-  font-weight: 600;
-  background-color: var(--muted);
-  text-align: left;
-}
-
-.markdown-body tr:nth-child(even) {
-  background-color: var(--muted);
-}
-
-/* Images */
-.markdown-body img {
+.markdown-body img,
+.markdown-body .markdown-image {
   max-width: 100%;
   height: auto;
   border-radius: 0.5rem;
+  cursor: zoom-in;
+  transition: transform 200ms ease;
 }
 
-/* Animated pane transitions */
-.split-pane-animated {
-  transition: width 300ms cubic-bezier(0.16, 1, 0.3, 1);
+.markdown-body img:hover {
+  transform: scale(1.01);
 }
 
-/* Split pane divider - wider grab area, 3-dot grip */
-.split-divider {
+/* ==========================================================================
+   Callouts (GitHub-style alerts)
+   ========================================================================== */
+
+.callout {
+  margin: 1.25em 0;
+  padding: 0.75em 1em;
+  border-radius: 0 8px 8px 0;
+  border-left: 3px solid;
+}
+
+.callout-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  font-weight: 600;
+  font-size: 0.875rem;
+  margin-bottom: 0.5em;
+}
+
+.callout-icon {
+  width: 1em;
+  height: 1em;
   flex-shrink: 0;
-  width: 8px;
-  background-color: transparent;
-  cursor: col-resize;
-  position: relative;
-  transition: background-color 200ms ease;
 }
 
-/* Visible track line */
-.split-divider::before {
-  content: '';
-  position: absolute;
-  left: 50%;
-  top: 0;
-  bottom: 0;
-  width: 1px;
-  transform: translateX(-50%);
+.callout-content {
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+
+.callout-content p { margin: 0; }
+.callout-content p + p { margin-top: 0.5em; }
+
+/* NOTE - blue */
+.callout-note {
+  border-color: oklch(0.6 0.15 240);
+  background-color: oklch(0.6 0.15 240 / 8%);
+}
+.callout-note .callout-title { color: oklch(0.6 0.15 240); }
+
+/* TIP - green */
+.callout-tip {
+  border-color: oklch(0.6 0.2 145);
+  background-color: oklch(0.6 0.2 145 / 8%);
+}
+.callout-tip .callout-title { color: oklch(0.6 0.2 145); }
+
+/* IMPORTANT - purple */
+.callout-important {
+  border-color: oklch(0.6 0.15 300);
+  background-color: oklch(0.6 0.15 300 / 8%);
+}
+.callout-important .callout-title { color: oklch(0.6 0.15 300); }
+
+/* WARNING - amber */
+.callout-warning {
+  border-color: oklch(0.7 0.15 75);
+  background-color: oklch(0.7 0.15 75 / 8%);
+}
+.callout-warning .callout-title { color: oklch(0.7 0.15 75); }
+
+/* CAUTION - red */
+.callout-caution {
+  border-color: oklch(0.6 0.2 25);
+  background-color: oklch(0.6 0.2 25 / 8%);
+}
+.callout-caution .callout-title { color: oklch(0.6 0.2 25); }
+
+/* ==========================================================================
+   KaTeX Math
+   ========================================================================== */
+
+.katex-display {
+  margin: 1.25em 0;
+  overflow-x: auto;
+  padding: 0.5em 0;
+}
+
+.katex {
+  font-size: 1.1em;
+}
+
+/* ==========================================================================
+   Mermaid Diagrams
+   ========================================================================== */
+
+.mermaid-block {
+  margin: 1.25em 0;
+  padding: 1rem;
+  border-radius: 10px;
+  background-color: var(--muted);
+  box-shadow: 0 0 0 1px var(--border);
+  overflow-x: auto;
+  text-align: center;
+}
+
+.mermaid-block svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.mermaid-loading {
+  min-height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mermaid-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: 60%;
+}
+
+.mermaid-skeleton-bar {
+  height: 12px;
+  border-radius: 6px;
   background-color: var(--border);
-  opacity: 0.5;
-  transition: all 200ms cubic-bezier(0.16, 1, 0.3, 1);
+  animation: pulse 1.5s ease-in-out infinite;
 }
 
-.split-divider:hover::before,
-.split-divider.dragging::before {
-  width: 3px;
-  background-color: var(--primary);
-  opacity: 1;
+.mermaid-skeleton-bar.short { width: 40%; }
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
 }
 
-/* Kill all transitions during sidebar/split resize for zero-lag dragging */
-body.is-resizing,
-body.is-resizing *,
-body.is-resizing *::before,
-body.is-resizing *::after {
-  transition: none !important;
-  cursor: col-resize !important;
-  user-select: none !important;
+.mermaid-error {
+  text-align: left;
 }
 
-/* Syntax highlighting (rehype-highlight) */
-.markdown-body .hljs {
-  color: var(--foreground);
+.mermaid-error-banner {
+  padding: 0.5rem 1rem;
+  background-color: oklch(0.6 0.2 25 / 15%);
+  color: oklch(0.6 0.2 25);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  border-bottom: 1px solid oklch(0.6 0.2 25 / 20%);
 }
 
-.markdown-body .hljs-keyword,
-.markdown-body .hljs-selector-tag,
-.markdown-body .hljs-title,
-.markdown-body .hljs-section,
-.markdown-body .hljs-built_in {
-  color: var(--syntax-keyword);
-}
-
-.markdown-body .hljs-string,
-.markdown-body .hljs-title.class_,
-.markdown-body .hljs-template-variable,
-.markdown-body .hljs-selector-class,
-.markdown-body .hljs-selector-attr {
-  color: var(--syntax-string);
-}
-
-.markdown-body .hljs-type,
-.markdown-body .hljs-meta,
-.markdown-body .hljs-name {
-  color: var(--syntax-type);
-}
-
-.markdown-body .hljs-function,
-.markdown-body .hljs-title.function_ {
-  color: var(--syntax-function);
-}
-
-.markdown-body .hljs-variable,
-.markdown-body .hljs-params,
-.markdown-body .hljs-attr {
-  color: var(--syntax-variable);
-}
-
-.markdown-body .hljs-comment,
-.markdown-body .hljs-quote {
-  color: var(--syntax-comment);
-  font-style: italic;
-}
-
-.markdown-body .hljs-number,
-.markdown-body .hljs-literal {
-  color: var(--syntax-number);
+.mermaid-error-source {
+  margin: 0;
+  padding: 1rem;
+  font-size: 0.8125rem;
+  font-family: var(--font-mono);
+  overflow-x: auto;
+  color: var(--muted-foreground);
 }

@@ -1,37 +1,37 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { GearSix, SignOut, Terminal } from "@phosphor-icons/react";
-import { WorkspaceSwitcher } from "./components/titlebar/WorkspaceSwitcher";
+import { GearSix, SidebarSimple, SignOut, Terminal } from "@phosphor-icons/react";
 import { PrimarySidebar } from "./components/sidebar";
 import { SidebarTerminal } from "./components/sidebar";
 import { MosaicLayout } from "./components/panels";
 import { AuthGuard } from "./components/auth";
-import { useUIStore } from "./stores/uiStore";
+import { useUIStore, useIsLeftSidebarCollapsed } from "./stores/uiStore";
 import { usePanelTabsStore } from "./stores/panelTabsStore";
 import { useProviderStore } from "./stores/provider-store";
 import { useAgentStore } from "./stores/agentStore";
 import { useAuthStore, useUser } from "./stores/authStore";
 import { registerBuiltinPanels, BUILTIN_PANEL_TYPES } from "./lib/panels";
-import { SettingsPage } from "./components/settings";
+import { SettingsView } from "./components/settings";
 import { useAutosave } from "./hooks/useAutosave";
 import { useColorScheme } from "./hooks/useColorScheme";
 import { useTitlebarStyle } from "./hooks/usePlatform";
 import { useAgentStream } from "./hooks/useAgentStream";
 import { useTerminalStream } from "./hooks/useTerminalStream";
 import { useGitStream } from "./hooks/useGitStream";
-import { useTerminalStore } from "./stores/terminalStore";
+import { useWorktreeStream } from "./hooks/useWorktreeStream";
+import { useTerminalStore, clearActiveTerminal, findInActiveTerminal } from "./stores/terminalStore";
 import { useFileExplorerStore } from "./stores/fileExplorerStore";
-import { createTerminal } from "./lib/tauri/terminal";
+import { createTerminal, killTerminal } from "./lib/tauri/terminal";
 import { SIDEBAR } from "./lib/constants";
 import { cn } from "./lib/utils";
 import { Toaster } from "sonner";
+import { WorkspaceSwitcher } from "./components/titlebar/WorkspaceSwitcher";
 
 // Register built-in panels on module load
 registerBuiltinPanels();
 
 function AppContent() {
   const [backendStatus, setBackendStatus] = useState<string>("Connecting...");
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const sidebarRef = useRef<HTMLElement>(null);
   const dragStartX = useRef<number>(0);
   const dragStartWidth = useRef<number>(0);
@@ -43,7 +43,12 @@ function AppContent() {
 
   const leftSidebarWidth = useUIStore((state) => state.leftSidebarWidth);
   const setLeftSidebarWidth = useUIStore((state) => state.setLeftSidebarWidth);
+  const isCollapsed = useIsLeftSidebarCollapsed();
+  const toggleSidebar = useUIStore((s) => s.toggleLeftSidebar);
   const terminalPanelOpen = useUIStore((s) => s.terminalPanelOpen);
+  const settingsOpen = useUIStore((s) => s.settingsOpen);
+  const openSettings = useUIStore((s) => s.openSettings);
+  const closeSettings = useUIStore((s) => s.closeSettings);
   const terminalPanelHeight = useUIStore((s) => s.terminalPanelHeight);
   const setTerminalPanelHeight = useUIStore((s) => s.setTerminalPanelHeight);
   const initializeProviders = useProviderStore((state) => state.initialize);
@@ -95,6 +100,7 @@ function AppContent() {
   useAgentStream();
   useTerminalStream();
   useGitStream();
+  useWorktreeStream();
 
   // Load persisted agent sessions on startup
   useEffect(() => {
@@ -122,17 +128,85 @@ function AppContent() {
     uiState.toggleTerminalPanel();
   }, []);
 
-  // Keyboard shortcut: Ctrl+` (Cmd+` on Mac) to toggle terminal panel
+  // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl/Cmd+` — toggle terminal
       if (e.key === '`' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
         handleToggleTerminal();
+        return;
+      }
+      // Cmd+, — toggle settings
+      if (e.key === ',' && e.metaKey) {
+        e.preventDefault();
+        if (settingsOpen) {
+          closeSettings();
+        } else {
+          openSettings();
+        }
+        return;
+      }
+
+      // Terminal-specific shortcuts (only when terminal panel is open)
+      const isTerminalOpen = useUIStore.getState().terminalPanelOpen;
+      if (!isTerminalOpen) return;
+
+      // Cmd+T — new terminal
+      if (e.key === 't' && e.metaKey && !e.shiftKey) {
+        e.preventDefault();
+        const cwd = useFileExplorerStore.getState().rootPath ?? undefined;
+        createTerminal(cwd)
+          .then(({ id, shell }) => {
+            useTerminalStore.getState().addTerminal(id, cwd, shell);
+          })
+          .catch((err) => console.error('Failed to create terminal:', err));
+        return;
+      }
+
+      // Cmd+W — close active terminal tab
+      if (e.key === 'w' && e.metaKey && !e.shiftKey) {
+        e.preventDefault();
+        const { activeTerminalId: aid } = useTerminalStore.getState();
+        if (aid) {
+          killTerminal(aid).catch(() => {});
+          useTerminalStore.getState().removeTerminal(aid);
+          if (useTerminalStore.getState().terminals.size === 0) {
+            useUIStore.getState().toggleTerminalPanel();
+          }
+        }
+        return;
+      }
+
+      // Cmd+Shift+[ or ] — switch terminal tabs
+      if (e.key === '[' && e.metaKey && e.shiftKey) {
+        e.preventDefault();
+        useTerminalStore.getState().cycleTerminal('prev');
+        return;
+      }
+      if (e.key === ']' && e.metaKey && e.shiftKey) {
+        e.preventDefault();
+        useTerminalStore.getState().cycleTerminal('next');
+        return;
+      }
+
+      // Cmd+K — clear terminal
+      if (e.key === 'k' && e.metaKey && !e.shiftKey) {
+        e.preventDefault();
+        clearActiveTerminal();
+        return;
+      }
+
+      // Cmd+F — find in terminal
+      if (e.key === 'f' && e.metaKey && !e.shiftKey) {
+        e.preventDefault();
+        findInActiveTerminal();
+        return;
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleToggleTerminal]);
+  }, [handleToggleTerminal, settingsOpen, openSettings, closeSettings]);
 
   // Open a file in the panel system
   const handleFileOpen = useCallback((path: string) => {
@@ -208,64 +282,75 @@ function AppContent() {
 
   return (
     <div className="h-screen w-screen bg-background text-foreground overflow-hidden relative">
-      {/* Main app view */}
-      <div className={cn(
-        "absolute inset-0 transition-opacity duration-200",
-        isSettingsOpen ? "opacity-0 pointer-events-none" : "opacity-100"
-      )}>
-        {/* Titlebar overlay — glass on vibrancy platforms, solid fallback */}
-        <div
-          data-tauri-drag-region
-          style={titlebarStyle}
-          className="absolute top-0 inset-x-0 h-[38px] flex items-center z-50 backdrop-blur-md bg-background/70 titlebar-glass"
-        >
-          <div className="flex-1" data-tauri-drag-region />
-
-          <WorkspaceSwitcher />
-
-          <div className="flex-1 flex items-center justify-end gap-1.5">
-            <div
-              className={`w-1.5 h-1.5 rounded-full ${
-                backendStatus.includes("connected")
-                  ? "bg-status-success"
-                  : backendStatus.includes("error")
-                    ? "bg-status-error"
-                    : "bg-status-warning animate-pulse"
-              }`}
+      {/* Titlebar overlay — glass on vibrancy platforms, solid fallback */}
+      <div
+        data-tauri-drag-region
+        style={titlebarStyle}
+        className="absolute top-0 inset-x-0 h-[38px] flex items-center z-50 backdrop-blur-md bg-background/70 titlebar-glass"
+      >
+        <div className="flex-1 flex items-center" data-tauri-drag-region>
+          <button
+            onClick={toggleSidebar}
+            className="p-1 rounded hover:bg-foreground/[0.08] transition-colors ml-1.5"
+            title={isCollapsed ? 'Expand Sidebar (⌘B)' : 'Collapse Sidebar (⌘B)'}
+          >
+            <SidebarSimple
+              weight={isCollapsed ? 'regular' : 'fill'}
+              className="w-4 h-4 text-muted-foreground"
             />
-            {user?.email && (
-              <span className="text-[11px] text-muted-foreground/70 truncate max-w-28">
-                {user.email}
-              </span>
-            )}
-            <button
-              onClick={handleToggleTerminal}
-              className={cn(
-                'p-1 rounded hover:bg-foreground/[0.08] transition-colors',
-                terminalPanelOpen && 'bg-foreground/[0.08]',
-              )}
-              title="Toggle Terminal (⌘`)"
-            >
-              <Terminal className="w-3.5 h-3.5 text-muted-foreground" />
-            </button>
-            <button
-              onClick={() => setIsSettingsOpen(true)}
-              className="p-1 rounded hover:bg-foreground/[0.08] transition-colors"
-              title="Settings"
-            >
-              <GearSix className="w-3.5 h-3.5 text-muted-foreground" />
-            </button>
-            <button
-              onClick={signOut}
-              className="p-1 rounded hover:bg-foreground/[0.08] transition-colors"
-              title="Sign out"
-            >
-              <SignOut className="w-3.5 h-3.5 text-muted-foreground" />
-            </button>
-          </div>
+          </button>
         </div>
 
-        {/* Full-height content — sidebar bg extends behind titlebar */}
+        <WorkspaceSwitcher />
+
+        <div className="flex-1 flex items-center justify-end gap-2">
+          <div
+            className={`w-2 h-2 rounded-full ${
+              backendStatus.includes("connected")
+                ? "bg-status-success"
+                : backendStatus.includes("error")
+                  ? "bg-status-error"
+                  : "bg-status-warning animate-pulse"
+            }`}
+          />
+          {user?.email && (
+            <span className="text-xs text-muted-foreground/70 truncate max-w-28">
+              {user.email}
+            </span>
+          )}
+          <button
+            onClick={handleToggleTerminal}
+            className={cn(
+              'p-1 rounded hover:bg-foreground/[0.08] transition-colors',
+              terminalPanelOpen && 'bg-foreground/[0.08]',
+            )}
+            title="Toggle Terminal (⌘`)"
+          >
+            <Terminal className="w-4 h-4 text-muted-foreground" />
+          </button>
+          <button
+            onClick={() => openSettings()}
+            className="p-1 rounded hover:bg-foreground/[0.08] transition-colors"
+            title="Settings (⌘,)"
+          >
+            <GearSix className="w-4 h-4 text-muted-foreground" />
+          </button>
+          <button
+            onClick={signOut}
+            className="p-1 rounded hover:bg-foreground/[0.08] transition-colors"
+            title="Sign out"
+          >
+            <SignOut className="w-4 h-4 text-muted-foreground" />
+          </button>
+        </div>
+      </div>
+
+      {/* Full-height content — sidebar bg extends behind titlebar */}
+      {settingsOpen ? (
+        <div className="flex h-full pt-[38px]">
+          <SettingsView />
+        </div>
+      ) : (
         <div className="flex h-full">
           <PrimarySidebar ref={sidebarRef} width={leftSidebarWidth} onFileOpen={handleFileOpen} />
 
@@ -308,17 +393,9 @@ function AppContent() {
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       <Toaster richColors position="bottom-right" theme={resolvedTheme} />
-
-      {/* Settings view */}
-      <div className={cn(
-        "absolute inset-0 transition-opacity duration-200",
-        isSettingsOpen ? "opacity-100" : "opacity-0 pointer-events-none"
-      )}>
-        <SettingsPage onClose={() => setIsSettingsOpen(false)} />
-      </div>
     </div>
   );
 }
