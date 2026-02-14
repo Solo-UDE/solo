@@ -121,7 +121,7 @@ export const ContextTracker: FC<ContextTrackerProps> = ({
                 type="button"
                 disabled={disabled}
                 className={cn(
-                  'flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground rounded-md px-2 py-1 border border-muted-foreground/20 hover:bg-accent-foreground/10 transition-all duration-200 focus-visible:outline-none',
+                  'flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground rounded-lg px-2 py-1 border border-muted-foreground/20 hover:bg-accent-foreground/10 transition-all duration-200 focus-visible:outline-none',
                   disabled && 'opacity-50 cursor-not-allowed',
                   className
                 )}
@@ -142,7 +142,7 @@ export const ContextTracker: FC<ContextTrackerProps> = ({
           side="top"
           align="start"
           sideOffset={8}
-          className="w-64 p-0 bg-popover border border-border rounded-lg shadow-xl"
+          className="w-64 p-0 bg-card/95 backdrop-blur-md border border-border/50 rounded-lg shadow-glass"
         >
           <div className="px-4 pt-3 pb-2">
             {/* Header */}
