@@ -126,6 +126,7 @@ pub fn run() {
             agent_commands::get_provider_status,
             agent_commands::set_credentials,
             agent_commands::has_credentials,
+            agent_commands::clear_credentials,
             agent_commands::get_models,
             agent_commands::get_models_for_provider_cmd,
             agent_commands::agent_create_session,
@@ -147,8 +148,6 @@ pub fn run() {
             agent_commands::complete_oauth_flow,
             agent_commands::wait_for_oauth_callback,
             agent_commands::disconnect_oauth,
-            // Manual OAuth token command
-            agent_commands::set_oauth_token_manual,
             // Claude Code CLI commands
             agent_commands::check_claude_auth_status,
             agent_commands::check_claude_cli_installed,

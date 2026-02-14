@@ -571,6 +571,25 @@ pub async fn has_credentials(
     Ok(state.credentials.has_credentials(provider_type).await)
 }
 
+/// Clear credentials for a provider (remove from Keychain)
+#[tauri::command]
+pub async fn clear_credentials(
+    provider: String,
+    state: State<'_, AgentState>,
+) -> Result<(), String> {
+    debug!(provider = %provider, "Clearing credentials");
+
+    let provider_type = ProviderType::from_str(&provider)
+        .ok_or_else(|| format!("Unknown provider: {}", provider))?;
+
+    state.credentials
+        .clear_credentials(provider_type)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
 // =============================================================================
 // Model Commands
 // =============================================================================
@@ -1088,51 +1107,6 @@ pub async fn disconnect_oauth(
         .disconnect_oauth(provider_type)
         .await
         .map_err(|e| e.to_string())?;
-
-    Ok(())
-}
-
-// =============================================================================
-// Manual OAuth Token Commands
-// =============================================================================
-
-/// Set an OAuth token manually (e.g. from `claude setup-token`)
-///
-/// This stores the token as an OAuth credential so it gets sent via
-/// `Authorization: Bearer` instead of `x-api-key`.
-#[tauri::command]
-pub async fn set_oauth_token_manual(
-    provider: String,
-    token: String,
-    state: State<'_, AgentState>,
-) -> Result<(), String> {
-    info!(provider = %provider, "Setting manual OAuth token");
-
-    let provider_type = ProviderType::from_str(&provider)
-        .ok_or_else(|| format!("Unknown provider: {}", provider))?;
-
-    // Create an OAuthToken with a long expiry (1 year) since manually pasted
-    // tokens don't have known expiry; user can re-paste when it expires.
-    let oauth_token = solo_agent::oauth::OAuthToken::new(
-        token,
-        None,             // no refresh token
-        365 * 24 * 3600,  // 1 year expiry
-        "Bearer".to_string(),
-        None,
-    );
-
-    state.credentials
-        .set_oauth_token(provider_type, oauth_token)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    // Re-initialize the provider with the new OAuth credential
-    state.manager
-        .initialize_provider(provider_type)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    info!(provider = %provider_type.as_str(), "Manual OAuth token saved successfully");
 
     Ok(())
 }

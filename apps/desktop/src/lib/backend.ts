@@ -95,12 +95,11 @@ export async function setCredentials(provider: ProviderType, apiKey: string): Pr
 }
 
 /**
- * Set an OAuth token manually (e.g. from `claude setup-token`)
- * @param provider - Provider type
- * @param token - OAuth access token
+ * Clear credentials for a provider (remove from Keychain)
+ * @param provider - Provider name
  */
-export async function setOAuthTokenManual(provider: string, token: string): Promise<void> {
-	return invoke('set_oauth_token_manual', { provider, token });
+export async function clearCredentials(provider: string): Promise<void> {
+	return invoke('clear_credentials', { provider });
 }
 
 // =============================================================================

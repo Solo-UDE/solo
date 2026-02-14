@@ -76,8 +76,8 @@ lazy_static::lazy_static! {
             description: "Best balance of intelligence and speed".to_string(),
         },
         AIModel {
-            id: "claude-opus-4-5-20251101".to_string(),
-            display_name: "Claude Opus 4.5".to_string(),
+            id: "claude-opus-4-6".to_string(),
+            display_name: "Claude Opus 4.6".to_string(),
             alias: "opus".to_string(),
             provider: ProviderType::Anthropic,
             capabilities: ModelCapabilities {

@@ -12,6 +12,7 @@ use serde::Deserialize;
 use solo_protocol::{AgentMessage, AgentToolCall, BackendEvent};
 use std::collections::HashSet;
 use std::process::Stdio;
+use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::mpsc;
@@ -19,6 +20,11 @@ use tracing::{debug, error, info, warn};
 
 use crate::models::ANTHROPIC_MODELS;
 use crate::provider::{AIProvider, ProviderError, ProviderResult, ProviderType, ToolDefinition};
+
+/// Environment variables to remove when spawning the Claude CLI.
+/// CLAUDECODE is set by Claude Code sessions — if present, the CLI
+/// refuses to start ("cannot be launched inside another Claude Code session").
+const ENVS_TO_REMOVE: &[&str] = &["CLAUDECODE"];
 
 /// Check if the Claude CLI is installed and accessible
 pub async fn is_cli_available() -> bool {
@@ -213,8 +219,12 @@ impl AIProvider for ClaudeCliProvider {
         }
 
         // Try a minimal CLI call to verify login
-        let output = Command::new("claude")
-            .args(["--version"])
+        let mut cmd = Command::new("claude");
+        cmd.args(["--version"]);
+        for var in ENVS_TO_REMOVE {
+            cmd.env_remove(var);
+        }
+        let output = cmd
             .output()
             .await
             .map_err(|e| ProviderError::ApiError(format!("Failed to run claude CLI: {}", e)))?;
@@ -294,10 +304,12 @@ async fn stream_cli_response(
     );
 
     // Build CLI arguments
+    // --verbose is required when using --output-format stream-json with --print
     let mut args = vec![
         "--print".to_string(),
         "--output-format".to_string(),
         "stream-json".to_string(),
+        "--verbose".to_string(),
         "--model".to_string(),
         model.clone(),
     ];
@@ -313,15 +325,20 @@ async fn stream_cli_response(
 
     debug!(conversation_id = %conversation_id, args = ?args, "Spawning Claude CLI");
 
-    let mut child = Command::new("claude")
-        .args(&args)
+    let mut cmd = Command::new("claude");
+    cmd.args(&args)
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| {
-            error!(error = %e, "Failed to spawn Claude CLI");
-            ProviderError::ApiError(format!("Failed to spawn Claude CLI: {}", e))
-        })?;
+        .stderr(Stdio::piped());
+
+    // Remove env vars that prevent the CLI from launching
+    for var in ENVS_TO_REMOVE {
+        cmd.env_remove(var);
+    }
+
+    let mut child = cmd.spawn().map_err(|e| {
+        error!(error = %e, "Failed to spawn Claude CLI");
+        ProviderError::ApiError(format!("Failed to spawn Claude CLI: {}", e))
+    })?;
 
     let stdout = child.stdout.take().ok_or_else(|| {
         ProviderError::ApiError("Failed to capture Claude CLI stdout".to_string())
@@ -329,14 +346,18 @@ async fn stream_cli_response(
 
     let stderr = child.stderr.take();
 
-    // Spawn a task to read stderr for debugging
+    // Spawn a task to collect stderr for error reporting
+    let stderr_lines: Arc<tokio::sync::Mutex<Vec<String>>> =
+        Arc::new(tokio::sync::Mutex::new(Vec::new()));
     if let Some(stderr) = stderr {
         let cid = conversation_id.clone();
+        let stderr_capture = stderr_lines.clone();
         tokio::spawn(async move {
             let reader = BufReader::new(stderr);
             let mut lines = reader.lines();
             while let Ok(Some(line)) = lines.next_line().await {
                 warn!(conversation_id = %cid, stderr = %line, "Claude CLI stderr");
+                stderr_capture.lock().await.push(line);
             }
         });
     }
@@ -451,22 +472,32 @@ async fn stream_cli_response(
 
     if !status.success() {
         let exit_code = status.code().unwrap_or(-1);
+        let captured_stderr = stderr_lines.lock().await.join("\n");
+
         error!(
             conversation_id = %conversation_id,
             exit_code = exit_code,
+            stderr = %captured_stderr,
             "Claude CLI exited with error"
         );
 
-        // Check common error cases
-        if exit_code == 1 {
-            return Err(ProviderError::AuthError(
-                "Claude CLI authentication failed. Run: claude login".to_string(),
-            ));
+        // Check stderr for specific error patterns
+        let stderr_lower = captured_stderr.to_lowercase();
+        if stderr_lower.contains("authentication")
+            || stderr_lower.contains("not logged in")
+            || stderr_lower.contains("login")
+            || stderr_lower.contains("unauthorized")
+        {
+            return Err(ProviderError::AuthError(format!(
+                "Claude CLI authentication failed: {}",
+                if captured_stderr.is_empty() { "Run: claude login".to_string() } else { captured_stderr }
+            )));
         }
 
         return Err(ProviderError::ApiError(format!(
-            "Claude CLI exited with code {}",
-            exit_code
+            "Claude CLI exited with code {}: {}",
+            exit_code,
+            if captured_stderr.is_empty() { "no stderr output".to_string() } else { captured_stderr }
         )));
     }
 

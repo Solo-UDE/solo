@@ -4,13 +4,13 @@
  */
 
 import { useCallback, useState, useEffect, useMemo } from 'react';
-import { CheckCircle, WarningCircle, CircleNotch, Clock, Terminal, Sparkle, CaretDown, CaretRight, ArrowClockwise, XCircle, ShieldCheck } from '@phosphor-icons/react';
+import { CheckCircle, WarningCircle, CircleNotch, Clock, Terminal, Sparkle, ArrowClockwise, XCircle, ShieldCheck } from '@phosphor-icons/react';
 import { useSettingsStore } from '../../../stores/settingsStore';
 import { useProviderStore, useOAuthPending } from '../../../stores/provider-store';
 import { useShallow } from 'zustand/react/shallow';
 import { SettingRow, SelectDropdown, ToggleSwitch, NumberInput, PasswordInput } from '../controls';
 import { ClaudeLoginModal } from '../ClaudeLoginModal';
-import { setOAuthTokenManual, verifyClaudeSetup } from '../../../lib/backend';
+import { verifyClaudeSetup } from '../../../lib/backend';
 import type { ProviderType, AuthMethodInfo, ClaudeSetupStatus } from '../../../lib/backend';
 
 /**
@@ -75,8 +75,6 @@ interface ProviderCardProps {
   onApiKeySave: () => void;
   isSaving: boolean;
   hasCredentials: boolean;
-  showOAuthTokenPaste?: boolean;
-  onOAuthTokenSaved?: () => void;
 }
 
 function ProviderCard({
@@ -92,19 +90,12 @@ function ProviderCard({
   onApiKeySave,
   isSaving,
   hasCredentials,
-  showOAuthTokenPaste,
-  onOAuthTokenSaved,
 }: ProviderCardProps) {
   const isAnthropic = provider === 'anthropic';
   const isClaudeCodeAuth = authInfo?.authType === 'claude-o-auth';
   const isOpenAIOAuth = provider === 'openai' && authInfo?.authType === 'o-auth';
   const isSoloOAuth = authInfo?.credentialSource === 'solo-oauth';
   const isConnectedViaOAuth = isClaudeCodeAuth || isOpenAIOAuth || isSoloOAuth;
-
-  // OAuth token paste state
-  const [showTokenPaste, setShowTokenPaste] = useState(false);
-  const [oauthTokenInput, setOauthTokenInput] = useState('');
-  const [isSavingToken, setIsSavingToken] = useState(false);
 
   const providerConfig = isAnthropic
     ? {
@@ -196,7 +187,7 @@ function ProviderCard({
         </div>
       )}
 
-      {/* OAuth connected notice */}
+      {/* Connected notice — shown for OAuth and API key connections */}
       {isConnectedViaOAuth && (
         <div className="p-3 bg-muted/40 rounded-none text-xs text-muted-foreground">
           <p className="mb-2">
@@ -212,6 +203,14 @@ function ProviderCard({
                 className="text-primary hover:underline"
               >
                 Sign in again
+              </button>
+              <span className="mx-1">·</span>
+              <button
+                type="button"
+                onClick={onDisconnect}
+                className="text-destructive hover:underline"
+              >
+                Disconnect
               </button>
               <span className="mx-1">or</span>
               <span>add an API key below to override.</span>
@@ -229,6 +228,20 @@ function ProviderCard({
               <span>add an API key below to override.</span>
             </>
           )}
+        </div>
+      )}
+
+      {/* API key connected notice — only when connected via API key (not OAuth) */}
+      {!isConnectedViaOAuth && hasCredentials && authInfo?.authType === 'api-key' && (
+        <div className="p-3 bg-muted/40 rounded-none text-xs text-muted-foreground">
+          <p className="mb-2">Connected via API key.</p>
+          <button
+            type="button"
+            onClick={onDisconnect}
+            className="text-destructive hover:underline"
+          >
+            Remove API key
+          </button>
         </div>
       )}
 
@@ -261,59 +274,6 @@ function ProviderCard({
         </div>
       </div>
 
-      {/* OAuth Token Paste (Anthropic only) */}
-      {showOAuthTokenPaste && (
-        <div>
-          <button
-            type="button"
-            onClick={() => setShowTokenPaste(!showTokenPaste)}
-            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-          >
-            {showTokenPaste ? (
-              <CaretDown className="w-3 h-3" />
-            ) : (
-              <CaretRight className="w-3 h-3" />
-            )}
-            Paste OAuth token
-          </button>
-          {showTokenPaste && (
-            <div className="mt-2">
-              <div className="text-xs text-muted-foreground mb-2">
-                Paste a token from <code className="px-1 py-0.5 bg-muted rounded text-[11px]">claude setup-token</code> to use your Anthropic subscription
-              </div>
-              <div className="flex items-center gap-2">
-                <PasswordInput
-                  value={oauthTokenInput}
-                  onChange={setOauthTokenInput}
-                  placeholder="Paste OAuth token..."
-                  disabled={isSavingToken}
-                />
-                <button
-                  type="button"
-                  onClick={async () => {
-                    if (!oauthTokenInput.trim()) return;
-                    setIsSavingToken(true);
-                    try {
-                      await setOAuthTokenManual('Anthropic', oauthTokenInput.trim());
-                      setOauthTokenInput('');
-                      setShowTokenPaste(false);
-                      onOAuthTokenSaved?.();
-                    } catch (err) {
-                      console.error('Failed to save OAuth token:', err);
-                    } finally {
-                      setIsSavingToken(false);
-                    }
-                  }}
-                  disabled={!oauthTokenInput.trim() || isSavingToken}
-                  className="px-3 py-1.5 bg-primary text-primary-foreground rounded-none text-sm font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  {isSavingToken ? 'Saving...' : 'Save'}
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }
@@ -504,6 +464,7 @@ export function AITab() {
   const refreshAuthMethod = useProviderStore((s) => s.refreshAuthMethod);
   const startOAuthFlow = useProviderStore((s) => s.startOAuthFlow);
   const disconnectOAuth = useProviderStore((s) => s.disconnectOAuth);
+  const clearCredentials = useProviderStore((s) => s.clearCredentials);
 
   // Check if OAuth is pending for each provider
   const isAnthropicOAuthPending = useOAuthPending('anthropic');
@@ -582,14 +543,19 @@ export function AITab() {
     }
   }, [startOAuthFlow]);
 
-  const handleOpenAIDisconnect = useCallback(async () => {
+  const handleDisconnect = useCallback(async (provider: 'anthropic' | 'openai') => {
     try {
-      await disconnectOAuth('openai');
-      await refreshAuthMethod('openai');
+      const authType = authMethodInfo[provider]?.authType;
+      if (authType === 'api-key') {
+        await clearCredentials(provider);
+      } else if (authType === 'o-auth' || authType === 'claude-o-auth') {
+        await disconnectOAuth(provider);
+      }
+      await refreshAuthMethod(provider);
     } catch (err) {
-      console.error('Failed to disconnect OpenAI OAuth:', err);
+      console.error(`Failed to disconnect ${provider}:`, err);
     }
-  }, [disconnectOAuth, refreshAuthMethod]);
+  }, [authMethodInfo, clearCredentials, disconnectOAuth, refreshAuthMethod]);
 
   if (!isInitialized && isLoading) {
     return (
@@ -614,14 +580,13 @@ export function AITab() {
             onSetActive={() => setActiveProvider('anthropic')}
             authInfo={authMethodInfo['anthropic']}
             onOAuthLogin={() => setIsClaudeLoginOpen(true)}
+            onDisconnect={() => handleDisconnect('anthropic')}
             isOAuthPending={isAnthropicOAuthPending}
             apiKeyInput={apiKeyInputs.anthropic}
             onApiKeyChange={(value) => handleApiKeyChange('anthropic', value)}
             onApiKeySave={() => handleApiKeySubmit('anthropic')}
             isSaving={savingProvider === 'anthropic'}
             hasCredentials={allProviderStatus['anthropic']?.has_credentials ?? false}
-            showOAuthTokenPaste
-            onOAuthTokenSaved={() => refreshAuthMethod('anthropic')}
           />
 
           {/* OpenAI Card */}
@@ -631,7 +596,7 @@ export function AITab() {
             onSetActive={() => setActiveProvider('openai')}
             authInfo={authMethodInfo['openai']}
             onOAuthLogin={handleOpenAIOAuthLogin}
-            onDisconnect={handleOpenAIDisconnect}
+            onDisconnect={() => handleDisconnect('openai')}
             isOAuthPending={isOpenAIOAuthPending}
             apiKeyInput={apiKeyInputs.openai}
             onApiKeyChange={(value) => handleApiKeyChange('openai', value)}

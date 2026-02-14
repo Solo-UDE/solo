@@ -32,7 +32,7 @@ export const TRANSITIONS = {
  */
 
 // Anthropic
-export const CLAUDE_OPUS_4_5 = 'claude-opus-4-5-20251101';
+export const CLAUDE_OPUS_4_6 = 'claude-opus-4-6';
 export const CLAUDE_SONNET_4_5 = 'claude-sonnet-4-5-20250929';
 export const CLAUDE_HAIKU_4_5 = 'claude-haiku-4-5-20251001';
 
@@ -46,7 +46,7 @@ export const GEMINI_3_PRO = 'gemini-3-pro';
 export const GEMINI_3_FLASH = 'gemini-3-flash';
 
 // Default model used across the application
-export const DEFAULT_MODEL_ID = CLAUDE_OPUS_4_5;
+export const DEFAULT_MODEL_ID = CLAUDE_OPUS_4_6;
 
 /**
  * Model option for simple model selectors (e.g. Claude-only dropdown)
@@ -58,7 +58,7 @@ export interface ModelOption {
 }
 
 export const CLAUDE_MODELS: ModelOption[] = [
-  { id: CLAUDE_OPUS_4_5, name: 'Claude Opus 4.5', description: 'Most capable model' },
+  { id: CLAUDE_OPUS_4_6, name: 'Claude Opus 4.6', description: 'Most capable model' },
   { id: CLAUDE_SONNET_4_5, name: 'Claude Sonnet 4.5', description: 'Balanced performance' },
   { id: CLAUDE_HAIKU_4_5, name: 'Claude Haiku 4.5', description: 'Fastest responses' },
 ];
@@ -84,8 +84,8 @@ export interface ModelOptionConfig {
 export const MODEL_OPTIONS: ModelOptionConfig[] = [
   // Anthropic Claude models
   {
-    value: CLAUDE_OPUS_4_5,
-    label: 'Claude Opus 4.5',
+    value: CLAUDE_OPUS_4_6,
+    label: 'Claude Opus 4.6',
     description: 'Most capable model',
     provider: 'anthropic',
     iconType: 'claude',
