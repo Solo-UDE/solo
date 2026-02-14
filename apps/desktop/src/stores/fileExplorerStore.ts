@@ -619,7 +619,20 @@ export function useFlattenedTree(): FlatTreeItem[] {
     }
   }
 
-  traverse(rootPath, 0);
+  // Skip root entry — start with its children at depth 0
+  // The root name is displayed in the ContextHeader instead
+  const rootEntry = entries.get(rootPath);
+  if (rootEntry?.is_dir) {
+    // Inject ghost row at root level if creating in root
+    if (creatingInPath === rootPath && creatingType) {
+      result.push({ kind: 'creating', parentPath: rootPath, type: creatingType, depth: 0 });
+    }
+    if (rootEntry.children) {
+      for (const child of rootEntry.children) {
+        traverse(child.path, 0);
+      }
+    }
+  }
 
   return result;
 }

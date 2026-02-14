@@ -1,16 +1,15 @@
 /**
- * PrimarySidebar - Main collapsible sidebar with tab navigation
+ * PrimarySidebar - Main collapsible sidebar with icon rail navigation
  */
 
 import { useState, useCallback, useMemo, forwardRef } from 'react';
 import { FileExplorer } from '@/components/file-explorer';
 import { SessionList, ApiKeyDialog } from '@/components/agent';
 import { SourceControlPanel } from '@/components/source-control';
-import { WorktreePanel } from './WorktreePanel';
-import { TabGroup } from './TabButton';
+import { IconRail } from './IconRail';
+import { ContextHeader } from './ContextHeader';
 import { TRANSITIONS } from '@/lib/constants';
 import { useUIStore, useIsLeftSidebarCollapsed } from '@/stores/uiStore';
-import type { SidebarTab } from '@/stores/uiStore';
 import { useAgentStore } from '@/stores/agentStore';
 import { usePanelTabsStore } from '@/stores/panelTabsStore';
 import { useHasCredentials, useActiveProvider } from '@/stores/provider-store';
@@ -22,17 +21,11 @@ interface PrimarySidebarProps {
   readonly onFileOpen: (path: string) => void;
 }
 
-const TAB_CONFIG: { label: string; key: SidebarTab }[] = [
-  { label: 'Explorer', key: 'explorer' },
-  { label: 'Sessions', key: 'sessions' },
-  { label: 'Source Control', key: 'source-control' },
-  { label: 'Worktrees', key: 'worktrees' },
-];
+const TAB_KEYS = ['explorer', 'sessions', 'source-control'] as const;
 
 export const PrimarySidebar = forwardRef<HTMLElement, PrimarySidebarProps>(({ width, onFileOpen }, ref) => {
   const isCollapsed = useIsLeftSidebarCollapsed();
   const activeTab = useUIStore((state) => state.activeTab);
-  const setActiveTab = useUIStore((state) => state.setActiveTab);
   const createSession = useAgentStore((state) => state.createSession);
 
   // Get store actions directly to avoid selector subscription issues
@@ -99,75 +92,62 @@ export const PrimarySidebar = forwardRef<HTMLElement, PrimarySidebarProps>(({ wi
     }, 100);
   }, [createSessionAndShow]);
 
-  const tabs = TAB_CONFIG.map((t) => t.label);
-  const activeTabIndex = TAB_CONFIG.findIndex((t) => t.key === activeTab);
-  const handleTabChange = useCallback((index: number) => {
-    setActiveTab(TAB_CONFIG[index].key);
-  }, [setActiveTab]);
-
-  // Compute translateX for the 4-panel reel
-  const translateX = `${activeTabIndex * -25}%`;
+  // Compute translateX for the 3-panel reel
+  const activeTabIndex = TAB_KEYS.indexOf(activeTab);
+  const translateX = `${(activeTabIndex >= 0 ? activeTabIndex : 0) * -33.333}%`;
 
   return (
     <aside
       ref={ref}
-      className="h-full flex flex-col border-r border-white/[0.06] bg-sidebar overflow-hidden pt-[38px]"
+      className="h-full flex flex-row border-r border-white/[0.06] bg-sidebar overflow-hidden pt-[38px]"
       style={{
         width,
         transition: `width ${TRANSITIONS.sidebar}`,
       }}
     >
-      {/* Header with tabs and toggle */}
-      <div className="h-10 flex items-center justify-between px-2 shrink-0 border-b border-border/30">
-        {!isCollapsed && (
-          <TabGroup
-            tabs={tabs}
-            activeIndex={activeTabIndex >= 0 ? activeTabIndex : 0}
-            onTabChange={handleTabChange}
-          />
-        )}
-      </div>
+      {/* Icon Rail */}
+      {!isCollapsed && <IconRail />}
 
-      {/* Tab Content - Sliding Reel */}
-      <div className="flex-1 min-h-0 overflow-hidden">
-        <div
-          className="flex h-full transition-transform duration-300 ease-[cubic-bezier(0.18,1.14,0.5,1.18)]"
-          style={{
-            width: '400%',
-            transform: `translateX(${translateX})`,
-          }}
-        >
-          {/* Explorer Panel */}
-          <div className="w-1/4 h-full overflow-hidden">
-            <FileExplorer
-              onFileOpen={onFileOpen}
-              className={cn(
-                'h-full transition-opacity duration-150',
-                isCollapsed ? 'opacity-0 pointer-events-none' : 'opacity-100'
-              )}
-            />
-          </div>
-          {/* Sessions Panel */}
-          <div className="w-1/4 h-full overflow-hidden">
-            {!isCollapsed && (
-              <SessionList
-                onSessionSelect={handleSessionSelect}
-                onNewSession={handleNewSession}
-                className="h-full"
+      {/* Content Column */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* Context Header */}
+        {!isCollapsed && <ContextHeader onNewSession={handleNewSession} />}
+
+        {/* Tab Content - Sliding Reel (3 panels) */}
+        <div className="flex-1 min-h-0 overflow-hidden">
+          <div
+            className="flex h-full transition-transform duration-300 ease-[cubic-bezier(0.18,1.14,0.5,1.18)]"
+            style={{
+              width: '300%',
+              transform: `translateX(${translateX})`,
+            }}
+          >
+            {/* Explorer Panel */}
+            <div className="w-1/3 h-full overflow-hidden">
+              <FileExplorer
+                onFileOpen={onFileOpen}
+                className={cn(
+                  'h-full transition-opacity duration-150',
+                  isCollapsed ? 'opacity-0 pointer-events-none' : 'opacity-100'
+                )}
               />
-            )}
-          </div>
-          {/* Source Control Panel */}
-          <div className="w-1/4 h-full overflow-hidden">
-            {!isCollapsed && (
-              <SourceControlPanel className="h-full" />
-            )}
-          </div>
-          {/* Worktrees Panel */}
-          <div className="w-1/4 h-full overflow-hidden">
-            {!isCollapsed && (
-              <WorktreePanel className="h-full" />
-            )}
+            </div>
+            {/* Sessions Panel */}
+            <div className="w-1/3 h-full overflow-hidden">
+              {!isCollapsed && (
+                <SessionList
+                  onSessionSelect={handleSessionSelect}
+                  onNewSession={handleNewSession}
+                  className="h-full"
+                />
+              )}
+            </div>
+            {/* Source Control Panel */}
+            <div className="w-1/3 h-full overflow-hidden">
+              {!isCollapsed && (
+                <SourceControlPanel className="h-full" />
+              )}
+            </div>
           </div>
         </div>
       </div>

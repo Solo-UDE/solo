@@ -21,6 +21,8 @@ export function convertToMessageGroups(storeMessages: StoreMessage[]): MessageGr
           type: 'user',
           content: msg.content,
           timestamp: msg.timestamp,
+          attachments: msg.attachments,
+          mentions: msg.mentions,
         }
       : {
           id: msg.id,
