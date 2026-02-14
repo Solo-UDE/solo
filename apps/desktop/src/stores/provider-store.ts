@@ -6,6 +6,7 @@ import {
 	setActiveProvider as setActiveProviderBackend,
 	getProviderStatus,
 	setCredentials as setCredentialsBackend,
+	clearCredentials as clearCredentialsBackend,
 	getModels,
 	startOAuthFlow as startOAuthFlowBackend,
 	completeOAuthFlow as completeOAuthFlowBackend,
@@ -56,6 +57,7 @@ interface ProviderActions {
 	completeOAuthFlow: (code: string, state: string) => Promise<void>;
 	refreshAuthMethod: (provider: string) => Promise<void>;
 	disconnectOAuth: (provider: string) => Promise<void>;
+	clearCredentials: (provider: string) => Promise<void>;
 }
 
 type ProviderStore = ProviderState & ProviderActions;
@@ -265,6 +267,22 @@ export const useProviderStore = create<ProviderStore>()((set, get) => ({
 		set({ isLoading: true, error: null });
 		try {
 			await disconnectOAuthBackend(provider);
+			await get().refreshAuthMethod(provider);
+			await get().refreshProviderStatus(provider);
+			set({ isLoading: false });
+		} catch (error) {
+			set({
+				error: error instanceof Error ? error.message : String(error),
+				isLoading: false,
+			});
+			throw error;
+		}
+	},
+
+	clearCredentials: async (provider: string) => {
+		set({ isLoading: true, error: null });
+		try {
+			await clearCredentialsBackend(provider);
 			await get().refreshAuthMethod(provider);
 			await get().refreshProviderStatus(provider);
 			set({ isLoading: false });

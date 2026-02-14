@@ -58,4 +58,5 @@ export const BUILTIN_PANEL_TYPES = {
   WELCOME: 'welcome',
   AGENT: 'agent',
   TERMINAL: 'terminal',
+  GIT_DIFF: 'git-diff',
 } as const;

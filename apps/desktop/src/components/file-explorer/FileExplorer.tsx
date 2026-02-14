@@ -25,7 +25,6 @@ export function FileExplorer({ onFileOpen, className = '' }: FileExplorerProps) 
   const error = useFileExplorerStore((s) => s.error);
   const selected = useFileExplorerStore((s) => s.selected);
 
-  const openFolder = useFileExplorerStore((s) => s.openFolder);
   const closeFolder = useFileExplorerStore((s) => s.closeFolder);
   const setRootPath = useFileExplorerStore((s) => s.setRootPath);
   const setError = useFileExplorerStore((s) => s.setError);
@@ -173,14 +172,8 @@ export function FileExplorer({ onFileOpen, className = '' }: FileExplorerProps) 
           <div className="flex flex-col items-center justify-center h-full gap-4 p-4">
             <FolderOpen className="w-12 h-12 text-muted-foreground/50" />
             <p className="text-sm text-muted-foreground text-center">
-              Open a folder to view files
+              Open a folder from the title bar
             </p>
-            <button
-              onClick={openFolder}
-              className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
-            >
-              Open Folder
-            </button>
           </div>
         )}
       </div>

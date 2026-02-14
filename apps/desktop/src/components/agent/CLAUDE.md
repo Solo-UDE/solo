@@ -8,4 +8,10 @@
 | ID | Time | T | Title | Read |
 |----|------|---|-------|------|
 | #598 | 5:34 PM | 🔵 | SessionList Has Hover Scale Effects but No Staggered Entrance Animations | ~611 |
+
+### Feb 4, 2026
+
+| ID | Time | T | Title | Read |
+|----|------|---|-------|------|
+| #1131 | 2:13 PM | 🔵 | Agent Window: Reusable AI Chat Interface Component | ~701 |
 </claude-mem-context>

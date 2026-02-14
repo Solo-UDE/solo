@@ -12,6 +12,8 @@ enableMapSet();
 /**
  * Represents an open tab in the editor
  */
+export type MarkdownMode = 'preview' | 'code';
+
 export interface EditorTab {
   /** File path (unique identifier) */
   path: string;
@@ -25,10 +27,8 @@ export interface EditorTab {
   cursorPosition?: { line: number; col: number };
   /** Total line count in the document */
   lineCount?: number;
-  /** Whether markdown preview is enabled for this tab */
-  markdownPreviewEnabled?: boolean;
-  /** Split pane position (0-100 percentage) */
-  markdownSplitPosition?: number;
+  /** Markdown mode: preview (rendered) or code (editor) */
+  markdownMode?: MarkdownMode;
 }
 
 interface EditorState {
@@ -71,10 +71,10 @@ interface EditorActions {
   closeAllTabs: () => void;
   /** Close all tabs except one */
   closeOtherTabs: (keepPath: string) => void;
-  /** Toggle markdown preview for a tab */
-  toggleMarkdownPreview: (path: string) => void;
-  /** Set markdown split position for a tab */
-  setMarkdownSplitPosition: (path: string, position: number) => void;
+  /** Toggle markdown mode between preview and code */
+  toggleMarkdownMode: (path: string) => void;
+  /** Set markdown mode directly */
+  setMarkdownMode: (path: string, mode: MarkdownMode) => void;
 }
 
 type EditorStore = EditorState & EditorActions;
@@ -270,23 +270,20 @@ export const useEditorStore = create<EditorStore>()(
       });
     },
 
-    toggleMarkdownPreview: (path: string) => {
+    toggleMarkdownMode: (path: string) => {
       set((state) => {
         const tab = state.tabs.get(path);
-        if (tab) {
-          tab.markdownPreviewEnabled = !tab.markdownPreviewEnabled;
-          if (tab.markdownPreviewEnabled && tab.markdownSplitPosition === undefined) {
-            tab.markdownSplitPosition = 50;
-          }
-        }
+        if (!tab) return;
+        const current = tab.markdownMode ?? 'preview';
+        tab.markdownMode = current === 'preview' ? 'code' : 'preview';
       });
     },
 
-    setMarkdownSplitPosition: (path: string, position: number) => {
+    setMarkdownMode: (path: string, mode: MarkdownMode) => {
       set((state) => {
         const tab = state.tabs.get(path);
         if (tab) {
-          tab.markdownSplitPosition = Math.max(20, Math.min(80, position));
+          tab.markdownMode = mode;
         }
       });
     },
@@ -397,15 +394,10 @@ export function isMarkdownFile(path: string | null): boolean {
  * Get markdown preview state for a tab
  */
 export function useMarkdownPreview(path: string | null) {
-  return useEditorStore(
-    useShallow((state) => {
-      if (!path) return { enabled: false, splitPosition: 50 };
-      const tab = state.tabs.get(path);
-      if (!tab) return { enabled: false, splitPosition: 50 };
-      return {
-        enabled: tab.markdownPreviewEnabled ?? false,
-        splitPosition: tab.markdownSplitPosition ?? 50,
-      };
-    })
-  );
+  return useEditorStore((state) => {
+    if (!path) return { mode: 'preview' as MarkdownMode };
+    const tab = state.tabs.get(path);
+    if (!tab) return { mode: 'preview' as MarkdownMode };
+    return { mode: (tab.markdownMode ?? 'preview') as MarkdownMode };
+  });
 }

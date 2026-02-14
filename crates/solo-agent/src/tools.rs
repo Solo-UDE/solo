@@ -120,14 +120,30 @@ fn validate_path(path_str: &str, workspace_root: Option<&Path>) -> Result<std::p
 }
 
 // =============================================================================
+// Tool Context
+// =============================================================================
+
+/// Context passed to tool execution, providing workspace scoping.
+/// When an agent operates in a worktree, `workspace_root` points to the worktree path.
+pub struct ToolContext {
+    pub workspace_root: Option<std::path::PathBuf>,
+}
+
+impl ToolContext {
+    pub fn new(workspace_root: Option<std::path::PathBuf>) -> Self {
+        Self { workspace_root }
+    }
+}
+
+// =============================================================================
 // Tool Executor Trait
 // =============================================================================
 
 /// Trait for implementing tool execution
 #[async_trait::async_trait]
 pub trait ToolExecutor: Send + Sync {
-    /// Execute the tool with the given arguments
-    async fn execute(&self, args: serde_json::Value) -> ToolResult_;
+    /// Execute the tool with the given arguments and context
+    async fn execute(&self, args: serde_json::Value, ctx: &ToolContext) -> ToolResult_;
 
     /// Get the tool definition
     fn definition(&self) -> ToolDefinition;
@@ -288,17 +304,20 @@ impl ToolRegistry {
     }
 
     /// Execute a tool call. Looks up the executor, clones the Arc, then drops
-    /// the registry borrow before awaiting execution.
+    /// the registry borrow before awaiting execution. Builds a ToolContext from
+    /// the registry's workspace_root.
     pub async fn execute(&self, tool_call: &AgentToolCall) -> ToolResult {
         // Clone the Arc<dyn ToolExecutor> so we don't hold any borrow during await
         let executor = self.tools.get(&tool_call.name).cloned();
+        let workspace_root = self.workspace_root.read().await.clone();
+        let ctx = ToolContext::new(workspace_root);
 
         match executor {
             Some(executor) => {
                 let args: serde_json::Value = serde_json::from_str(&tool_call.arguments)
                     .unwrap_or_else(|_| serde_json::json!({}));
 
-                match executor.execute(args).await {
+                match executor.execute(args, &ctx).await {
                     Ok(result) => ToolResult {
                         tool_call_id: tool_call.id.clone(),
                         success: true,
@@ -346,7 +365,7 @@ impl ReadFileTool {
 
 #[async_trait::async_trait]
 impl ToolExecutor for ReadFileTool {
-    async fn execute(&self, args: serde_json::Value) -> ToolResult_ {
+    async fn execute(&self, args: serde_json::Value, _ctx: &ToolContext) -> ToolResult_ {
         let path_str = args
             .get("path")
             .and_then(|v| v.as_str())
@@ -424,7 +443,7 @@ impl WriteFileTool {
 
 #[async_trait::async_trait]
 impl ToolExecutor for WriteFileTool {
-    async fn execute(&self, args: serde_json::Value) -> ToolResult_ {
+    async fn execute(&self, args: serde_json::Value, _ctx: &ToolContext) -> ToolResult_ {
         let path_str = args
             .get("path")
             .and_then(|v| v.as_str())
@@ -478,7 +497,7 @@ impl ListDirectoryTool {
 
 #[async_trait::async_trait]
 impl ToolExecutor for ListDirectoryTool {
-    async fn execute(&self, args: serde_json::Value) -> ToolResult_ {
+    async fn execute(&self, args: serde_json::Value, _ctx: &ToolContext) -> ToolResult_ {
         let path_str = args
             .get("path")
             .and_then(|v| v.as_str())
@@ -583,7 +602,7 @@ impl Default for BashTool {
 
 #[async_trait::async_trait]
 impl ToolExecutor for BashTool {
-    async fn execute(&self, args: serde_json::Value) -> ToolResult_ {
+    async fn execute(&self, args: serde_json::Value, ctx: &ToolContext) -> ToolResult_ {
         let command = args
             .get("command")
             .and_then(|v| v.as_str())
@@ -601,8 +620,11 @@ impl ToolExecutor for BashTool {
         let mut cmd = tokio::process::Command::new("sh");
         cmd.arg("-c").arg(command);
 
+        // Use explicit cwd if provided, otherwise default to workspace root
         if let Some(dir) = cwd {
             cmd.current_dir(dir);
+        } else if let Some(ref root) = ctx.workspace_root {
+            cmd.current_dir(root);
         }
 
         // Execute with timeout
@@ -682,7 +704,7 @@ pub struct GrepTool;
 
 #[async_trait::async_trait]
 impl ToolExecutor for GrepTool {
-    async fn execute(&self, args: serde_json::Value) -> ToolResult_ {
+    async fn execute(&self, args: serde_json::Value, _ctx: &ToolContext) -> ToolResult_ {
         let pattern = args
             .get("pattern")
             .and_then(|v| v.as_str())
@@ -860,7 +882,7 @@ impl EditTool {
 
 #[async_trait::async_trait]
 impl ToolExecutor for EditTool {
-    async fn execute(&self, args: serde_json::Value) -> ToolResult_ {
+    async fn execute(&self, args: serde_json::Value, _ctx: &ToolContext) -> ToolResult_ {
         let path_str = args
             .get("path")
             .and_then(|v| v.as_str())
@@ -1025,7 +1047,7 @@ impl GlobTool {
 
 #[async_trait::async_trait]
 impl ToolExecutor for GlobTool {
-    async fn execute(&self, args: serde_json::Value) -> ToolResult_ {
+    async fn execute(&self, args: serde_json::Value, _ctx: &ToolContext) -> ToolResult_ {
         let pattern = args
             .get("pattern")
             .and_then(|v| v.as_str())
@@ -1272,13 +1294,13 @@ mod tests {
 
         let tool = ReadFileTool::new(Arc::new(RwLock::new(None)));
         let args = serde_json::json!({ "path": file_path.to_str().unwrap() });
-        let result = tool.execute(args).await.unwrap();
+        let result = tool.execute(args, &ToolContext::new(None)).await.unwrap();
         assert!(result.contains("1 | line1"));
         assert!(result.contains("5 | line5"));
 
         // With offset and limit
         let args = serde_json::json!({ "path": file_path.to_str().unwrap(), "offset": 2, "limit": 2 });
-        let result = tool.execute(args).await.unwrap();
+        let result = tool.execute(args, &ToolContext::new(None)).await.unwrap();
         assert!(result.contains("2 | line2"));
         assert!(result.contains("3 | line3"));
         assert!(!result.contains("line1"));
@@ -1300,7 +1322,7 @@ mod tests {
             "new_str": "    println!(\"goodbye\");"
         });
 
-        let result = tool.execute(args).await.unwrap();
+        let result = tool.execute(args, &ToolContext::new(None)).await.unwrap();
         assert!(result.contains("Successfully edited"));
 
         let content = tokio::fs::read_to_string(&file_path).await.unwrap();
@@ -1324,7 +1346,7 @@ mod tests {
             "new_str": "whatever"
         });
 
-        let result = tool.execute(args).await;
+        let result = tool.execute(args, &ToolContext::new(None)).await;
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(err.contains("No exact match"));
@@ -1340,7 +1362,7 @@ mod tests {
             "pattern": "*.rs",
             "path": env!("CARGO_MANIFEST_DIR").to_string() + "/src"
         });
-        let result = tool.execute(args).await.unwrap();
+        let result = tool.execute(args, &ToolContext::new(None)).await.unwrap();
         assert!(result.contains("tools.rs"));
         assert!(result.contains("lib.rs"));
     }

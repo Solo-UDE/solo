@@ -39,11 +39,11 @@ function MenuItem({ icon, label, shortcut, onClick, disabled }: MenuItemProps) {
       onClick={onClick}
       disabled={disabled}
       className={`
-        w-full flex items-center gap-3 px-3 py-1.5 text-sm
-        transition-colors
+        w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm
+        cursor-pointer transition-colors
         ${disabled
           ? 'text-muted-foreground/50 cursor-not-allowed'
-          : 'text-foreground hover:bg-muted/80'}
+          : 'text-foreground hover:bg-accent'}
       `}
     >
       <span className="w-4 h-4 flex items-center justify-center">{icon}</span>
@@ -56,7 +56,7 @@ function MenuItem({ icon, label, shortcut, onClick, disabled }: MenuItemProps) {
 }
 
 function MenuDivider() {
-  return <div className="h-px bg-border my-1" />;
+  return <div className="-mx-1 my-1 h-px bg-border" />;
 }
 
 export function TabContextMenu({
@@ -126,7 +126,7 @@ export function TabContextMenu({
   return (
     <div
       ref={menuRef}
-      className="fixed z-50 min-w-[160px] bg-card border border-border rounded-lg shadow-lg py-1 overflow-hidden"
+      className="fixed z-50 min-w-[160px] bg-popover border border-border rounded-lg shadow-lg p-1 overflow-hidden"
       style={{
         left: pos.x,
         top: pos.y,

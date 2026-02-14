@@ -1,1 +1,1 @@
-export { SettingsModal } from './SettingsModal';
+export { SettingsView } from './SettingsView';
