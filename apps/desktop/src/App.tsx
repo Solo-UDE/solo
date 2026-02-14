@@ -24,6 +24,8 @@ import { useFileExplorerStore } from "./stores/fileExplorerStore";
 import { createTerminal, killTerminal } from "./lib/tauri/terminal";
 import { SIDEBAR } from "./lib/constants";
 import { cn } from "./lib/utils";
+import { DndProvider } from "react-dnd";
+import { HTML5Backend } from "react-dnd-html5-backend";
 import { Toaster } from "sonner";
 import { WorkspaceSwitcher } from "./components/titlebar/WorkspaceSwitcher";
 
@@ -354,6 +356,7 @@ function AppContent() {
           <SettingsView />
         </div>
       ) : (
+        <DndProvider backend={HTML5Backend}>
         <div className="flex h-full">
           <PrimarySidebar ref={sidebarRef} width={leftSidebarWidth} onFileOpen={handleFileOpen} />
 
@@ -396,6 +399,7 @@ function AppContent() {
             </div>
           </div>
         </div>
+        </DndProvider>
       )}
 
       <Toaster richColors position="bottom-right" theme={resolvedTheme} />
