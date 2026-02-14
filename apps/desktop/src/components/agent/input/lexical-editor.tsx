@@ -110,14 +110,14 @@ export const LexicalEditor = forwardRef<LexicalEditorHandle, LexicalEditorProps>
               <ContentEditable
                 className={`
                   min-h-[80px] max-h-[200px] overflow-y-auto
-                  px-4 py-3 rounded-lg border border-border
-                  focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent
-                  ${disabled ? 'bg-muted cursor-not-allowed' : 'bg-background'}
+                  px-4 py-3 bg-transparent
+                  focus:outline-none
+                  ${disabled ? 'opacity-50 cursor-not-allowed' : ''}
                 `}
               />
             }
             placeholder={
-              <div className="absolute top-3 left-4 text-muted-foreground pointer-events-none">
+              <div className="absolute top-3 left-4 text-muted-foreground/50 pointer-events-none">
                 {placeholder}
               </div>
             }

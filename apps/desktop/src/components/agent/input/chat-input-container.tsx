@@ -53,48 +53,51 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
 
   return (
     <div className={`bg-background ${className}`}>
-      <div className="max-w-4xl mx-auto p-4">
-        {/* Editor */}
-        <div className="mb-3">
-          <LexicalEditor
-            ref={editorRef}
-            onChange={setContent}
-            onKeyDown={handleKeyDown}
-            placeholder="Ask anything, @ for context"
-            disabled={isAgentRunning}
-          />
-        </div>
-
-        {/* Bottom Controls */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <ContextMenu disabled={isAgentRunning} />
-            <ModeSelector value={mode} onChange={setMode} disabled={isAgentRunning} />
-            <ModelPicker side="top" disabled={isAgentRunning} />
-            <ContextTracker disabled={isAgentRunning} />
-
-            {showWorktreeSelector && (
-              <select
-                value={worktreeId ?? ''}
-                onChange={(e) => onWorktreeChange(e.target.value || null)}
-                disabled={isAgentRunning}
-                className="h-7 px-2 text-xs rounded bg-muted/50 border border-border/50 text-foreground disabled:opacity-50 outline-none focus:ring-1 focus:ring-ring"
-                title="Worktree"
-              >
-                <option value="">Main workspace</option>
-                {worktrees.filter((wt) => !wt.is_main).map((wt) => (
-                  <option key={wt.id} value={wt.id}>
-                    {wt.branch ?? wt.id}
-                  </option>
-                ))}
-              </select>
-            )}
+      <div className="max-w-4xl mx-auto px-4 pb-4 pt-2">
+        {/* Floating card wrapping editor + toolbar */}
+        <div className="bg-card/95 backdrop-blur-md rounded-[16px] shadow-[0_4px_24px_-4px_rgba(0,0,0,0.15)] ring-1 ring-white/[0.06]">
+          {/* Editor */}
+          <div>
+            <LexicalEditor
+              ref={editorRef}
+              onChange={setContent}
+              onKeyDown={handleKeyDown}
+              placeholder="Ask anything, @ for context"
+              disabled={isAgentRunning}
+            />
           </div>
 
-          <SubmitButton
-            onClick={handleSubmit}
-            disabled={isAgentRunning || !content.trim()}
-          />
+          {/* Bottom Controls */}
+          <div className="flex items-center justify-between px-3 pb-3 pt-1">
+            <div className="flex items-center gap-1.5">
+              <ContextMenu disabled={isAgentRunning} />
+              <ModeSelector value={mode} onChange={setMode} disabled={isAgentRunning} />
+              <ModelPicker side="top" disabled={isAgentRunning} />
+              <ContextTracker disabled={isAgentRunning} />
+
+              {showWorktreeSelector && (
+                <select
+                  value={worktreeId ?? ''}
+                  onChange={(e) => onWorktreeChange(e.target.value || null)}
+                  disabled={isAgentRunning}
+                  className="h-[30px] px-2.5 text-xs font-medium rounded-[8px] bg-transparent text-muted-foreground hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/30 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Worktree"
+                >
+                  <option value="">Main workspace</option>
+                  {worktrees.filter((wt) => !wt.is_main).map((wt) => (
+                    <option key={wt.id} value={wt.id}>
+                      {wt.branch ?? wt.id}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            <SubmitButton
+              onClick={handleSubmit}
+              disabled={isAgentRunning || !content.trim()}
+            />
+          </div>
         </div>
       </div>
     </div>
