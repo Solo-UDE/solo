@@ -71,7 +71,7 @@ export const ChatInput: FC<ChatInputProps> = ({
 	const ModeIcon = modeConfig[mode].icon;
 
 	return (
-		<div className={`border-t border-border bg-background ${className}`}>
+		<div className={`bg-background ${className}`}>
 			<div className="max-w-4xl mx-auto p-4">
 				{/* Text input */}
 				<div className="mb-3">
@@ -84,7 +84,7 @@ export const ChatInput: FC<ChatInputProps> = ({
 						className={`
 							w-full min-h-[80px] max-h-[200px]
 							px-4 py-3 rounded-lg
-							border border-border bg-background
+							border border-border/50 bg-background
 							text-sm text-foreground
 							placeholder:text-muted-foreground
 							focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent
@@ -105,21 +105,21 @@ export const ChatInput: FC<ChatInputProps> = ({
 									disabled={isDisabled}
 									className={`
 										inline-flex items-center gap-2
-										px-3 py-1.5 rounded-md
-										border border-border bg-background
+										px-3 py-1.5 rounded-lg
+										border border-border/50 bg-background
 										hover:bg-muted
 										transition-colors
 										${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}
 									`}
 								>
-									<ModeIcon className="h-4 w-4 text-foreground" />
-									<span className="text-sm font-medium text-foreground">
+									<ModeIcon className="h-3.5 w-3.5 text-foreground" />
+									<span className="text-xs font-medium text-foreground">
 										{modeConfig[mode].label}
 									</span>
 									<CaretDown className="h-3 w-3 text-muted-foreground" />
 								</button>
 								{showModeMenu && (
-									<div className="absolute bottom-full left-0 mb-1 w-48 py-1 rounded-md border border-border bg-background shadow-lg z-10">
+									<div className="absolute bottom-full left-0 mb-1 w-48 py-1 rounded-lg border border-border/50 bg-card/95 backdrop-blur-md shadow-glass z-10">
 										{Object.entries(modeConfig).map(([key, config]) => {
 											const Icon = config.icon;
 											return (
@@ -135,10 +135,10 @@ export const ChatInput: FC<ChatInputProps> = ({
 														${mode === key ? 'bg-primary/10' : ''}
 													`}
 												>
-													<Icon className="h-4 w-4 mt-0.5 text-foreground" />
+													<Icon className="h-3.5 w-3.5 mt-0.5 text-foreground" />
 													<div className="flex flex-col items-start">
-														<span className="text-sm font-medium">{config.label}</span>
-														<span className="text-xs text-muted-foreground">
+														<span className="text-xs font-medium">{config.label}</span>
+														<span className="text-[10px] text-muted-foreground">
 															{config.description}
 														</span>
 													</div>
@@ -158,14 +158,14 @@ export const ChatInput: FC<ChatInputProps> = ({
 									disabled={isDisabled}
 									className={`
 										inline-flex items-center gap-2
-										px-3 py-1.5 rounded-md
-										border border-border bg-background
+										px-3 py-1.5 rounded-lg
+										border border-border/50 bg-background
 										hover:bg-muted
 										transition-colors
 										${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}
 									`}
 								>
-									<span className="text-sm font-medium text-foreground truncate max-w-[120px]">
+									<span className="text-xs font-medium text-foreground truncate max-w-[120px]">
 										{getModelDisplayName(selectedModel)}
 									</span>
 									<CaretDown className="h-3 w-3 text-muted-foreground" />
@@ -191,15 +191,15 @@ export const ChatInput: FC<ChatInputProps> = ({
 									disabled={isDisabled}
 									className={`
 										inline-flex items-center gap-2
-										px-3 py-1.5 rounded-md
-										border border-border bg-background
+										px-3 py-1.5 rounded-lg
+										border border-border/50 bg-background
 										hover:bg-muted
 										transition-colors
 										${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}
 									`}
 								>
-									<GitBranch className="h-4 w-4 text-foreground" />
-									<span className="text-sm font-medium text-foreground truncate max-w-[120px]">
+									<GitBranch className="h-3.5 w-3.5 text-foreground" />
+									<span className="text-xs font-medium text-foreground truncate max-w-[120px]">
 										{activeWorktreeId
 											? worktrees.find((wt) => wt.id === activeWorktreeId)?.branch ?? activeWorktreeId
 											: 'main'}
@@ -207,7 +207,7 @@ export const ChatInput: FC<ChatInputProps> = ({
 									<CaretDown className="h-3 w-3 text-muted-foreground" />
 								</button>
 								{showWorktreeMenu && (
-									<div className="absolute bottom-full left-0 mb-1 w-64 py-1 rounded-md border border-border bg-background shadow-lg z-10">
+									<div className="absolute bottom-full left-0 mb-1 w-64 py-1 rounded-lg border border-border/50 bg-card/95 backdrop-blur-md shadow-glass z-10">
 										<button
 											onClick={() => {
 												onWorktreeChange(null);
@@ -219,8 +219,8 @@ export const ChatInput: FC<ChatInputProps> = ({
 												${!activeWorktreeId ? 'bg-primary/10' : ''}
 											`}
 										>
-											<span className="text-sm font-medium">main</span>
-											<span className="text-xs text-muted-foreground">Primary workspace</span>
+											<span className="text-xs font-medium">main</span>
+											<span className="text-[10px] text-muted-foreground">Primary workspace</span>
 										</button>
 										{worktrees
 											.filter((wt) => !wt.is_main)
@@ -237,8 +237,8 @@ export const ChatInput: FC<ChatInputProps> = ({
 														${activeWorktreeId === wt.id ? 'bg-primary/10' : ''}
 													`}
 												>
-													<span className="text-sm font-medium">{wt.branch ?? wt.id}</span>
-													<span className="text-xs text-muted-foreground">
+													<span className="text-xs font-medium">{wt.branch ?? wt.id}</span>
+													<span className="text-[10px] text-muted-foreground">
 														{wt.is_dirty ? 'Modified' : 'Clean'}
 														{wt.is_locked ? ' (locked)' : ''}
 													</span>
@@ -256,7 +256,7 @@ export const ChatInput: FC<ChatInputProps> = ({
 						disabled={isDisabled || !content.trim()}
 						className={`
 							inline-flex items-center gap-2
-							px-4 py-2 rounded-md
+							px-4 py-2 rounded-lg
 							bg-primary text-primary-foreground
 							hover:brightness-110
 							active:scale-[0.97]
@@ -264,8 +264,8 @@ export const ChatInput: FC<ChatInputProps> = ({
 							${isDisabled || !content.trim() ? 'opacity-50 cursor-not-allowed' : ''}
 						`}
 					>
-						<PaperPlaneTilt className="h-4 w-4" />
-						<span className="text-sm font-medium">Send</span>
+						<PaperPlaneTilt className="h-3.5 w-3.5" />
+						<span className="text-xs font-medium">Send</span>
 					</button>
 				</div>
 			</div>
@@ -297,7 +297,7 @@ const ModelMenu: FC<ModelMenuProps> = ({ selectedModel, onSelect, onClose: _onCl
 	const models = CLAUDE_MODELS;
 
 	return (
-		<div className="absolute bottom-full left-0 mb-1 w-64 py-1 rounded-md border border-border bg-background shadow-lg z-10">
+		<div className="absolute bottom-full left-0 mb-1 w-64 py-1 rounded-lg border border-border/50 bg-card/95 backdrop-blur-md shadow-glass z-10">
 			{models.map((model) => (
 				<button
 					key={model.id}
@@ -308,8 +308,8 @@ const ModelMenu: FC<ModelMenuProps> = ({ selectedModel, onSelect, onClose: _onCl
 						${selectedModel === model.id ? 'bg-primary/10' : ''}
 					`}
 				>
-					<span className="text-sm font-medium">{model.name}</span>
-					<span className="text-xs text-muted-foreground">{model.description}</span>
+					<span className="text-xs font-medium">{model.name}</span>
+					<span className="text-[10px] text-muted-foreground">{model.description}</span>
 				</button>
 			))}
 		</div>
