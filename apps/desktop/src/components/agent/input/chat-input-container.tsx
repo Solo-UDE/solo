@@ -69,14 +69,6 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
 		[handleSubmit]
 	);
 
-	const handleMentionTrigger = useCallback(() => {
-		editorRef.current?.focus();
-		// Small delay to ensure focus is set before inserting text
-		setTimeout(() => {
-			editorRef.current?.insertText('@');
-		}, 50);
-	}, []);
-
 	const handleAgentCommand = useCallback(
 		(commandText: string) => {
 			onSubmit(
@@ -117,7 +109,6 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
 				<div className="flex items-center justify-between">
 					<div className="flex items-center gap-2">
 						<ContextMenu
-							onMentionTrigger={handleMentionTrigger}
 							disabled={isAgentRunning}
 						/>
 						<ModeSelector value={mode} onChange={setMode} disabled={isAgentRunning} />

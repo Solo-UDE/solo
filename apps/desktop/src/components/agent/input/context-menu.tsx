@@ -4,7 +4,7 @@
 
 import { open } from '@tauri-apps/plugin-dialog';
 import { convertFileSrc } from '@tauri-apps/api/core';
-import { AtSign, Image, Paperclip, Plus } from 'lucide-react';
+import { Image, Paperclip, Plus } from 'lucide-react';
 import React, { useCallback } from 'react';
 
 import {
@@ -19,12 +19,10 @@ import { IMAGE_EXTENSIONS, isImageFile, getFileName, createAttachmentId } from '
 import type { Attachment } from '../../../stores/agentStore';
 
 export interface ContextMenuProps {
-	onMentionTrigger?: () => void;
 	disabled?: boolean;
 }
 
 export const ContextMenu: React.FC<ContextMenuProps> = ({
-	onMentionTrigger,
 	disabled = false,
 }) => {
 	const addAttachment = useAttachmentStore((s) => s.addAttachment);
@@ -114,13 +112,6 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
 				>
 					<Image className="h-4 w-4" />
 					<span>Add Image</span>
-				</DropdownMenuItem>
-				<DropdownMenuItem
-					onClick={onMentionTrigger}
-					className="flex items-center gap-2 cursor-pointer"
-				>
-					<AtSign className="h-4 w-4" />
-					<span>Mention File</span>
 				</DropdownMenuItem>
 			</DropdownMenuContent>
 		</DropdownMenu>

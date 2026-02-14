@@ -4,7 +4,7 @@
  */
 
 import { useCallback, useEffect, useMemo } from 'react';
-import { Mosaic, MosaicBranch } from 'react-mosaic-component';
+import { MosaicWithoutDragDropContext, MosaicBranch } from 'react-mosaic-component';
 import { usePanelLayoutStore, useFocusedTileId } from '@/stores/panelLayoutStore';
 import { usePanelTabsStore } from '@/stores/panelTabsStore';
 import { TabbedContainer } from './TabbedContainer';
@@ -115,7 +115,7 @@ export function MosaicLayout() {
 
   return (
     <div className="h-full w-full">
-      <Mosaic<TileId>
+      <MosaicWithoutDragDropContext<TileId>
         value={mosaicTree}
         onChange={handleChange}
         renderTile={renderTile}

@@ -12,6 +12,8 @@ export const AttachmentBar: FC = () => {
 	const attachments = useAttachmentStore((s) => s.attachments);
 	const removeAttachment = useAttachmentStore((s) => s.removeAttachment);
 
+	console.log('[AttachmentBar] render — attachments:', attachments.length, attachments);
+
 	if (attachments.length === 0) return null;
 
 	const images = attachments.filter((a) => a.type === 'image');

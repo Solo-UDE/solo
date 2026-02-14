@@ -28,15 +28,20 @@ export const useAttachmentStore = create<AttachmentStore>()(
 		attachments: [],
 
 		addAttachment: (attachment: Attachment) => {
+			console.log('[AttachmentStore] addAttachment called:', attachment);
 			set((state) => {
 				// Avoid duplicates by path
 				if (!state.attachments.some((a) => a.path === attachment.path)) {
 					state.attachments.push(attachment);
+					console.log('[AttachmentStore] attachment added — total:', state.attachments.length);
+				} else {
+					console.log('[AttachmentStore] duplicate skipped:', attachment.path);
 				}
 			});
 		},
 
 		removeAttachment: (id: string) => {
+			console.log('[AttachmentStore] removeAttachment:', id);
 			set((state) => {
 				state.attachments = state.attachments.filter((a) => a.id !== id);
 			});

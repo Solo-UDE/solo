@@ -3,23 +3,12 @@
  */
 
 import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
-import { useDrag } from 'react-dnd';
 import { ChevronRight, ChevronDown, Loader2 } from 'lucide-react';
 import { FileIcon, FolderIcon } from '@react-symbols/icons/utils';
 import { Git } from '@react-symbols/icons/files';
 import { FolderGray, FolderGithub } from '@react-symbols/icons/folders';
+import { useDragStore } from '../../stores/dragStore';
 import type { FileTreeEntry } from '../../bindings';
-
-export const DND_ITEM_TYPES = {
-  FILE_TREE_NODE: 'FILE_TREE_NODE',
-} as const;
-
-export interface FileTreeDragItem {
-  type: typeof DND_ITEM_TYPES.FILE_TREE_NODE;
-  path: string;
-  name: string;
-  isDir: boolean;
-}
 
 interface FileTreeNodeProps {
   entry: FileTreeEntry;
@@ -107,28 +96,42 @@ export const FileTreeNode = memo(function FileTreeNode({
 }: FileTreeNodeProps) {
   const [renameValue, setRenameValue] = useState(entry.name);
   const rowRef = useRef<HTMLDivElement>(null);
+  const mouseStartRef = useRef<{ x: number; y: number } | null>(null);
+  const startDrag = useDragStore((s) => s.startDrag);
+  const activateDrag = useDragStore((s) => s.activateDrag);
+  const isDragging = useDragStore((s) => s.active && s.payload?.path === entry.path);
 
-  const [{ isDragging }, dragRef] = useDrag({
-    type: DND_ITEM_TYPES.FILE_TREE_NODE,
-    item: {
-      type: DND_ITEM_TYPES.FILE_TREE_NODE,
-      path: entry.path,
-      name: entry.name,
-      isDir: entry.is_dir,
-    } satisfies FileTreeDragItem,
-    collect: (monitor) => ({
-      isDragging: monitor.isDragging(),
-    }),
-  });
-
-  // Combine drag ref with our row ref via callback ref
-  const combinedRef = useCallback(
-    (node: HTMLDivElement | null) => {
-      rowRef.current = node;
-      dragRef(node);
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      if (e.button !== 0 || isRenaming) return;
+      mouseStartRef.current = { x: e.clientX, y: e.clientY };
+      startDrag({ path: entry.path, name: entry.name, isDir: entry.is_dir });
     },
-    [dragRef]
+    [entry.path, entry.name, entry.is_dir, isRenaming, startDrag]
   );
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!mouseStartRef.current) return;
+      const dx = e.clientX - mouseStartRef.current.x;
+      const dy = e.clientY - mouseStartRef.current.y;
+      if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+        activateDrag();
+        mouseStartRef.current = null;
+      }
+    };
+
+    const handleMouseUp = () => {
+      mouseStartRef.current = null;
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [activateDrag]);
 
   // Sync rename value when entry name changes (e.g., after external rename)
   useEffect(() => {
@@ -164,7 +167,8 @@ export const FileTreeNode = memo(function FileTreeNode({
 
   return (
     <div
-      ref={combinedRef}
+      ref={rowRef}
+      onMouseDown={handleMouseDown}
       style={{ ...style, opacity: isDragging ? 0.5 : 1 }}
       className={`
         flex items-center h-7 px-2 cursor-pointer select-none
