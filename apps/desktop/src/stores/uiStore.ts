@@ -7,7 +7,7 @@ import { immer } from 'zustand/middleware/immer';
 import { SIDEBAR, TERMINAL_SECTION } from '@/lib/constants';
 
 // Sidebar tab types
-export type SidebarTab = 'explorer' | 'sessions' | 'source-control' | 'worktrees';
+export type SidebarTab = 'explorer' | 'sessions' | 'source-control';
 
 // Settings tab types
 export type SettingsTabId = 'general' | 'editor' | 'files' | 'shortcuts' | 'ai';
