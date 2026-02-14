@@ -291,12 +291,15 @@ function AppContent() {
         <div className="flex-1 flex items-center" data-tauri-drag-region>
           <button
             onClick={toggleSidebar}
-            className="p-1 rounded hover:bg-foreground/[0.08] transition-colors ml-1.5"
+            className={cn(
+              'p-1 rounded-lg hover:bg-foreground/[0.06] transition-all duration-150 ml-1.5',
+              !isCollapsed && 'glow-active',
+            )}
             title={isCollapsed ? 'Expand Sidebar (⌘B)' : 'Collapse Sidebar (⌘B)'}
           >
             <SidebarSimple
               weight={isCollapsed ? 'regular' : 'fill'}
-              className="w-4 h-4 text-muted-foreground"
+              className={cn('w-4 h-4', isCollapsed ? 'text-muted-foreground' : 'text-primary')}
             />
           </button>
         </div>
@@ -321,23 +324,23 @@ function AppContent() {
           <button
             onClick={handleToggleTerminal}
             className={cn(
-              'p-1 rounded hover:bg-foreground/[0.08] transition-colors',
-              terminalPanelOpen && 'bg-foreground/[0.08]',
+              'p-1 rounded-lg hover:bg-foreground/[0.06] transition-all duration-150',
+              terminalPanelOpen && 'glow-active',
             )}
             title="Toggle Terminal (⌘`)"
           >
-            <Terminal className="w-4 h-4 text-muted-foreground" />
+            <Terminal className={cn('w-4 h-4', terminalPanelOpen ? 'text-primary' : 'text-muted-foreground')} />
           </button>
           <button
             onClick={() => openSettings()}
-            className="p-1 rounded hover:bg-foreground/[0.08] transition-colors"
+            className="p-1 rounded-lg hover:bg-foreground/[0.06] transition-all duration-150"
             title="Settings (⌘,)"
           >
             <GearSix className="w-4 h-4 text-muted-foreground" />
           </button>
           <button
             onClick={signOut}
-            className="p-1 rounded hover:bg-foreground/[0.08] transition-colors"
+            className="p-1 rounded-lg hover:bg-foreground/[0.06] transition-all duration-150"
             title="Sign out"
           >
             <SignOut className="w-4 h-4 text-muted-foreground" />
