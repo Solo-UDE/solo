@@ -2,7 +2,7 @@
  * FileTreeNode - Individual file/folder row in the tree
  */
 
-import React, { memo, useCallback, useEffect, useState } from 'react';
+import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
 import {
   CaretRight,
   CircleNotch,
@@ -14,6 +14,7 @@ import {
   Copy,
   FolderOpen,
 } from '@phosphor-icons/react';
+import { useDragStore } from '../../stores/dragStore';
 import { FileIcon, FolderIcon } from '@react-symbols/icons/utils';
 import { Git } from '@react-symbols/icons/files';
 import { FolderGray, FolderGithub } from '@react-symbols/icons/folders';
@@ -122,11 +123,42 @@ export const FileTreeNode = memo(function FileTreeNode({
   onRevealInFinder,
 }: FileTreeNodeProps) {
   const [renameValue, setRenameValue] = useState(entry.name);
+  const mouseStartRef = useRef<{ x: number; y: number } | null>(null);
+  const startDrag = useDragStore((s) => s.startDrag);
+  const activateDrag = useDragStore((s) => s.activateDrag);
 
   // Sync rename value when entry name changes (e.g., after external rename)
   useEffect(() => {
     setRenameValue(entry.name);
   }, [entry.name]);
+
+  // Drag-to-chat: mouse-threshold logic for files (not directories)
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (entry.is_dir || isRenaming) return;
+    mouseStartRef.current = { x: e.clientX, y: e.clientY };
+    startDrag({ path: entry.path, name: entry.name, isDir: false });
+  }, [entry.path, entry.name, entry.is_dir, isRenaming, startDrag]);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!mouseStartRef.current) return;
+      const dx = e.clientX - mouseStartRef.current.x;
+      const dy = e.clientY - mouseStartRef.current.y;
+      if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+        activateDrag();
+        mouseStartRef.current = null;
+      }
+    };
+    const handleMouseUp = () => {
+      mouseStartRef.current = null;
+    };
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [activateDrag]);
 
   const handleRenameKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -166,6 +198,7 @@ export const FileTreeNode = memo(function FileTreeNode({
       `}
       onClick={onClick}
       onDoubleClick={onDoubleClick}
+      onMouseDown={handleMouseDown}
     >
       <div
         className="flex items-center gap-1 flex-1 min-w-0"
