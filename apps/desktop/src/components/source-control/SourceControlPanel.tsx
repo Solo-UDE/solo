@@ -10,8 +10,6 @@ import {
   CaretDown,
   CaretRight,
   Check,
-  CloudArrowDown,
-  CloudArrowUp,
   GitBranch,
   Minus,
   Plus,
@@ -19,8 +17,6 @@ import {
 import { useGitStore } from '@/stores/gitStore';
 import { usePanelTabsStore } from '@/stores/panelTabsStore';
 import { BUILTIN_PANEL_TYPES } from '@/lib/panels';
-import { getAccessToken } from '@/lib/auth';
-import { BranchSelector } from './BranchSelector';
 import { FileChangeItem } from './FileChangeItem';
 import { GitHubSetup } from './GitHubSetup';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -47,22 +43,16 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
   const changesSummary = useGitStore((s) => s.changesSummary);
   const commitMessage = useGitStore((s) => s.commitMessage);
   const isCommitting = useGitStore((s) => s.isCommitting);
-  const isPushing = useGitStore((s) => s.isPushing);
-  const isPulling = useGitStore((s) => s.isPulling);
   const setCommitMessage = useGitStore((s) => s.setCommitMessage);
   const startPolling = useGitStore((s) => s.startPolling);
   const stopPolling = useGitStore((s) => s.stopPolling);
-  const fetchChanges = useGitStore((s) => s.fetchChanges);
   const discardFile = useGitStore((s) => s.discardFile);
   const discardAll = useGitStore((s) => s.discardAll);
   const stageFile = useGitStore((s) => s.stageFile);
   const unstageFile = useGitStore((s) => s.unstageFile);
   const commit = useGitStore((s) => s.commit);
-  const push = useGitStore((s) => s.push);
-  const pull = useGitStore((s) => s.pull);
   const stageAllFiles = useGitStore((s) => s.stageAllFiles);
   const unstageAllFiles = useGitStore((s) => s.unstageAllFiles);
-  const commitsAhead = useGitStore((s) => s.commitsAhead);
 
   const openPanel = useMemo(() => usePanelTabsStore.getState().openPanel, []);
 
@@ -111,41 +101,6 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
     },
     [handleCommit],
   );
-
-  // Push (needs auth)
-  const handlePush = useCallback(async () => {
-    const token = await getAccessToken();
-    if (!token) {
-      toast.error('Not signed in', { description: 'Sign in with GitHub to push changes' });
-      return;
-    }
-    try {
-      await push(token);
-      toast.success('Pushed to remote');
-    } catch (err) {
-      toast.error('Push failed', { description: String(err) });
-    }
-  }, [push]);
-
-  // Pull (needs auth)
-  const handlePull = useCallback(async () => {
-    const token = await getAccessToken();
-    if (!token) {
-      toast.error('Not signed in', { description: 'Sign in with GitHub to pull changes' });
-      return;
-    }
-    try {
-      await pull(token);
-      toast.success('Pulled from remote');
-    } catch (err) {
-      toast.error('Pull failed', { description: String(err) });
-    }
-  }, [pull]);
-
-  // Refresh
-  const handleRefresh = useCallback(() => {
-    fetchChanges();
-  }, [fetchChanges]);
 
   // View file diff
   const handleViewDiff = useCallback(
@@ -237,57 +192,6 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
 
   return (
     <div className={cn('flex flex-col h-full', className)}>
-      {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 shrink-0">
-        <BranchSelector />
-        <div className="flex items-center gap-0.5">
-          <button
-            onClick={handlePull}
-            disabled={isPulling || !repoStatus?.has_remote}
-            className={cn(
-              'w-7 h-7 flex items-center justify-center rounded-lg',
-              'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
-              'disabled:opacity-30 disabled:pointer-events-none',
-              'active:scale-[0.9] transition-all duration-200',
-              isPulling && 'animate-pulse',
-            )}
-            title="Pull"
-          >
-            <CloudArrowDown className="w-3.5 h-3.5" weight="bold" />
-          </button>
-          <button
-            onClick={handlePush}
-            disabled={isPushing || !repoStatus?.has_remote || commitsAhead === 0 || commitsAhead === null}
-            className={cn(
-              'relative w-7 h-7 flex items-center justify-center rounded-lg',
-              'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
-              'disabled:opacity-30 disabled:pointer-events-none',
-              'active:scale-[0.9] transition-all duration-200',
-              isPushing && 'animate-pulse',
-            )}
-            title={commitsAhead && commitsAhead > 0 ? `Push (${commitsAhead} commit${commitsAhead > 1 ? 's' : ''} ahead)` : 'Push'}
-          >
-            <CloudArrowUp className="w-3.5 h-3.5" weight="bold" />
-            {commitsAhead != null && commitsAhead > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-0.5 flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[9px] font-semibold leading-none">
-                {commitsAhead}
-              </span>
-            )}
-          </button>
-          <button
-            onClick={handleRefresh}
-            className={cn(
-              'w-7 h-7 flex items-center justify-center rounded-lg',
-              'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
-              'active:scale-[0.9] transition-all duration-200',
-            )}
-            title="Refresh"
-          >
-            <ArrowsClockwise className="w-3.5 h-3.5" weight="bold" />
-          </button>
-        </div>
-      </div>
-
       {/* Empty state for non-git repos */}
       {isNotRepo && (
         <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
