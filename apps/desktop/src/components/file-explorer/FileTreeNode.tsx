@@ -178,7 +178,7 @@ export const FileTreeNode = memo(function FileTreeNode({
               e.stopPropagation();
               onToggle();
             }}
-            className="w-4 h-4 flex items-center justify-center shrink-0 hover:bg-muted rounded"
+            className="w-4 h-4 flex items-center justify-center shrink-0 hover:text-foreground rounded"
           >
             {isLoading ? (
               <CircleNotch weight="bold" className="w-3 h-3 animate-spin text-muted-foreground" />
