@@ -23,4 +23,8 @@ has_remote: boolean,
 /**
  * Remote URL (if any)
  */
-remote_url: string | null, };
+remote_url: string | null, 
+/**
+ * Number of commits ahead of remote (None if no remote or no tracking branch)
+ */
+commits_ahead: number | null, };

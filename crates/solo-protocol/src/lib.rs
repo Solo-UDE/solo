@@ -576,6 +576,8 @@ pub struct GitRepoStatus {
     pub has_remote: bool,
     /// Remote URL (if any)
     pub remote_url: Option<String>,
+    /// Number of commits ahead of remote (None if no remote or no tracking branch)
+    pub commits_ahead: Option<u32>,
 }
 
 // =============================================================================

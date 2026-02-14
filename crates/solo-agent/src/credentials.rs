@@ -47,6 +47,8 @@ pub struct CredentialInfo {
     pub api_key: String,
     /// Source of the credential
     pub source: CredentialSource,
+    /// ChatGPT account ID (only set for OpenAI OAuth credentials)
+    pub account_id: Option<String>,
 }
 
 /// Keychain service names
@@ -138,6 +140,7 @@ impl CredentialManager {
                     if let Ok(new_token) = self.refresh_openai_oauth_token().await {
                         return Ok(Some(CredentialInfo {
                             api_key: new_token.access_token,
+                            account_id: new_token.account_id,
                             source: CredentialSource::SoloOAuth,
                         }));
                     }
@@ -146,6 +149,7 @@ impl CredentialManager {
                 if !token.is_expired() {
                     return Ok(Some(CredentialInfo {
                         api_key: token.access_token,
+                        account_id: token.account_id,
                         source: CredentialSource::SoloOAuth,
                     }));
                 }
@@ -156,6 +160,7 @@ impl CredentialManager {
                 if let Ok(new_token) = self.refresh_oauth_token(provider).await {
                     return Ok(Some(CredentialInfo {
                         api_key: new_token.access_token,
+                        account_id: None,
                         source: CredentialSource::SoloOAuth,
                     }));
                 }
@@ -164,6 +169,7 @@ impl CredentialManager {
             if !token.is_expired() {
                 return Ok(Some(CredentialInfo {
                     api_key: token.access_token,
+                    account_id: None,
                     source: CredentialSource::SoloOAuth,
                 }));
             }
@@ -173,6 +179,7 @@ impl CredentialManager {
         if let Some(key) = self.get_from_keychain(provider).await? {
             return Ok(Some(CredentialInfo {
                 api_key: key,
+                account_id: None,
                 source: CredentialSource::Keychain,
             }));
         }
@@ -182,6 +189,7 @@ impl CredentialManager {
             if let Some(key) = self.get_claude_oauth().await? {
                 return Ok(Some(CredentialInfo {
                     api_key: key,
+                    account_id: None,
                     source: CredentialSource::ClaudeOAuth,
                 }));
             }
@@ -191,6 +199,7 @@ impl CredentialManager {
         if let Some(key) = self.get_from_env(provider) {
             return Ok(Some(CredentialInfo {
                 api_key: key,
+                account_id: None,
                 source: CredentialSource::Environment,
             }));
         }
@@ -346,6 +355,7 @@ impl CredentialManager {
             provider,
             CredentialInfo {
                 api_key: api_key.to_string(),
+                account_id: None,
                 source: CredentialSource::Keychain,
             },
         );

@@ -254,7 +254,12 @@ impl AgentManager {
                 };
                 Box::new(AnthropicProvider::new(credential_info.api_key, auth_mode))
             }
-            ProviderType::OpenAI => Box::new(OpenAIProvider::new(credential_info.api_key)),
+            ProviderType::OpenAI => {
+                Box::new(OpenAIProvider::new_with_oauth(
+                    credential_info.api_key,
+                    credential_info.account_id,
+                ))
+            }
             ProviderType::Gemini => Box::new(GeminiProvider::new(credential_info.api_key)),
         };
 

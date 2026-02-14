@@ -7,6 +7,7 @@ import { immer } from 'zustand/middleware/immer';
 import {
   gitGetStatus,
   gitGetChanges,
+  gitCommit,
   gitPush,
   gitPull,
   gitDiscardFile,
@@ -15,6 +16,7 @@ import {
   gitUnstageFile,
   gitStageAll,
   gitUnstageAll,
+  gitCreateBranch,
 } from '@/lib/tauri/git';
 import { useFileExplorerStore } from '@/stores/fileExplorerStore';
 import type { GitRepoStatus } from '@/bindings/GitRepoStatus';
@@ -26,11 +28,14 @@ interface GitState {
   repoStatus: GitRepoStatus | null;
   changedFiles: GitChangedFile[];
   changesSummary: GitChangesSummary | null;
+  commitsAhead: number | null;
 
   // Operation flags
+  isCommitting: boolean;
   isPushing: boolean;
   isPulling: boolean;
   isDiscarding: boolean;
+  isCreatingBranch: boolean;
   isLoading: boolean;
 
   // User input
@@ -45,7 +50,8 @@ interface GitState {
 interface GitActions {
   fetchRepoStatus: () => Promise<void>;
   fetchChanges: () => Promise<void>;
-  push: (accessToken: string, commitMessage: string) => Promise<void>;
+  commit: (commitMessage: string) => Promise<void>;
+  push: (accessToken: string) => Promise<void>;
   pull: (accessToken: string, forceReset?: boolean) => Promise<void>;
   discardFile: (filePath: string) => Promise<void>;
   discardAll: () => Promise<void>;
@@ -53,6 +59,7 @@ interface GitActions {
   unstageFile: (filePath: string) => Promise<void>;
   stageAllFiles: () => Promise<void>;
   unstageAllFiles: () => Promise<void>;
+  createBranch: (name: string) => Promise<void>;
   setCommitMessage: (message: string) => void;
   setCurrentBranch: (branch: string) => void;
   setGithubRepoUrl: (url: string) => void;
@@ -69,9 +76,12 @@ export const useGitStore = create<GitState & GitActions>()(
     repoStatus: null,
     changedFiles: [],
     changesSummary: null,
+    commitsAhead: null,
+    isCommitting: false,
     isPushing: false,
     isPulling: false,
     isDiscarding: false,
+    isCreatingBranch: false,
     isLoading: false,
     commitMessage: '',
     currentBranch: 'main',
@@ -85,6 +95,7 @@ export const useGitStore = create<GitState & GitActions>()(
         const status = await gitGetStatus();
         set((state) => {
           state.repoStatus = status;
+          state.commitsAhead = status.commits_ahead;
           if (status.current_branch) {
             state.currentBranch = status.current_branch;
           }
@@ -115,17 +126,30 @@ export const useGitStore = create<GitState & GitActions>()(
       }
     },
 
-    push: async (accessToken: string, commitMessage: string) => {
+    commit: async (commitMessage: string) => {
+      set((state) => { state.isCommitting = true; });
+      try {
+        await gitCommit(commitMessage);
+        set((state) => {
+          state.isCommitting = false;
+          state.commitMessage = '';
+        });
+        await get().fetchChanges();
+        await get().fetchRepoStatus();
+      } catch (err) {
+        set((state) => { state.isCommitting = false; });
+        throw err;
+      }
+    },
+
+    push: async (accessToken: string) => {
       const { currentBranch, githubRepoUrl } = get();
       if (!githubRepoUrl) return;
 
       set((state) => { state.isPushing = true; });
       try {
-        await gitPush(accessToken, githubRepoUrl, currentBranch, commitMessage);
-        set((state) => {
-          state.isPushing = false;
-          state.commitMessage = '';
-        });
+        await gitPush(accessToken, githubRepoUrl, currentBranch);
+        set((state) => { state.isPushing = false; });
         // Refresh after push
         await get().fetchChanges();
         await get().fetchRepoStatus();
@@ -218,6 +242,19 @@ export const useGitStore = create<GitState & GitActions>()(
       }
     },
 
+    createBranch: async (name: string) => {
+      set((state) => { state.isCreatingBranch = true; });
+      try {
+        await gitCreateBranch(name);
+        set((state) => { state.isCreatingBranch = false; });
+        await get().fetchRepoStatus();
+        await get().fetchChanges();
+      } catch (err) {
+        set((state) => { state.isCreatingBranch = false; });
+        throw err;
+      }
+    },
+
     setCommitMessage: (message: string) => {
       set((state) => { state.commitMessage = message; });
     },
@@ -262,9 +299,12 @@ export const useGitStore = create<GitState & GitActions>()(
         state.repoStatus = null;
         state.changedFiles = [];
         state.changesSummary = null;
+        state.commitsAhead = null;
+        state.isCommitting = false;
         state.isPushing = false;
         state.isPulling = false;
         state.isDiscarding = false;
+        state.isCreatingBranch = false;
         state.isLoading = false;
         state.commitMessage = '';
         state.currentBranch = 'main';

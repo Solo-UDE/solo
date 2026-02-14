@@ -113,7 +113,7 @@ function ProviderCard({
         iconColor: 'text-[#d97706]',
         buttonColor: 'bg-[#d97706] hover:bg-[#b45309]',
         buttonText: 'Sign in with Claude Code',
-        buttonSubtext: 'For free API access via Claude Code CLI',
+        buttonSubtext: 'Use your Claude Pro/Max subscription for API access',
       }
     : {
         name: 'OpenAI',
@@ -201,7 +201,7 @@ function ProviderCard({
         <div className="p-3 bg-muted/40 rounded-none text-xs text-muted-foreground">
           <p className="mb-2">
             {isClaudeCodeAuth
-              ? 'Using credentials from Claude Code.'
+              ? 'Authenticated via Claude Code CLI — using your Claude subscription for API access.'
               : 'Connected via ChatGPT account.'}
           </p>
           {isClaudeCodeAuth ? (

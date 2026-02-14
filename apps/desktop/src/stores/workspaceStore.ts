@@ -8,6 +8,7 @@ import { immer } from 'zustand/middleware/immer';
 import { usePanelTabsStore } from './panelTabsStore';
 import { useTerminalStore } from './terminalStore';
 import { useGitStore } from './gitStore';
+import { useUIStore } from './uiStore';
 import { useFileExplorerStore } from './fileExplorerStore';
 import { killTerminal } from '@/lib/tauri/terminal';
 
@@ -61,6 +62,9 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
         );
         await Promise.all(killPromises);
         useTerminalStore.getState().closeAll();
+        if (useUIStore.getState().terminalPanelOpen) {
+          useUIStore.getState().toggleTerminalPanel();
+        }
 
         // 3. Reset git state
         useGitStore.getState().reset();
@@ -72,9 +76,8 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
         // 5. Track in recents
         get().addRecent(path);
 
-        // 6. Re-detect git
-        useGitStore.getState().fetchRepoStatus();
-        useGitStore.getState().fetchChanges();
+        // 6. Re-detect git (startPolling does immediate fetch + sets up 5s interval)
+        useGitStore.getState().startPolling();
       },
     })),
     {

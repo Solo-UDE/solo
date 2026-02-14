@@ -2,8 +2,7 @@
  * PrimarySidebar - Main collapsible sidebar with tab navigation
  */
 
-import { useState, useCallback, useMemo } from 'react';
-import type { FC } from 'react';
+import { useState, useCallback, useMemo, forwardRef } from 'react';
 import { FileExplorer } from '@/components/file-explorer';
 import { SessionList, ApiKeyDialog } from '@/components/agent';
 import { SourceControlPanel } from '@/components/source-control';
@@ -26,7 +25,7 @@ interface PrimarySidebarProps {
 const TAB_ORDER: SidebarTab[] = ['explorer', 'sessions', 'source-control'];
 const TAB_LABELS = ['Explorer', 'Sessions', 'Source Control'] as const;
 
-export const PrimarySidebar: FC<PrimarySidebarProps> = ({ width, onFileOpen }) => {
+export const PrimarySidebar = forwardRef<HTMLElement, PrimarySidebarProps>(({ width, onFileOpen }, ref) => {
   const isCollapsed = useIsLeftSidebarCollapsed();
   const activeTab = useUIStore((state) => state.activeTab);
   const setActiveTab = useUIStore((state) => state.setActiveTab);
@@ -105,6 +104,7 @@ export const PrimarySidebar: FC<PrimarySidebarProps> = ({ width, onFileOpen }) =
 
   return (
     <aside
+      ref={ref}
       className="h-full flex flex-col border-r border-white/[0.06] bg-sidebar overflow-hidden pt-[38px]"
       style={{
         width,
@@ -172,4 +172,4 @@ export const PrimarySidebar: FC<PrimarySidebarProps> = ({ width, onFileOpen }) =
       />
     </aside>
   );
-};
+});

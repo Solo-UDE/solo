@@ -26,13 +26,17 @@ export const gitGetStatus = () =>
 export const gitSetup = (githubRepoUrl: string, username: string, email: string) =>
   invoke<void>('git_setup', { githubRepoUrl, username, email });
 
+/** Commit staged changes locally */
+export const gitCommit = (commitMessage: string) =>
+  invoke<void>('git_commit', { commitMessage });
+
 /** Push changes to GitHub */
 export const gitPush = (
   accessToken: string,
   githubRepoUrl: string,
   branch: string,
-  commitMessage: string,
-) => invoke<GitPushResponse>('git_push', { accessToken, githubRepoUrl, branch, commitMessage });
+  commitMessage?: string,
+) => invoke<GitPushResponse>('git_push', { accessToken, githubRepoUrl, branch, commitMessage: commitMessage ?? null });
 
 /** Pull changes from GitHub */
 export const gitPull = (
@@ -81,3 +85,7 @@ export const gitStageAll = () =>
 /** Unstage all files (git reset HEAD) */
 export const gitUnstageAll = () =>
   invoke<void>('git_unstage_all');
+
+/** Create a new local branch and check it out */
+export const gitCreateBranch = (branchName: string) =>
+  invoke<void>('git_create_branch', { branchName });

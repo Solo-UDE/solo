@@ -181,6 +181,7 @@ pub fn run() {
             // Git commands
             git_commands::git_get_status,
             git_commands::git_setup,
+            git_commands::git_commit,
             git_commands::git_push,
             git_commands::git_pull,
             git_commands::git_get_current_sha,
@@ -193,6 +194,7 @@ pub fn run() {
             git_commands::git_unstage_file,
             git_commands::git_stage_all,
             git_commands::git_unstage_all,
+            git_commands::git_create_branch,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

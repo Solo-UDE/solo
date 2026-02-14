@@ -332,35 +332,14 @@
   opacity: 1;
 }
 
-/* 3-dot grip indicator */
-.split-divider-grip {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  opacity: 0.4;
-  transition: opacity 200ms ease;
-}
-
-.split-divider-grip span {
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background-color: var(--muted-foreground);
-  transition: background-color 200ms ease;
-}
-
-.split-divider:hover .split-divider-grip,
-.split-divider.dragging .split-divider-grip {
-  opacity: 0.8;
-}
-
-.split-divider:hover .split-divider-grip span,
-.split-divider.dragging .split-divider-grip span {
-  background-color: var(--primary);
+/* Kill all transitions during sidebar/split resize for zero-lag dragging */
+body.is-resizing,
+body.is-resizing *,
+body.is-resizing *::before,
+body.is-resizing *::after {
+  transition: none !important;
+  cursor: col-resize !important;
+  user-select: none !important;
 }
 
 /* Syntax highlighting (rehype-highlight) */

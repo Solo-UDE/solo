@@ -187,6 +187,7 @@ pub async fn git_get_status(
 				head_sha: None,
 				has_remote: false,
 				remote_url: None,
+				commits_ahead: None,
 			});
 		}
 
@@ -212,12 +213,61 @@ pub async fn git_get_status(
 			},
 		};
 
+		// Compute commits ahead of remote tracking branch
+		let commits_ahead = if has_remote {
+			if let Some(ref branch) = current_branch {
+				// Try github-integ remote first, then origin
+				let remote_ref = format!("refs/remotes/github-integ/{}", branch);
+				let remote_oid = repo.refname_to_id(&remote_ref).ok().or_else(|| {
+					let origin_ref = format!("refs/remotes/origin/{}", branch);
+					repo.refname_to_id(&origin_ref).ok()
+				});
+
+				if let (Some(remote_oid), Ok(head_ref)) = (remote_oid, repo.head()) {
+					if let Some(head_oid) = head_ref.target() {
+						let mut count = 0u32;
+						if let Ok(mut revwalk) = repo.revwalk() {
+							let _ = revwalk.push(head_oid);
+							let _ = revwalk.hide(remote_oid);
+							count = revwalk.count() as u32;
+						}
+						Some(count)
+					} else {
+						Some(0)
+					}
+				} else if repo.head().is_ok() {
+					// Has remote but no tracking branch yet — all local commits are ahead
+					if let Ok(head_ref) = repo.head() {
+						if let Some(head_oid) = head_ref.target() {
+							let mut count = 0u32;
+							if let Ok(mut revwalk) = repo.revwalk() {
+								let _ = revwalk.push(head_oid);
+								count = revwalk.count() as u32;
+							}
+							Some(count)
+						} else {
+							Some(0)
+						}
+					} else {
+						Some(0)
+					}
+				} else {
+					Some(0)
+				}
+			} else {
+				None
+			}
+		} else {
+			None
+		};
+
 		Ok(GitRepoStatus {
 			is_repo: true,
 			current_branch,
 			head_sha,
 			has_remote,
 			remote_url,
+			commits_ahead,
 		})
 	})
 	.await
@@ -268,7 +318,7 @@ pub async fn git_push(
 	access_token: String,
 	github_repo_url: String,
 	branch: String,
-	commit_message: String,
+	commit_message: Option<String>,
 ) -> Result<GitPushResponse, String> {
 	let workspace_path = get_workspace_path(&fs_state).await?;
 
@@ -285,37 +335,33 @@ pub async fn git_push(
 
 		// Ensure we restore the clean remote URL at the end
 		let result = (|| -> Result<GitPushResponse, String> {
+			let msg = commit_message.unwrap_or_else(|| "Sync from Solo IDE".to_string());
+
 			// Check if we have any commits
 			let has_commits = repo.head().is_ok();
 
-			// Only commit what's already staged in the index (user stages files via git_stage_file)
-			let mut index = repo.index().map_err(|e| format!("Failed to get index: {}", e))?;
-
-			// Check if there are staged changes
-			let statuses = repo
-				.statuses(Some(StatusOptions::new().include_untracked(false)))
-				.map_err(|e| format!("Failed to get status: {}", e))?;
-
-			let has_changes = statuses.iter().any(|entry| {
-				let s = entry.status();
-				s.intersects(
-					git2::Status::INDEX_NEW
-						| git2::Status::INDEX_MODIFIED
-						| git2::Status::INDEX_DELETED
-						| git2::Status::INDEX_RENAMED,
-				)
-			});
-
 			if !has_commits {
-				// Fresh repo — create initial commit and push
+				// Fresh repo — need at least one commit to push
+				// Check if there are staged changes to create initial commit from
+				let mut index = repo.index().map_err(|e| format!("Failed to get index: {}", e))?;
+				let statuses = repo
+					.statuses(Some(StatusOptions::new().include_untracked(false)))
+					.map_err(|e| format!("Failed to get status: {}", e))?;
+				let has_changes = statuses.iter().any(|entry| {
+					entry.status().intersects(
+						git2::Status::INDEX_NEW
+							| git2::Status::INDEX_MODIFIED
+							| git2::Status::INDEX_DELETED
+							| git2::Status::INDEX_RENAMED,
+					)
+				});
+
 				emit_git_progress(&app, "push", "Creating initial commit...");
 
 				if !has_changes {
 					return Ok(GitPushResponse { commits_count: 0 });
 				}
 
-				// Try to checkout the target branch
-				// For a fresh repo, we need to create the first commit to establish a branch
 				let sig = repo
 					.signature()
 					.or_else(|_| Signature::now("Solo User", "solo@local"))
@@ -328,7 +374,7 @@ pub async fn git_push(
 					.find_tree(tree_oid)
 					.map_err(|e| format!("Failed to find tree: {}", e))?;
 
-				repo.commit(Some("HEAD"), &sig, &sig, &commit_message, &tree, &[])
+				repo.commit(Some("HEAD"), &sig, &sig, &msg, &tree, &[])
 					.map_err(|e| format!("Failed to create initial commit: {}", e))?;
 
 				// Rename branch to target if needed
@@ -367,32 +413,6 @@ pub async fn git_push(
 
 				emit_git_progress(&app, "push", "Push complete");
 				return Ok(GitPushResponse { commits_count: 1 });
-			}
-
-			// Existing repo — commit any uncommitted changes first
-			if has_changes {
-				emit_git_progress(&app, "push", "Committing local changes...");
-				let sig = repo
-					.signature()
-					.or_else(|_| Signature::now("Solo User", "solo@local"))
-					.map_err(|e| format!("Failed to create signature: {}", e))?;
-
-				let tree_oid = index
-					.write_tree()
-					.map_err(|e| format!("Failed to write tree: {}", e))?;
-				let tree = repo
-					.find_tree(tree_oid)
-					.map_err(|e| format!("Failed to find tree: {}", e))?;
-
-				let head = repo
-					.head()
-					.map_err(|e| format!("Failed to get HEAD: {}", e))?;
-				let parent = head
-					.peel_to_commit()
-					.map_err(|e| format!("Failed to peel HEAD: {}", e))?;
-
-				repo.commit(Some("HEAD"), &sig, &sig, "Local changes", &tree, &[&parent])
-					.map_err(|e| format!("Failed to commit: {}", e))?;
 			}
 
 			// Fetch from GitHub
@@ -463,7 +483,7 @@ pub async fn git_push(
 					.map_err(|e| format!("Failed to create signature: {}", e))?;
 
 				let commit_oid = repo
-					.commit(None, &sig, &sig, &commit_message, &tree, &[&remote_commit])
+					.commit(None, &sig, &sig, &msg, &tree, &[&remote_commit])
 					.map_err(|e| format!("Failed to create synthetic commit: {}", e))?;
 
 				emit_git_progress(&app, "push", "Pushing to GitHub...");
@@ -514,7 +534,7 @@ pub async fn git_push(
 
 				// Orphan commit (no parents)
 				let commit_oid = repo
-					.commit(None, &sig, &sig, &commit_message, &tree, &[])
+					.commit(None, &sig, &sig, &msg, &tree, &[])
 					.map_err(|e| format!("Failed to create orphan commit: {}", e))?;
 
 				let refspec = format!("+{}:refs/heads/{}", commit_oid, branch);
@@ -843,6 +863,10 @@ pub async fn git_get_changes(
 				.map_err(|e| format!("Failed to get status: {}", e))?;
 
 			for entry in statuses.iter() {
+				let s = entry.status();
+				if s.contains(git2::Status::IGNORED) {
+					continue;
+				}
 				if let Some(path) = entry.path() {
 					files_map
 						.entry(path.to_string())
@@ -884,6 +908,9 @@ pub async fn git_get_changes(
 			for entry in statuses.iter() {
 				if let Some(path) = entry.path() {
 					let s = entry.status();
+					if s.contains(git2::Status::IGNORED) {
+						continue;
+					}
 					let status = if s.contains(git2::Status::WT_NEW)
 						|| s.contains(git2::Status::INDEX_NEW)
 					{
@@ -1375,6 +1402,72 @@ pub async fn git_stage_all(
 	.map_err(|e| format!("Task join error: {}", e))?
 }
 
+/// Commit staged changes locally (no push)
+#[tauri::command]
+pub async fn git_commit(
+	fs_state: State<'_, crate::fs_commands::FsState>,
+	app: AppHandle,
+	commit_message: String,
+) -> Result<(), String> {
+	let workspace_path = get_workspace_path(&fs_state).await?;
+
+	tokio::task::spawn_blocking(move || {
+		cleanup_git_locks(&workspace_path);
+
+		let repo = Repository::open(&workspace_path)
+			.map_err(|e| format!("Failed to open repo: {}", e))?;
+
+		let mut index = repo.index().map_err(|e| format!("Failed to get index: {}", e))?;
+
+		// Check for staged changes
+		let statuses = repo
+			.statuses(Some(StatusOptions::new().include_untracked(false)))
+			.map_err(|e| format!("Failed to get status: {}", e))?;
+
+		let has_staged = statuses.iter().any(|entry| {
+			entry.status().intersects(
+				git2::Status::INDEX_NEW
+					| git2::Status::INDEX_MODIFIED
+					| git2::Status::INDEX_DELETED
+					| git2::Status::INDEX_RENAMED,
+			)
+		});
+
+		if !has_staged {
+			return Err("No staged changes to commit".to_string());
+		}
+
+		let sig = repo
+			.signature()
+			.or_else(|_| Signature::now("Solo User", "solo@local"))
+			.map_err(|e| format!("Failed to create signature: {}", e))?;
+
+		let tree_oid = index
+			.write_tree()
+			.map_err(|e| format!("Failed to write tree: {}", e))?;
+		let tree = repo
+			.find_tree(tree_oid)
+			.map_err(|e| format!("Failed to find tree: {}", e))?;
+
+		if let Ok(head) = repo.head() {
+			let parent = head
+				.peel_to_commit()
+				.map_err(|e| format!("Failed to peel HEAD: {}", e))?;
+			repo.commit(Some("HEAD"), &sig, &sig, &commit_message, &tree, &[&parent])
+				.map_err(|e| format!("Failed to commit: {}", e))?;
+		} else {
+			// Fresh repo — no parent
+			repo.commit(Some("HEAD"), &sig, &sig, &commit_message, &tree, &[])
+				.map_err(|e| format!("Failed to create initial commit: {}", e))?;
+		}
+
+		emit_git_changes_updated(&app);
+		Ok(())
+	})
+	.await
+	.map_err(|e| format!("Task join error: {}", e))?
+}
+
 /// Unstage all files (git reset HEAD)
 #[tauri::command]
 pub async fn git_unstage_all(
@@ -1398,6 +1491,60 @@ pub async fn git_unstage_all(
 			index.clear().map_err(|e| format!("Failed to clear index: {}", e))?;
 			index.write().map_err(|e| format!("Failed to write index: {}", e))?;
 		}
+
+		emit_git_changes_updated(&app);
+		Ok(())
+	})
+	.await
+	.map_err(|e| format!("Task join error: {}", e))?
+}
+
+/// Create a new local branch and check it out
+#[tauri::command]
+pub async fn git_create_branch(
+	fs_state: State<'_, crate::fs_commands::FsState>,
+	app: AppHandle,
+	branch_name: String,
+) -> Result<(), String> {
+	let workspace_path = get_workspace_path(&fs_state).await?;
+
+	tokio::task::spawn_blocking(move || {
+		cleanup_git_locks(&workspace_path);
+
+		// Validate branch name
+		let name = branch_name.trim();
+		if name.is_empty() {
+			return Err("Branch name cannot be empty".to_string());
+		}
+		if name.contains(' ') || name.contains("..") || name.contains('~')
+			|| name.contains('^') || name.contains(':') || name.contains('\\')
+			|| name.starts_with('-') || name.ends_with('/') || name.ends_with(".lock")
+			|| name.contains('\x00')
+		{
+			return Err(format!("Invalid branch name: '{}'", name));
+		}
+
+		let repo = Repository::open(&workspace_path)
+			.map_err(|e| format!("Failed to open repo: {}", e))?;
+
+		// Get HEAD commit
+		let head = repo.head().map_err(|e| format!("Failed to get HEAD: {}", e))?;
+		let commit = head
+			.peel_to_commit()
+			.map_err(|e| format!("Failed to peel HEAD to commit: {}", e))?;
+
+		// Create branch (fails if it already exists)
+		repo.branch(name, &commit, false)
+			.map_err(|e| format!("Failed to create branch '{}': {}", name, e))?;
+
+		// Checkout the new branch
+		let refname = format!("refs/heads/{}", name);
+		repo.set_head(&refname)
+			.map_err(|e| format!("Failed to set HEAD to '{}': {}", name, e))?;
+
+		let obj = commit.as_object();
+		repo.checkout_tree(obj, None)
+			.map_err(|e| format!("Failed to checkout '{}': {}", name, e))?;
 
 		emit_git_changes_updated(&app);
 		Ok(())

@@ -9,6 +9,7 @@ import {
   ArrowCounterClockwise,
   CaretDown,
   CaretRight,
+  Check,
   CloudArrowDown,
   CloudArrowUp,
   GitBranch,
@@ -24,6 +25,7 @@ import { FileChangeItem } from './FileChangeItem';
 import { GitHubSetup } from './GitHubSetup';
 import { ConfirmDialog } from './ConfirmDialog';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 
 interface SourceControlPanelProps {
   readonly className?: string;
@@ -44,6 +46,7 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
   const changedFiles = useGitStore((s) => s.changedFiles);
   const changesSummary = useGitStore((s) => s.changesSummary);
   const commitMessage = useGitStore((s) => s.commitMessage);
+  const isCommitting = useGitStore((s) => s.isCommitting);
   const isPushing = useGitStore((s) => s.isPushing);
   const isPulling = useGitStore((s) => s.isPulling);
   const setCommitMessage = useGitStore((s) => s.setCommitMessage);
@@ -54,10 +57,12 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
   const discardAll = useGitStore((s) => s.discardAll);
   const stageFile = useGitStore((s) => s.stageFile);
   const unstageFile = useGitStore((s) => s.unstageFile);
+  const commit = useGitStore((s) => s.commit);
   const push = useGitStore((s) => s.push);
   const pull = useGitStore((s) => s.pull);
   const stageAllFiles = useGitStore((s) => s.stageAllFiles);
   const unstageAllFiles = useGitStore((s) => s.unstageAllFiles);
+  const commitsAhead = useGitStore((s) => s.commitsAhead);
 
   const openPanel = useMemo(() => usePanelTabsStore.getState().openPanel, []);
 
@@ -85,41 +90,55 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
     [setCommitMessage],
   );
 
-  // Commit & Push
-  const handleCommitAndPush = useCallback(async () => {
+  // Standalone Commit (local only)
+  const handleCommit = useCallback(async () => {
     if (!commitMessage.trim() || stagedFiles.length === 0) return;
     try {
-      const token = await getAccessToken();
-      if (!token) {
-        console.error('No access token — connect GitHub first');
-        return;
-      }
-      await push(token, commitMessage.trim());
-      setCommitMessage('');
+      await commit(commitMessage.trim());
+      toast.success('Changes committed');
     } catch (err) {
-      console.error('Push failed:', err);
+      toast.error('Commit failed', { description: String(err) });
     }
-  }, [commitMessage, stagedFiles.length, push, setCommitMessage]);
+  }, [commitMessage, stagedFiles.length, commit]);
 
-  // Handle Cmd+Enter in commit textarea
+  // Handle Cmd+Enter in commit textarea — triggers commit (not push)
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
-        handleCommitAndPush();
+        handleCommit();
       }
     },
-    [handleCommitAndPush],
+    [handleCommit],
   );
 
-  // Pull
-  const handlePull = useCallback(async () => {
+  // Push (needs auth)
+  const handlePush = useCallback(async () => {
+    const token = await getAccessToken();
+    if (!token) {
+      toast.error('Not signed in', { description: 'Sign in with GitHub to push changes' });
+      return;
+    }
     try {
-      const token = await getAccessToken();
-      if (!token) return;
-      await pull(token);
+      await push(token);
+      toast.success('Pushed to remote');
     } catch (err) {
-      console.error('Pull failed:', err);
+      toast.error('Push failed', { description: String(err) });
+    }
+  }, [push]);
+
+  // Pull (needs auth)
+  const handlePull = useCallback(async () => {
+    const token = await getAccessToken();
+    if (!token) {
+      toast.error('Not signed in', { description: 'Sign in with GitHub to pull changes' });
+      return;
+    }
+    try {
+      await pull(token);
+      toast.success('Pulled from remote');
+    } catch (err) {
+      toast.error('Pull failed', { description: String(err) });
     }
   }, [pull]);
 
@@ -228,12 +247,32 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
             className={cn(
               'w-7 h-7 flex items-center justify-center rounded-lg',
               'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
+              'disabled:opacity-30 disabled:pointer-events-none',
               'active:scale-[0.9] transition-all duration-200',
-              isPulling && 'opacity-50',
+              isPulling && 'animate-pulse',
             )}
             title="Pull"
           >
             <CloudArrowDown className="w-3.5 h-3.5" weight="bold" />
+          </button>
+          <button
+            onClick={handlePush}
+            disabled={isPushing || !repoStatus?.has_remote || commitsAhead === 0 || commitsAhead === null}
+            className={cn(
+              'relative w-7 h-7 flex items-center justify-center rounded-lg',
+              'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
+              'disabled:opacity-30 disabled:pointer-events-none',
+              'active:scale-[0.9] transition-all duration-200',
+              isPushing && 'animate-pulse',
+            )}
+            title={commitsAhead && commitsAhead > 0 ? `Push (${commitsAhead} commit${commitsAhead > 1 ? 's' : ''} ahead)` : 'Push'}
+          >
+            <CloudArrowUp className="w-3.5 h-3.5" weight="bold" />
+            {commitsAhead != null && commitsAhead > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-0.5 flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[9px] font-semibold leading-none">
+                {commitsAhead}
+              </span>
+            )}
           </button>
           <button
             onClick={handleRefresh}
@@ -278,8 +317,8 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
               )}
             />
             <button
-              onClick={handleCommitAndPush}
-              disabled={!commitMessage.trim() || isPushing || stagedFiles.length === 0 || !repoStatus?.has_remote}
+              onClick={handleCommit}
+              disabled={!commitMessage.trim() || isCommitting || stagedFiles.length === 0}
               className={cn(
                 'w-full h-[34px] mt-1.5 rounded-[10px] text-xs font-medium',
                 'flex items-center justify-center gap-1.5',
@@ -288,14 +327,14 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
                 'disabled:opacity-40 disabled:pointer-events-none',
                 'transition-all duration-200',
               )}
-              title={stagedFiles.length === 0 ? 'Stage files before committing' : undefined}
+              title={stagedFiles.length === 0 ? 'Stage files before committing' : 'Commit staged changes (Cmd+Enter)'}
             >
-              {isPushing ? (
+              {isCommitting ? (
                 <ArrowsClockwise className="w-3.5 h-3.5 animate-spin" />
               ) : (
-                <CloudArrowUp className="w-3.5 h-3.5" weight="bold" />
+                <Check className="w-3.5 h-3.5" weight="bold" />
               )}
-              {isPushing ? 'Pushing...' : 'Commit & Push'}
+              {isCommitting ? 'Committing...' : 'Commit'}
             </button>
           </div>
 

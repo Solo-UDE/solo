@@ -134,13 +134,7 @@ export function MarkdownSplitPane({
             className={cn('split-divider', isDragging && 'dragging')}
             onMouseDown={handleMouseDown}
             onDoubleClick={handleDoubleClick}
-          >
-            <div className="split-divider-grip">
-              <span />
-              <span />
-              <span />
-            </div>
-          </div>
+          />
 
           <div
             className={cn('overflow-hidden', paneTransitionClass)}
