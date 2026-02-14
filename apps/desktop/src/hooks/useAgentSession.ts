@@ -74,6 +74,18 @@ export function useAgentSession(
 	useEffect(() => {
 		if (autoCreate && !propSessionId && !localSessionId && !autoCreated.current) {
 			autoCreated.current = true;
+
+			// Reuse the most recent existing session instead of creating a duplicate
+			const existingSessions = useAgentStore.getState().sessions;
+			if (existingSessions.size > 0) {
+				const mostRecent = [...existingSessions.values()]
+					.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+				if (mostRecent) {
+					setLocalSessionId(mostRecent.id);
+					return;
+				}
+			}
+
 			storeCreateSession(defaultModel)
 				.then((newId) => {
 					setLocalSessionId(newId);
