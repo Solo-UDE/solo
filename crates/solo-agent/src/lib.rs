@@ -10,6 +10,7 @@ pub mod credentials;
 pub mod anthropic;
 pub mod openai;
 pub mod gemini;
+pub mod claude_cli;
 pub mod tools;
 pub mod middleware;
 pub mod telemetry;
@@ -23,6 +24,7 @@ pub use credentials::{CredentialManager, CredentialSource};
 pub use anthropic::AnthropicProvider;
 pub use openai::OpenAIProvider;
 pub use gemini::GeminiProvider;
+pub use claude_cli::ClaudeCliProvider;
 pub use tools::{ToolRegistry, ToolExecutor, ToolError, ToolContext, SharedWorkspaceRoot, create_default_registry};
 pub use middleware::{
     Middleware, MiddlewareChain, MiddlewareContext, MiddlewareResponse,
@@ -243,18 +245,36 @@ impl AgentManager {
 
         let mut provider: Box<dyn AIProvider> = match provider_type {
             ProviderType::Anthropic => {
-                use crate::anthropic::AnthropicAuthMode;
-                let auth_mode = match credential_info.source {
-                    CredentialSource::ClaudeOAuth | CredentialSource::SoloOAuth => {
-                        AnthropicAuthMode::OAuthToken
+                match credential_info.source {
+                    // OAuth tokens (Claude Code or Solo) CANNOT be used for direct API calls
+                    // with x-api-key header. They must go through the CLI which handles
+                    // subscription billing and proper Bearer auth.
+                    CredentialSource::ClaudeOAuth
+                    | CredentialSource::ClaudeOAuthFile
+                    | CredentialSource::SoloOAuth => {
+                        // Check if CLI is available
+                        if !claude_cli::is_cli_available().await {
+                            return Err(ProviderError::AuthError(
+                                "OAuth token detected but CLI not installed. \
+                                 Either install Claude CLI (`npm i -g @anthropic-ai/claude-code`) \
+                                 or add an Anthropic API key."
+                                    .to_string(),
+                            ));
+                        }
+                        Box::new(ClaudeCliProvider::new())
                     }
+                    // Only API keys (from keychain or env) can use direct API with x-api-key
                     CredentialSource::Keychain | CredentialSource::Environment => {
-                        AnthropicAuthMode::ApiKey
+                        Box::new(AnthropicProvider::new(credential_info.api_key))
                     }
-                };
-                Box::new(AnthropicProvider::new(credential_info.api_key, auth_mode))
+                }
             }
-            ProviderType::OpenAI => Box::new(OpenAIProvider::new(credential_info.api_key)),
+            ProviderType::OpenAI => {
+                Box::new(OpenAIProvider::new_with_oauth(
+                    credential_info.api_key,
+                    credential_info.account_id,
+                ))
+            }
             ProviderType::Gemini => Box::new(GeminiProvider::new(credential_info.api_key)),
         };
 
@@ -274,6 +294,18 @@ impl AgentManager {
     /// Check if a provider is initialized
     pub async fn is_provider_initialized(&self, provider_type: ProviderType) -> bool {
         self.providers.read().await.contains_key(&provider_type)
+    }
+
+    /// Re-initialize a provider, clearing the cached instance first.
+    ///
+    /// This is necessary when credentials change (e.g., user runs `claude login`)
+    /// and we need to pick the correct provider type (CLI vs Direct API) based
+    /// on the new credential source.
+    pub async fn reinitialize_provider(&self, provider_type: ProviderType) -> ProviderResult<()> {
+        // Remove cached provider
+        self.providers.write().await.remove(&provider_type);
+        // Re-initialize with fresh credentials
+        self.initialize_provider(provider_type).await
     }
 
     /// Set the active provider

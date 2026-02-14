@@ -1,10 +1,10 @@
 /**
- * ClaudeLoginModal - Simple modal to authenticate via Claude Code CLI
- * Uses Radix UI Dialog for consistent modal behavior
+ * ClaudeLoginModal - Modal to authenticate via Claude Code CLI
+ * Checks if CLI is installed, guides installation if needed, then authenticates
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { CheckCircle, CircleNotch, WarningCircle, Terminal, ArrowsClockwise } from '@phosphor-icons/react';
+import { CheckCircle, CircleNotch, WarningCircle, Terminal, ArrowsClockwise, DownloadSimple, Copy, Check } from '@phosphor-icons/react';
 import {
 	Dialog,
 	DialogContent,
@@ -13,6 +13,8 @@ import {
 import {
 	startClaudeLogin,
 	checkClaudeAuthStatus,
+	checkClaudeCliInstalled,
+	installClaudeCli,
 } from '../../lib/backend';
 
 interface ClaudeLoginModalProps {
@@ -21,13 +23,13 @@ interface ClaudeLoginModalProps {
 	onSuccess: () => void;
 }
 
-type Step = 'checking' | 'ready' | 'waiting' | 'complete' | 'error';
+type Step = 'checking' | 'not-installed' | 'installing' | 'ready' | 'waiting' | 'complete' | 'error';
 
 export function ClaudeLoginModal({ isOpen, onClose, onSuccess }: ClaudeLoginModalProps) {
 	const [step, setStep] = useState<Step>('checking');
 	const [error, setError] = useState<string | null>(null);
+	const [copied, setCopied] = useState(false);
 
-	// Check if already authenticated on mount
 	const checkAuth = useCallback(async () => {
 		setStep('checking');
 		setError(null);
@@ -40,6 +42,12 @@ export function ClaudeLoginModal({ isOpen, onClose, onSuccess }: ClaudeLoginModa
 					onSuccess();
 					onClose();
 				}, 1500);
+				return;
+			}
+
+			const isInstalled = await checkClaudeCliInstalled();
+			if (!isInstalled) {
+				setStep('not-installed');
 			} else {
 				setStep('ready');
 			}
@@ -55,8 +63,32 @@ export function ClaudeLoginModal({ isOpen, onClose, onSuccess }: ClaudeLoginModa
 		} else {
 			setStep('checking');
 			setError(null);
+			setCopied(false);
 		}
 	}, [isOpen, checkAuth]);
+
+	const handleInstall = useCallback(async () => {
+		setStep('installing');
+		setError(null);
+
+		try {
+			await installClaudeCli();
+			setStep('ready');
+		} catch (err) {
+			setError(String(err));
+			setStep('error');
+		}
+	}, []);
+
+	const handleCopyInstallCommand = useCallback(async () => {
+		try {
+			await navigator.clipboard.writeText('npm install -g @anthropic-ai/claude-code');
+			setCopied(true);
+			setTimeout(() => setCopied(false), 2000);
+		} catch {
+			// Clipboard API may not be available
+		}
+	}, []);
 
 	const handleOpenTerminal = useCallback(async () => {
 		setStep('waiting');
@@ -64,7 +96,6 @@ export function ClaudeLoginModal({ isOpen, onClose, onSuccess }: ClaudeLoginModa
 
 		try {
 			await startClaudeLogin();
-			// Don't auto-check, let user click "Verify" when ready
 		} catch (err) {
 			setError(String(err));
 			setStep('error');
@@ -114,10 +145,69 @@ export function ClaudeLoginModal({ isOpen, onClose, onSuccess }: ClaudeLoginModa
 						</div>
 					)}
 
+					{step === 'not-installed' && (
+						<>
+							<p className="text-sm text-foreground">
+								Claude Code CLI is required to sign in with your Claude account.
+							</p>
+							<p className="text-xs text-muted-foreground">
+								Claude Pro and Max subscribers get API access through the Claude Code CLI. Solo will automatically detect your credentials after you sign in.
+							</p>
+
+							{/* Install command display */}
+							<div className="flex items-center gap-2 p-2.5 bg-muted/40 rounded-none font-mono text-xs">
+								<code className="flex-1 text-foreground select-all">npm install -g @anthropic-ai/claude-code</code>
+								<button
+									type="button"
+									onClick={handleCopyInstallCommand}
+									className="p-1.5 text-muted-foreground hover:text-foreground transition-colors shrink-0"
+									title="Copy command"
+								>
+									{copied ? (
+										<Check className="w-3.5 h-3.5 text-green-500" />
+									) : (
+										<Copy className="w-3.5 h-3.5" />
+									)}
+								</button>
+							</div>
+
+							<button
+								type="button"
+								onClick={handleInstall}
+								className="w-full h-10 px-4 bg-primary text-primary-foreground rounded-none text-sm font-medium hover:brightness-110 active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2"
+							>
+								<DownloadSimple className="w-4 h-4" />
+								Install Claude Code
+							</button>
+
+							<div className="flex items-center gap-2">
+								<div className="flex-1 h-px bg-border" />
+								<span className="text-xs text-muted-foreground">or</span>
+								<div className="flex-1 h-px bg-border" />
+							</div>
+
+							<button
+								type="button"
+								onClick={() => setStep('ready')}
+								className="w-full h-9 px-4 bg-muted hover:bg-muted/80 text-foreground rounded-none text-xs font-medium active:scale-[0.98] transition-all duration-200"
+							>
+								I already installed it — continue
+							</button>
+						</>
+					)}
+
+					{step === 'installing' && (
+						<div className="flex flex-col items-center justify-center gap-3 py-6">
+							<CircleNotch weight="bold" className="w-6 h-6 text-primary animate-spin" />
+							<p className="text-sm text-muted-foreground">Installing Claude Code CLI...</p>
+							<p className="text-xs text-muted-foreground">This may take a moment</p>
+						</div>
+					)}
+
 					{step === 'ready' && (
 						<>
 							<p className="text-sm text-foreground">
-								Click below to open Terminal and sign in with your Claude account.
+								Sign in with your Claude account to use your subscription for API access.
 							</p>
 							<p className="text-xs text-muted-foreground">
 								The Claude Code CLI will open in Terminal. Follow the prompts to authenticate, then come back and click "Verify".

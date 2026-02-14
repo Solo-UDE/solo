@@ -60,3 +60,29 @@ When adding a new command: define types in `solo-protocol`, write the command fn
 - `docs/ARCHITECTURE.md` — system design and component overview
 - `docs/DECISIONS.md` — architectural decision log with rationale
 - `docs/PROGRESS.md` — implementation phase tracker
+- `docs/MIGRATION.md` — Orchids-to-Solo migration plan and priority tiers
+
+## Migration Context
+
+Solo is migrating features from the Orchids Electron app. Phases 1-7 are complete (terminal, file explorer, AI agent, code editor, auth, settings, layout). Phase 8 (Git Integration) is in progress.
+
+### Skills
+
+| Skill | Purpose | Location |
+|-------|---------|----------|
+| `solo-migration` | Migration status, translation rules, pitfalls | `.claude/skills/solo-migration-skill/` |
+| `solo-tauri-commands` | Templates for new command modules | `.claude/skills/solo-tauri-commands-skill/` |
+| `solo-ui` | UI design system, component patterns | `.claude/skills/solo-ui-skill/` |
+
+### Adding a New Domain (Quick Reference)
+
+1. Protocol types in `crates/solo-protocol/src/lib.rs`
+2. BackendEvent variants (if streaming)
+3. `bun run gen:bindings`
+4. `{domain}_commands.rs` in `apps/desktop/src-tauri/src/`
+5. Register in `lib.rs`: `mod` + `use` + `.manage()` + `generate_handler![]`
+6. TS wrapper in `apps/desktop/src/lib/tauri/{domain}.ts`
+7. Zustand store in `apps/desktop/src/stores/{domain}Store.ts`
+8. UI components in `apps/desktop/src/components/{domain}/`
+
+Full 16-step checklist: `.claude/skills/solo-tauri-commands-skill/new-domain-checklist.md`

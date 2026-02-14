@@ -1,4 +1,7 @@
 //! Anthropic (Claude) provider implementation
+//!
+//! This provider uses API keys for direct API access. For subscription-based
+//! authentication (Claude Pro/Max), use the ClaudeCliProvider instead.
 
 use async_trait::async_trait;
 use futures::StreamExt;
@@ -23,41 +26,23 @@ const INITIAL_BACKOFF_MS: u64 = 1000;
 /// Maximum backoff delay in milliseconds
 const MAX_BACKOFF_MS: u64 = 30_000;
 
-/// How the Anthropic provider should authenticate requests
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AnthropicAuthMode {
-    /// Traditional API key: sent as `x-api-key` header
-    ApiKey,
-    /// OAuth token: sent as `Authorization: Bearer <token>` header
-    OAuthToken,
-}
-
-/// Anthropic provider implementation
+/// Anthropic provider implementation using API key authentication.
+///
+/// Note: Claude Code OAuth tokens CANNOT be used with this provider - they
+/// require the CLI for subscription billing. Use ClaudeCliProvider instead.
 pub struct AnthropicProvider {
     api_key: String,
-    auth_mode: AnthropicAuthMode,
     client: Client,
     tools: Vec<ToolDefinition>,
 }
 
 impl AnthropicProvider {
-    /// Create a new Anthropic provider
-    pub fn new(api_key: String, auth_mode: AnthropicAuthMode) -> Self {
+    /// Create a new Anthropic provider with an API key
+    pub fn new(api_key: String) -> Self {
         Self {
             api_key,
-            auth_mode,
             client: Client::new(),
             tools: Vec::new(),
-        }
-    }
-
-    /// Apply authentication headers based on auth mode
-    fn apply_auth(&self, request: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
-        match self.auth_mode {
-            AnthropicAuthMode::ApiKey => request.header("x-api-key", &self.api_key),
-            AnthropicAuthMode::OAuthToken => {
-                request.header("Authorization", format!("Bearer {}", self.api_key))
-            }
         }
     }
 
@@ -235,11 +220,10 @@ impl AIProvider for AnthropicProvider {
         };
 
         let api_key = self.api_key.clone();
-        let auth_mode = self.auth_mode;
         let client = self.client.clone();
 
         tokio::spawn(async move {
-            let result = stream_anthropic_response(client, api_key, auth_mode, request, conversation_id.clone(), tx.clone()).await;
+            let result = stream_anthropic_response(client, api_key, request, conversation_id.clone(), tx.clone()).await;
 
             if let Err(e) = result {
                 let _ = tx
@@ -259,10 +243,11 @@ impl AIProvider for AnthropicProvider {
     }
 
     async fn validate_credentials(&self) -> ProviderResult<bool> {
-        // Send a minimal request to validate the API key or OAuth token
-        let request = self
+        // Send a minimal request to validate the API key
+        let response = self
             .client
             .post(ANTHROPIC_API_URL)
+            .header("x-api-key", &self.api_key)
             .header("anthropic-version", ANTHROPIC_VERSION)
             .header("content-type", "application/json")
             .json(&serde_json::json!({
@@ -272,8 +257,9 @@ impl AIProvider for AnthropicProvider {
                     .unwrap_or("claude-haiku-4-5-20251001"),
                 "max_tokens": 1,
                 "messages": [{"role": "user", "content": "test"}]
-            }));
-        let response = self.apply_auth(request).send().await?;
+            }))
+            .send()
+            .await?;
 
         match response.status().as_u16() {
             200 | 201 => Ok(true),
@@ -329,7 +315,6 @@ fn parse_retry_after(response: &reqwest::Response) -> Option<Duration> {
 async fn stream_anthropic_response(
     client: Client,
     api_key: String,
-    auth_mode: AnthropicAuthMode,
     request: AnthropicRequest,
     conversation_id: String,
     tx: mpsc::Sender<BackendEvent>,
@@ -339,18 +324,12 @@ async fn stream_anthropic_response(
     let mut last_error: Option<ProviderError> = None;
 
     for attempt in 0..=MAX_RETRIES {
-        let mut req_builder = client
+        let req_builder = client
             .post(ANTHROPIC_API_URL)
+            .header("x-api-key", &api_key)
             .header("anthropic-version", ANTHROPIC_VERSION)
             .header("content-type", "application/json")
             .json(&request);
-
-        req_builder = match auth_mode {
-            AnthropicAuthMode::ApiKey => req_builder.header("x-api-key", &api_key),
-            AnthropicAuthMode::OAuthToken => {
-                req_builder.header("Authorization", format!("Bearer {}", api_key))
-            }
-        };
 
         let response = match req_builder.send().await
         {

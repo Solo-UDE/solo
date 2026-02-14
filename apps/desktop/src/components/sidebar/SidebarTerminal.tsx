@@ -109,8 +109,11 @@ export const SidebarTerminal: FC = () => {
             onScroll={updateScrollState}
           >
           {terminalList.map((t) => (
-            <button
+            <div
               key={t.id}
+              role="tab"
+              tabIndex={0}
+              aria-selected={t.id === activeTerminalId}
               onClick={() => setActiveTerminal(t.id)}
               onMouseDown={(e) => { if (e.button === 1) { e.preventDefault(); handleCloseTab(t.id); } }}
               onDoubleClick={() => rename.startRename(t.id, t.title)}
@@ -143,7 +146,7 @@ export const SidebarTerminal: FC = () => {
               {t.id === activeTerminalId && (
                 <div className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full bg-primary" />
               )}
-            </button>
+            </div>
           ))}
           </div>
         </div>

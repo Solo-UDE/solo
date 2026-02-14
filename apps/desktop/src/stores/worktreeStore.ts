@@ -18,6 +18,8 @@ interface WorktreeState {
 	activeWorktreeId: string | null;
 	isLoading: boolean;
 	error: string | null;
+	/** Setup command output lines per worktree */
+	setupProgress: Map<string, string[]>;
 }
 
 interface WorktreeActions {
@@ -27,12 +29,14 @@ interface WorktreeActions {
 	setActive: (id: string | null) => Promise<void>;
 	lock: (id: string, reason?: string) => Promise<void>;
 	unlock: (id: string) => Promise<void>;
+	pruneWorktrees: () => Promise<string[]>;
 
 	// Event handlers (called from useWorktreeStream)
 	handleWorktreeProgress: (worktreeId: string, message: string) => void;
 	handleWorktreeReady: (worktreeId: string, info: WorktreeInfo) => void;
 	handleWorktreeError: (worktreeId: string, error: string) => void;
 	handleWorktreeRemoved: (worktreeId: string) => void;
+	handleSetupProgress: (worktreeId: string, output: string, isComplete: boolean) => void;
 
 	clearError: () => void;
 }
@@ -44,6 +48,7 @@ const initialState: WorktreeState = {
 	activeWorktreeId: null,
 	isLoading: false,
 	error: null,
+	setupProgress: new Map(),
 };
 
 export const useWorktreeStore = create<WorktreeStore>()(
@@ -95,6 +100,7 @@ export const useWorktreeStore = create<WorktreeStore>()(
 
 			set((state) => {
 				state.worktrees.delete(id);
+				state.setupProgress.delete(id);
 				if (state.activeWorktreeId === id) {
 					state.activeWorktreeId = null;
 				}
@@ -133,6 +139,22 @@ export const useWorktreeStore = create<WorktreeStore>()(
 			});
 		},
 
+		pruneWorktrees: async () => {
+			const pruned = await worktreeApi.pruneWorktrees();
+
+			set((state) => {
+				for (const id of pruned) {
+					state.worktrees.delete(id);
+					state.setupProgress.delete(id);
+					if (state.activeWorktreeId === id) {
+						state.activeWorktreeId = null;
+					}
+				}
+			});
+
+			return pruned;
+		},
+
 		handleWorktreeProgress: (worktreeId, message) => {
 			console.log(`[Worktree] Progress: ${worktreeId} - ${message}`);
 		},
@@ -153,8 +175,23 @@ export const useWorktreeStore = create<WorktreeStore>()(
 		handleWorktreeRemoved: (worktreeId) => {
 			set((state) => {
 				state.worktrees.delete(worktreeId);
+				state.setupProgress.delete(worktreeId);
 				if (state.activeWorktreeId === worktreeId) {
 					state.activeWorktreeId = null;
+				}
+			});
+		},
+
+		handleSetupProgress: (worktreeId, output, isComplete) => {
+			set((state) => {
+				const lines = state.setupProgress.get(worktreeId) ?? [];
+				lines.push(output);
+				state.setupProgress.set(worktreeId, lines);
+
+				if (isComplete) {
+					// Mark as complete by appending a final line
+					lines.push('Setup complete');
+					state.setupProgress.set(worktreeId, lines);
 				}
 			});
 		},

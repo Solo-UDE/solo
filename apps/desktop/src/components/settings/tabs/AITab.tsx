@@ -4,14 +4,14 @@
  */
 
 import { useCallback, useState, useEffect, useMemo } from 'react';
-import { CheckCircle, WarningCircle, CircleNotch, Clock, Terminal, Sparkle, CaretDown, CaretRight } from '@phosphor-icons/react';
+import { CheckCircle, WarningCircle, CircleNotch, Clock, Terminal, Sparkle, ArrowClockwise, XCircle, ShieldCheck } from '@phosphor-icons/react';
 import { useSettingsStore } from '../../../stores/settingsStore';
 import { useProviderStore, useOAuthPending } from '../../../stores/provider-store';
 import { useShallow } from 'zustand/react/shallow';
 import { SettingRow, SelectDropdown, ToggleSwitch, NumberInput, PasswordInput } from '../controls';
 import { ClaudeLoginModal } from '../ClaudeLoginModal';
-import { setOAuthTokenManual } from '../../../lib/backend';
-import type { ProviderType, AuthMethodInfo } from '../../../lib/backend';
+import { verifyClaudeSetup } from '../../../lib/backend';
+import type { ProviderType, AuthMethodInfo, ClaudeSetupStatus } from '../../../lib/backend';
 
 /**
  * Format seconds into a human-readable string
@@ -75,8 +75,6 @@ interface ProviderCardProps {
   onApiKeySave: () => void;
   isSaving: boolean;
   hasCredentials: boolean;
-  showOAuthTokenPaste?: boolean;
-  onOAuthTokenSaved?: () => void;
 }
 
 function ProviderCard({
@@ -92,19 +90,12 @@ function ProviderCard({
   onApiKeySave,
   isSaving,
   hasCredentials,
-  showOAuthTokenPaste,
-  onOAuthTokenSaved,
 }: ProviderCardProps) {
   const isAnthropic = provider === 'anthropic';
   const isClaudeCodeAuth = authInfo?.authType === 'claude-o-auth';
   const isOpenAIOAuth = provider === 'openai' && authInfo?.authType === 'o-auth';
   const isSoloOAuth = authInfo?.credentialSource === 'solo-oauth';
   const isConnectedViaOAuth = isClaudeCodeAuth || isOpenAIOAuth || isSoloOAuth;
-
-  // OAuth token paste state
-  const [showTokenPaste, setShowTokenPaste] = useState(false);
-  const [oauthTokenInput, setOauthTokenInput] = useState('');
-  const [isSavingToken, setIsSavingToken] = useState(false);
 
   const providerConfig = isAnthropic
     ? {
@@ -113,7 +104,7 @@ function ProviderCard({
         iconColor: 'text-[#d97706]',
         buttonColor: 'bg-[#d97706] hover:bg-[#b45309]',
         buttonText: 'Sign in with Claude Code',
-        buttonSubtext: 'For free API access via Claude Code CLI',
+        buttonSubtext: 'Use your Claude Pro/Max subscription for API access',
       }
     : {
         name: 'OpenAI',
@@ -196,12 +187,12 @@ function ProviderCard({
         </div>
       )}
 
-      {/* OAuth connected notice */}
+      {/* Connected notice — shown for OAuth and API key connections */}
       {isConnectedViaOAuth && (
         <div className="p-3 bg-muted/40 rounded-none text-xs text-muted-foreground">
           <p className="mb-2">
             {isClaudeCodeAuth
-              ? 'Using credentials from Claude Code.'
+              ? 'Authenticated via Claude Code CLI — using your Claude subscription for API access.'
               : 'Connected via ChatGPT account.'}
           </p>
           {isClaudeCodeAuth ? (
@@ -212,6 +203,14 @@ function ProviderCard({
                 className="text-primary hover:underline"
               >
                 Sign in again
+              </button>
+              <span className="mx-1">·</span>
+              <button
+                type="button"
+                onClick={onDisconnect}
+                className="text-destructive hover:underline"
+              >
+                Disconnect
               </button>
               <span className="mx-1">or</span>
               <span>add an API key below to override.</span>
@@ -229,6 +228,20 @@ function ProviderCard({
               <span>add an API key below to override.</span>
             </>
           )}
+        </div>
+      )}
+
+      {/* API key connected notice — only when connected via API key (not OAuth) */}
+      {!isConnectedViaOAuth && hasCredentials && authInfo?.authType === 'api-key' && (
+        <div className="p-3 bg-muted/40 rounded-none text-xs text-muted-foreground">
+          <p className="mb-2">Connected via API key.</p>
+          <button
+            type="button"
+            onClick={onDisconnect}
+            className="text-destructive hover:underline"
+          >
+            Remove API key
+          </button>
         </div>
       )}
 
@@ -261,57 +274,144 @@ function ProviderCard({
         </div>
       </div>
 
-      {/* OAuth Token Paste (Anthropic only) */}
-      {showOAuthTokenPaste && (
-        <div>
-          <button
-            type="button"
-            onClick={() => setShowTokenPaste(!showTokenPaste)}
-            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-          >
-            {showTokenPaste ? (
-              <CaretDown className="w-3 h-3" />
-            ) : (
-              <CaretRight className="w-3 h-3" />
-            )}
-            Paste OAuth token
-          </button>
-          {showTokenPaste && (
-            <div className="mt-2">
-              <div className="text-xs text-muted-foreground mb-2">
-                Paste a token from <code className="px-1 py-0.5 bg-muted rounded text-[11px]">claude setup-token</code> to use your Anthropic subscription
-              </div>
-              <div className="flex items-center gap-2">
-                <PasswordInput
-                  value={oauthTokenInput}
-                  onChange={setOauthTokenInput}
-                  placeholder="Paste OAuth token..."
-                  disabled={isSavingToken}
-                />
-                <button
-                  type="button"
-                  onClick={async () => {
-                    if (!oauthTokenInput.trim()) return;
-                    setIsSavingToken(true);
-                    try {
-                      await setOAuthTokenManual('Anthropic', oauthTokenInput.trim());
-                      setOauthTokenInput('');
-                      setShowTokenPaste(false);
-                      onOAuthTokenSaved?.();
-                    } catch (err) {
-                      console.error('Failed to save OAuth token:', err);
-                    } finally {
-                      setIsSavingToken(false);
-                    }
-                  }}
-                  disabled={!oauthTokenInput.trim() || isSavingToken}
-                  className="px-3 py-1.5 bg-primary text-primary-foreground rounded-none text-sm font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  {isSavingToken ? 'Saving...' : 'Save'}
-                </button>
-              </div>
+    </div>
+  );
+}
+
+/**
+ * Diagnostic panel showing Claude Code CLI setup status
+ */
+function ClaudeSetupDiagnostic() {
+  const [status, setStatus] = useState<ClaudeSetupStatus | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const runCheck = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await verifyClaudeSetup();
+      setStatus(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Run on mount
+  useEffect(() => {
+    runCheck();
+  }, [runCheck]);
+
+  const StatusRow = ({ label, children }: { label: string; children: React.ReactNode }) => (
+    <div className="flex items-center justify-between py-1.5">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="text-xs font-mono">{children}</span>
+    </div>
+  );
+
+  const StatusIcon = ({ ok }: { ok: boolean | null | undefined }) => {
+    if (ok === null || ok === undefined) {
+      return <span className="text-muted-foreground">—</span>;
+    }
+    return ok ? (
+      <CheckCircle className="w-3.5 h-3.5 text-green-600 inline" />
+    ) : (
+      <XCircle className="w-3.5 h-3.5 text-red-500 inline" />
+    );
+  };
+
+  return (
+    <div className="p-4 rounded-none border border-border bg-card/50 space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <ShieldCheck className="w-4 h-4 text-muted-foreground" />
+          <span className="text-sm font-medium text-foreground">Claude Code Setup</span>
+        </div>
+        <button
+          type="button"
+          onClick={runCheck}
+          disabled={loading}
+          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+        >
+          <ArrowClockwise className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+          {loading ? 'Checking...' : 'Recheck'}
+        </button>
+      </div>
+
+      {error && (
+        <div className="text-xs text-red-500 bg-red-500/10 px-2 py-1 rounded-none">
+          {error}
+        </div>
+      )}
+
+      {status && (
+        <div className="divide-y divide-border/50">
+          <StatusRow label="CLI installed">
+            <span className="flex items-center gap-1.5">
+              <StatusIcon ok={status.cliInstalled} />
+              {status.cliPath ?? 'Not found'}
+            </span>
+          </StatusRow>
+          <StatusRow label="Credentials">
+            <span className="flex items-center gap-1.5">
+              <StatusIcon ok={status.credentialsFound} />
+              {status.credentialSource ?? 'None'}
+            </span>
+          </StatusRow>
+          {status.requiresCliMode && (
+            <StatusRow label="Mode">
+              <span className="flex items-center gap-1.5">
+                <StatusIcon ok={status.cliModeAvailable} />
+                {status.cliModeAvailable ? 'CLI Mode (Subscription)' : 'CLI required'}
+              </span>
+            </StatusRow>
+          )}
+          <StatusRow label="Token expiry">
+            <span className="flex items-center gap-1.5">
+              <StatusIcon ok={status.credentialsFound ? !status.tokenExpired : null} />
+              {status.tokenExpiresInSeconds != null
+                ? status.tokenExpiresInSeconds > 0
+                  ? formatExpiryTime(status.tokenExpiresInSeconds)
+                  : 'Expired'
+                : '—'}
+            </span>
+          </StatusRow>
+          {status.scopes && (
+            <StatusRow label="Scopes">
+              <span className="text-[10px] text-muted-foreground">
+                {status.scopes.join(', ')}
+              </span>
+            </StatusRow>
+          )}
+          <StatusRow label="Status">
+            <span className="flex items-center gap-1.5">
+              <StatusIcon ok={status.apiVerified} />
+              {status.apiVerified === true
+                ? status.requiresCliMode ? 'Ready (via CLI)' : 'Working'
+                : status.apiVerified === false
+                  ? 'Failed'
+                  : 'Not checked'}
+            </span>
+          </StatusRow>
+          {status.error && (
+            <div className="pt-1.5 text-[10px] text-red-500/80 break-all">
+              {status.error}
             </div>
           )}
+          {status.requiresCliMode && !status.cliInstalled && (
+            <div className="pt-2 text-[10px] text-amber-600 bg-amber-500/10 px-2 py-1.5 rounded-none">
+              Subscription tokens require the Claude CLI. Install with:<br />
+              <code className="text-[10px]">npm i -g @anthropic-ai/claude-code</code>
+            </div>
+          )}
+        </div>
+      )}
+
+      {!status && !loading && !error && (
+        <div className="text-xs text-muted-foreground text-center py-2">
+          Click Recheck to verify setup
         </div>
       )}
     </div>
@@ -364,6 +464,7 @@ export function AITab() {
   const refreshAuthMethod = useProviderStore((s) => s.refreshAuthMethod);
   const startOAuthFlow = useProviderStore((s) => s.startOAuthFlow);
   const disconnectOAuth = useProviderStore((s) => s.disconnectOAuth);
+  const clearCredentials = useProviderStore((s) => s.clearCredentials);
 
   // Check if OAuth is pending for each provider
   const isAnthropicOAuthPending = useOAuthPending('anthropic');
@@ -442,14 +543,19 @@ export function AITab() {
     }
   }, [startOAuthFlow]);
 
-  const handleOpenAIDisconnect = useCallback(async () => {
+  const handleDisconnect = useCallback(async (provider: 'anthropic' | 'openai') => {
     try {
-      await disconnectOAuth('openai');
-      await refreshAuthMethod('openai');
+      const authType = authMethodInfo[provider]?.authType;
+      if (authType === 'api-key') {
+        await clearCredentials(provider);
+      } else if (authType === 'o-auth' || authType === 'claude-o-auth') {
+        await disconnectOAuth(provider);
+      }
+      await refreshAuthMethod(provider);
     } catch (err) {
-      console.error('Failed to disconnect OpenAI OAuth:', err);
+      console.error(`Failed to disconnect ${provider}:`, err);
     }
-  }, [disconnectOAuth, refreshAuthMethod]);
+  }, [authMethodInfo, clearCredentials, disconnectOAuth, refreshAuthMethod]);
 
   if (!isInitialized && isLoading) {
     return (
@@ -474,14 +580,13 @@ export function AITab() {
             onSetActive={() => setActiveProvider('anthropic')}
             authInfo={authMethodInfo['anthropic']}
             onOAuthLogin={() => setIsClaudeLoginOpen(true)}
+            onDisconnect={() => handleDisconnect('anthropic')}
             isOAuthPending={isAnthropicOAuthPending}
             apiKeyInput={apiKeyInputs.anthropic}
             onApiKeyChange={(value) => handleApiKeyChange('anthropic', value)}
             onApiKeySave={() => handleApiKeySubmit('anthropic')}
             isSaving={savingProvider === 'anthropic'}
             hasCredentials={allProviderStatus['anthropic']?.has_credentials ?? false}
-            showOAuthTokenPaste
-            onOAuthTokenSaved={() => refreshAuthMethod('anthropic')}
           />
 
           {/* OpenAI Card */}
@@ -491,7 +596,7 @@ export function AITab() {
             onSetActive={() => setActiveProvider('openai')}
             authInfo={authMethodInfo['openai']}
             onOAuthLogin={handleOpenAIOAuthLogin}
-            onDisconnect={handleOpenAIDisconnect}
+            onDisconnect={() => handleDisconnect('openai')}
             isOAuthPending={isOpenAIOAuthPending}
             apiKeyInput={apiKeyInputs.openai}
             onApiKeyChange={(value) => handleApiKeyChange('openai', value)}
@@ -500,6 +605,14 @@ export function AITab() {
             hasCredentials={allProviderStatus['openai']?.has_credentials ?? false}
           />
         </div>
+      </div>
+
+      {/* Claude Code Setup Diagnostic */}
+      <div>
+        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+          Diagnostics
+        </h3>
+        <ClaudeSetupDiagnostic />
       </div>
 
       {/* Model Selection - show when there are models for the active provider */}

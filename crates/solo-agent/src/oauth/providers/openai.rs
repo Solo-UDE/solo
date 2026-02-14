@@ -7,7 +7,14 @@ use crate::oauth::callback_server::get_callback_url;
 use crate::oauth::pkce::{generate_code_challenge, generate_code_verifier, generate_state};
 use crate::oauth::types::{OAuthFlowResult, OAuthState, OpenAIOAuthToken, OpenAITokenResponse};
 use crate::provider::ProviderError;
+use serde::Deserialize;
 use url::Url;
+
+/// Response from RFC 8693 token exchange
+#[derive(Debug, Deserialize)]
+struct TokenExchangeResponse {
+    access_token: String,
+}
 
 /// OpenAI OAuth configuration for Codex CLI flow
 pub struct OpenAIOAuthConfig;
@@ -47,6 +54,8 @@ impl OpenAIOAuthConfig {
             // Special parameters for Codex CLI simplified flow
             params.append_pair("id_token_add_organizations", "true");
             params.append_pair("codex_cli_simplified_flow", "true");
+            // Attribution parameter
+            params.append_pair("originator", "solo_ide");
         }
 
         let oauth_state = OAuthState::new(
@@ -63,7 +72,8 @@ impl OpenAIOAuthConfig {
         Ok((result, oauth_state))
     }
 
-    /// Exchange authorization code for tokens
+    /// Exchange authorization code for tokens, then perform RFC 8693 token
+    /// exchange to obtain a usable API key from the id_token.
     pub async fn exchange_code(
         code: &str,
         code_verifier: &str,
@@ -103,10 +113,69 @@ impl OpenAIOAuthConfig {
         let account_id = token_response.id_token.as_ref()
             .and_then(|id_token| extract_account_id_from_jwt(id_token));
 
-        Ok(OpenAIOAuthToken::from_response(token_response, account_id))
+        // Perform RFC 8693 token exchange: convert id_token into a usable API key
+        let api_key = if let Some(ref id_token) = token_response.id_token {
+            match Self::obtain_api_key(id_token).await {
+                Ok(key) => {
+                    tracing::info!("Successfully exchanged id_token for API key");
+                    key
+                }
+                Err(e) => {
+                    tracing::warn!("Token exchange for API key failed, falling back to access_token: {}", e);
+                    token_response.access_token.clone()
+                }
+            }
+        } else {
+            tracing::warn!("No id_token in OAuth response, using access_token directly");
+            token_response.access_token.clone()
+        };
+
+        let mut token = OpenAIOAuthToken::from_response(token_response, account_id);
+        // Replace access_token with the exchanged API key
+        token.access_token = api_key;
+        Ok(token)
     }
 
-    /// Refresh an expired access token
+    /// Exchange an id_token for an OpenAI API key using RFC 8693 token exchange.
+    ///
+    /// This is the critical step that converts the OAuth id_token into a
+    /// usable API key for ChatGPT Pro/Max subscribers.
+    pub async fn obtain_api_key(id_token: &str) -> Result<String, ProviderError> {
+        let client = reqwest::Client::new();
+        let response = client
+            .post(Self::TOKEN_URL)
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .form(&[
+                ("grant_type", "urn:ietf:params:oauth:grant-type:token-exchange"),
+                ("client_id", Self::CLIENT_ID),
+                ("requested_token_type", "urn:ietf:params:oauth:token-type:access_token"),
+                ("subject_token", id_token),
+                ("subject_token_type", "urn:ietf:params:oauth:token-type:id_token"),
+                ("audience", "https://api.openai.com/v1"),
+            ])
+            .send()
+            .await
+            .map_err(|e| ProviderError::OAuthError(format!("API key exchange request failed: {}", e)))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(ProviderError::OAuthError(format!(
+                "API key exchange failed ({}): {}",
+                status, body
+            )));
+        }
+
+        // The response contains { "access_token": "<api-key>", ... }
+        let exchange_response: TokenExchangeResponse = response
+            .json()
+            .await
+            .map_err(|e| ProviderError::OAuthError(format!("Failed to parse token exchange response: {}", e)))?;
+
+        Ok(exchange_response.access_token)
+    }
+
+    /// Refresh an expired access token, then re-exchange for API key if possible
     pub async fn refresh_token(refresh_token: &str) -> Result<OpenAIOAuthToken, ProviderError> {
         let client = reqwest::Client::new();
         let response = client
@@ -139,7 +208,25 @@ impl OpenAIOAuthConfig {
         let account_id = token_response.id_token.as_ref()
             .and_then(|id_token| extract_account_id_from_jwt(id_token));
 
-        Ok(OpenAIOAuthToken::from_response(token_response, account_id))
+        // Re-exchange id_token for API key if present
+        let api_key = if let Some(ref id_token) = token_response.id_token {
+            match Self::obtain_api_key(id_token).await {
+                Ok(key) => {
+                    tracing::info!("Successfully exchanged refreshed id_token for API key");
+                    key
+                }
+                Err(e) => {
+                    tracing::warn!("Token exchange after refresh failed, using access_token: {}", e);
+                    token_response.access_token.clone()
+                }
+            }
+        } else {
+            token_response.access_token.clone()
+        };
+
+        let mut token = OpenAIOAuthToken::from_response(token_response, account_id);
+        token.access_token = api_key;
+        Ok(token)
     }
 }
 
@@ -231,6 +318,7 @@ mod tests {
         // Check OpenAI-specific params
         assert!(result.auth_url.contains("id_token_add_organizations=true"));
         assert!(result.auth_url.contains("codex_cli_simplified_flow=true"));
+        assert!(result.auth_url.contains("originator=solo_ide"));
 
         // Check that state matches
         assert_eq!(result.state, state.state);

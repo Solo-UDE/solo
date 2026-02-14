@@ -7,6 +7,7 @@ import type {
 	WorktreeInfo,
 	CreateWorktreeRequest,
 	RemoveWorktreeRequest,
+	WorktreeSetupConfig,
 } from '../../bindings';
 
 export async function listWorktrees(): Promise<WorktreeInfo[]> {
@@ -46,4 +47,18 @@ export async function lockWorktree(
 
 export async function unlockWorktree(id: string): Promise<void> {
 	return invoke('worktree_unlock', { id });
+}
+
+export async function pruneWorktrees(): Promise<string[]> {
+	return invoke<string[]>('worktree_prune');
+}
+
+export async function setSetupCommands(
+	config: WorktreeSetupConfig
+): Promise<void> {
+	return invoke('worktree_set_setup_commands', { config });
+}
+
+export async function getSetupCommands(): Promise<WorktreeSetupConfig> {
+	return invoke<WorktreeSetupConfig>('worktree_get_setup_commands');
 }

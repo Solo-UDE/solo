@@ -7,6 +7,8 @@
 
 | ID | Time | T | Title | Read |
 |----|------|---|-------|------|
+| #573 | 5:30 PM | 🔵 | PrimarySidebar Implements Sliding Reel Animation for Tab Switching | ~568 |
+| #567 | 5:28 PM | 🔵 | SidebarToggle Implements Icon Crossfade Animation with Custom Easing | ~507 |
 | #227 | 3:37 PM | 🔵 | PrimarySidebar Implements Tab-Based Navigation with Session and Terminal Management | ~514 |
 
 ### Feb 4, 2026

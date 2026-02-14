@@ -343,8 +343,68 @@ html[data-vibrancy] .titlebar-glass {
   background: rgb(255 255 255 / 0.03);
 }
 
+/* Dark mode + vibrancy: semi-transparent dark backgrounds
+   prevent light system vibrancy from bleeding through */
+html.dark[data-vibrancy] {
+  --sidebar: oklch(0.18 0.012 58 / 85%);
+  background-color: oklch(0.16 0.012 60 / 90%) !important;
+}
+
+html.dark[data-vibrancy] #root > div {
+  background: oklch(0.16 0.012 60 / 85%);
+}
+
+html.dark[data-vibrancy] .titlebar-glass {
+  background: rgb(0 0 0 / 0.25);
+}
+
 html[data-vibrancy] .terminal-panel {
-  background: transparent;
+  background: transparent !important;
+}
+
+html[data-vibrancy] .terminal-panel .xterm-viewport {
+  background-color: transparent !important;
+}
+
+/* =============================================================================
+   SPLIT DIVIDER (sidebar resize handle)
+   ============================================================================= */
+.split-divider {
+  flex-shrink: 0;
+  width: 8px;
+  background-color: transparent;
+  cursor: col-resize;
+  position: relative;
+  transition: background-color 200ms ease;
+}
+
+.split-divider::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  transform: translateX(-50%);
+  background-color: var(--border);
+  opacity: 0.5;
+  transition: all 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.split-divider:hover::before {
+  width: 3px;
+  background-color: var(--primary);
+  opacity: 1;
+}
+
+/* Kill all transitions during sidebar/split resize for zero-lag dragging */
+body.is-resizing,
+body.is-resizing *,
+body.is-resizing *::before,
+body.is-resizing *::after {
+  transition: none !important;
+  cursor: col-resize !important;
+  user-select: none !important;
 }
 
 /* Disable text selection on UI elements */
