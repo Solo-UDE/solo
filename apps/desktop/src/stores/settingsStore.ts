@@ -401,11 +401,23 @@ export const useSettingsStore = create<SettingsStore>()(
     })),
     {
       name: 'solo-settings',
-      version: 2,
+      version: 3,
       storage: createJSONStorage(() => localStorage),
       migrate: (persistedState, version) => {
         if (version === 1) {
           return migrateV1ToV2(persistedState);
+        }
+        if (version === 2) {
+          // v2 → v3: Add terminal, expanded editor, expanded files settings
+          const v2 = persistedState as Partial<SettingsState>;
+          return {
+            ...DEFAULT_SETTINGS,
+            general: { ...DEFAULT_SETTINGS.general, ...v2.general },
+            editor: { ...DEFAULT_SETTINGS.editor, ...v2.editor },
+            files: { ...DEFAULT_SETTINGS.files, ...v2.files },
+            shortcuts: v2.shortcuts ?? DEFAULT_SETTINGS.shortcuts,
+            ai: { ...DEFAULT_SETTINGS.ai, ...v2.ai },
+          };
         }
         return persistedState as SettingsState;
       },
