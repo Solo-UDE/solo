@@ -1,6 +1,8 @@
-import { Sun, Code, FolderOpen, Keyboard, Robot, BookOpen, ArrowSquareOut, SignOut, ArrowLeft } from '@phosphor-icons/react';
+import { useState } from 'react';
+import { Sun, Code, Terminal, FolderOpen, Keyboard, Robot, BookOpen, ArrowSquareOut, SignOut, ArrowLeft, ArrowCounterClockwise } from '@phosphor-icons/react';
 import { useUIStore, type SettingsTabId } from '../../stores/uiStore';
 import { useAuthStore } from '../../stores/authStore';
+import { useSettingsStore } from '../../stores/settingsStore';
 import { cn } from '../../lib/utils';
 
 interface TabDef {
@@ -12,6 +14,7 @@ interface TabDef {
 const TABS: TabDef[] = [
   { id: 'general', label: 'General', icon: Sun },
   { id: 'editor', label: 'Editor', icon: Code },
+  { id: 'terminal', label: 'Terminal', icon: Terminal },
   { id: 'files', label: 'Files', icon: FolderOpen },
   { id: 'shortcuts', label: 'Shortcuts', icon: Keyboard },
   { id: 'ai', label: 'AI', icon: Robot },

@@ -78,6 +78,7 @@ interface AISettings {
 interface SettingsState {
   general: GeneralSettings;
   editor: EditorSettings;
+  terminal: TerminalSettings;
   files: FilesSettings;
   shortcuts: ShortcutsSettings;
   ai: AISettings;
@@ -87,7 +88,7 @@ interface SettingsState {
 const DEFAULT_SETTINGS: SettingsState = {
   general: {
     colorScheme: 'system',
-    editorFontFamily: 'system-ui',
+    editorFontFamily: '"SF Mono", SFMono-Regular, ui-monospace, monospace',
     editorFontSize: 13,
   },
   editor: {
@@ -96,10 +97,26 @@ const DEFAULT_SETTINGS: SettingsState = {
     minimap: false,
     lineNumbers: 'on',
     bracketColorization: true,
+    insertSpaces: true,
+    cursorStyle: 'line',
+    renderWhitespace: 'none',
+    fontLigatures: false,
+    smoothScrolling: true,
+  },
+  terminal: {
+    fontFamily: '"SF Mono", SFMono-Regular, ui-monospace, monospace',
+    fontSize: 13,
+    scrollback: 10000,
+    cursorStyle: 'line',
+    shell: '',
   },
   files: {
     autosaveDelay: 5000,
     showHiddenFiles: false,
+    trimTrailingWhitespace: false,
+    insertFinalNewline: false,
+    defaultLineEnding: 'auto',
+    excludePatterns: 'node_modules, .git, target, dist, .next, __pycache__, .DS_Store',
   },
   shortcuts: {
     keybindings: {},
@@ -124,10 +141,26 @@ interface SettingsActions {
   setMinimap: (enabled: boolean) => void;
   setLineNumbers: (mode: LineNumbers) => void;
   setBracketColorization: (enabled: boolean) => void;
+  setInsertSpaces: (enabled: boolean) => void;
+  setEditorCursorStyle: (style: CursorStyle) => void;
+  setRenderWhitespace: (mode: RenderWhitespace) => void;
+  setFontLigatures: (enabled: boolean) => void;
+  setSmoothScrolling: (enabled: boolean) => void;
+
+  // Terminal
+  setTerminalFontFamily: (family: string) => void;
+  setTerminalFontSize: (size: number) => void;
+  setTerminalScrollback: (lines: number) => void;
+  setTerminalCursorStyle: (style: CursorStyle) => void;
+  setTerminalShell: (shell: string) => void;
 
   // Files
   setAutosaveDelay: (delay: AutosaveDelay) => void;
   setShowHiddenFiles: (show: boolean) => void;
+  setTrimTrailingWhitespace: (enabled: boolean) => void;
+  setInsertFinalNewline: (enabled: boolean) => void;
+  setDefaultLineEnding: (ending: LineEnding) => void;
+  setExcludePatterns: (patterns: string) => void;
 
   // Shortcuts
   setKeybinding: (action: string, keybinding: string) => void;
@@ -210,6 +243,57 @@ export const useSettingsStore = create<SettingsStore>()(
           s.editor.bracketColorization = enabled;
         }),
 
+      setInsertSpaces: (enabled) =>
+        set((s) => {
+          s.editor.insertSpaces = enabled;
+        }),
+
+      setEditorCursorStyle: (style) =>
+        set((s) => {
+          s.editor.cursorStyle = style;
+        }),
+
+      setRenderWhitespace: (mode) =>
+        set((s) => {
+          s.editor.renderWhitespace = mode;
+        }),
+
+      setFontLigatures: (enabled) =>
+        set((s) => {
+          s.editor.fontLigatures = enabled;
+        }),
+
+      setSmoothScrolling: (enabled) =>
+        set((s) => {
+          s.editor.smoothScrolling = enabled;
+        }),
+
+      // Terminal actions
+      setTerminalFontFamily: (family) =>
+        set((s) => {
+          s.terminal.fontFamily = family;
+        }),
+
+      setTerminalFontSize: (size) =>
+        set((s) => {
+          s.terminal.fontSize = Math.max(10, Math.min(24, size));
+        }),
+
+      setTerminalScrollback: (lines) =>
+        set((s) => {
+          s.terminal.scrollback = Math.max(1000, Math.min(50000, lines));
+        }),
+
+      setTerminalCursorStyle: (style) =>
+        set((s) => {
+          s.terminal.cursorStyle = style;
+        }),
+
+      setTerminalShell: (shell) =>
+        set((s) => {
+          s.terminal.shell = shell;
+        }),
+
       // Files actions
       setAutosaveDelay: (delay) =>
         set((s) => {
@@ -219,6 +303,26 @@ export const useSettingsStore = create<SettingsStore>()(
       setShowHiddenFiles: (show) =>
         set((s) => {
           s.files.showHiddenFiles = show;
+        }),
+
+      setTrimTrailingWhitespace: (enabled) =>
+        set((s) => {
+          s.files.trimTrailingWhitespace = enabled;
+        }),
+
+      setInsertFinalNewline: (enabled) =>
+        set((s) => {
+          s.files.insertFinalNewline = enabled;
+        }),
+
+      setDefaultLineEnding: (ending) =>
+        set((s) => {
+          s.files.defaultLineEnding = ending;
+        }),
+
+      setExcludePatterns: (patterns) =>
+        set((s) => {
+          s.files.excludePatterns = patterns;
         }),
 
       // Shortcuts actions
@@ -292,3 +396,10 @@ export const useStreaming = () => useSettingsStore((s) => s.ai.streaming);
 export const useAutoApproveTools = () => useSettingsStore((s) => s.ai.autoApproveTools);
 export const useMaxTokens = () => useSettingsStore((s) => s.ai.maxTokens);
 export const useCustomApiUrl = () => useSettingsStore((s) => s.ai.customApiUrl);
+
+// Terminal selectors
+export const useTerminalFontFamily = () => useSettingsStore((s) => s.terminal.fontFamily);
+export const useTerminalFontSize = () => useSettingsStore((s) => s.terminal.fontSize);
+export const useTerminalScrollback = () => useSettingsStore((s) => s.terminal.scrollback);
+export const useTerminalCursorStyle = () => useSettingsStore((s) => s.terminal.cursorStyle);
+export const useTerminalShell = () => useSettingsStore((s) => s.terminal.shell);
