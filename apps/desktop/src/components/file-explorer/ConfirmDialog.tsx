@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Warning, X } from '@phosphor-icons/react';
+import { Warning } from '@phosphor-icons/react';
 
 interface ConfirmDialogProps {
   isOpen: boolean;
@@ -53,28 +53,19 @@ export function ConfirmDialog({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
       onClick={onCancel}
       onKeyDown={handleKeyDown}
     >
       <div
-        className="bg-card border border-border rounded-lg shadow-xl w-80 p-4"
+        className="bg-popover rounded-[14px] shadow-[0_8px_32px_-8px_rgba(0,0,0,0.3)] w-80 p-4"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            {variant === 'destructive' && (
-              <Warning className="w-4 h-4 text-destructive" />
-            )}
-            <h3 className="text-sm font-medium text-foreground">{title}</h3>
-          </div>
-          <button
-            type="button"
-            onClick={onCancel}
-            className="p-1 rounded hover:bg-muted transition-colors"
-          >
-            <X className="w-4 h-4 text-muted-foreground" />
-          </button>
+        <div className="flex items-center gap-2 mb-3">
+          {variant === 'destructive' && (
+            <Warning className="w-4 h-4 text-destructive" />
+          )}
+          <h3 className="text-sm font-medium text-foreground">{title}</h3>
         </div>
 
         <p className="text-sm text-muted-foreground mb-4">{message}</p>
@@ -83,7 +74,7 @@ export function ConfirmDialog({
           <button
             type="button"
             onClick={onCancel}
-            className="px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
+            className="h-[34px] px-3 text-sm rounded-[10px] bg-muted/40 text-foreground hover:bg-muted/60 active:scale-[0.97] transition-all duration-200"
           >
             {cancelLabel}
           </button>
@@ -91,7 +82,7 @@ export function ConfirmDialog({
             ref={confirmButtonRef}
             type="button"
             onClick={onConfirm}
-            className={`px-3 py-1.5 text-sm rounded transition-colors ${
+            className={`h-[34px] px-3.5 text-sm rounded-[10px] active:scale-[0.97] transition-all duration-200 ${
               variant === 'destructive'
                 ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
                 : 'bg-primary text-primary-foreground hover:bg-primary/90'

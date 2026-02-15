@@ -3,6 +3,7 @@
  */
 
 import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
+import ReactDOM from 'react-dom';
 import {
   CaretRight,
   CircleNotch,
@@ -13,6 +14,7 @@ import {
   Trash,
   Copy,
   FolderOpen,
+  Terminal,
 } from '@phosphor-icons/react';
 import { useDragStore } from '../../stores/dragStore';
 import { FileIcon, FolderIcon } from '@react-symbols/icons/utils';
@@ -47,6 +49,7 @@ interface FileTreeNodeProps {
   onDelete: () => void;
   onCopyPath: () => void;
   onRevealInFinder: () => void;
+  onOpenInTerminal?: () => void;
 }
 
 // Custom mappings for files without extensions (git internals)
@@ -121,11 +124,34 @@ export const FileTreeNode = memo(function FileTreeNode({
   onDelete,
   onCopyPath,
   onRevealInFinder,
+  onOpenInTerminal,
 }: FileTreeNodeProps) {
   const [renameValue, setRenameValue] = useState(entry.name);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const mouseStartRef = useRef<{ x: number; y: number } | null>(null);
   const startDrag = useDragStore((s) => s.startDrag);
   const activateDrag = useDragStore((s) => s.activateDrag);
+
+  // B3: Right-click context menu
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onClick(e); // Select the item
+    setContextMenu({ x: e.clientX, y: e.clientY });
+  }, [onClick]);
+
+  // Close context menu on outside click
+  useEffect(() => {
+    if (!contextMenu) return;
+    const handleClick = () => setContextMenu(null);
+    const handleEscape = (e: KeyboardEvent) => { if (e.key === 'Escape') setContextMenu(null); };
+    window.addEventListener('click', handleClick);
+    window.addEventListener('keydown', handleEscape);
+    return () => {
+      window.removeEventListener('click', handleClick);
+      window.removeEventListener('keydown', handleEscape);
+    };
+  }, [contextMenu]);
 
   // Sync rename value when entry name changes (e.g., after external rename)
   useEffect(() => {
@@ -199,6 +225,7 @@ export const FileTreeNode = memo(function FileTreeNode({
       onClick={onClick}
       onDoubleClick={onDoubleClick}
       onMouseDown={handleMouseDown}
+      onContextMenu={handleContextMenu}
     >
       <div
         className="flex items-center gap-1 flex-1 min-w-0"
@@ -283,10 +310,136 @@ export const FileTreeNode = memo(function FileTreeNode({
               <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onRevealInFinder(); }}>
                 <FolderOpen className="h-3.5 w-3.5" /> Reveal in Finder
               </DropdownMenuItem>
+              {entry.is_dir && onOpenInTerminal && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onOpenInTerminal(); }}>
+                    <Terminal className="h-3.5 w-3.5" /> Open in Terminal
+                  </DropdownMenuItem>
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
       )}
+
+      {/* B3: Right-click context menu */}
+      {contextMenu && !isRenaming && (
+        <ContextMenuPortal
+          x={contextMenu.x}
+          y={contextMenu.y}
+          entry={entry}
+          onNewFile={onNewFile}
+          onNewFolder={onNewFolder}
+          onStartRename={onStartRename}
+          onDelete={onDelete}
+          onCopyPath={onCopyPath}
+          onRevealInFinder={onRevealInFinder}
+          onOpenInTerminal={onOpenInTerminal}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
     </div>
   );
 });
+
+// B3: Context menu rendered as a portal
+function ContextMenuPortal({
+  x,
+  y,
+  entry,
+  onNewFile,
+  onNewFolder,
+  onStartRename,
+  onDelete,
+  onCopyPath,
+  onRevealInFinder,
+  onOpenInTerminal,
+  onClose,
+}: {
+  x: number;
+  y: number;
+  entry: FileTreeEntry;
+  onNewFile: () => void;
+  onNewFolder: () => void;
+  onStartRename: () => void;
+  onDelete: () => void;
+  onCopyPath: () => void;
+  onRevealInFinder: () => void;
+  onOpenInTerminal?: () => void;
+  onClose: () => void;
+}) {
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Adjust position to keep menu in viewport
+  useEffect(() => {
+    const menu = menuRef.current;
+    if (!menu) return;
+    const rect = menu.getBoundingClientRect();
+    if (rect.bottom > window.innerHeight) {
+      menu.style.top = `${y - rect.height}px`;
+    }
+    if (rect.right > window.innerWidth) {
+      menu.style.left = `${x - rect.width}px`;
+    }
+  }, [x, y]);
+
+  const handleAction = (action: () => void) => {
+    action();
+    onClose();
+  };
+
+  return ReactDOM.createPortal(
+    <div
+      ref={menuRef}
+      className="fixed z-50 min-w-[180px] bg-popover border border-border/50 rounded-lg shadow-[0_8px_32px_-8px_rgba(0,0,0,0.3)] py-1 animate-in fade-in-0 zoom-in-95 duration-100"
+      style={{ left: x, top: y }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <ContextMenuItem onClick={() => handleAction(onNewFile)} icon={FilePlus} label="New File" />
+      <ContextMenuItem onClick={() => handleAction(onNewFolder)} icon={FolderPlus} label="New Folder" />
+      <div className="h-px bg-border/50 my-1" />
+      <ContextMenuItem onClick={() => handleAction(onStartRename)} icon={PencilSimple} label="Rename" shortcut="F2" />
+      <ContextMenuItem onClick={() => handleAction(onDelete)} icon={Trash} label="Delete" shortcut="Del" destructive />
+      <div className="h-px bg-border/50 my-1" />
+      <ContextMenuItem onClick={() => handleAction(onCopyPath)} icon={Copy} label="Copy Path" />
+      <ContextMenuItem onClick={() => handleAction(onRevealInFinder)} icon={FolderOpen} label="Reveal in Finder" />
+      {entry.is_dir && onOpenInTerminal && (
+        <>
+          <div className="h-px bg-border/50 my-1" />
+          <ContextMenuItem onClick={() => handleAction(onOpenInTerminal)} icon={Terminal} label="Open in Terminal" />
+        </>
+      )}
+    </div>,
+    document.body
+  );
+}
+
+function ContextMenuItem({
+  onClick,
+  icon: Icon,
+  label,
+  shortcut,
+  destructive,
+}: {
+  onClick: () => void;
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  shortcut?: string;
+  destructive?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full flex items-center gap-2 px-2.5 py-1 text-sm rounded-md transition-colors ${
+        destructive
+          ? 'text-destructive hover:bg-destructive/10'
+          : 'text-foreground hover:bg-muted/60'
+      }`}
+    >
+      <Icon className="h-3.5 w-3.5" />
+      <span className="flex-1 text-left">{label}</span>
+      {shortcut && <span className="text-xs text-muted-foreground/60">{shortcut}</span>}
+    </button>
+  );
+}
