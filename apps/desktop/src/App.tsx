@@ -167,6 +167,10 @@ function AppContent() {
       const isTerminalOpen = useUIStore.getState().terminalPanelOpen;
       if (!isTerminalOpen) return;
 
+      // A6: Don't intercept shortcuts when Monaco editor is focused
+      const isEditorFocused = document.activeElement?.closest('.monaco-editor');
+      if (isEditorFocused) return;
+
       // Cmd+T — new terminal
       if (e.key === 't' && e.metaKey && !e.shiftKey) {
         e.preventDefault();
