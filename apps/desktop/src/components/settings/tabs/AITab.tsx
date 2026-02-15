@@ -569,7 +569,7 @@ export function AITab() {
     <div className="space-y-6">
       {/* Providers Section */}
       <div>
-        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+        <h3 className="text-xs font-semibold text-muted-foreground mb-3">
           Providers
         </h3>
         <div className="space-y-3">
@@ -609,7 +609,7 @@ export function AITab() {
 
       {/* Claude Code Setup Diagnostic */}
       <div>
-        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+        <h3 className="text-xs font-semibold text-muted-foreground mb-3">
           Diagnostics
         </h3>
         <ClaudeSetupDiagnostic />
@@ -618,7 +618,7 @@ export function AITab() {
       {/* Model Selection - show when there are models for the active provider */}
       {models.length > 0 && (
         <div>
-          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+          <h3 className="text-xs font-semibold text-muted-foreground mb-3">
             Model
           </h3>
           <div className="divide-y divide-border">
@@ -639,7 +639,7 @@ export function AITab() {
 
       {/* Behavior Section */}
       <div>
-        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4">
+        <h3 className="text-xs font-semibold text-muted-foreground mb-4">
           Behavior
         </h3>
         <div className="divide-y divide-border">
@@ -674,7 +674,7 @@ export function AITab() {
 
       {/* Advanced Section */}
       <div>
-        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4">
+        <h3 className="text-xs font-semibold text-muted-foreground mb-4">
           Advanced
         </h3>
         <div className="divide-y divide-border">
