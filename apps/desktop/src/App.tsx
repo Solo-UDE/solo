@@ -64,6 +64,19 @@ function AppContent() {
   // Enable autosave on blur and tab switch
   useAutosave();
 
+  // A2: beforeunload warning for unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      const hasDirty = usePanelTabsStore.getState().hasDirtyPanels();
+      if (hasDirty) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, []);
+
   // Apply color scheme to document
   const resolvedTheme = useColorScheme();
 
@@ -153,6 +166,10 @@ function AppContent() {
       // Terminal-specific shortcuts (only when terminal panel is open)
       const isTerminalOpen = useUIStore.getState().terminalPanelOpen;
       if (!isTerminalOpen) return;
+
+      // A6: Don't intercept shortcuts when Monaco editor is focused
+      const isEditorFocused = document.activeElement?.closest('.monaco-editor');
+      if (isEditorFocused) return;
 
       // Cmd+T — new terminal
       if (e.key === 't' && e.metaKey && !e.shiftKey) {

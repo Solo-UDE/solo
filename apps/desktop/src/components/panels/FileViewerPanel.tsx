@@ -4,13 +4,16 @@
  * Includes markdown preview support
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Editor, { OnMount, BeforeMount } from '@monaco-editor/react';
+import type * as Monaco from 'monaco-editor';
 import { CircleNotch, WarningCircle } from '@phosphor-icons/react';
 import * as fs from '@/lib/tauri/fs';
-import { registerSoloTheme, SOLO_THEME_NAME } from '@/components/editor/theme';
+import { registerSoloTheme, SOLO_THEME_NAME, SOLO_LIGHT_THEME_NAME, registerSoloLightTheme } from '@/components/editor/theme';
 import { MarkdownEditor } from '@/components/editor/MarkdownEditor';
 import { MarkdownToggle } from '@/components/editor/MarkdownToggle';
+import { useSettingsStore } from '@/stores/settingsStore';
+import { useColorScheme } from '@/hooks/useColorScheme';
 import type { PanelProps } from '@/lib/panels/types';
 import type { MarkdownMode } from '@/stores/editorStore';
 
@@ -101,18 +104,46 @@ export function FileViewerPanel({
   data,
   onTitleChange,
   onDirtyChange,
+  onSaveCallbackChange,
 }: PanelProps<FileViewerData>) {
   const [content, setContent] = useState<string>('');
   const [originalContent, setOriginalContent] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [fileTooLarge, setFileTooLarge] = useState<{ size: number } | null>(null);
   const [cursorPosition, setCursorPosition] = useState({ line: 1, col: 1 });
 
   // Markdown mode state — defaults to 'preview' for markdown files
   const [markdownMode, setMarkdownMode] = useState<MarkdownMode>('preview');
 
+  // Refs for stable callbacks (A1: fix stale closure)
+  const saveFileRef = useRef<() => Promise<void>>(async () => {});
+  const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
+
+  // View state cache for cursor/scroll restoration (A5)
+  const viewStateRef = useRef<Monaco.editor.ICodeEditorViewState | null>(null);
+
   const filePath = data?.filePath;
   const fileName = data?.fileName ?? (filePath ? filePath.split('/').pop() : undefined) ?? 'Untitled';
+
+  // Settings from store (A4)
+  const editorFontFamily = useSettingsStore((s) => s.general.editorFontFamily);
+  const editorFontSize = useSettingsStore((s) => s.general.editorFontSize);
+  const tabSize = useSettingsStore((s) => s.editor.tabSize);
+  const wordWrap = useSettingsStore((s) => s.editor.wordWrap);
+  const minimap = useSettingsStore((s) => s.editor.minimap);
+  const lineNumbers = useSettingsStore((s) => s.editor.lineNumbers);
+  const bracketColorization = useSettingsStore((s) => s.editor.bracketColorization);
+  const insertSpaces = useSettingsStore((s) => s.editor.insertSpaces);
+  const cursorStyle = useSettingsStore((s) => s.editor.cursorStyle);
+  const renderWhitespace = useSettingsStore((s) => s.editor.renderWhitespace);
+  const fontLigatures = useSettingsStore((s) => s.editor.fontLigatures);
+  const smoothScrolling = useSettingsStore((s) => s.editor.smoothScrolling);
+
+  // Theme (A8)
+  const resolvedTheme = useColorScheme();
+  const isDarkTheme = resolvedTheme === 'dark';
+  const editorTheme = isDarkTheme ? SOLO_THEME_NAME : SOLO_LIGHT_THEME_NAME;
 
   // Check if current file is markdown
   const isMarkdown = useMemo(() => isMarkdownFile(filePath), [filePath]);
@@ -122,7 +153,7 @@ export function FileViewerPanel({
     onTitleChange(fileName);
   }, [fileName, onTitleChange]);
 
-  // Load file content
+  // Load file content (A9: large file / binary detection)
   useEffect(() => {
     if (!filePath) {
       setContent('');
@@ -135,10 +166,26 @@ export function FileViewerPanel({
     let cancelled = false;
     setLoading(true);
     setError(null);
+    setFileTooLarge(null);
 
     fs.readFile(filePath)
       .then((response) => {
         if (cancelled) return;
+        // Check for binary content (null bytes in first 8KB)
+        const sample = response.content.slice(0, 8192);
+        if (sample.includes('\0')) {
+          setError('Binary file cannot be displayed');
+          setContent('');
+          setLoading(false);
+          return;
+        }
+        // Check file size (>5MB)
+        if (response.content.length > 5 * 1024 * 1024) {
+          setFileTooLarge({ size: response.content.length });
+          setContent('');
+          setLoading(false);
+          return;
+        }
         setContent(response.content);
         setOriginalContent(response.content);
         setLoading(false);
@@ -174,17 +221,31 @@ export function FileViewerPanel({
     }
   }, [filePath, content]);
 
-  // Handle before mount (register theme)
+  // A1: Keep saveFileRef always pointing to the latest saveFile
+  useEffect(() => {
+    saveFileRef.current = saveFile;
+  }, [saveFile]);
+
+  // A3: Register save callback with panel system for autosave
+  useEffect(() => {
+    onSaveCallbackChange?.(() => saveFileRef.current());
+    return () => onSaveCallbackChange?.(undefined);
+  }, [onSaveCallbackChange]);
+
+  // Handle before mount (register both themes)
   const handleBeforeMount: BeforeMount = useCallback((monaco) => {
     registerSoloTheme(monaco);
+    registerSoloLightTheme(monaco);
   }, []);
 
-  // Handle editor mount
+  // Handle editor mount (A1: use ref instead of direct saveFile)
   const handleEditorMount: OnMount = useCallback(
     (editor, monaco) => {
-      // Add save command (Cmd+S / Ctrl+S)
+      editorRef.current = editor;
+
+      // Add save command — calls through ref to avoid stale closure
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
-        saveFile();
+        saveFileRef.current();
       });
 
       // Track cursor position changes
@@ -194,8 +255,18 @@ export function FileViewerPanel({
           col: e.position.column,
         });
       });
+
+      // A5: Restore saved view state
+      if (viewStateRef.current) {
+        editor.restoreViewState(viewStateRef.current);
+      }
+
+      // A5: Save view state when editor loses focus
+      editor.onDidBlurEditorWidget(() => {
+        viewStateRef.current = editor.saveViewState();
+      });
     },
-    [saveFile]
+    []
   );
 
   // Handle content changes
@@ -205,18 +276,40 @@ export function FileViewerPanel({
     }
   }, []);
 
+  // A4: Update Monaco options when settings change
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    editor.updateOptions({
+      fontSize: editorFontSize,
+      lineHeight: Math.round(editorFontSize * 1.7),
+      fontFamily: editorFontFamily,
+      minimap: { enabled: minimap },
+      bracketPairColorization: { enabled: bracketColorization },
+      lineNumbers,
+      tabSize,
+      wordWrap: wordWrap ? 'on' : 'off',
+      insertSpaces,
+      cursorStyle,
+      renderWhitespace,
+      fontLigatures,
+      smoothScrolling,
+    });
+  }, [editorFontSize, editorFontFamily, minimap, bracketColorization, lineNumbers, tabSize, wordWrap, insertSpaces, cursorStyle, renderWhitespace, fontLigatures, smoothScrolling]);
+
   // Global keyboard shortcut for save (backup in case editor doesn't have focus)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 's') {
         e.preventDefault();
-        saveFile();
+        saveFileRef.current();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [saveFile]);
+  }, []);
 
   const handleSetMarkdownMode = useCallback((mode: MarkdownMode) => {
     setMarkdownMode(mode);
@@ -245,8 +338,27 @@ export function FileViewerPanel({
     );
   }
 
+  // A9: Large file warning
+  if (fileTooLarge) {
+    const sizeMB = (fileTooLarge.size / (1024 * 1024)).toFixed(1);
+    return (
+      <div className="flex items-center justify-center h-full bg-background">
+        <div className="text-center space-y-4 max-w-md px-4">
+          <WarningCircle className="w-8 h-8 text-muted-foreground mx-auto" />
+          <p className="text-sm text-foreground">File too large to open</p>
+          <p className="text-xs text-muted-foreground">
+            This file is {sizeMB} MB. Files larger than 5 MB are not supported in the editor.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const language = filePath ? getMonacoLanguage(filePath) : 'plaintext';
   const lineCount = content.split('\n').length;
+
+  // Font family (already includes fallback chain from settings)
+  const resolvedFontFamily = editorFontFamily;
 
   // Monaco editor component
   const monacoEditor = (
@@ -255,26 +367,29 @@ export function FileViewerPanel({
       height="100%"
       language={language}
       value={content}
-      theme={SOLO_THEME_NAME}
+      theme={editorTheme}
       beforeMount={handleBeforeMount}
       onMount={handleEditorMount}
       onChange={handleEditorChange}
       options={{
-        fontSize: 13,
-        lineHeight: 22,
-        fontFamily: 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-        minimap: { enabled: false },
+        fontSize: editorFontSize,
+        lineHeight: Math.round(editorFontSize * 1.7),
+        fontFamily: resolvedFontFamily,
+        minimap: { enabled: minimap },
         scrollBeyondLastLine: false,
         automaticLayout: true,
-        bracketPairColorization: { enabled: true },
+        bracketPairColorization: { enabled: bracketColorization },
         folding: true,
-        lineNumbers: 'on',
+        lineNumbers,
         renderLineHighlight: 'line',
         cursorBlinking: 'smooth',
-        smoothScrolling: true,
-        tabSize: 2,
-        insertSpaces: true,
-        wordWrap: 'off',
+        cursorStyle,
+        smoothScrolling,
+        tabSize,
+        insertSpaces,
+        wordWrap: wordWrap ? 'on' : 'off',
+        renderWhitespace,
+        fontLigatures,
         padding: { top: 8, bottom: 8 },
         scrollbar: {
           useShadows: false,

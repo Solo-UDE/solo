@@ -1,6 +1,8 @@
-import { Sun, Code, FolderOpen, Keyboard, Robot, BookOpen, ArrowSquareOut, SignOut, ArrowLeft } from '@phosphor-icons/react';
+import { useState } from 'react';
+import { Sun, Code, Terminal, FolderOpen, Keyboard, Robot, BookOpen, ArrowSquareOut, SignOut, ArrowLeft, ArrowCounterClockwise } from '@phosphor-icons/react';
 import { useUIStore, type SettingsTabId } from '../../stores/uiStore';
 import { useAuthStore } from '../../stores/authStore';
+import { useSettingsStore } from '../../stores/settingsStore';
 import { cn } from '../../lib/utils';
 
 interface TabDef {
@@ -12,6 +14,7 @@ interface TabDef {
 const TABS: TabDef[] = [
   { id: 'general', label: 'General', icon: Sun },
   { id: 'editor', label: 'Editor', icon: Code },
+  { id: 'terminal', label: 'Terminal', icon: Terminal },
   { id: 'files', label: 'Files', icon: FolderOpen },
   { id: 'shortcuts', label: 'Shortcuts', icon: Keyboard },
   { id: 'ai', label: 'AI', icon: Robot },
@@ -22,10 +25,17 @@ export function SettingsSidebar() {
   const setSettingsTab = useUIStore((s) => s.setSettingsTab);
   const closeSettings = useUIStore((s) => s.closeSettings);
   const signOut = useAuthStore((s) => s.signOut);
+  const resetToDefaults = useSettingsStore((s) => s.resetToDefaults);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   const handleLogout = async () => {
     await signOut();
     closeSettings();
+  };
+
+  const handleResetAll = () => {
+    resetToDefaults();
+    setShowResetConfirm(false);
   };
 
   return (
@@ -75,6 +85,33 @@ export function SettingsSidebar() {
           <span>Docs</span>
           <ArrowSquareOut className="w-3 h-3 ml-auto opacity-50" />
         </button>
+        {showResetConfirm ? (
+          <div className="px-3 py-2 space-y-2">
+            <p className="text-xs text-muted-foreground">Reset all settings to defaults?</p>
+            <div className="flex gap-2">
+              <button
+                onClick={handleResetAll}
+                className="flex-1 px-2 py-1 text-xs bg-destructive/10 text-destructive hover:bg-destructive/20 rounded transition-colors"
+              >
+                Reset
+              </button>
+              <button
+                onClick={() => setShowResetConfirm(false)}
+                className="flex-1 px-2 py-1 text-xs text-muted-foreground hover:bg-background/50 rounded transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => setShowResetConfirm(true)}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors cursor-pointer text-muted-foreground hover:text-foreground hover:bg-background/50 rounded"
+          >
+            <ArrowCounterClockwise className="w-4 h-4" />
+            <span>Reset All Settings</span>
+          </button>
+        )}
         <button
           onClick={handleLogout}
           className="w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors cursor-pointer text-muted-foreground hover:text-foreground hover:bg-background/50 rounded"
@@ -82,6 +119,11 @@ export function SettingsSidebar() {
           <SignOut className="w-4 h-4" />
           <span>Log out</span>
         </button>
+      </div>
+
+      {/* Version */}
+      <div className="pt-2 text-[10px] text-muted-foreground/50 text-center">
+        Solo IDE v0.1.0
       </div>
     </div>
   );

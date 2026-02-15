@@ -15,6 +15,7 @@ import {
   Plus,
   CloudArrowDown,
   CloudArrowUp,
+  ArrowsInSimple,
 } from '@phosphor-icons/react';
 import { useUIStore } from '@/stores/uiStore';
 import { useGitStore } from '@/stores/gitStore';
@@ -48,6 +49,7 @@ export const ContextHeader: FC<ContextHeaderProps> = ({ onNewSession }) => {
   const startCreating = useFileExplorerStore((s) => s.startCreating);
   const setRootPath = useFileExplorerStore((s) => s.setRootPath);
   const closeFolder = useFileExplorerStore((s) => s.closeFolder);
+  const collapseAll = useFileExplorerStore((s) => s.collapseAll);
 
   const folderName = rootPath?.split('/').pop() ?? '';
   const isGitRepo = repoStatus?.is_repo ?? false;
@@ -156,6 +158,7 @@ export const ContextHeader: FC<ContextHeaderProps> = ({ onNewSession }) => {
           <>
             <IconButton onClick={handleNewFile} title="New File" icon={FilePlus} />
             <IconButton onClick={handleNewFolder} title="New Folder" icon={FolderPlus} />
+            <IconButton onClick={collapseAll} title="Collapse All" icon={ArrowsInSimple} />
             <IconButton onClick={handleRefreshExplorer} title="Refresh" icon={ArrowsClockwise} />
             <IconButton onClick={closeFolder} title="Close Folder" icon={X} />
           </>

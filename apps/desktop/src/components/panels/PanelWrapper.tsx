@@ -36,10 +36,11 @@ export function PanelWrapper({ instance, isActive, className }: PanelWrapperProp
       closePanel: state.closePanel,
       setDirty: state.setDirty,
       updateTitle: state.updateTitle,
+      registerSaveCallback: state.registerSaveCallback,
     };
   }, []);
 
-  const { closePanel, setDirty, updateTitle } = actions;
+  const { closePanel, setDirty, updateTitle, registerSaveCallback } = actions;
 
   // Get the panel registration
   const registration = useMemo(
@@ -64,6 +65,13 @@ export function PanelWrapper({ instance, isActive, className }: PanelWrapperProp
       updateTitle(instance.id, title);
     },
     [updateTitle, instance.id]
+  );
+
+  const handleSaveCallbackChange = useCallback(
+    (saveFn: (() => Promise<void>) | undefined) => {
+      registerSaveCallback(instance.id, saveFn);
+    },
+    [registerSaveCallback, instance.id]
   );
 
   // If panel type not found, show error
@@ -93,6 +101,7 @@ export function PanelWrapper({ instance, isActive, className }: PanelWrapperProp
     onClose: handleClose,
     onDirtyChange: handleDirtyChange,
     onTitleChange: handleTitleChange,
+    onSaveCallbackChange: handleSaveCallbackChange,
   };
 
   const PanelComponent = registration.component;

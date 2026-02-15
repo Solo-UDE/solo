@@ -4,7 +4,7 @@
  */
 
 import { useCallback, useEffect, useRef } from 'react';
-import { Warning, X } from '@phosphor-icons/react';
+import { Warning } from '@phosphor-icons/react';
 
 interface UnsavedChangesDialogProps {
   isOpen: boolean;
@@ -46,29 +46,20 @@ export function UnsavedChangesDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
       onClick={onCancel}
       onKeyDown={handleKeyDown}
     >
       <div
-        className="bg-card border border-border rounded-lg shadow-xl w-96 p-4"
+        className="bg-popover rounded-[14px] shadow-[0_8px_32px_-8px_rgba(0,0,0,0.3)] w-96 p-4"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <Warning className="w-4 h-4 text-yellow-500" />
-            <h3 className="text-sm font-medium text-foreground">Unsaved Changes</h3>
-          </div>
-          <button
-            type="button"
-            onClick={onCancel}
-            className="p-1 rounded hover:bg-muted transition-colors"
-          >
-            <X className="w-4 h-4 text-muted-foreground" />
-          </button>
+        <div className="flex items-center gap-2 mb-3">
+          <Warning className="w-4 h-4 text-yellow-500" />
+          <h3 className="text-sm font-medium text-foreground">Unsaved Changes</h3>
         </div>
 
-        <p className="text-sm text-muted-foreground mb-4">
+        <p className="text-sm text-muted-foreground mb-1">
           Do you want to save changes to "{title}" before closing?
         </p>
         <p className="text-xs text-muted-foreground/70 mb-4">
@@ -79,7 +70,7 @@ export function UnsavedChangesDialog({
           <button
             type="button"
             onClick={onCancel}
-            className="px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
+            className="h-[34px] px-3 text-sm rounded-[10px] bg-muted/40 text-foreground hover:bg-muted/60 active:scale-[0.97] transition-all duration-200"
           >
             Cancel
           </button>
@@ -87,7 +78,7 @@ export function UnsavedChangesDialog({
             ref={dontSaveButtonRef}
             type="button"
             onClick={onDontSave}
-            className="px-3 py-1.5 text-sm bg-destructive text-destructive-foreground hover:bg-destructive/90 rounded transition-colors"
+            className="h-[34px] px-3.5 text-sm rounded-[10px] bg-destructive text-destructive-foreground hover:bg-destructive/90 active:scale-[0.97] transition-all duration-200"
           >
             Don't Save
           </button>
@@ -95,7 +86,7 @@ export function UnsavedChangesDialog({
             <button
               type="button"
               onClick={onSave}
-              className="px-3 py-1.5 text-sm bg-primary text-primary-foreground hover:bg-primary/90 rounded transition-colors"
+              className="h-[34px] px-3.5 text-sm rounded-[10px] bg-primary text-primary-foreground hover:bg-primary/90 active:scale-[0.97] transition-all duration-200"
             >
               Save
             </button>

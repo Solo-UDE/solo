@@ -15,6 +15,7 @@ import '@xterm/xterm/css/xterm.css';
 import { writeTerminal, resizeTerminal } from '@/lib/tauri/terminal';
 import { registerTerminalCallbacks } from '@/hooks/useTerminalStream';
 import { registerTerminalActions } from '@/stores/terminalStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 
 interface TerminalViewProps {
 	terminalId: string;
@@ -103,6 +104,9 @@ export function TerminalView({ terminalId, isActive, onExit }: TerminalViewProps
 	const onExitRef = useRef(onExit);
 	const searchInputRef = useRef<HTMLInputElement>(null);
 
+	// Read terminal settings (snapshot at mount via ref to avoid re-creating terminal)
+	const terminalSettings = useRef(useSettingsStore.getState().terminal);
+
 	const [searchOpen, setSearchOpen] = useState(false);
 	const [searchQuery, setSearchQuery] = useState('');
 
@@ -164,17 +168,19 @@ export function TerminalView({ terminalId, isActive, onExit }: TerminalViewProps
 		if (DEV) performance.mark('terminal:addon-create-end');
 
 		if (DEV) performance.mark('terminal:instance-start');
+		const settings = terminalSettings.current;
+		const cursorStyleMap = { line: 'bar', block: 'block', underline: 'underline' } as const;
 		const term = new Terminal({
 			cursorBlink: true,
-			cursorStyle: 'bar',
+			cursorStyle: cursorStyleMap[settings.cursorStyle] ?? 'bar',
 			cursorWidth: 2,
 			cursorInactiveStyle: 'outline',
-			fontSize: 13,
-			fontFamily: '"MesloLGS NF", "Hack Nerd Font", "FiraCode Nerd Font", "JetBrainsMono Nerd Font", ui-monospace, "SF Mono", Menlo, Monaco, "Cascadia Code", monospace',
+			fontSize: settings.fontSize,
+			fontFamily: settings.fontFamily,
 			theme: buildTerminalTheme(),
 			allowTransparency: isVibrancy(),
 			allowProposedApi: true,
-			scrollback: 5000,
+			scrollback: settings.scrollback,
 		});
 		if (DEV) performance.mark('terminal:instance-end');
 
@@ -264,10 +270,42 @@ export function TerminalView({ terminalId, isActive, onExit }: TerminalViewProps
 			attributeFilter: ['class'],
 		});
 
+		// Sync terminal settings changes (font size, font family, cursor)
+		// Track previous values to avoid unnecessary updates (which cause resize/flicker)
+		let prevFont = settings.fontFamily;
+		let prevSize = settings.fontSize;
+		let prevCursor = settings.cursorStyle;
+		const cMap = { line: 'bar', block: 'block', underline: 'underline' } as const;
+
+		const unsubSettings = useSettingsStore.subscribe((state) => {
+			const ts = state.terminal;
+			let needsFit = false;
+
+			if (ts.fontSize !== prevSize) {
+				term.options.fontSize = ts.fontSize;
+				prevSize = ts.fontSize;
+				needsFit = true;
+			}
+			if (ts.fontFamily !== prevFont) {
+				term.options.fontFamily = ts.fontFamily;
+				prevFont = ts.fontFamily;
+				needsFit = true;
+			}
+			if (ts.cursorStyle !== prevCursor) {
+				term.options.cursorStyle = cMap[ts.cursorStyle] ?? 'bar';
+				prevCursor = ts.cursorStyle;
+			}
+
+			if (needsFit) {
+				requestAnimationFrame(() => fitAddon.fit());
+			}
+		});
+
 		return () => {
 			if (resizeTimer) clearTimeout(resizeTimer);
 			observer.disconnect();
 			themeObserver.disconnect();
+			unsubSettings();
 			dataDisposable.dispose();
 			unregister();
 			unregisterActions();
