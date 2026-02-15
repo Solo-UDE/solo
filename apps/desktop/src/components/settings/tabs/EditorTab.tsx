@@ -58,17 +58,17 @@ export function EditorTab() {
           </SettingRow>
 
           <SettingRow
+            label="Insert Spaces"
+            description="Use spaces instead of tabs"
+          >
+            <ToggleSwitch checked={insertSpaces} onChange={setInsertSpaces} />
+          </SettingRow>
+
+          <SettingRow
             label="Word Wrap"
             description="Wrap long lines at viewport edge"
           >
             <ToggleSwitch checked={wordWrap} onChange={setWordWrap} />
-          </SettingRow>
-
-          <SettingRow
-            label="Minimap"
-            description="Show code overview on the right"
-          >
-            <ToggleSwitch checked={minimap} onChange={setMinimap} />
           </SettingRow>
 
           <SettingRow
