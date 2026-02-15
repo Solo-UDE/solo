@@ -13,6 +13,7 @@ import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '../../
 import { useProviderStore } from '../../../stores/provider-store';
 import { MODEL_OPTIONS, type ProviderIconType } from '../../../lib/constants';
 import { cn } from '../../../lib/utils';
+import { toolbarButtonBase } from './toolbar-button-class';
 
 import type { FC, ReactNode } from 'react';
 
@@ -23,8 +24,6 @@ export interface ModelPickerProps {
   chevronIcon?: 'down' | 'up';
   /** Callback to execute after selecting a model */
   onModelSelect?: () => void;
-  /** Compact mode for smaller displays */
-  compact?: boolean;
   /** Whether the picker is disabled */
   disabled?: boolean;
 }
@@ -73,7 +72,6 @@ export const ModelPicker: FC<ModelPickerProps> = ({
   side = 'bottom',
   chevronIcon = 'down',
   onModelSelect,
-  compact = false,
   disabled = false,
 }) => {
   const selectedModel = useProviderStore((state) => state.selectedModel);
@@ -121,16 +119,13 @@ export const ModelPicker: FC<ModelPickerProps> = ({
                 type="button"
                 disabled={disabled}
                 className={cn(
-                  'flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground rounded-md transition-all duration-200 focus-visible:outline-none',
-                  compact
-                    ? 'px-1.5 py-0.5 hover:bg-accent-foreground/10'
-                    : 'px-2 py-1 border border-muted-foreground/20 hover:bg-accent-foreground/10',
-                  disabled && 'opacity-50 cursor-not-allowed'
+                  toolbarButtonBase,
+                  disabled && 'opacity-50 cursor-not-allowed',
                 )}
               >
-                {renderModelIcon(currentModel.iconType, compact ? 12 : 13)}
-                <span className="font-medium">{currentModel.label}</span>
-                <ChevronIcon size={compact ? 10 : 12} />
+                {renderModelIcon(currentModel.iconType, 13)}
+                <span className="text-xs font-medium">{currentModel.label}</span>
+                <ChevronIcon size={12} className="opacity-50" />
               </button>
             </DropdownMenuTrigger>
           </TooltipTrigger>

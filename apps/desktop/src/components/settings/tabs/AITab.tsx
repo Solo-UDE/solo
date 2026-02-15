@@ -119,7 +119,7 @@ function ProviderCard({
 
   return (
     <div
-      className={`p-4 rounded-none border bg-card/50 space-y-4 transition-all duration-200 ${
+      className={`p-4 rounded-xl border bg-card/50 space-y-4 transition-all duration-200 ${
         isActive
           ? 'border-primary/50 ring-2 ring-primary/20'
           : 'border-border hover:border-border/80'
@@ -160,7 +160,7 @@ function ProviderCard({
             type="button"
             onClick={onOAuthLogin}
             disabled={isOAuthPending}
-            className={`w-full h-10 px-4 ${providerConfig.buttonColor} text-white rounded-none text-sm font-medium active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed`}
+            className={`w-full h-10 px-4 ${providerConfig.buttonColor} text-white rounded-lg text-sm font-medium active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed`}
           >
             {isOAuthPending ? (
               <>
@@ -189,7 +189,7 @@ function ProviderCard({
 
       {/* Connected notice — shown for OAuth and API key connections */}
       {isConnectedViaOAuth && (
-        <div className="p-3 bg-muted/40 rounded-none text-xs text-muted-foreground">
+        <div className="p-3 bg-muted/40 rounded-lg text-xs text-muted-foreground">
           <p className="mb-2">
             {isClaudeCodeAuth
               ? 'Authenticated via Claude Code CLI — using your Claude subscription for API access.'
@@ -233,7 +233,7 @@ function ProviderCard({
 
       {/* API key connected notice — only when connected via API key (not OAuth) */}
       {!isConnectedViaOAuth && hasCredentials && authInfo?.authType === 'api-key' && (
-        <div className="p-3 bg-muted/40 rounded-none text-xs text-muted-foreground">
+        <div className="p-3 bg-muted/40 rounded-lg text-xs text-muted-foreground">
           <p className="mb-2">Connected via API key.</p>
           <button
             type="button"
@@ -267,7 +267,7 @@ function ProviderCard({
             type="button"
             onClick={onApiKeySave}
             disabled={!apiKeyInput.trim() || isSaving}
-            className="px-3 py-1.5 bg-primary text-primary-foreground rounded-none text-sm font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {isSaving ? 'Saving...' : 'Save'}
           </button>
@@ -323,7 +323,7 @@ function ClaudeSetupDiagnostic() {
   };
 
   return (
-    <div className="p-4 rounded-none border border-border bg-card/50 space-y-3">
+    <div className="p-4 rounded-xl border border-border bg-card/50 space-y-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <ShieldCheck className="w-4 h-4 text-muted-foreground" />
@@ -341,7 +341,7 @@ function ClaudeSetupDiagnostic() {
       </div>
 
       {error && (
-        <div className="text-xs text-red-500 bg-red-500/10 px-2 py-1 rounded-none">
+        <div className="text-xs text-red-500 bg-red-500/10 px-2 py-1 rounded-lg">
           {error}
         </div>
       )}
@@ -401,7 +401,7 @@ function ClaudeSetupDiagnostic() {
             </div>
           )}
           {status.requiresCliMode && !status.cliInstalled && (
-            <div className="pt-2 text-[10px] text-amber-600 bg-amber-500/10 px-2 py-1.5 rounded-none">
+            <div className="pt-2 text-[10px] text-amber-600 bg-amber-500/10 px-2 py-1.5 rounded-lg">
               Subscription tokens require the Claude CLI. Install with:<br />
               <code className="text-[10px]">npm i -g @anthropic-ai/claude-code</code>
             </div>
@@ -569,7 +569,7 @@ export function AITab() {
     <div className="space-y-6">
       {/* Providers Section */}
       <div>
-        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+        <h3 className="text-xs font-semibold text-muted-foreground mb-3">
           Providers
         </h3>
         <div className="space-y-3">
@@ -609,7 +609,7 @@ export function AITab() {
 
       {/* Claude Code Setup Diagnostic */}
       <div>
-        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+        <h3 className="text-xs font-semibold text-muted-foreground mb-3">
           Diagnostics
         </h3>
         <ClaudeSetupDiagnostic />
@@ -618,7 +618,7 @@ export function AITab() {
       {/* Model Selection - show when there are models for the active provider */}
       {models.length > 0 && (
         <div>
-          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+          <h3 className="text-xs font-semibold text-muted-foreground mb-3">
             Model
           </h3>
           <div className="divide-y divide-border">
@@ -639,7 +639,7 @@ export function AITab() {
 
       {/* Behavior Section */}
       <div>
-        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4">
+        <h3 className="text-xs font-semibold text-muted-foreground mb-4">
           Behavior
         </h3>
         <div className="divide-y divide-border">
@@ -674,7 +674,7 @@ export function AITab() {
 
       {/* Advanced Section */}
       <div>
-        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4">
+        <h3 className="text-xs font-semibold text-muted-foreground mb-4">
           Advanced
         </h3>
         <div className="divide-y divide-border">
@@ -688,7 +688,7 @@ export function AITab() {
               value={customApiUrl}
               onChange={(e) => setCustomApiUrl(e.target.value)}
               placeholder="https://api.example.com/v1"
-              className="w-full px-3 py-2 bg-background border border-border rounded-none text-sm text-foreground font-mono placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+              className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground font-mono placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
             />
           </div>
         </div>

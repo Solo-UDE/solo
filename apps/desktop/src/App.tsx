@@ -24,6 +24,8 @@ import { useFileExplorerStore } from "./stores/fileExplorerStore";
 import { createTerminal, killTerminal } from "./lib/tauri/terminal";
 import { SIDEBAR } from "./lib/constants";
 import { cn } from "./lib/utils";
+import { DndProvider } from "react-dnd";
+import { HTML5Backend } from "react-dnd-html5-backend";
 import { Toaster } from "sonner";
 import { WorkspaceSwitcher } from "./components/titlebar/WorkspaceSwitcher";
 
@@ -61,6 +63,19 @@ function AppContent() {
 
   // Enable autosave on blur and tab switch
   useAutosave();
+
+  // A2: beforeunload warning for unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      const hasDirty = usePanelTabsStore.getState().hasDirtyPanels();
+      if (hasDirty) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, []);
 
   // Apply color scheme to document
   const resolvedTheme = useColorScheme();
@@ -151,6 +166,10 @@ function AppContent() {
       // Terminal-specific shortcuts (only when terminal panel is open)
       const isTerminalOpen = useUIStore.getState().terminalPanelOpen;
       if (!isTerminalOpen) return;
+
+      // A6: Don't intercept shortcuts when Monaco editor is focused
+      const isEditorFocused = document.activeElement?.closest('.monaco-editor');
+      if (isEditorFocused) return;
 
       // Cmd+T — new terminal
       if (e.key === 't' && e.metaKey && !e.shiftKey) {
@@ -291,12 +310,15 @@ function AppContent() {
         <div className="flex-1 flex items-center" data-tauri-drag-region>
           <button
             onClick={toggleSidebar}
-            className="p-1 rounded hover:bg-foreground/[0.08] transition-colors ml-1.5"
+            className={cn(
+              'p-1 rounded-lg hover:bg-foreground/[0.06] transition-all duration-150 ml-1.5',
+              !isCollapsed && 'glow-active',
+            )}
             title={isCollapsed ? 'Expand Sidebar (⌘B)' : 'Collapse Sidebar (⌘B)'}
           >
             <SidebarSimple
               weight={isCollapsed ? 'regular' : 'fill'}
-              className="w-4 h-4 text-muted-foreground"
+              className={cn('w-4 h-4', isCollapsed ? 'text-muted-foreground' : 'text-primary')}
             />
           </button>
         </div>
@@ -321,23 +343,23 @@ function AppContent() {
           <button
             onClick={handleToggleTerminal}
             className={cn(
-              'p-1 rounded hover:bg-foreground/[0.08] transition-colors',
-              terminalPanelOpen && 'bg-foreground/[0.08]',
+              'p-1 rounded-lg hover:bg-foreground/[0.06] transition-all duration-150',
+              terminalPanelOpen && 'glow-active',
             )}
             title="Toggle Terminal (⌘`)"
           >
-            <Terminal className="w-4 h-4 text-muted-foreground" />
+            <Terminal className={cn('w-4 h-4', terminalPanelOpen ? 'text-primary' : 'text-muted-foreground')} />
           </button>
           <button
             onClick={() => openSettings()}
-            className="p-1 rounded hover:bg-foreground/[0.08] transition-colors"
+            className="p-1 rounded-lg hover:bg-foreground/[0.06] transition-all duration-150"
             title="Settings (⌘,)"
           >
             <GearSix className="w-4 h-4 text-muted-foreground" />
           </button>
           <button
             onClick={signOut}
-            className="p-1 rounded hover:bg-foreground/[0.08] transition-colors"
+            className="p-1 rounded-lg hover:bg-foreground/[0.06] transition-all duration-150"
             title="Sign out"
           >
             <SignOut className="w-4 h-4 text-muted-foreground" />
@@ -351,6 +373,7 @@ function AppContent() {
           <SettingsView />
         </div>
       ) : (
+        <DndProvider backend={HTML5Backend}>
         <div className="flex h-full">
           <PrimarySidebar ref={sidebarRef} width={leftSidebarWidth} onFileOpen={handleFileOpen} />
 
@@ -393,6 +416,7 @@ function AppContent() {
             </div>
           </div>
         </div>
+        </DndProvider>
       )}
 
       <Toaster richColors position="bottom-right" theme={resolvedTheme} />

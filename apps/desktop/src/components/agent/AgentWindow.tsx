@@ -11,7 +11,7 @@ import { usePanelTabsStore } from '../../stores/panelTabsStore';
 import { BUILTIN_PANEL_TYPES } from '../../lib/panels/constants';
 
 import type { FC } from 'react';
-import type { MessageMode } from '../../stores/agentStore';
+import type { MessageMode, Attachment, FileMention } from '../../stores/agentStore';
 
 export interface AgentWindowCallbacks {
 	onFileOpen?: (path: string) => void;
@@ -120,19 +120,10 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 
 	// Handle message submission from new ChatInputContainer
 	const handleSubmit = useCallback(
-		async (content: string, mode: 'planning' | 'fast', _model: string) => {
-			await sendMessage(content, mode as MessageMode);
+		async (content: string, mode: 'planning' | 'fast', _model: string, attachments?: Attachment[], mentions?: FileMention[]) => {
+			await sendMessage(content, mode as MessageMode, attachments, mentions);
 		},
 		[sendMessage]
-	);
-
-	// Handle tool approval/rejection
-	const resolveToolApproval = useAgentStore((state) => state.resolveToolApproval);
-	const handleToolApproval = useCallback(
-		(toolCallId: string, approved: boolean) => {
-			resolveToolApproval(toolCallId, approved);
-		},
-		[resolveToolApproval]
 	);
 
 	// Handle new session
@@ -143,6 +134,28 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 			}
 		});
 	}, [createSession, selectedModel, openPanel]);
+
+	// Handle local slash commands (UI actions)
+	const handleLocalCommand = useCallback((commandId: string) => {
+		switch (commandId) {
+			case 'clear':
+				handleNewSession();
+				break;
+			default:
+				// For unimplemented local commands, send as agent message
+				sendMessage(`/${commandId}`, 'planning' as MessageMode);
+				break;
+		}
+	}, [sendMessage, handleNewSession]);
+
+	// Handle tool approval/rejection
+	const resolveToolApproval = useAgentStore((state) => state.resolveToolApproval);
+	const handleToolApproval = useCallback(
+		(toolCallId: string, approved: boolean) => {
+			resolveToolApproval(toolCallId, approved);
+		},
+		[resolveToolApproval]
+	);
 
 	// Empty state for no messages
 	if (messages.length === 0) {
@@ -186,6 +199,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 				{/* Chat input */}
 				<ChatInputContainer
 					onSubmit={handleSubmit}
+					onLocalCommand={handleLocalCommand}
 					isAgentRunning={isRunning}
 					worktreeId={worktreeId}
 					onWorktreeChange={handleWorktreeChange}
@@ -235,6 +249,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 			{/* Chat input */}
 			<ChatInputContainer
 				onSubmit={handleSubmit}
+				onLocalCommand={handleLocalCommand}
 				isAgentRunning={isRunning}
 				worktreeId={worktreeId}
 				onWorktreeChange={handleWorktreeChange}

@@ -39,6 +39,22 @@ export interface ToolCallState {
 	needsApproval?: boolean;
 }
 
+export interface FileMention {
+	path: string;
+	name: string;
+	relativePath: string;
+}
+
+export interface Attachment {
+	id: string;
+	type: 'file' | 'image';
+	path: string;
+	name: string;
+	mimeType?: string;
+	thumbnailUrl?: string;
+	size?: number;
+}
+
 export interface Message {
 	id: string;
 	role: 'user' | 'assistant';
@@ -47,6 +63,8 @@ export interface Message {
 	mode?: MessageMode;
 	toolCalls?: ToolCallState[];
 	isStreaming?: boolean;
+	attachments?: Attachment[];
+	mentions?: FileMention[];
 }
 
 export interface AgentSession {
@@ -127,8 +145,8 @@ interface AgentActions {
 	renameSession: (sessionId: string, name: string) => void;
 
 	// Message handling
-	sendMessage: (sessionId: string, content: string, mode: MessageMode) => Promise<void>;
-	addUserMessage: (sessionId: string, content: string, mode: MessageMode) => string;
+	sendMessage: (sessionId: string, content: string, mode: MessageMode, attachments?: Attachment[], mentions?: FileMention[]) => Promise<void>;
+	addUserMessage: (sessionId: string, content: string, mode: MessageMode, attachments?: Attachment[], mentions?: FileMention[]) => string;
 
 	// Streaming handlers (called from event listener)
 	handleAgentChunk: (conversationId: string, content: string) => void;
@@ -276,7 +294,7 @@ export const useAgentStore = create<AgentStore>()(
 			get().persistSessions();
 		},
 
-		sendMessage: async (sessionId: string, content: string, mode: MessageMode) => {
+		sendMessage: async (sessionId: string, content: string, mode: MessageMode, attachments?: Attachment[], mentions?: FileMention[]) => {
 			console.log('[Store SEND] sessionId:', sessionId, 'content:', content, 'mode:', mode);
 			if (!sessionId) {
 				console.error('[Store] No session ID provided!');
@@ -284,7 +302,7 @@ export const useAgentStore = create<AgentStore>()(
 			}
 
 			// Add user message
-			get().addUserMessage(sessionId, content, mode);
+			get().addUserMessage(sessionId, content, mode, attachments, mentions);
 
 			// Create placeholder for assistant response
 			const assistantMessageId = `msg-${Date.now()}-assistant`;
@@ -330,7 +348,7 @@ export const useAgentStore = create<AgentStore>()(
 			}
 		},
 
-		addUserMessage: (sessionId: string, content: string, mode: MessageMode) => {
+		addUserMessage: (sessionId: string, content: string, mode: MessageMode, attachments?: Attachment[], mentions?: FileMention[]) => {
 			const messageId = `msg-${Date.now()}-user`;
 
 			set((state) => {
@@ -341,6 +359,8 @@ export const useAgentStore = create<AgentStore>()(
 					content,
 					timestamp: new Date(),
 					mode,
+					attachments: attachments?.length ? attachments : undefined,
+					mentions: mentions?.length ? mentions : undefined,
 				});
 				state.messages.set(sessionId, sessionMessages);
 			});

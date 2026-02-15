@@ -3,15 +3,17 @@ import { useUIStore, type SettingsTabId } from '../../stores/uiStore';
 import { SettingsSidebar } from './SettingsSidebar';
 import { GeneralTab } from './tabs/GeneralTab';
 import { EditorTab } from './tabs/EditorTab';
+import { TerminalTab } from './tabs/TerminalTab';
 import { FilesTab } from './tabs/FilesTab';
 import { ShortcutsTab } from './tabs/ShortcutsTab';
 import { AITab } from './tabs/AITab';
 
-const TAB_ORDER: SettingsTabId[] = ['general', 'editor', 'files', 'shortcuts', 'ai'];
+const TAB_ORDER: SettingsTabId[] = ['general', 'editor', 'terminal', 'files', 'shortcuts', 'ai'];
 
 const TAB_LABELS: Record<SettingsTabId, string> = {
   general: 'General',
   editor: 'Editor',
+  terminal: 'Terminal',
   files: 'Files',
   shortcuts: 'Shortcuts',
   ai: 'AI',
@@ -29,6 +31,8 @@ export function SettingsView() {
         return <GeneralTab />;
       case 'editor':
         return <EditorTab />;
+      case 'terminal':
+        return <TerminalTab />;
       case 'files':
         return <FilesTab />;
       case 'shortcuts':

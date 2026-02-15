@@ -79,6 +79,8 @@ export interface PanelProps<TData = Record<string, unknown>> {
   onDirtyChange: (isDirty: boolean) => void;
   /** Callback to update title */
   onTitleChange: (title: string) => void;
+  /** Register a save callback for autosave integration */
+  onSaveCallbackChange?: (saveFn: (() => Promise<void>) | undefined) => void;
 }
 
 /** Registration for a panel type */

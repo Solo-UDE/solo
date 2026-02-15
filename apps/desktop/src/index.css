@@ -126,7 +126,7 @@
   --card-foreground: oklch(0.25 0.02 60);
 
   /* Popover */
-  --popover: oklch(0.98 0.005 75);
+  --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.25 0.02 60);
 
   /* Primary (Solo Green) */
@@ -330,8 +330,8 @@ html.dark {
    attribute is set from the Rust setup closure on macOS. */
 html[data-vibrancy] {
   --sidebar: transparent;
-  --popover: oklch(0.22 0.015 58 / 70%);
-  --card: oklch(0.20 0.015 58 / 70%);
+  --popover: oklch(1 0 0);
+  --card: oklch(0.96 0.008 70 / 85%);
   background-color: transparent !important;
 }
 
@@ -347,6 +347,8 @@ html[data-vibrancy] .titlebar-glass {
    prevent light system vibrancy from bleeding through */
 html.dark[data-vibrancy] {
   --sidebar: oklch(0.18 0.012 58 / 85%);
+  --popover: oklch(0.22 0.015 58);
+  --card: oklch(0.20 0.015 58 / 70%);
   background-color: oklch(0.16 0.012 60 / 90%) !important;
 }
 
@@ -569,6 +571,35 @@ html.dark ::-webkit-scrollbar-thumb:hover {
   justify-content: center;
   height: 100%;
   background: transparent;
+}
+
+/* =============================================================================
+   GLOW & GLASS UTILITIES
+   ============================================================================= */
+
+/* Inner glow for active toolbar buttons — radial green glow from center */
+.glow-active {
+  background: radial-gradient(
+    ellipse at center,
+    oklch(from var(--primary) l c h / 15%) 0%,
+    transparent 70%
+  );
+  color: var(--primary);
+}
+
+/* Text glow for nav items — green text-shadow */
+.glow-active-text {
+  color: var(--primary);
+  text-shadow: 0 0 8px oklch(from var(--primary) l c h / 40%);
+}
+
+/* Softer floating shadow (replaces shadow-lg on glass elements) */
+.shadow-glass {
+  box-shadow: 0 4px 16px oklch(0% 0 0 / 8%), 0 2px 4px oklch(0% 0 0 / 4%);
+}
+
+html.dark .shadow-glass {
+  box-shadow: 0 4px 16px oklch(0% 0 0 / 25%), 0 2px 4px oklch(0% 0 0 / 12%);
 }
 
 /* =============================================================================
