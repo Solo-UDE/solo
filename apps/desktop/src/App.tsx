@@ -64,6 +64,19 @@ function AppContent() {
   // Enable autosave on blur and tab switch
   useAutosave();
 
+  // A2: beforeunload warning for unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      const hasDirty = usePanelTabsStore.getState().hasDirtyPanels();
+      if (hasDirty) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, []);
+
   // Apply color scheme to document
   const resolvedTheme = useColorScheme();
 

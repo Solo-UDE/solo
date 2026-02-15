@@ -5,12 +5,14 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useEditorStore } from '../stores/editorStore';
+import { usePanelTabsStore } from '../stores/panelTabsStore';
 import * as fs from '../lib/tauri/fs';
 
 /**
- * Saves all dirty files to disk
+ * Saves all dirty files to disk (legacy editorStore + panel system)
  */
 async function saveAllDirty(): Promise<void> {
+  // Save dirty tabs from legacy editorStore
   const state = useEditorStore.getState();
   const dirtyTabs = state.getDirtyTabs();
 
@@ -23,6 +25,16 @@ async function saveAllDirty(): Promise<void> {
       } catch (err) {
         console.error(`Failed to autosave ${path}:`, err);
       }
+    }
+  }
+
+  // Save dirty panels from panel system (FileViewerPanel, etc.)
+  const dirtyPanels = usePanelTabsStore.getState().getDirtyPanelsWithSave();
+  for (const { save } of dirtyPanels) {
+    try {
+      await save();
+    } catch (err) {
+      console.error('Failed to autosave panel:', err);
     }
   }
 }
