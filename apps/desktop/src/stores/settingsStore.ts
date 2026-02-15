@@ -12,16 +12,14 @@ export type ColorScheme = 'system' | 'light' | 'dark';
 export type AutosaveDelay = 0 | 5000 | 10000 | 30000 | 'disabled';
 export type LineNumbers = 'on' | 'off' | 'relative';
 export type TabSize = 2 | 4 | 8;
+export type CursorStyle = 'line' | 'block' | 'underline';
+export type RenderWhitespace = 'none' | 'boundary' | 'all';
+export type LineEnding = 'lf' | 'crlf' | 'auto';
 
 export const FONT_FAMILIES = [
-  { label: 'System Default', value: 'system-ui' },
-  { label: 'SF Mono', value: '"SF Mono", SFMono-Regular' },
-  { label: 'Menlo', value: 'Menlo' },
-  { label: 'Monaco', value: 'Monaco' },
-  { label: 'Consolas', value: 'Consolas' },
-  { label: 'Fira Code', value: '"Fira Code"' },
-  { label: 'JetBrains Mono', value: '"JetBrains Mono"' },
-  { label: 'Source Code Pro', value: '"Source Code Pro"' },
+  { label: 'SF Mono', value: '"SF Mono", SFMono-Regular, ui-monospace, monospace' },
+  { label: 'Menlo', value: 'Menlo, Monaco, ui-monospace, monospace' },
+  { label: 'System Default', value: 'ui-monospace, system-ui, monospace' },
 ] as const;
 
 export const AUTOSAVE_OPTIONS: { label: string; value: AutosaveDelay }[] = [
@@ -44,6 +42,24 @@ export const LINE_NUMBER_OPTIONS: { label: string; value: LineNumbers }[] = [
   { label: 'Relative', value: 'relative' },
 ];
 
+export const CURSOR_STYLE_OPTIONS: { label: string; value: CursorStyle }[] = [
+  { label: 'Line', value: 'line' },
+  { label: 'Block', value: 'block' },
+  { label: 'Underline', value: 'underline' },
+];
+
+export const RENDER_WHITESPACE_OPTIONS: { label: string; value: RenderWhitespace }[] = [
+  { label: 'None', value: 'none' },
+  { label: 'Boundary', value: 'boundary' },
+  { label: 'All', value: 'all' },
+];
+
+export const LINE_ENDING_OPTIONS: { label: string; value: LineEnding }[] = [
+  { label: 'LF (Unix)', value: 'lf' },
+  { label: 'CRLF (Windows)', value: 'crlf' },
+  { label: 'Auto', value: 'auto' },
+];
+
 // Settings state interfaces
 interface GeneralSettings {
   colorScheme: ColorScheme;
@@ -57,11 +73,28 @@ interface EditorSettings {
   minimap: boolean;
   lineNumbers: LineNumbers;
   bracketColorization: boolean;
+  insertSpaces: boolean;
+  cursorStyle: CursorStyle;
+  renderWhitespace: RenderWhitespace;
+  fontLigatures: boolean;
+  smoothScrolling: boolean;
+}
+
+interface TerminalSettings {
+  fontFamily: string;
+  fontSize: number;
+  scrollback: number;
+  cursorStyle: CursorStyle;
+  shell: string;
 }
 
 interface FilesSettings {
   autosaveDelay: AutosaveDelay;
   showHiddenFiles: boolean;
+  trimTrailingWhitespace: boolean;
+  insertFinalNewline: boolean;
+  defaultLineEnding: LineEnding;
+  excludePatterns: string;
 }
 
 interface ShortcutsSettings {
