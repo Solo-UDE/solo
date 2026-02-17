@@ -1,6 +1,7 @@
-import { User } from '@phosphor-icons/react';
+import { User, Paperclip } from '@phosphor-icons/react';
 
 import type { FC } from 'react';
+import type { Attachment, FileMention } from '../../../stores/agentStore';
 
 export interface UserMessageProps {
   content: string;
@@ -8,6 +9,8 @@ export interface UserMessageProps {
   avatarUrl?: string;
   userName?: string;
   className?: string;
+  attachments?: Attachment[];
+  mentions?: FileMention[];
 }
 
 export const UserMessage: FC<UserMessageProps> = ({
@@ -16,6 +19,8 @@ export const UserMessage: FC<UserMessageProps> = ({
   avatarUrl,
   userName = 'You',
   className = '',
+  attachments,
+  mentions,
 }) => {
   const formatTime = (date: Date): string => {
     return new Intl.DateTimeFormat('en-US', {
@@ -24,6 +29,9 @@ export const UserMessage: FC<UserMessageProps> = ({
       hour12: true,
     }).format(date);
   };
+
+  const imageAttachments = attachments?.filter((a) => a.type === 'image') ?? [];
+  const fileAttachments = attachments?.filter((a) => a.type === 'file') ?? [];
 
   return (
     <div className={`flex gap-3 px-4 ${className}`}>
@@ -45,6 +53,53 @@ export const UserMessage: FC<UserMessageProps> = ({
         <div className="text-sm text-foreground whitespace-pre-wrap break-words">
           {content}
         </div>
+
+        {/* Image attachments */}
+        {imageAttachments.length > 0 && (
+          <div className="flex gap-2 flex-wrap pt-1">
+            {imageAttachments.map((img) => (
+              <div
+                key={img.id}
+                className="w-20 h-20 rounded-md overflow-hidden border border-border/50 bg-muted"
+              >
+                <img
+                  src={img.thumbnailUrl}
+                  alt={img.name}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* File attachments */}
+        {fileAttachments.length > 0 && (
+          <div className="flex gap-1.5 flex-wrap pt-1">
+            {fileAttachments.map((file) => (
+              <div
+                key={file.id}
+                className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-muted/60 text-xs"
+              >
+                <Paperclip className="w-3 h-3 text-muted-foreground shrink-0" />
+                <span className="truncate max-w-[140px] text-foreground">{file.name}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Mentions */}
+        {mentions && mentions.length > 0 && (
+          <div className="flex gap-1.5 flex-wrap pt-1">
+            {mentions.map((mention, i) => (
+              <span
+                key={`${mention.path}-${i}`}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-xs text-primary"
+              >
+                @{mention.name}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

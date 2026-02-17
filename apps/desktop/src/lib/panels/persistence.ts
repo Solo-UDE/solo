@@ -5,6 +5,7 @@
 
 import type { MosaicTree, TileId, TileConfig, PanelInstance, TileTabState } from './types';
 import { PERSISTENCE } from './constants';
+import { panelRegistry } from './registry';
 
 /** Persisted layout format */
 export interface PersistedLayout {
@@ -22,7 +23,7 @@ export interface PersistedLayout {
   };
 }
 
-/** Serialized panel instance (without non-serializable data) */
+/** Serialized panel instance */
 interface SerializedPanelInstance {
   id: string;
   panelType: string;
@@ -30,8 +31,7 @@ interface SerializedPanelInstance {
   icon?: string;
   isDirty: boolean;
   isPinned: boolean;
-  // Note: data is not persisted as it may contain non-serializable values
-  // Panels should restore their own data from other sources (e.g., file path)
+  data?: Record<string, unknown>;
 }
 
 const STORAGE_KEY = 'solo-panel-layout';
@@ -40,6 +40,9 @@ const STORAGE_KEY = 'solo-panel-layout';
  * Serialize panel instance for storage
  */
 function serializeInstance(instance: PanelInstance): SerializedPanelInstance {
+  const registration = panelRegistry.get(instance.panelType);
+  const data = registration?.serializeData?.(instance.data) ?? undefined;
+
   return {
     id: instance.id,
     panelType: instance.panelType,
@@ -47,6 +50,7 @@ function serializeInstance(instance: PanelInstance): SerializedPanelInstance {
     icon: instance.icon,
     isDirty: false, // Don't persist dirty state
     isPinned: instance.isPinned,
+    data,
   };
 }
 
@@ -54,6 +58,11 @@ function serializeInstance(instance: PanelInstance): SerializedPanelInstance {
  * Deserialize panel instance from storage
  */
 function deserializeInstance(serialized: SerializedPanelInstance): PanelInstance {
+  const registration = panelRegistry.get(serialized.panelType);
+  const data = (registration?.deserializeData && serialized.data)
+    ? registration.deserializeData(serialized.data)
+    : {};
+
   return {
     id: serialized.id,
     panelType: serialized.panelType,
@@ -61,7 +70,7 @@ function deserializeInstance(serialized: SerializedPanelInstance): PanelInstance
     icon: serialized.icon,
     isDirty: false,
     isPinned: serialized.isPinned,
-    data: {}, // Panels need to restore their own data
+    data,
   };
 }
 

@@ -20,16 +20,30 @@ pub struct OpenAIProvider {
     tools: Vec<ToolDefinition>,
     /// Previous response ID for multi-turn conversations
     previous_response_id: Option<String>,
+    /// ChatGPT account ID (set when using OAuth, None for API key auth)
+    account_id: Option<String>,
 }
 
 impl OpenAIProvider {
-    /// Create a new OpenAI provider
+    /// Create a new OpenAI provider with an API key (no OAuth metadata)
     pub fn new(api_key: String) -> Self {
         Self {
             api_key,
             client: Client::new(),
             tools: Vec::new(),
             previous_response_id: None,
+            account_id: None,
+        }
+    }
+
+    /// Create a new OpenAI provider with OAuth metadata
+    pub fn new_with_oauth(api_key: String, account_id: Option<String>) -> Self {
+        Self {
+            api_key,
+            client: Client::new(),
+            tools: Vec::new(),
+            previous_response_id: None,
+            account_id,
         }
     }
 
@@ -170,6 +184,9 @@ struct OpenAIChatRequest {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     tools: Vec<serde_json::Value>,
     stream: bool,
+    /// When using OAuth auth, set to false to prevent conversation storage
+    #[serde(skip_serializing_if = "Option::is_none")]
+    store: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -233,19 +250,29 @@ impl AIProvider for OpenAIProvider {
         let chat_messages = Self::convert_to_chat_messages(messages, system_prompt);
         let tools = self.convert_tools();
 
+        // When using OAuth (account_id present), set store: false to prevent
+        // conversation storage on OpenAI's side
+        let store = if self.account_id.is_some() {
+            Some(false)
+        } else {
+            None
+        };
+
         let request = OpenAIChatRequest {
             model: model.to_string(),
             messages: chat_messages,
             max_tokens: Some(8192),
             tools,
             stream: true,
+            store,
         };
 
         let api_key = self.api_key.clone();
         let client = self.client.clone();
+        let account_id = self.account_id.clone();
 
         tokio::spawn(async move {
-            let result = stream_openai_response(client, api_key, request, conversation_id.clone(), tx.clone()).await;
+            let result = stream_openai_response(client, api_key, account_id, request, conversation_id.clone(), tx.clone()).await;
 
             if let Err(e) = result {
                 let _ = tx
@@ -296,14 +323,22 @@ impl AIProvider for OpenAIProvider {
 async fn stream_openai_response(
     client: Client,
     api_key: String,
+    account_id: Option<String>,
     request: OpenAIChatRequest,
     conversation_id: String,
     tx: mpsc::Sender<BackendEvent>,
 ) -> ProviderResult<()> {
-    let response = client
+    let mut request_builder = client
         .post(OPENAI_CHAT_URL)
         .header("Authorization", format!("Bearer {}", api_key))
-        .header("Content-Type", "application/json")
+        .header("Content-Type", "application/json");
+
+    // Add ChatGPT-Account-ID header when using OAuth auth
+    if let Some(ref account_id) = account_id {
+        request_builder = request_builder.header("ChatGPT-Account-ID", account_id);
+    }
+
+    let response = request_builder
         .json(&request)
         .send()
         .await?;

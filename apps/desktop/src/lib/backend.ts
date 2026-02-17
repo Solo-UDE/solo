@@ -12,6 +12,7 @@ import type {
 	OAuthFlowResult,
 	AuthMethodInfo,
 	AuthType,
+	ClaudeSetupStatus,
 } from '../bindings';
 
 // =============================================================================
@@ -36,7 +37,7 @@ export interface ModelInfo {
 }
 
 // Re-export for convenience
-export type { ProviderType, OAuthMethod, OAuthFlowResult, AuthMethodInfo, AuthType };
+export type { ProviderType, OAuthMethod, OAuthFlowResult, AuthMethodInfo, AuthType, ClaudeSetupStatus };
 
 // =============================================================================
 // Provider Commands
@@ -94,12 +95,11 @@ export async function setCredentials(provider: ProviderType, apiKey: string): Pr
 }
 
 /**
- * Set an OAuth token manually (e.g. from `claude setup-token`)
- * @param provider - Provider type
- * @param token - OAuth access token
+ * Clear credentials for a provider (remove from Keychain)
+ * @param provider - Provider name
  */
-export async function setOAuthTokenManual(provider: string, token: string): Promise<void> {
-	return invoke('set_oauth_token_manual', { provider, token });
+export async function clearCredentials(provider: string): Promise<void> {
+	return invoke('clear_credentials', { provider });
 }
 
 // =============================================================================
@@ -264,4 +264,12 @@ export async function startClaudeLogin(): Promise<void> {
  */
 export async function checkClaudeAuthStatus(): Promise<boolean> {
 	return invoke<boolean>('check_claude_auth_status');
+}
+
+/**
+ * Verify Claude Code CLI setup: CLI presence, credential parsing, and API validation.
+ * @returns Structured status with CLI, credential, and API verification details
+ */
+export async function verifyClaudeSetup(): Promise<ClaudeSetupStatus> {
+	return invoke<ClaudeSetupStatus>('verify_claude_setup');
 }

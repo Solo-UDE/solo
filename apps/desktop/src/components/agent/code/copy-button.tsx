@@ -1,5 +1,6 @@
 import { Copy, Check } from '@phosphor-icons/react';
 import { useState } from 'react';
+import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 
 import type { FC } from 'react';
 
@@ -15,7 +16,7 @@ export const CopyButton: FC<CopyButtonProps> = ({ text, className = '' }) => {
 
   const handleCopy = async (): Promise<void> => {
     try {
-      await navigator.clipboard.writeText(text);
+      await writeText(text);
       setIsCopied(true);
       setTimeout(() => {
         setIsCopied(false);

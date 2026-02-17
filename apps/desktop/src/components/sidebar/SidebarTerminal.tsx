@@ -4,7 +4,7 @@
  * (bypasses the mosaic panel system).
  */
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FC } from 'react';
 import { Plus, TerminalWindow, X } from '@phosphor-icons/react';
 import { TerminalView } from '@/components/terminal/TerminalView';
@@ -26,6 +26,22 @@ export const SidebarTerminal: FC = () => {
   const toggleTerminalPanel = useUIStore((s) => s.toggleTerminalPanel);
 
   const rename = useInlineRename((id, value) => renameTerminal(id, value));
+  const tabsContainerRef = useRef<HTMLDivElement>(null);
+  const [scrollState, setScrollState] = useState<'none' | 'left' | 'right' | 'both'>('none');
+
+  const updateScrollState = useCallback(() => {
+    const el = tabsContainerRef.current;
+    if (!el) return;
+    const hasLeft = el.scrollLeft > 0;
+    const hasRight = el.scrollLeft + el.clientWidth < el.scrollWidth - 1;
+    setScrollState(
+      hasLeft && hasRight ? 'both' : hasLeft ? 'left' : hasRight ? 'right' : 'none',
+    );
+  }, []);
+
+  useEffect(() => {
+    updateScrollState();
+  }, [terminals.size, updateScrollState]);
 
   const handleNewTerminal = useCallback(() => {
     const cwd = useFileExplorerStore.getState().rootPath ?? undefined;
@@ -73,21 +89,36 @@ export const SidebarTerminal: FC = () => {
   const terminalList = [...terminals.values()];
 
   return (
-    <div className="flex flex-col h-full bg-background">
+    <div className="flex flex-col h-full bg-background terminal-panel">
       {/* Header / tab bar */}
       <div
         className="flex items-center justify-between px-1.5 shrink-0 border-b border-border/30 bg-sidebar"
         style={{ height: TERMINAL_SECTION.headerHeight }}
       >
         {/* Tabs */}
-        <div className="relative flex items-center gap-0.5 overflow-x-auto min-w-0">
+        <div className="relative min-w-0 flex-1">
+          {(scrollState === 'left' || scrollState === 'both') && (
+            <div className="absolute left-0 top-0 bottom-0 w-4 bg-gradient-to-r from-sidebar to-transparent z-10 pointer-events-none" />
+          )}
+          {(scrollState === 'right' || scrollState === 'both') && (
+            <div className="absolute right-0 top-0 bottom-0 w-4 bg-gradient-to-l from-sidebar to-transparent z-10 pointer-events-none" />
+          )}
+          <div
+            ref={tabsContainerRef}
+            className="flex items-center gap-0.5 overflow-x-auto scrollbar-none"
+            onScroll={updateScrollState}
+          >
           {terminalList.map((t) => (
-            <button
+            <div
               key={t.id}
+              role="tab"
+              tabIndex={0}
+              aria-selected={t.id === activeTerminalId}
               onClick={() => setActiveTerminal(t.id)}
+              onMouseDown={(e) => { if (e.button === 1) { e.preventDefault(); handleCloseTab(t.id); } }}
               onDoubleClick={() => rename.startRename(t.id, t.title)}
               className={cn(
-                'group relative flex items-center gap-1 px-3 py-2 text-[11px] max-w-32 cursor-pointer',
+                'group relative flex items-center gap-1 px-3 py-2 text-[11px] max-w-40 shrink-0 cursor-pointer',
                 'transition-colors duration-150 ease-[cubic-bezier(0.4,0,0.2,1)]',
                 t.id === activeTerminalId
                   ? 'text-foreground'
@@ -104,19 +135,20 @@ export const SidebarTerminal: FC = () => {
               ) : (
                 <span className="truncate">{t.title}</span>
               )}
-              <span
-                role="button"
+              <button
+                aria-label={`Close ${t.title}`}
                 onClick={(e) => { e.stopPropagation(); handleCloseTab(t.id); }}
-                className="ml-auto shrink-0 p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-muted-foreground/20 transition-opacity duration-100"
+                className="ml-auto shrink-0 p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-muted-foreground/20 transition-opacity duration-100 focus:opacity-100 focus:outline-none focus:ring-1 focus:ring-primary/50"
               >
                 <X className="w-3 h-3" />
-              </span>
+              </button>
               {/* Accent bar under active tab */}
               {t.id === activeTerminalId && (
                 <div className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full bg-primary" />
               )}
-            </button>
+            </div>
           ))}
+          </div>
         </div>
 
         {/* Actions */}
@@ -131,18 +163,26 @@ export const SidebarTerminal: FC = () => {
         </div>
       </div>
 
-      {/* Terminal body */}
-      <div className="flex-1 min-h-0">
-        {activeTerminalId && terminals.has(activeTerminalId) ? (
-          <TerminalView
-            terminalId={activeTerminalId}
-            isActive={true}
-            onExit={handleTerminalExit(activeTerminalId)}
-          />
-        ) : (
+      {/* Terminal body — all terminals rendered, inactive hidden via CSS to preserve state */}
+      <div className="flex-1 min-h-0 relative">
+        {terminalList.length === 0 ? (
           <div className="flex items-center justify-center h-full text-xs text-muted-foreground">
             No terminal
           </div>
+        ) : (
+          terminalList.map((t) => (
+            <div
+              key={t.id}
+              className="absolute inset-0"
+              style={{ display: t.id === activeTerminalId ? 'block' : 'none' }}
+            >
+              <TerminalView
+                terminalId={t.id}
+                isActive={t.id === activeTerminalId}
+                onExit={handleTerminalExit(t.id)}
+              />
+            </div>
+          ))
         )}
       </div>
     </div>

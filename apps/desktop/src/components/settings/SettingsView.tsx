@@ -1,0 +1,95 @@
+import { useCallback, useEffect, useRef } from 'react';
+import { useUIStore, type SettingsTabId } from '../../stores/uiStore';
+import { SettingsSidebar } from './SettingsSidebar';
+import { GeneralTab } from './tabs/GeneralTab';
+import { EditorTab } from './tabs/EditorTab';
+import { TerminalTab } from './tabs/TerminalTab';
+import { FilesTab } from './tabs/FilesTab';
+import { ShortcutsTab } from './tabs/ShortcutsTab';
+import { AITab } from './tabs/AITab';
+
+const TAB_ORDER: SettingsTabId[] = ['general', 'editor', 'terminal', 'files', 'shortcuts', 'ai'];
+
+const TAB_LABELS: Record<SettingsTabId, string> = {
+  general: 'General',
+  editor: 'Editor',
+  terminal: 'Terminal',
+  files: 'Files',
+  shortcuts: 'Shortcuts',
+  ai: 'AI',
+};
+
+export function SettingsView() {
+  const settingsTab = useUIStore((s) => s.settingsTab);
+  const setSettingsTab = useUIStore((s) => s.setSettingsTab);
+  const closeSettings = useUIStore((s) => s.closeSettings);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const renderTabContent = () => {
+    switch (settingsTab) {
+      case 'general':
+        return <GeneralTab />;
+      case 'editor':
+        return <EditorTab />;
+      case 'terminal':
+        return <TerminalTab />;
+      case 'files':
+        return <FilesTab />;
+      case 'shortcuts':
+        return <ShortcutsTab />;
+      case 'ai':
+        return <AITab />;
+      default:
+        return null;
+    }
+  };
+
+  // Keyboard navigation
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeSettings();
+        return;
+      }
+
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        // Only handle arrow keys when focus is not inside an input/textarea
+        const active = document.activeElement;
+        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT')) {
+          return;
+        }
+        e.preventDefault();
+        const currentIndex = TAB_ORDER.indexOf(settingsTab);
+        const direction = e.key === 'ArrowDown' ? 1 : -1;
+        const nextIndex = (currentIndex + direction + TAB_ORDER.length) % TAB_ORDER.length;
+        setSettingsTab(TAB_ORDER[nextIndex]);
+      }
+    },
+    [settingsTab, setSettingsTab, closeSettings],
+  );
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleKeyDown]);
+
+  // Focus container on mount for keyboard nav
+  useEffect(() => {
+    containerRef.current?.focus();
+  }, []);
+
+  return (
+    <div ref={containerRef} className="flex h-full w-full animate-in fade-in-0 duration-200" tabIndex={-1}>
+      <SettingsSidebar />
+      <main className="flex-1 overflow-y-auto bg-background">
+        <div className="max-w-2xl mx-auto px-8 py-8">
+          <h1 className="text-2xl font-semibold mb-6">{TAB_LABELS[settingsTab]}</h1>
+          <div key={settingsTab} className="animate-in fade-in-0 duration-150">
+            {renderTabContent()}
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}

@@ -9,4 +9,14 @@
 |----|------|---|-------|------|
 | #194 | 3:30 PM | 🔵 | Tool Registry System with Five Built-in Tools and Approval Workflow | ~667 |
 | #193 | " | 🔵 | AgentManager Session and Provider Lifecycle Management | ~647 |
+
+### Feb 4, 2026
+
+| ID | Time | T | Title | Read |
+|----|------|---|-------|------|
+| #1229 | 4:56 PM | 🔵 | AnthropicProvider API Key vs CLI Mode Separation | ~457 |
+| #1114 | 2:08 PM | 🔵 | Complete Multi-Provider Model Registry | ~652 |
+| #1109 | 2:07 PM | 🔵 | AI Model Registry with Capabilities and Defaults | ~698 |
+| #1108 | 2:06 PM | 🔵 | AI Provider Abstraction and Error Handling | ~668 |
+| #1093 | 2:02 PM | 🔵 | Solo Agent Multi-Provider AI Architecture | ~755 |
 </claude-mem-context>

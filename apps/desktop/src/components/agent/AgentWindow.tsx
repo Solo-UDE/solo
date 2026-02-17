@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useMemo, useRef } from 'react';
+import { useEffect, useCallback, useMemo, useRef, useState } from 'react';
 import { Plus } from '@phosphor-icons/react';
 
 import { MessageFeed } from './messages';
@@ -11,7 +11,7 @@ import { usePanelTabsStore } from '../../stores/panelTabsStore';
 import { BUILTIN_PANEL_TYPES } from '../../lib/panels/constants';
 
 import type { FC } from 'react';
-import type { MessageMode } from '../../stores/agentStore';
+import type { MessageMode, Attachment, FileMention } from '../../stores/agentStore';
 
 export interface AgentWindowCallbacks {
 	onFileOpen?: (path: string) => void;
@@ -31,6 +31,8 @@ export interface AgentWindowProps {
 	instanceId: string;
 	/** Initial session ID (optional, will create new if not provided) */
 	initialSessionId?: string;
+	/** Initial worktree ID bound to this agent session */
+	initialWorktreeId?: string | null;
 	/** Callbacks for external integration */
 	callbacks?: AgentWindowCallbacks;
 	/** UI customization */
@@ -48,10 +50,14 @@ export interface AgentWindowProps {
 export const AgentWindow: FC<AgentWindowProps> = ({
 	instanceId,
 	initialSessionId,
+	initialWorktreeId,
 	callbacks,
 	ui: _ui = {},
 	className = '',
 }) => {
+	// Track bound worktree for this agent session
+	const [worktreeId, setWorktreeId] = useState<string | null>(initialWorktreeId ?? null);
+
 	// Session management — scoped to this tab's session
 	const {
 		sessionId,
@@ -77,9 +83,18 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 	// When auto-created, sync session ID back to panel data
 	useEffect(() => {
 		if (sessionId && !initialSessionId) {
-			usePanelTabsStore.getState().updateData(instanceId, { sessionId });
+			usePanelTabsStore.getState().updateData(instanceId, { sessionId, worktreeId });
 		}
-	}, [sessionId, initialSessionId, instanceId]);
+	}, [sessionId, initialSessionId, instanceId, worktreeId]);
+
+	// Persist worktree changes to panel data
+	const handleWorktreeChange = useCallback((newWorktreeId: string | null) => {
+		setWorktreeId(newWorktreeId);
+		usePanelTabsStore.getState().updateData(instanceId, {
+			sessionId: sessionId ?? undefined,
+			worktreeId: newWorktreeId,
+		});
+	}, [instanceId, sessionId]);
 
 	// Sync model selection to the active session (skip redundant calls)
 	const prevModelRef = useRef<string | null>(null);
@@ -105,19 +120,10 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 
 	// Handle message submission from new ChatInputContainer
 	const handleSubmit = useCallback(
-		async (content: string, mode: 'planning' | 'fast', _model: string) => {
-			await sendMessage(content, mode as MessageMode);
+		async (content: string, mode: 'planning' | 'fast', _model: string, attachments?: Attachment[], mentions?: FileMention[]) => {
+			await sendMessage(content, mode as MessageMode, attachments, mentions);
 		},
 		[sendMessage]
-	);
-
-	// Handle tool approval/rejection
-	const resolveToolApproval = useAgentStore((state) => state.resolveToolApproval);
-	const handleToolApproval = useCallback(
-		(toolCallId: string, approved: boolean) => {
-			resolveToolApproval(toolCallId, approved);
-		},
-		[resolveToolApproval]
 	);
 
 	// Handle new session
@@ -128,6 +134,28 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 			}
 		});
 	}, [createSession, selectedModel, openPanel]);
+
+	// Handle local slash commands (UI actions)
+	const handleLocalCommand = useCallback((commandId: string) => {
+		switch (commandId) {
+			case 'clear':
+				handleNewSession();
+				break;
+			default:
+				// For unimplemented local commands, send as agent message
+				sendMessage(`/${commandId}`, 'planning' as MessageMode);
+				break;
+		}
+	}, [sendMessage, handleNewSession]);
+
+	// Handle tool approval/rejection
+	const resolveToolApproval = useAgentStore((state) => state.resolveToolApproval);
+	const handleToolApproval = useCallback(
+		(toolCallId: string, approved: boolean) => {
+			resolveToolApproval(toolCallId, approved);
+		},
+		[resolveToolApproval]
+	);
 
 	// Empty state for no messages
 	if (messages.length === 0) {
@@ -171,7 +199,10 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 				{/* Chat input */}
 				<ChatInputContainer
 					onSubmit={handleSubmit}
+					onLocalCommand={handleLocalCommand}
 					isAgentRunning={isRunning}
+					worktreeId={worktreeId}
+					onWorktreeChange={handleWorktreeChange}
 				/>
 			</div>
 		);
@@ -218,7 +249,10 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 			{/* Chat input */}
 			<ChatInputContainer
 				onSubmit={handleSubmit}
+				onLocalCommand={handleLocalCommand}
 				isAgentRunning={isRunning}
+				worktreeId={worktreeId}
+				onWorktreeChange={handleWorktreeChange}
 			/>
 		</div>
 	);

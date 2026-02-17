@@ -106,7 +106,7 @@ pub struct AgentConfig {
     pub max_tokens: u32,
 }
 
-pub const DEFAULT_MODEL_ID: &str = "claude-opus-4-5-20251101";
+pub const DEFAULT_MODEL_ID: &str = "claude-opus-4-6";
 
 impl Default for AgentConfig {
     fn default() -> Self {

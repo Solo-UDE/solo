@@ -101,6 +101,9 @@ interface FileTreeActions {
   handleFileChanged: (path: string) => void;
   handleFileRenamed: (oldPath: string, newPath: string) => void;
 
+  // Collapse all directories
+  collapseAll: () => void;
+
   // Error handling
   setError: (error: string | null) => void;
 }
@@ -348,6 +351,47 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
           state.entries.set(newPath, updatedEntry);
           state.selected.add(newPath);
 
+          // B4: Cascade rename to children if this is a directory
+          if (entry.is_dir) {
+            const oldPrefix = path + separator;
+            const keysToUpdate: string[] = [];
+            for (const key of state.entries.keys()) {
+              if (key.startsWith(oldPrefix)) {
+                keysToUpdate.push(key);
+              }
+            }
+            for (const oldChildPath of keysToUpdate) {
+              const childEntry = state.entries.get(oldChildPath);
+              if (childEntry) {
+                const newChildPath = newPath + separator + oldChildPath.slice(oldPrefix.length);
+                childEntry.path = newChildPath;
+                state.entries.delete(oldChildPath);
+                state.entries.set(newChildPath, childEntry);
+
+                // Update selection and expanded state
+                if (state.selected.has(oldChildPath)) {
+                  state.selected.delete(oldChildPath);
+                  state.selected.add(newChildPath);
+                }
+                if (state.expanded.has(oldChildPath)) {
+                  state.expanded.delete(oldChildPath);
+                  state.expanded.add(newChildPath);
+                }
+              }
+            }
+
+            // Update children arrays in the renamed directory and its descendants
+            for (const [, e] of state.entries) {
+              if (e.children) {
+                for (const child of e.children) {
+                  if (child.path.startsWith(oldPrefix)) {
+                    child.path = newPath + separator + child.path.slice(oldPrefix.length);
+                  }
+                }
+              }
+            }
+          }
+
           // Update parent's children
           const parent = state.entries.get(parentPath);
           if (parent && parent.children) {
@@ -572,6 +616,47 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
             state.expanded.delete(oldPath);
             state.expanded.add(newPath);
           }
+
+          // B4: Cascade to children if directory
+          if (entry.is_dir) {
+            const separator = oldPath.includes('\\') ? '\\' : '/';
+            const oldPrefix = oldPath + separator;
+            const keysToUpdate: string[] = [];
+            for (const key of state.entries.keys()) {
+              if (key.startsWith(oldPrefix)) {
+                keysToUpdate.push(key);
+              }
+            }
+            for (const oldChildPath of keysToUpdate) {
+              const childEntry = state.entries.get(oldChildPath);
+              if (childEntry) {
+                const newChildPath = newPath + separator + oldChildPath.slice(oldPrefix.length);
+                childEntry.path = newChildPath;
+                childEntry.name = getFileName(newChildPath);
+                state.entries.delete(oldChildPath);
+                state.entries.set(newChildPath, childEntry);
+
+                if (state.selected.has(oldChildPath)) {
+                  state.selected.delete(oldChildPath);
+                  state.selected.add(newChildPath);
+                }
+                if (state.expanded.has(oldChildPath)) {
+                  state.expanded.delete(oldChildPath);
+                  state.expanded.add(newChildPath);
+                }
+              }
+            }
+          }
+        }
+      });
+    },
+
+    collapseAll: () => {
+      set((state) => {
+        if (state.rootPath) {
+          state.expanded = new Set([state.rootPath]);
+        } else {
+          state.expanded = new Set();
         }
       });
     },
@@ -619,7 +704,20 @@ export function useFlattenedTree(): FlatTreeItem[] {
     }
   }
 
-  traverse(rootPath, 0);
+  // Skip root entry — start with its children at depth 0
+  // The root name is displayed in the ContextHeader instead
+  const rootEntry = entries.get(rootPath);
+  if (rootEntry?.is_dir) {
+    // Inject ghost row at root level if creating in root
+    if (creatingInPath === rootPath && creatingType) {
+      result.push({ kind: 'creating', parentPath: rootPath, type: creatingType, depth: 0 });
+    }
+    if (rootEntry.children) {
+      for (const child of rootEntry.children) {
+        traverse(child.path, 0);
+      }
+    }
+  }
 
   return result;
 }

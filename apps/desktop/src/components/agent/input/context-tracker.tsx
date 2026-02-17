@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Gauge } from 'lucide-react';
+import { Gauge } from '@phosphor-icons/react';
 import {
   Popover,
   PopoverContent,
@@ -14,6 +14,7 @@ import {
 import { useActiveSessionId, useSessionMessages } from '../../../stores/agentStore';
 import { useProviderStore, useModels } from '../../../stores/provider-store';
 import { cn } from '../../../lib/utils';
+import { toolbarButtonBase } from './toolbar-button-class';
 
 import type { FC } from 'react';
 import type { Message } from '../../../stores/agentStore';
@@ -121,13 +122,13 @@ export const ContextTracker: FC<ContextTrackerProps> = ({
                 type="button"
                 disabled={disabled}
                 className={cn(
-                  'flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground rounded-md px-2 py-1 border border-muted-foreground/20 hover:bg-accent-foreground/10 transition-all duration-200 focus-visible:outline-none',
+                  toolbarButtonBase,
                   disabled && 'opacity-50 cursor-not-allowed',
                   className
                 )}
               >
                 <Gauge size={13} />
-                <span className="font-medium">
+                <span className="text-xs font-medium">
                   {formatTokenCount(total)}
                 </span>
               </button>
@@ -142,7 +143,7 @@ export const ContextTracker: FC<ContextTrackerProps> = ({
           side="top"
           align="start"
           sideOffset={8}
-          className="w-64 p-0 bg-popover border border-border rounded-lg shadow-xl"
+          className="w-64 p-0 bg-card/95 backdrop-blur-md border border-border/50 rounded-lg shadow-glass"
         >
           <div className="px-4 pt-3 pb-2">
             {/* Header */}

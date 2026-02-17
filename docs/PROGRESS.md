@@ -1,6 +1,6 @@
 # Solo IDE — Progress Tracker
 
-> **Last updated:** 2026-02-11
+> **Last updated:** 2026-02-12
 
 ---
 
@@ -110,17 +110,29 @@ See `docs/MIGRATION.md` for the full Orchids → Solo migration plan.
 
 ---
 
-## Phase 8: Git Integration — IN PROGRESS 🔵
+## Phase 8: Git Integration — COMPLETE ✅
 
-> See `docs/MIGRATION.md` §1A for detailed task list
+- [x] `git_commands.rs` — 16 commands using `git2` crate
+- [x] Git status, diff, changes, stage/unstage, commit, push, pull, discard, branch
+- [x] Source control sidebar UI with staged/unstaged sections
+- [x] `gitStore.ts` Zustand store with 5s polling
+- [x] `src/lib/tauri/git.ts` IPC wrappers
+- [x] Git diff panel with Monaco DiffEditor
+- [x] GitHub REST API client, setup flow
+- [x] Branch selector with inline create branch
 
-- [ ] Create `git_commands.rs` (using `git2` crate)
-- [ ] Git status, diff, log commands
-- [ ] Git commit, push, pull, branch commands
-- [ ] Git init / clone
-- [ ] Source control sidebar UI
-- [ ] `gitStore.ts` Zustand store
-- [ ] `src/lib/tauri/git.ts` IPC wrappers
+### Phase 8.5: Git Fixes & Enhancements — COMPLETE ✅
+
+- [x] Fixed `git_push` auto-commit leak — push no longer silently commits staged changes
+- [x] Commit/push fully separated — commit creates local commit, push only pushes existing commits
+- [x] `git_push` `commit_message` now `Option<String>` (used only for synthetic/orphan commits)
+- [x] `git_commit` now calls `cleanup_git_locks` for stale lock file recovery
+- [x] `commits_ahead` added to `GitRepoStatus` — revwalk count of local commits ahead of remote
+- [x] Push button shows badge with commits ahead count, disabled when nothing to push
+- [x] `git_create_branch` command — validates name, creates from HEAD, checks out
+- [x] Branch selector has inline create branch UI (+ icon, input, spinner, error)
+- [x] Store: removed redundant `commitMessage` clear from `push()`, added `commitsAhead` + `isCreatingBranch`
+- [x] Created `docs/GIT_FEATURES.md` — comprehensive git feature documentation
 
 ---
 
@@ -173,3 +185,25 @@ See `docs/MIGRATION.md` for the full Orchids → Solo migration plan.
 - Dev branch terminal architecture adopted (UUID IDs, SidebarTerminal, TerminalView)
 - Created MIGRATION.md documenting full Orchids → Solo port plan
 - Updated PROGRESS.md to reflect current state
+
+### 2026-02-12
+- Phase 8: Git Integration implemented
+  - `git2` Rust crate for native git operations (no shell dependency)
+  - 10 Tauri commands: status, setup, push, pull, changes, diff, discard, cleanup
+  - 11 Git protocol types in solo-protocol + 2 BackendEvent variants
+  - TypeScript IPC wrappers, Zustand gitStore with 5s polling
+  - Source Control sidebar tab with branch selector, commit UI, file change list
+  - Git diff panel with Monaco DiffEditor (side-by-side)
+  - GitHub REST API client, accounts store, repo setup flow
+  - Confirm dialog for destructive operations (discard file/all)
+
+### 2026-02-14
+- Phase 8.5: Git Fixes & Enhancements
+  - Fixed push auto-commit leak (push no longer creates silent commits)
+  - Commit/push fully separated, commit_message optional on push
+  - Added cleanup_git_locks to git_commit
+  - Added commits_ahead (revwalk) to GitRepoStatus
+  - Push button: badge count, disabled when nothing to push
+  - git_create_branch command with validation + checkout
+  - BranchSelector: inline create branch UI
+  - Created docs/GIT_FEATURES.md

@@ -5,14 +5,17 @@
  * and handles resize via ResizeObserver + FitAddon.
  */
 
-import { useEffect, useLayoutEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
-import { WebLinksAddon } from '@xterm/addon-web-links';
+import type { SearchAddon } from '@xterm/addon-search';
+import { MagnifyingGlass, X, ArrowUp, ArrowDown } from '@phosphor-icons/react';
 import '@xterm/xterm/css/xterm.css';
 
 import { writeTerminal, resizeTerminal } from '@/lib/tauri/terminal';
 import { registerTerminalCallbacks } from '@/hooks/useTerminalStream';
+import { registerTerminalActions } from '@/stores/terminalStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 
 interface TerminalViewProps {
 	terminalId: string;
@@ -73,6 +76,10 @@ function getCssVarHex(name: string): string {
 	return raw ? cssColorToHex(raw) : '';
 }
 
+function isVibrancy(): boolean {
+	return document.documentElement.hasAttribute('data-vibrancy');
+}
+
 function buildTerminalTheme(): Record<string, string> {
 	const dark = document.documentElement.classList.contains('dark');
 	const bg = getCssVarHex('--background');
@@ -80,7 +87,7 @@ function buildTerminalTheme(): Record<string, string> {
 	const muted = getCssVarHex('--muted');
 
 	return {
-		background: bg,
+		background: isVibrancy() ? '#00000000' : bg,
 		foreground: fg,
 		cursor: fg,
 		cursorAccent: bg,
@@ -93,7 +100,55 @@ export function TerminalView({ terminalId, isActive, onExit }: TerminalViewProps
 	const containerRef = useRef<HTMLDivElement>(null);
 	const termRef = useRef<Terminal | null>(null);
 	const fitRef = useRef<FitAddon | null>(null);
+	const searchRef = useRef<SearchAddon | null>(null);
 	const onExitRef = useRef(onExit);
+	const searchInputRef = useRef<HTMLInputElement>(null);
+
+	// Read terminal settings (snapshot at mount via ref to avoid re-creating terminal)
+	const terminalSettings = useRef(useSettingsStore.getState().terminal);
+
+	const [searchOpen, setSearchOpen] = useState(false);
+	const [searchQuery, setSearchQuery] = useState('');
+
+	const ensureSearchAddon = useCallback(async () => {
+		if (!searchRef.current && termRef.current) {
+			const { SearchAddon } = await import('@xterm/addon-search');
+			const addon = new SearchAddon();
+			termRef.current.loadAddon(addon);
+			searchRef.current = addon;
+		}
+		return searchRef.current;
+	}, []);
+
+	const openSearch = useCallback(() => {
+		setSearchOpen(true);
+		ensureSearchAddon();
+		requestAnimationFrame(() => searchInputRef.current?.focus());
+	}, [ensureSearchAddon]);
+
+	const closeSearch = useCallback(() => {
+		setSearchOpen(false);
+		setSearchQuery('');
+		searchRef.current?.clearDecorations();
+		termRef.current?.focus();
+	}, []);
+
+	const handleSearchChange = useCallback((value: string) => {
+		setSearchQuery(value);
+		if (value) {
+			ensureSearchAddon().then((s) => s?.findNext(value));
+		} else {
+			searchRef.current?.clearDecorations();
+		}
+	}, [ensureSearchAddon]);
+
+	const handleSearchNext = useCallback(() => {
+		if (searchQuery) searchRef.current?.findNext(searchQuery);
+	}, [searchQuery]);
+
+	const handleSearchPrev = useCallback(() => {
+		if (searchQuery) searchRef.current?.findPrevious(searchQuery);
+	}, [searchQuery]);
 
 	// Keep the onExit ref current so the registered callback never goes stale
 	useEffect(() => {
@@ -105,28 +160,65 @@ export function TerminalView({ terminalId, isActive, onExit }: TerminalViewProps
 		const container = containerRef.current;
 		if (!container) return;
 
-		const fitAddon = new FitAddon();
-		const webLinksAddon = new WebLinksAddon();
+		const DEV = import.meta.env.DEV;
+		if (DEV) performance.mark('terminal:mount-start');
 
+		if (DEV) performance.mark('terminal:addon-create-start');
+		const fitAddon = new FitAddon();
+		if (DEV) performance.mark('terminal:addon-create-end');
+
+		if (DEV) performance.mark('terminal:instance-start');
+		const settings = terminalSettings.current;
+		const cursorStyleMap = { line: 'bar', block: 'block', underline: 'underline' } as const;
 		const term = new Terminal({
 			cursorBlink: true,
-			fontSize: 13,
-			fontFamily: '"MesloLGS NF", "Hack Nerd Font", "FiraCode Nerd Font", "JetBrainsMono Nerd Font", ui-monospace, "SF Mono", Menlo, Monaco, "Cascadia Code", monospace',
+			cursorStyle: cursorStyleMap[settings.cursorStyle] ?? 'bar',
+			cursorWidth: 2,
+			cursorInactiveStyle: 'outline',
+			fontSize: settings.fontSize,
+			fontFamily: settings.fontFamily,
 			theme: buildTerminalTheme(),
+			allowTransparency: isVibrancy(),
 			allowProposedApi: true,
-			scrollback: 5000,
+			scrollback: settings.scrollback,
 		});
+		if (DEV) performance.mark('terminal:instance-end');
 
+		if (DEV) performance.mark('terminal:addon-load-start');
 		term.loadAddon(fitAddon);
-		term.loadAddon(webLinksAddon);
+		if (DEV) performance.mark('terminal:addon-load-end');
+
+		if (DEV) performance.mark('terminal:dom-open-start');
 		term.open(container);
+		if (DEV) performance.mark('terminal:dom-open-end');
+
+		// Defer WebLinksAddon — not needed at mount time
+		const scheduleIdle = globalThis.requestIdleCallback ?? ((cb: () => void) => setTimeout(cb, 150));
+		scheduleIdle(() => {
+			import('@xterm/addon-web-links').then(({ WebLinksAddon }) => {
+				term.loadAddon(new WebLinksAddon());
+			});
+		});
 
 		termRef.current = term;
 		fitRef.current = fitAddon;
 
 		// Fit after open (needs a frame for layout)
 		requestAnimationFrame(() => {
+			if (DEV) performance.mark('terminal:fit-start');
 			fitAddon.fit();
+			if (DEV) {
+				performance.mark('terminal:fit-end');
+				performance.measure('terminal:addon-create', 'terminal:addon-create-start', 'terminal:addon-create-end');
+				performance.measure('terminal:instance', 'terminal:instance-start', 'terminal:instance-end');
+				performance.measure('terminal:addon-load', 'terminal:addon-load-start', 'terminal:addon-load-end');
+				performance.measure('terminal:dom-open', 'terminal:dom-open-start', 'terminal:dom-open-end');
+				performance.measure('terminal:fit', 'terminal:fit-start', 'terminal:fit-end');
+				performance.measure('terminal:total-mount', 'terminal:mount-start', 'terminal:fit-end');
+				const entries = performance.getEntriesByType('measure')
+					.filter((e) => e.name.startsWith('terminal:'));
+				console.table(entries.map((e) => ({ name: e.name, ms: +e.duration.toFixed(2) })));
+			}
 		});
 
 		// Forward user keystrokes to PTY
@@ -135,6 +227,13 @@ export function TerminalView({ terminalId, isActive, onExit }: TerminalViewProps
 				console.error('Failed to write to terminal:', err);
 			});
 		});
+
+		// Register imperative actions (clear, find)
+		const unregisterActions = registerTerminalActions(
+			terminalId,
+			() => term.clear(),
+			() => openSearch(),
+		);
 
 		// Register for backend PTY output (call through ref to avoid stale closure)
 		const unregister = registerTerminalCallbacks(
@@ -171,15 +270,49 @@ export function TerminalView({ terminalId, isActive, onExit }: TerminalViewProps
 			attributeFilter: ['class'],
 		});
 
+		// Sync terminal settings changes (font size, font family, cursor)
+		// Track previous values to avoid unnecessary updates (which cause resize/flicker)
+		let prevFont = settings.fontFamily;
+		let prevSize = settings.fontSize;
+		let prevCursor = settings.cursorStyle;
+		const cMap = { line: 'bar', block: 'block', underline: 'underline' } as const;
+
+		const unsubSettings = useSettingsStore.subscribe((state) => {
+			const ts = state.terminal;
+			let needsFit = false;
+
+			if (ts.fontSize !== prevSize) {
+				term.options.fontSize = ts.fontSize;
+				prevSize = ts.fontSize;
+				needsFit = true;
+			}
+			if (ts.fontFamily !== prevFont) {
+				term.options.fontFamily = ts.fontFamily;
+				prevFont = ts.fontFamily;
+				needsFit = true;
+			}
+			if (ts.cursorStyle !== prevCursor) {
+				term.options.cursorStyle = cMap[ts.cursorStyle] ?? 'bar';
+				prevCursor = ts.cursorStyle;
+			}
+
+			if (needsFit) {
+				requestAnimationFrame(() => fitAddon.fit());
+			}
+		});
+
 		return () => {
 			if (resizeTimer) clearTimeout(resizeTimer);
 			observer.disconnect();
 			themeObserver.disconnect();
+			unsubSettings();
 			dataDisposable.dispose();
 			unregister();
+			unregisterActions();
 			term.dispose();
 			termRef.current = null;
 			fitRef.current = null;
+			searchRef.current = null; // may be null if search was never opened
 		};
 	}, [terminalId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -193,10 +326,54 @@ export function TerminalView({ terminalId, isActive, onExit }: TerminalViewProps
 	}, [isActive]);
 
 	return (
-		<div
-			ref={containerRef}
-			className="h-full w-full"
-			style={{ padding: 4 }}
-		/>
+		<div className="h-full w-full relative">
+			{/* Search bar overlay */}
+			{searchOpen && (
+				<div className="absolute top-1 right-2 z-10 flex items-center gap-1 bg-sidebar border border-border/50 rounded-md px-2 py-1 shadow-sm">
+					<MagnifyingGlass className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+					<input
+						ref={searchInputRef}
+						type="text"
+						value={searchQuery}
+						onChange={(e) => handleSearchChange(e.target.value)}
+						onKeyDown={(e) => {
+							if (e.key === 'Enter') {
+								e.shiftKey ? handleSearchPrev() : handleSearchNext();
+							} else if (e.key === 'Escape') {
+								closeSearch();
+							}
+						}}
+						className="bg-transparent text-xs text-foreground outline-none w-40 placeholder:text-muted-foreground/50"
+						placeholder="Find..."
+					/>
+					<button
+						onClick={handleSearchPrev}
+						className="p-0.5 rounded hover:bg-muted-foreground/20 text-muted-foreground"
+						aria-label="Previous match"
+					>
+						<ArrowUp className="w-3 h-3" />
+					</button>
+					<button
+						onClick={handleSearchNext}
+						className="p-0.5 rounded hover:bg-muted-foreground/20 text-muted-foreground"
+						aria-label="Next match"
+					>
+						<ArrowDown className="w-3 h-3" />
+					</button>
+					<button
+						onClick={closeSearch}
+						className="p-0.5 rounded hover:bg-muted-foreground/20 text-muted-foreground"
+						aria-label="Close search"
+					>
+						<X className="w-3 h-3" />
+					</button>
+				</div>
+			)}
+			<div
+				ref={containerRef}
+				className="h-full w-full"
+				style={{ padding: 4 }}
+			/>
+		</div>
 	);
 }

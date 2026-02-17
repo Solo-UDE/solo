@@ -14,6 +14,13 @@ use serde::{Deserialize, Serialize};
 use std::process::Command;
 use ts_rs::TS;
 
+/// Client ID used by Claude Code CLI for OAuth token refresh
+const CLAUDE_CODE_OAUTH_CLIENT_ID: &str = "claude-desktop";
+/// Token endpoint used by Claude Code CLI
+const CLAUDE_CODE_TOKEN_ENDPOINT: &str = "https://api.anthropic.com/v1/oauth/token";
+/// Treat tokens as expired 5 minutes early to avoid in-flight failures
+const EXPIRY_BUFFER_MS: i64 = 300_000;
+
 /// Source of credentials
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../apps/desktop/src/bindings/")]
@@ -27,6 +34,8 @@ pub enum CredentialSource {
     ClaudeOAuth,
     /// Solo IDE OAuth token
     SoloOAuth,
+    /// From Claude Code credentials file (~/.claude/.credentials.json)
+    ClaudeOAuthFile,
 }
 
 impl std::fmt::Display for CredentialSource {
@@ -36,6 +45,7 @@ impl std::fmt::Display for CredentialSource {
             CredentialSource::Environment => write!(f, "environment"),
             CredentialSource::ClaudeOAuth => write!(f, "claude-oauth"),
             CredentialSource::SoloOAuth => write!(f, "solo-oauth"),
+            CredentialSource::ClaudeOAuthFile => write!(f, "claude-oauth-file"),
         }
     }
 }
@@ -47,6 +57,8 @@ pub struct CredentialInfo {
     pub api_key: String,
     /// Source of the credential
     pub source: CredentialSource,
+    /// ChatGPT account ID (only set for OpenAI OAuth credentials)
+    pub account_id: Option<String>,
 }
 
 /// Keychain service names
@@ -138,6 +150,7 @@ impl CredentialManager {
                     if let Ok(new_token) = self.refresh_openai_oauth_token().await {
                         return Ok(Some(CredentialInfo {
                             api_key: new_token.access_token,
+                            account_id: new_token.account_id,
                             source: CredentialSource::SoloOAuth,
                         }));
                     }
@@ -146,6 +159,7 @@ impl CredentialManager {
                 if !token.is_expired() {
                     return Ok(Some(CredentialInfo {
                         api_key: token.access_token,
+                        account_id: token.account_id,
                         source: CredentialSource::SoloOAuth,
                     }));
                 }
@@ -156,6 +170,7 @@ impl CredentialManager {
                 if let Ok(new_token) = self.refresh_oauth_token(provider).await {
                     return Ok(Some(CredentialInfo {
                         api_key: new_token.access_token,
+                        account_id: None,
                         source: CredentialSource::SoloOAuth,
                     }));
                 }
@@ -164,6 +179,7 @@ impl CredentialManager {
             if !token.is_expired() {
                 return Ok(Some(CredentialInfo {
                     api_key: token.access_token,
+                    account_id: None,
                     source: CredentialSource::SoloOAuth,
                 }));
             }
@@ -173,16 +189,25 @@ impl CredentialManager {
         if let Some(key) = self.get_from_keychain(provider).await? {
             return Ok(Some(CredentialInfo {
                 api_key: key,
+                account_id: None,
                 source: CredentialSource::Keychain,
             }));
         }
 
-        // 3. For Anthropic, try Claude Code OAuth
+        // 3. For Anthropic, try Claude Code OAuth (keychain then file)
         if provider == ProviderType::Anthropic {
             if let Some(key) = self.get_claude_oauth().await? {
                 return Ok(Some(CredentialInfo {
                     api_key: key,
+                    account_id: None,
                     source: CredentialSource::ClaudeOAuth,
+                }));
+            }
+            if let Some(key) = self.get_claude_oauth_from_file().await? {
+                return Ok(Some(CredentialInfo {
+                    api_key: key,
+                    account_id: None,
+                    source: CredentialSource::ClaudeOAuthFile,
                 }));
             }
         }
@@ -191,6 +216,7 @@ impl CredentialManager {
         if let Some(key) = self.get_from_env(provider) {
             return Ok(Some(CredentialInfo {
                 api_key: key,
+                account_id: None,
                 source: CredentialSource::Environment,
             }));
         }
@@ -237,6 +263,64 @@ impl CredentialManager {
         }
     }
 
+    /// Parse `expiresAt` from Claude Code credential JSON.
+    /// The value may be a JSON number or a string containing digits.
+    fn parse_expires_at(oauth_obj: &serde_json::Value) -> Option<i64> {
+        oauth_obj.get("expiresAt").and_then(|exp| {
+            exp.as_i64().or_else(|| {
+                exp.as_str()
+                    .and_then(|s| s.parse::<i64>().ok())
+            })
+        })
+    }
+
+    /// Check whether a Claude Code token is expired (with 5-minute buffer).
+    fn is_claude_token_expired(expires_at: i64) -> bool {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+        expires_at <= now + EXPIRY_BUFFER_MS
+    }
+
+    /// Refresh a Claude Code CLI OAuth token using its refresh_token.
+    ///
+    /// POSTs to the Anthropic token endpoint with `client_id=claude-desktop`.
+    /// Returns the new access token on success, `None` on any failure.
+    /// Does NOT update the keychain — the CLI manages its own entries.
+    async fn refresh_claude_code_token(refresh_token: &str) -> Option<String> {
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(15))
+            .build()
+            .ok()?;
+
+        let params = [
+            ("grant_type", "refresh_token"),
+            ("client_id", CLAUDE_CODE_OAUTH_CLIENT_ID),
+            ("refresh_token", refresh_token),
+        ];
+
+        let resp = client
+            .post(CLAUDE_CODE_TOKEN_ENDPOINT)
+            .form(&params)
+            .send()
+            .await
+            .ok()?;
+
+        if !resp.status().is_success() {
+            tracing::warn!(
+                "Claude Code token refresh failed with status {}",
+                resp.status()
+            );
+            return None;
+        }
+
+        let body: serde_json::Value = resp.json().await.ok()?;
+        body.get("access_token")
+            .and_then(|t| t.as_str())
+            .map(|s| s.to_string())
+    }
+
     /// Get Claude Code OAuth token from Keychain
     ///
     /// Claude Code CLI stores credentials in the keychain with service name
@@ -262,36 +346,46 @@ impl CredentialManager {
                 }
 
                 // Parse the JSON to extract the access token
-                // Format: {"claudeAiOauth":{"accessToken":"...", "expiresAt":..., ...}}
+                // Format: {"claudeAiOauth":{"accessToken":"...", "expiresAt":..., "refreshToken":"...", ...}}
                 match serde_json::from_str::<serde_json::Value>(&json_str) {
                     Ok(value) => {
-                        if let Some(access_token) = value
-                            .get("claudeAiOauth")
-                            .and_then(|oauth| oauth.get("accessToken"))
-                            .and_then(|token| token.as_str())
-                        {
-                            // Check if token is expired
-                            if let Some(expires_at) = value
-                                .get("claudeAiOauth")
-                                .and_then(|oauth| oauth.get("expiresAt"))
-                                .and_then(|exp| exp.as_i64())
-                            {
-                                let now = std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .unwrap_or_default()
-                                    .as_millis() as i64;
-
-                                if expires_at <= now {
-                                    tracing::debug!("Claude Code OAuth token expired");
-                                    return Ok(None);
-                                }
+                        let oauth_obj = match value.get("claudeAiOauth") {
+                            Some(obj) => obj,
+                            None => {
+                                tracing::debug!("Claude Code credentials found but no claudeAiOauth");
+                                return Ok(None);
                             }
+                        };
 
-                            Ok(Some(access_token.to_string()))
-                        } else {
-                            tracing::debug!("Claude Code credentials found but no accessToken");
-                            Ok(None)
+                        let access_token = match oauth_obj.get("accessToken").and_then(|t| t.as_str()) {
+                            Some(t) => t.to_string(),
+                            None => {
+                                tracing::debug!("Claude Code credentials found but no accessToken");
+                                return Ok(None);
+                            }
+                        };
+
+                        // Check if token is expired (with 5-min buffer)
+                        if let Some(expires_at) = Self::parse_expires_at(oauth_obj) {
+                            if Self::is_claude_token_expired(expires_at) {
+                                tracing::debug!("Claude Code OAuth token expired, attempting refresh");
+
+                                // Try to refresh using the refresh token
+                                if let Some(refresh_token) = oauth_obj.get("refreshToken").and_then(|t| t.as_str()) {
+                                    if let Some(new_token) = Self::refresh_claude_code_token(refresh_token).await {
+                                        tracing::info!("Successfully refreshed Claude Code OAuth token");
+                                        return Ok(Some(new_token));
+                                    }
+                                    tracing::warn!("Failed to refresh Claude Code OAuth token");
+                                } else {
+                                    tracing::debug!("No refreshToken in Claude Code credentials");
+                                }
+
+                                return Ok(None);
+                            }
                         }
+
+                        Ok(Some(access_token))
                     }
                     Err(e) => {
                         tracing::warn!("Failed to parse Claude Code credentials JSON: {}", e);
@@ -305,6 +399,170 @@ impl CredentialManager {
                 Ok(None)
             }
         }
+    }
+
+    /// Read Claude Code credentials from ~/.claude/.credentials.json
+    ///
+    /// This is a fallback when keychain access fails. Claude Code may write
+    /// credentials here as an alternative storage mechanism.
+    async fn get_claude_oauth_from_file(&self) -> ProviderResult<Option<String>> {
+        let home = std::env::var("HOME").unwrap_or_default();
+        if home.is_empty() {
+            return Ok(None);
+        }
+        let path = std::path::PathBuf::from(&home)
+            .join(".claude")
+            .join(".credentials.json");
+
+        let content = match std::fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(_) => return Ok(None),
+        };
+
+        match serde_json::from_str::<serde_json::Value>(&content) {
+            Ok(value) => {
+                let oauth_obj = match value.get("claudeAiOauth") {
+                    Some(obj) => obj,
+                    None => return Ok(None),
+                };
+
+                let access_token = match oauth_obj.get("accessToken").and_then(|t| t.as_str()) {
+                    Some(t) => t.to_string(),
+                    None => return Ok(None),
+                };
+
+                // Check if token is expired (with 5-min buffer)
+                if let Some(expires_at) = Self::parse_expires_at(oauth_obj) {
+                    if Self::is_claude_token_expired(expires_at) {
+                        tracing::debug!("Claude Code file OAuth token expired, attempting refresh");
+
+                        if let Some(refresh_token) = oauth_obj.get("refreshToken").and_then(|t| t.as_str()) {
+                            if let Some(new_token) = Self::refresh_claude_code_token(refresh_token).await {
+                                tracing::info!("Successfully refreshed Claude Code file OAuth token");
+                                return Ok(Some(new_token));
+                            }
+                            tracing::warn!("Failed to refresh Claude Code file OAuth token");
+                        } else {
+                            tracing::debug!("No refreshToken in Claude Code file credentials");
+                        }
+
+                        return Ok(None);
+                    }
+                }
+
+                Ok(Some(access_token))
+            }
+            Err(e) => {
+                tracing::warn!("Failed to parse ~/.claude/.credentials.json: {}", e);
+                Ok(None)
+            }
+        }
+    }
+
+    /// Get detailed Claude OAuth credential info (token + expiry + source).
+    ///
+    /// Used by `verify_claude_setup` to return structured status.
+    /// Returns (access_token, expires_at_ms, source, raw_oauth_json).
+    pub async fn get_claude_oauth_detailed(
+        &self,
+    ) -> ProviderResult<Option<(String, Option<i64>, CredentialSource, serde_json::Value)>> {
+        // Try keychain first
+        let keychain_result = Command::new("security")
+            .args([
+                "find-generic-password",
+                "-s",
+                "Claude Code-credentials",
+                "-w",
+            ])
+            .output();
+
+        if let Ok(output) = keychain_result {
+            if output.status.success() {
+                let json_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !json_str.is_empty() {
+                    if let Ok(value) = serde_json::from_str::<serde_json::Value>(&json_str) {
+                        if let Some(oauth_obj) = value.get("claudeAiOauth") {
+                            if let Some(access_token) = oauth_obj.get("accessToken").and_then(|t| t.as_str()) {
+                                let expires_at = Self::parse_expires_at(oauth_obj);
+
+                                // If expired, try to refresh and return the new token
+                                let final_token = if let Some(exp) = expires_at {
+                                    if Self::is_claude_token_expired(exp) {
+                                        if let Some(refresh_token) = oauth_obj.get("refreshToken").and_then(|t| t.as_str()) {
+                                            if let Some(new_token) = Self::refresh_claude_code_token(refresh_token).await {
+                                                tracing::info!("Refreshed Claude Code token in detailed check");
+                                                new_token
+                                            } else {
+                                                access_token.to_string()
+                                            }
+                                        } else {
+                                            access_token.to_string()
+                                        }
+                                    } else {
+                                        access_token.to_string()
+                                    }
+                                } else {
+                                    access_token.to_string()
+                                };
+
+                                return Ok(Some((
+                                    final_token,
+                                    expires_at,
+                                    CredentialSource::ClaudeOAuth,
+                                    oauth_obj.clone(),
+                                )));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Try file fallback
+        let home = std::env::var("HOME").unwrap_or_default();
+        if !home.is_empty() {
+            let path = std::path::PathBuf::from(&home)
+                .join(".claude")
+                .join(".credentials.json");
+
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                if let Ok(value) = serde_json::from_str::<serde_json::Value>(&content) {
+                    if let Some(oauth_obj) = value.get("claudeAiOauth") {
+                        if let Some(access_token) = oauth_obj.get("accessToken").and_then(|t| t.as_str()) {
+                            let expires_at = Self::parse_expires_at(oauth_obj);
+
+                            let final_token = if let Some(exp) = expires_at {
+                                if Self::is_claude_token_expired(exp) {
+                                    if let Some(refresh_token) = oauth_obj.get("refreshToken").and_then(|t| t.as_str()) {
+                                        if let Some(new_token) = Self::refresh_claude_code_token(refresh_token).await {
+                                            tracing::info!("Refreshed Claude Code file token in detailed check");
+                                            new_token
+                                        } else {
+                                            access_token.to_string()
+                                        }
+                                    } else {
+                                        access_token.to_string()
+                                    }
+                                } else {
+                                    access_token.to_string()
+                                }
+                            } else {
+                                access_token.to_string()
+                            };
+
+                            return Ok(Some((
+                                final_token,
+                                expires_at,
+                                CredentialSource::ClaudeOAuthFile,
+                                oauth_obj.clone(),
+                            )));
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(None)
     }
 
     /// Get credentials from environment variable
@@ -346,6 +604,7 @@ impl CredentialManager {
             provider,
             CredentialInfo {
                 api_key: api_key.to_string(),
+                account_id: None,
                 source: CredentialSource::Keychain,
             },
         );
@@ -734,7 +993,7 @@ impl CredentialManager {
             let auth_type = match info.source {
                 CredentialSource::Keychain => AuthType::ApiKey,
                 CredentialSource::Environment => AuthType::ApiKey,
-                CredentialSource::ClaudeOAuth => AuthType::ClaudeOAuth,
+                CredentialSource::ClaudeOAuth | CredentialSource::ClaudeOAuthFile => AuthType::ClaudeOAuth,
                 CredentialSource::SoloOAuth => AuthType::OAuth,
             };
 
@@ -796,5 +1055,6 @@ mod tests {
         assert_eq!(CredentialSource::Environment.to_string(), "environment");
         assert_eq!(CredentialSource::ClaudeOAuth.to_string(), "claude-oauth");
         assert_eq!(CredentialSource::SoloOAuth.to_string(), "solo-oauth");
+        assert_eq!(CredentialSource::ClaudeOAuthFile.to_string(), "claude-oauth-file");
     }
 }

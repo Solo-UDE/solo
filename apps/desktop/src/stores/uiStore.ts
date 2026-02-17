@@ -7,13 +7,18 @@ import { immer } from 'zustand/middleware/immer';
 import { SIDEBAR, TERMINAL_SECTION } from '@/lib/constants';
 
 // Sidebar tab types
-export type SidebarTab = 'explorer' | 'sessions';
+export type SidebarTab = 'explorer' | 'sessions' | 'source-control';
+
+// Settings tab types
+export type SettingsTabId = 'general' | 'editor' | 'terminal' | 'files' | 'shortcuts' | 'ai';
 
 interface UIState {
   leftSidebarWidth: number;
   activeTab: SidebarTab;
   terminalPanelOpen: boolean;
   terminalPanelHeight: number;
+  settingsOpen: boolean;
+  settingsTab: SettingsTabId;
 }
 
 interface UIActions {
@@ -24,6 +29,9 @@ interface UIActions {
   setActiveTab: (tab: SidebarTab) => void;
   toggleTerminalPanel: () => void;
   setTerminalPanelHeight: (height: number) => void;
+  openSettings: (tab?: SettingsTabId) => void;
+  closeSettings: () => void;
+  setSettingsTab: (tab: SettingsTabId) => void;
 }
 
 type UIStore = UIState & UIActions;
@@ -34,6 +42,8 @@ export const useUIStore = create<UIStore>()(
     activeTab: 'explorer' as SidebarTab,
     terminalPanelOpen: false,
     terminalPanelHeight: TERMINAL_SECTION.defaultHeight,
+    settingsOpen: false,
+    settingsTab: 'general' as SettingsTabId,
 
     toggleLeftSidebar: (): void => {
       set((state) => {
@@ -75,10 +85,33 @@ export const useUIStore = create<UIStore>()(
 
     setTerminalPanelHeight: (height: number): void => {
       set((state) => {
+        const dynamicMax = Math.min(
+          TERMINAL_SECTION.maxHeight,
+          Math.floor(window.innerHeight * 0.6),
+        );
         state.terminalPanelHeight = Math.max(
           TERMINAL_SECTION.minHeight,
-          Math.min(height, TERMINAL_SECTION.maxHeight),
+          Math.min(height, dynamicMax),
         );
+      });
+    },
+
+    openSettings: (tab?: SettingsTabId): void => {
+      set((state) => {
+        state.settingsOpen = true;
+        if (tab) state.settingsTab = tab;
+      });
+    },
+
+    closeSettings: (): void => {
+      set((state) => {
+        state.settingsOpen = false;
+      });
+    },
+
+    setSettingsTab: (tab: SettingsTabId): void => {
+      set((state) => {
+        state.settingsTab = tab;
       });
     },
   }))

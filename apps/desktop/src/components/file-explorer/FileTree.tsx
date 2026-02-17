@@ -2,12 +2,11 @@
  * FileTree - Virtualized file tree with keyboard navigation
  */
 
-import React, { useCallback, useRef, useEffect, useState } from 'react';
+import React, { useCallback, useRef, useEffect, useState, useMemo } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import { FileTreeNode } from './FileTreeNode';
 import { CreationRow } from './CreationRow';
-import { FileContextMenu } from './FileContextMenu';
 import { ConfirmDialog } from './ConfirmDialog';
 import {
   useFileExplorerStore,
@@ -15,19 +14,11 @@ import {
   getParentPath,
   getFileName,
 } from '../../stores/fileExplorerStore';
+import { useSettingsStore } from '../../stores/settingsStore';
 import { revealInFinder } from '../../lib/tauri/fs';
-
-interface ContextMenuState {
-  position: { x: number; y: number } | null;
-  targetPath: string | null;
-  isDirectory: boolean;
-}
-
-interface DeleteConfirmState {
-  isOpen: boolean;
-  paths: string[];
-  message: string;
-}
+import { createTerminal } from '../../lib/tauri/terminal';
+import { useTerminalStore } from '../../stores/terminalStore';
+import { useUIStore } from '../../stores/uiStore';
 
 const ROW_HEIGHT = 28;
 const OVERSCAN = 10;
@@ -40,12 +31,16 @@ export function FileTree({ onFileOpen }: FileTreeProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const flattenedTree = useFlattenedTree();
 
-  const rootPath = useFileExplorerStore((s) => s.rootPath);
+  // B1: Delete confirmation state
+  const [deleteConfirm, setDeleteConfirm] = useState<{ paths: string[]; name: string; isDir: boolean } | null>(null);
+
+  // B2: Hidden files setting
+  const showHiddenFiles = useSettingsStore((s) => s.files.showHiddenFiles);
+
   const selected = useFileExplorerStore((s) => s.selected);
   const expanded = useFileExplorerStore((s) => s.expanded);
   const loading = useFileExplorerStore((s) => s.loading);
   const renamingPath = useFileExplorerStore((s) => s.renamingPath);
-  const entries = useFileExplorerStore((s) => s.entries);
 
   const selectFile = useFileExplorerStore((s) => s.selectFile);
   const toggleDirectory = useFileExplorerStore((s) => s.toggleDirectory);
@@ -58,26 +53,59 @@ export function FileTree({ onFileOpen }: FileTreeProps) {
   const submitCreating = useFileExplorerStore((s) => s.submitCreating);
   const creatingInPath = useFileExplorerStore((s) => s.creatingInPath);
 
-  // Context menu state
-  const [contextMenu, setContextMenu] = useState<ContextMenuState>({
-    position: null,
-    targetPath: null,
-    isDirectory: false,
-  });
+  // B2: Filter hidden files from the flattened tree (must be before virtualizer)
+  const visibleTree = useMemo(() => {
+    if (showHiddenFiles) return flattenedTree;
+    return flattenedTree.filter((item) => {
+      if (item.kind === 'creating') return true;
+      return !item.entry.name.startsWith('.');
+    });
+  }, [flattenedTree, showHiddenFiles]);
 
-  // Delete confirmation dialog state
-  const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirmState>({
-    isOpen: false,
-    paths: [],
-    message: '',
-  });
-
-  const virtualizer = useVirtualizer({
-    count: flattenedTree.length,
+  // Virtualizer using filtered tree
+  const filteredVirtualizer = useVirtualizer({
+    count: visibleTree.length,
     getScrollElement: () => containerRef.current,
     estimateSize: () => ROW_HEIGHT,
     overscan: OVERSCAN,
   });
+
+  // B1: Show delete confirmation dialog
+  const requestDeleteConfirm = useCallback(
+    (paths: string[]) => {
+      if (paths.length === 0) return;
+      const entries = useFileExplorerStore.getState().entries;
+      const firstName = getFileName(paths[0]);
+      const firstEntry = entries.get(paths[0]);
+      const isDir = firstEntry?.is_dir ?? false;
+
+      if (paths.length === 1) {
+        setDeleteConfirm({
+          paths,
+          name: firstName,
+          isDir,
+        });
+      } else {
+        setDeleteConfirm({
+          paths,
+          name: `${paths.length} items`,
+          isDir: false,
+        });
+      }
+    },
+    []
+  );
+
+  const handleConfirmDelete = useCallback(() => {
+    if (deleteConfirm) {
+      deleteFiles(deleteConfirm.paths);
+      setDeleteConfirm(null);
+    }
+  }, [deleteConfirm, deleteFiles]);
+
+  const handleCancelDelete = useCallback(() => {
+    setDeleteConfirm(null);
+  }, []);
 
   // Keyboard navigation
   useEffect(() => {
@@ -89,15 +117,15 @@ export function FileTree({ onFileOpen }: FileTreeProps) {
       if (creatingInPath) return;
 
       const selectedPaths = Array.from(selected);
-      const firstSelectedIndex = flattenedTree.findIndex(
+      const firstSelectedIndex = visibleTree.findIndex(
         (item) => item.kind === 'entry' && selectedPaths[0] === item.entry.path
       );
 
       // Helper to find the next navigable entry item, skipping ghost rows
       const findNextEntry = (from: number, direction: 1 | -1): number => {
         let idx = from + direction;
-        while (idx >= 0 && idx < flattenedTree.length) {
-          if (flattenedTree[idx].kind === 'entry') return idx;
+        while (idx >= 0 && idx < visibleTree.length) {
+          if (visibleTree[idx].kind === 'entry') return idx;
           idx += direction;
         }
         return from;
@@ -107,42 +135,34 @@ export function FileTree({ onFileOpen }: FileTreeProps) {
         case 'ArrowDown': {
           e.preventDefault();
           const nextIndex = findNextEntry(firstSelectedIndex, 1);
-          const item = flattenedTree[nextIndex];
+          const item = visibleTree[nextIndex];
           if (item?.kind === 'entry') {
             selectFile(item.entry.path);
-            virtualizer.scrollToIndex(nextIndex);
+            filteredVirtualizer.scrollToIndex(nextIndex);
           }
           break;
         }
         case 'ArrowUp': {
           e.preventDefault();
           const prevIndex = findNextEntry(firstSelectedIndex, -1);
-          const item = flattenedTree[prevIndex];
+          const item = visibleTree[prevIndex];
           if (item?.kind === 'entry') {
             selectFile(item.entry.path);
-            virtualizer.scrollToIndex(prevIndex);
+            filteredVirtualizer.scrollToIndex(prevIndex);
           }
           break;
         }
         case 'ArrowRight': {
           e.preventDefault();
-          const item = flattenedTree[firstSelectedIndex];
+          const item = visibleTree[firstSelectedIndex];
           if (item?.kind === 'entry' && item.entry.is_dir && !expanded.has(item.entry.path)) {
-            toggleDirectory(item.entry.path);
-          }
-          break;
-        }
-        case 'ArrowLeft': {
-          e.preventDefault();
-          const item = flattenedTree[firstSelectedIndex];
-          if (item?.kind === 'entry' && item.entry.is_dir && expanded.has(item.entry.path)) {
             toggleDirectory(item.entry.path);
           }
           break;
         }
         case 'Enter': {
           e.preventDefault();
-          const item = flattenedTree[firstSelectedIndex];
+          const item = visibleTree[firstSelectedIndex];
           if (item?.kind === 'entry') {
             if (item.entry.is_dir) {
               toggleDirectory(item.entry.path);
@@ -159,20 +179,36 @@ export function FileTree({ onFileOpen }: FileTreeProps) {
           }
           break;
         }
+        case 'ArrowLeft': {
+          e.preventDefault();
+          const leftItem = visibleTree[firstSelectedIndex];
+          if (leftItem?.kind === 'entry') {
+            if (leftItem.entry.is_dir && expanded.has(leftItem.entry.path)) {
+              // Collapse expanded directory
+              toggleDirectory(leftItem.entry.path);
+            } else {
+              // B8: Navigate to parent directory
+              const parentPath = getParentPath(leftItem.entry.path);
+              const parentIndex = visibleTree.findIndex(
+                (item) => item.kind === 'entry' && item.entry.path === parentPath
+              );
+              if (parentIndex >= 0) {
+                const parentItem = visibleTree[parentIndex];
+                if (parentItem?.kind === 'entry') {
+                  selectFile(parentItem.entry.path);
+                  filteredVirtualizer.scrollToIndex(parentIndex);
+                }
+              }
+            }
+          }
+          break;
+        }
         case 'Delete':
         case 'Backspace': {
           if (!renamingPath && selectedPaths.length > 0) {
             e.preventDefault();
-            const count = selectedPaths.length;
-            const message =
-              count === 1
-                ? `Are you sure you want to delete "${getFileName(selectedPaths[0])}"?`
-                : `Are you sure you want to delete ${count} items?`;
-            setDeleteConfirm({
-              isOpen: true,
-              paths: selectedPaths,
-              message,
-            });
+            // B1: Show confirmation instead of deleting immediately
+            requestDeleteConfirm(selectedPaths);
           }
           break;
         }
@@ -182,7 +218,7 @@ export function FileTree({ onFileOpen }: FileTreeProps) {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [
-    flattenedTree,
+    visibleTree,
     selected,
     expanded,
     renamingPath,
@@ -190,8 +226,10 @@ export function FileTree({ onFileOpen }: FileTreeProps) {
     selectFile,
     toggleDirectory,
     startRename,
+    deleteFiles,
+    requestDeleteConfirm,
     onFileOpen,
-    virtualizer,
+    filteredVirtualizer,
   ]);
 
   const handleClick = useCallback(
@@ -212,100 +250,6 @@ export function FileTree({ onFileOpen }: FileTreeProps) {
     [toggleDirectory, onFileOpen]
   );
 
-  const handleContextMenu = useCallback(
-    (path: string, event: React.MouseEvent) => {
-      event.preventDefault();
-      // Select the item if not already selected
-      if (!selected.has(path)) {
-        selectFile(path);
-      }
-      // Show context menu
-      const entry = entries.get(path);
-      setContextMenu({
-        position: { x: event.clientX, y: event.clientY },
-        targetPath: path,
-        isDirectory: entry?.is_dir ?? false,
-      });
-    },
-    [selected, selectFile, entries]
-  );
-
-  const closeContextMenu = useCallback(() => {
-    setContextMenu({ position: null, targetPath: null, isDirectory: false });
-  }, []);
-
-  // Get target directory from context menu or root
-  const getContextMenuTargetDir = useCallback((): string | null => {
-    const targetPath = contextMenu.targetPath;
-    if (!targetPath && !rootPath) return null;
-
-    const entry = targetPath ? entries.get(targetPath) : null;
-    return entry?.is_dir
-      ? targetPath
-      : targetPath
-        ? getParentPath(targetPath)
-        : rootPath;
-  }, [contextMenu.targetPath, rootPath, entries]);
-
-  const handleNewFile = useCallback(() => {
-    const targetDir = getContextMenuTargetDir();
-    if (!targetDir) return;
-    startCreating(targetDir, 'file');
-  }, [getContextMenuTargetDir, startCreating]);
-
-  const handleNewFolder = useCallback(() => {
-    const targetDir = getContextMenuTargetDir();
-    if (!targetDir) return;
-    startCreating(targetDir, 'folder');
-  }, [getContextMenuTargetDir, startCreating]);
-
-  const handleRenameFromMenu = useCallback(() => {
-    if (contextMenu.targetPath) {
-      startRename(contextMenu.targetPath);
-    }
-  }, [contextMenu.targetPath, startRename]);
-
-  const handleDeleteFromMenu = useCallback(() => {
-    if (contextMenu.targetPath) {
-      setDeleteConfirm({
-        isOpen: true,
-        paths: [contextMenu.targetPath],
-        message: `Are you sure you want to delete "${getFileName(contextMenu.targetPath)}"?`,
-      });
-    }
-  }, [contextMenu.targetPath]);
-
-  const handleDeleteConfirm = useCallback(() => {
-    if (deleteConfirm.paths.length > 0) {
-      deleteFiles(deleteConfirm.paths);
-    }
-    setDeleteConfirm({ isOpen: false, paths: [], message: '' });
-  }, [deleteConfirm.paths, deleteFiles]);
-
-  const handleDeleteCancel = useCallback(() => {
-    setDeleteConfirm({ isOpen: false, paths: [], message: '' });
-  }, []);
-
-  const handleCopyPath = useCallback(async () => {
-    if (contextMenu.targetPath) {
-      try {
-        await writeText(contextMenu.targetPath);
-      } catch (e) {
-        console.error('Failed to copy path:', e);
-      }
-    }
-  }, [contextMenu.targetPath]);
-
-  const handleRevealInFinder = useCallback(async () => {
-    if (contextMenu.targetPath) {
-      try {
-        await revealInFinder(contextMenu.targetPath);
-      } catch (e) {
-        console.error('Failed to reveal in Finder:', e);
-      }
-    }
-  }, [contextMenu.targetPath]);
-
   const handleRenameSubmit = useCallback(
     (path: string, newName: string) => {
       rename(path, newName);
@@ -313,17 +257,29 @@ export function FileTree({ onFileOpen }: FileTreeProps) {
     [rename]
   );
 
+  // B7: Open directory in terminal
+  const handleOpenInTerminal = useCallback((dirPath: string) => {
+    createTerminal(dirPath)
+      .then(({ id, shell }) => {
+        useTerminalStore.getState().addTerminal(id, dirPath, shell);
+        if (!useUIStore.getState().terminalPanelOpen) {
+          useUIStore.getState().toggleTerminalPanel();
+        }
+      })
+      .catch((err) => console.error('Failed to open terminal:', err));
+  }, []);
+
   // Scroll the ghost creation row into view when it appears
   useEffect(() => {
     if (creatingInPath) {
-      const idx = flattenedTree.findIndex((item) => item.kind === 'creating');
+      const idx = visibleTree.findIndex((item) => item.kind === 'creating');
       if (idx >= 0) {
-        virtualizer.scrollToIndex(idx, { align: 'auto' });
+        filteredVirtualizer.scrollToIndex(idx, { align: 'auto' });
       }
     }
-  }, [creatingInPath, flattenedTree, virtualizer]);
+  }, [creatingInPath, visibleTree, filteredVirtualizer]);
 
-  if (flattenedTree.length === 0) {
+  if (visibleTree.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
         No files to display
@@ -332,6 +288,7 @@ export function FileTree({ onFileOpen }: FileTreeProps) {
   }
 
   return (
+    <>
     <div
       ref={containerRef}
       className="h-full overflow-auto outline-none"
@@ -339,13 +296,13 @@ export function FileTree({ onFileOpen }: FileTreeProps) {
     >
       <div
         style={{
-          height: virtualizer.getTotalSize(),
+          height: filteredVirtualizer.getTotalSize(),
           width: '100%',
           position: 'relative',
         }}
       >
-        {virtualizer.getVirtualItems().map((virtualRow) => {
-          const item = flattenedTree[virtualRow.index];
+        {filteredVirtualizer.getVirtualItems().map((virtualRow) => {
+          const item = visibleTree[virtualRow.index];
           if (!item) return null;
 
           const rowStyle: React.CSSProperties = {
@@ -370,6 +327,9 @@ export function FileTree({ onFileOpen }: FileTreeProps) {
             );
           }
 
+          const entryPath = item.entry.path;
+          const targetDir = item.entry.is_dir ? entryPath : getParentPath(entryPath);
+
           return (
             <FileTreeNode
               key={item.entry.path}
@@ -383,40 +343,40 @@ export function FileTree({ onFileOpen }: FileTreeProps) {
               onToggle={() => toggleDirectory(item.entry.path)}
               onClick={(e) => handleClick(item.entry.path, e)}
               onDoubleClick={() => handleDoubleClick(item.entry)}
-              onContextMenu={(e) => handleContextMenu(item.entry.path, e)}
               onRenameSubmit={(newName) =>
                 handleRenameSubmit(item.entry.path, newName)
               }
               onRenameCancel={cancelRename}
+              onNewFile={() => startCreating(targetDir, 'file')}
+              onNewFolder={() => startCreating(targetDir, 'folder')}
+              onStartRename={() => startRename(entryPath)}
+              onDelete={() => requestDeleteConfirm([entryPath])}
+              onCopyPath={() => writeText(entryPath).catch(console.error)}
+              onRevealInFinder={() => revealInFinder(entryPath).catch(console.error)}
+              onOpenInTerminal={item.entry.is_dir ? () => handleOpenInTerminal(entryPath) : undefined}
             />
           );
         })}
       </div>
-
-      {/* Context Menu */}
-      <FileContextMenu
-        position={contextMenu.position}
-        selectedPath={contextMenu.targetPath}
-        isDirectory={contextMenu.isDirectory}
-        onClose={closeContextMenu}
-        onNewFile={handleNewFile}
-        onNewFolder={handleNewFolder}
-        onRename={handleRenameFromMenu}
-        onDelete={handleDeleteFromMenu}
-        onCopyPath={handleCopyPath}
-        onRevealInFinder={handleRevealInFinder}
-      />
-
-      {/* Delete Confirmation Dialog */}
-      <ConfirmDialog
-        isOpen={deleteConfirm.isOpen}
-        title="Delete"
-        message={deleteConfirm.message}
-        confirmLabel="Delete"
-        variant="destructive"
-        onConfirm={handleDeleteConfirm}
-        onCancel={handleDeleteCancel}
-      />
     </div>
+
+    {/* B1: Delete confirmation dialog */}
+    {deleteConfirm && (
+      <ConfirmDialog
+        isOpen={true}
+        title={deleteConfirm.isDir ? 'Delete Folder' : 'Delete File'}
+        message={
+          deleteConfirm.isDir
+            ? `"${deleteConfirm.name}" and all its contents will be permanently deleted.`
+            : `"${deleteConfirm.name}" will be permanently deleted.`
+        }
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        onConfirm={handleConfirmDelete}
+        onCancel={handleCancelDelete}
+        variant="destructive"
+      />
+    )}
+    </>
   );
 }
