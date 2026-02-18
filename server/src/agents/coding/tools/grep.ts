@@ -3,20 +3,23 @@ import { z } from 'zod';
 import type { DesktopClient } from '../../../infrastructure/desktop/client';
 import type { AgentMux } from '../../../lib/mux';
 
+const grepParams = z.object({
+  pattern: z.string().describe('The regex pattern to search for'),
+  path: z.string().optional().describe('Directory or file to search in (default: workspace root)'),
+  glob: z.string().optional().describe('Glob pattern to filter files (e.g., "*.ts", "*.{ts,tsx}")'),
+  output_mode: z.enum(['content', 'files_with_matches', 'count']).optional()
+    .describe('Output mode: content (matching lines), files_with_matches (file paths only), count (match counts)'),
+  case_insensitive: z.boolean().optional().describe('Enable case-insensitive search'),
+  head_limit: z.number().optional().describe('Limit output to first N results'),
+});
+
 export const createGrepTool = (desktopClient: DesktopClient, mux: AgentMux, conversationId: string) =>
   tool({
     description:
       'Search for a pattern in files using ripgrep. Returns matching file paths or content depending on output_mode. Use this to find code, function definitions, imports, or any text pattern across the codebase.',
-    parameters: z.object({
-      pattern: z.string().describe('The regex pattern to search for'),
-      path: z.string().optional().describe('Directory or file to search in (default: workspace root)'),
-      glob: z.string().optional().describe('Glob pattern to filter files (e.g., "*.ts", "*.{ts,tsx}")'),
-      output_mode: z.enum(['content', 'files_with_matches', 'count']).optional()
-        .describe('Output mode: content (matching lines), files_with_matches (file paths only), count (match counts)'),
-      case_insensitive: z.boolean().optional().describe('Enable case-insensitive search'),
-      head_limit: z.number().optional().describe('Limit output to first N results'),
-    }),
-    execute: async ({ pattern, path, glob, output_mode, case_insensitive, head_limit }) => {
+    inputSchema: grepParams,
+    execute: async (args: z.infer<typeof grepParams>) => {
+      const { pattern, path, glob, output_mode, case_insensitive, head_limit } = args;
       const toolCallId = `grep_${Date.now()}`;
       await mux.put({
         type: 'agent:tool_start',

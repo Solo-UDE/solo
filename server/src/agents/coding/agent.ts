@@ -1,12 +1,12 @@
 /**
  * CodingAgent — The core agentic loop running on the server.
  *
- * Uses Vercel AI SDK's `streamText` with tools and `maxSteps` for
- * multi-turn tool-using agent behavior. Events are emitted via AgentMux
+ * Uses Vercel AI SDK's `streamText` with tools for multi-turn
+ * tool-using agent behavior. Events are emitted via AgentMux
  * and forwarded to the desktop over WebSocket.
  */
 
-import { streamText, type CoreMessage } from 'ai';
+import { streamText, stepCountIs, type ModelMessage } from 'ai';
 import { AgentMux } from '../../lib/mux';
 import { resolveModel } from '../../lib/model-mapping';
 import { createToolRegistry } from './tools';
@@ -46,7 +46,7 @@ export class CodingAgent {
     const tools = createToolRegistry(desktopClient, this.mux, conversationId, requestApproval);
 
     // Build conversation messages
-    const messages: CoreMessage[] = [];
+    const messages: ModelMessage[] = [];
 
     // Add chat history
     if (request.chatHistory) {
@@ -86,7 +86,8 @@ export class CodingAgent {
         system: systemPrompt,
         messages,
         tools,
-        maxSteps: MAX_STEPS,
+        maxOutputTokens: 16384,
+        stopWhen: stepCountIs(MAX_STEPS),
         abortSignal,
         onStepFinish: async (step) => {
           // Each step = one LLM turn. If it ended with tool calls,

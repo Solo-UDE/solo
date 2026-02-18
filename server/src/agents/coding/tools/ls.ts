@@ -3,14 +3,17 @@ import { z } from 'zod';
 import type { DesktopClient } from '../../../infrastructure/desktop/client';
 import type { AgentMux } from '../../../lib/mux';
 
+const lsParams = z.object({
+  path: z.string().optional().describe('Directory path to list (default: workspace root)'),
+});
+
 export const createLsTool = (desktopClient: DesktopClient, mux: AgentMux, conversationId: string) =>
   tool({
     description:
       'List the contents of a directory. Returns file and subdirectory names. Use this to explore the project structure or check what files exist in a specific directory.',
-    parameters: z.object({
-      path: z.string().optional().describe('Directory path to list (default: workspace root)'),
-    }),
-    execute: async ({ path }) => {
+    inputSchema: lsParams,
+    execute: async (args: z.infer<typeof lsParams>) => {
+      const { path } = args;
       const toolCallId = `ls_${Date.now()}`;
       await mux.put({
         type: 'agent:tool_start',

@@ -34,3 +34,4 @@ export { CopyButton, type CopyButtonProps } from './code';
 
 // Dialogs
 export { ApiKeyDialog, type ApiKeyDialogProps } from './dialogs';
+export { ToolApprovalDialog, type ToolApprovalDialogProps } from './dialogs';

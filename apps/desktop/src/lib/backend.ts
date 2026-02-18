@@ -8,11 +8,6 @@ import { invoke } from '@tauri-apps/api/core';
 import type {
 	ProviderType,
 	AgentMessage,
-	OAuthMethod,
-	OAuthFlowResult,
-	AuthMethodInfo,
-	AuthType,
-	ClaudeSetupStatus,
 } from '../bindings';
 
 // =============================================================================
@@ -37,7 +32,7 @@ export interface ModelInfo {
 }
 
 // Re-export for convenience
-export type { ProviderType, OAuthMethod, OAuthFlowResult, AuthMethodInfo, AuthType, ClaudeSetupStatus };
+export type { ProviderType };
 
 // =============================================================================
 // Provider Commands
@@ -146,20 +141,6 @@ export async function updateSessionModel(sessionId: string, model: string): Prom
 }
 
 /**
- * Send a message to the agent
- * @param sessionId - Session ID
- * @param content - Message content
- * @param mode - Optional message mode ('planning' | 'fast')
- */
-export async function sendAgentMessage(
-	sessionId: string,
-	content: string,
-	mode?: string
-): Promise<void> {
-	return invoke('agent_send_message', { sessionId, content, mode });
-}
-
-/**
  * Send a message to the agent via the Solo server (server mode).
  * Uses WebSocket to communicate with a Hono+Bun server running the
  * Vercel AI SDK agent loop. The server delegates tool execution back
@@ -177,6 +158,20 @@ export async function sendAgentMessageServer(
 	mode?: string
 ): Promise<void> {
 	return invoke('agent_send_message_server', { sessionId, content, model, mode });
+}
+
+/**
+ * Resolve a tool approval request (approve or reject)
+ * @param sessionId - Session ID
+ * @param toolCallId - Tool call ID to resolve
+ * @param approved - Whether the tool call is approved
+ */
+export async function resolveToolApproval(
+	sessionId: string,
+	toolCallId: string,
+	approved: boolean
+): Promise<void> {
+	return invoke('resolve_tool_approval', { sessionId, toolCallId, approved });
 }
 
 /**
@@ -202,102 +197,4 @@ export async function getAgentHistory(sessionId: string): Promise<AgentMessage[]
  */
 export async function clearAgentHistory(sessionId: string): Promise<void> {
 	return invoke('agent_clear_history', { sessionId });
-}
-
-// =============================================================================
-// OAuth Commands
-// =============================================================================
-
-/**
- * Start an OAuth flow for a provider
- * @param provider - Provider name
- * @param method - OAuth method (browser or paste-code)
- * @returns OAuth flow result with auth URL and state
- */
-export async function startOAuthFlow(
-	provider: string,
-	method: OAuthMethod
-): Promise<OAuthFlowResult> {
-	return invoke<OAuthFlowResult>('start_oauth_flow', { provider, method });
-}
-
-/**
- * Complete an OAuth flow with the authorization code
- * @param code - Authorization code from OAuth callback
- * @param oauthState - State parameter for verification
- */
-export async function completeOAuthFlow(
-	code: string,
-	oauthState: string
-): Promise<void> {
-	return invoke('complete_oauth_flow', { code, oauthState });
-}
-
-/**
- * Wait for OAuth callback from browser
- * @returns The code and state from the callback
- */
-export async function waitForOAuthCallback(): Promise<{ code: string; state: string }> {
-	const [code, state] = await invoke<[string, string]>('wait_for_oauth_callback');
-	return { code, state };
-}
-
-/**
- * Get authentication method info for a provider
- * @param provider - Provider name
- * @returns Auth method info including type, status, and expiry
- */
-export async function getAuthMethod(provider: string): Promise<AuthMethodInfo> {
-	return invoke<AuthMethodInfo>('get_auth_method', { provider });
-}
-
-/**
- * Disconnect OAuth for a provider
- * @param provider - Provider name
- */
-export async function disconnectOAuth(provider: string): Promise<void> {
-	return invoke('disconnect_oauth', { provider });
-}
-
-// =============================================================================
-// Claude Code CLI Commands
-// =============================================================================
-
-/**
- * Check if Claude Code CLI is installed
- * @returns True if claude CLI is installed
- */
-export async function checkClaudeCliInstalled(): Promise<boolean> {
-	return invoke<boolean>('check_claude_cli_installed');
-}
-
-/**
- * Install Claude Code CLI via npm
- * @throws Error if npm is not installed or installation fails
- */
-export async function installClaudeCli(): Promise<void> {
-	return invoke('install_claude_cli');
-}
-
-/**
- * Open Terminal and run claude to trigger native login flow
- */
-export async function startClaudeLogin(): Promise<void> {
-	return invoke('start_claude_login');
-}
-
-/**
- * Check if Claude Code auth is complete (token exists in keychain)
- * @returns True if authenticated via Claude Code
- */
-export async function checkClaudeAuthStatus(): Promise<boolean> {
-	return invoke<boolean>('check_claude_auth_status');
-}
-
-/**
- * Verify Claude Code CLI setup: CLI presence, credential parsing, and API validation.
- * @returns Structured status with CLI, credential, and API verification details
- */
-export async function verifyClaudeSetup(): Promise<ClaudeSetupStatus> {
-	return invoke<ClaudeSetupStatus>('verify_claude_setup');
 }

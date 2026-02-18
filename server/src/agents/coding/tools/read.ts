@@ -3,16 +3,19 @@ import { z } from 'zod';
 import type { DesktopClient } from '../../../infrastructure/desktop/client';
 import type { AgentMux } from '../../../lib/mux';
 
+const readParams = z.object({
+  path: z.string().describe('The file path to read'),
+  offset: z.number().optional().describe('Line number to start reading from (1-indexed)'),
+  limit: z.number().optional().describe('Maximum number of lines to read'),
+});
+
 export const createReadTool = (desktopClient: DesktopClient, mux: AgentMux, conversationId: string) =>
   tool({
     description:
       'Read the contents of a file at the specified path. Use this to inspect existing code, configuration files, or any text file. The path must be absolute or relative to the workspace root.',
-    parameters: z.object({
-      path: z.string().describe('The file path to read'),
-      offset: z.number().optional().describe('Line number to start reading from (1-indexed)'),
-      limit: z.number().optional().describe('Maximum number of lines to read'),
-    }),
-    execute: async ({ path, offset, limit }) => {
+    inputSchema: readParams,
+    execute: async (args: z.infer<typeof readParams>) => {
+      const { path, offset, limit } = args;
       const toolCallId = `read_${Date.now()}`;
       await mux.put({
         type: 'agent:tool_start',

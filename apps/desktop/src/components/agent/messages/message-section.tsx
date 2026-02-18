@@ -28,14 +28,12 @@ export type Message = UserMessageData | AgentMessageData;
 export interface MessageSectionProps {
   sectionIndex: number;
   messages: Message[];
-  onToolApproval?: (toolCallId: string, approved: boolean) => void;
   className?: string;
 }
 
 export const MessageSection: FC<MessageSectionProps> = ({
   sectionIndex,
   messages,
-  onToolApproval,
   className = '',
 }) => {
   return (
@@ -65,7 +63,7 @@ export const MessageSection: FC<MessageSectionProps> = ({
             <AgentMessage
               content={message.content}
               timestamp={message.timestamp}
-              onToolApproval={onToolApproval}
+
             />
           </div>
         );

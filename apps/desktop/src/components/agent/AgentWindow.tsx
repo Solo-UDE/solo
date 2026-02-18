@@ -4,10 +4,11 @@ import { Plus, Robot, Lightning, Code, GitBranch } from '@phosphor-icons/react';
 
 import { MessageFeed } from './messages';
 import { ChatInputContainer } from './input';
+import { ToolApprovalDialog } from './dialogs';
 import { convertToMessageGroups } from './messageAdapter';
 import { useAgentSession } from '../../hooks/useAgentSession';
 import { useProviderStore } from '../../stores/provider-store';
-import { useAgentStore } from '../../stores/agentStore';
+import { useAgentStore, usePendingToolApprovals } from '../../stores/agentStore';
 import { usePanelTabsStore } from '../../stores/panelTabsStore';
 import { BUILTIN_PANEL_TYPES } from '../../lib/panels/constants';
 
@@ -158,20 +159,22 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 		[sendMessage]
 	);
 
-	const resolveToolApproval = useAgentStore((state) => state.resolveToolApproval);
-	const handleToolApproval = useCallback(
-		(toolCallId: string, approved: boolean) => {
-			resolveToolApproval(toolCallId, approved);
-		},
-		[resolveToolApproval]
-	);
-
 	const abortSession = useAgentStore((state) => state.abortSession);
 	const handleAbort = useCallback(() => {
 		if (sessionId) {
 			abortSession(sessionId);
 		}
 	}, [sessionId, abortSession]);
+
+	// Tool approval
+	const pendingApprovals = usePendingToolApprovals();
+	const resolveToolApproval = useAgentStore((state) => state.resolveToolApproval);
+	const handleResolveApproval = useCallback(
+		(sid: string, toolCallId: string, approved: boolean) => {
+			resolveToolApproval(sid, toolCallId, approved);
+		},
+		[resolveToolApproval]
+	);
 
 
 	const handleNewSession = useCallback(() => {
@@ -262,7 +265,6 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 				messageGroups={messageGroups}
 				autoScroll={true}
 				isStreaming={isRunning}
-				onToolApproval={handleToolApproval}
 				className="flex-1"
 			/>
 
@@ -276,6 +278,12 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 					</div>
 				</div>
 			)}
+
+			<ToolApprovalDialog
+				approvals={pendingApprovals}
+				sessionId={sessionId}
+				onResolve={handleResolveApproval}
+			/>
 
 			<ChatInputContainer
 				onSubmit={handleSubmit}

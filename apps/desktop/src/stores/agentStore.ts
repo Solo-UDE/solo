@@ -6,7 +6,7 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import { enableMapSet } from 'immer';
-import type { AgentMessage, AgentToolCall } from '../bindings';
+import type { AgentMessage, AgentToolCall, ToolCallWithStatus } from '../bindings';
 import * as backend from '../lib/backend';
 import {
 	loadSessions,
@@ -129,6 +129,9 @@ interface AgentState {
 	// Per-session streaming state
 	sessionStreaming: Map<string, SessionStreamState>;
 
+	// Tool approval state
+	pendingToolApprovals: Map<string, ToolCallWithStatus>;
+
 	// Model selection
 	selectedModel: string;
 
@@ -156,6 +159,8 @@ interface AgentActions {
 	handleAgentChunk: (conversationId: string, content: string) => void;
 	handleAgentToolStart: (conversationId: string, toolCall: AgentToolCall) => void;
 	handleAgentToolEnd: (conversationId: string, toolCallId: string, result: string) => void;
+	handleToolApprovalNeeded: (conversationId: string, toolCall: ToolCallWithStatus) => void;
+	resolveToolApproval: (sessionId: string, toolCallId: string, approved: boolean) => Promise<void>;
 	handleAgentComplete: (conversationId: string, message: AgentMessage) => void;
 	handleAgentError: (conversationId: string, error: string) => void;
 	handleTurnStart: (conversationId: string, turnNumber: number) => void;
@@ -187,6 +192,7 @@ const initialState: AgentState = {
 	streamingMessageId: null,
 	streamingContent: '',
 	activeToolCalls: new Map(),
+	pendingToolApprovals: new Map(),
 	sessionStreaming: new Map(),
 	selectedModel: DEFAULT_MODEL_ID,
 	isAgentRunning: false,
@@ -436,6 +442,38 @@ export const useAgentStore = create<AgentStore>()(
 					}
 				}
 			});
+		},
+
+		handleToolApprovalNeeded: (conversationId: string, toolCall: ToolCallWithStatus) => {
+			console.log('[Store TOOL_APPROVAL_NEEDED]', toolCall.tool_call.name, toolCall.tool_call.id);
+			set((state) => {
+				state.pendingToolApprovals.set(toolCall.tool_call.id, toolCall);
+
+				// Update tool call status in message to show pending_approval
+				const streamState = getOrCreateStreamState(state.sessionStreaming, conversationId);
+				const messages = state.messages.get(conversationId);
+				if (messages && streamState.streamingMessageId) {
+					const msg = messages.find((m) => m.id === streamState.streamingMessageId);
+					if (msg?.toolCalls) {
+						const tc = msg.toolCalls.find((t) => t.id === toolCall.tool_call.id);
+						if (tc) {
+							tc.status = 'pending';
+						}
+					}
+				}
+			});
+		},
+
+		resolveToolApproval: async (sessionId: string, toolCallId: string, approved: boolean) => {
+			console.log('[Store RESOLVE_APPROVAL]', toolCallId, approved);
+			set((state) => {
+				state.pendingToolApprovals.delete(toolCallId);
+			});
+			try {
+				await backend.resolveToolApproval(sessionId, toolCallId, approved);
+			} catch (error) {
+				console.error('Failed to resolve tool approval:', error);
+			}
 		},
 
 		handleAgentComplete: (conversationId: string, message: AgentMessage) => {
@@ -701,4 +739,12 @@ export const useSessions = (): AgentSession[] => {
 
 export const useSelectedModel = (): string => {
 	return useAgentStore((state) => state.selectedModel);
+};
+
+const EMPTY_APPROVALS: ToolCallWithStatus[] = [];
+
+export const usePendingToolApprovals = (): ToolCallWithStatus[] => {
+	const approvals = useAgentStore((state) => state.pendingToolApprovals);
+	if (approvals.size === 0) return EMPTY_APPROVALS;
+	return Array.from(approvals.values());
 };

@@ -3,6 +3,11 @@ import { z } from 'zod';
 import type { DesktopClient } from '../../../infrastructure/desktop/client';
 import type { AgentMux } from '../../../lib/mux';
 
+const writeParams = z.object({
+  path: z.string().describe('The file path to write to'),
+  content: z.string().describe('The content to write to the file'),
+});
+
 export const createWriteTool = (
   desktopClient: DesktopClient,
   mux: AgentMux,
@@ -12,18 +17,16 @@ export const createWriteTool = (
   tool({
     description:
       'Write content to a file. Creates the file if it does not exist, or overwrites it if it does. Use this for creating new files or completely replacing file contents.',
-    parameters: z.object({
-      path: z.string().describe('The file path to write to'),
-      content: z.string().describe('The content to write to the file'),
-    }),
-    execute: async ({ path, content }) => {
+    inputSchema: writeParams,
+    execute: async (args: z.infer<typeof writeParams>) => {
+      const { path, content } = args;
       const toolCallId = `write_${Date.now()}`;
-      const args = JSON.stringify({ path, content: content.slice(0, 200) + (content.length > 200 ? '...' : '') });
+      const displayArgs = JSON.stringify({ path, content: content.slice(0, 200) + (content.length > 200 ? '...' : '') });
 
       await mux.put({
         type: 'agent:tool_start',
         conversation_id: conversationId,
-        tool_call: { id: toolCallId, name: 'write', arguments: args },
+        tool_call: { id: toolCallId, name: 'write', arguments: displayArgs },
       });
 
       // Request approval for write operations

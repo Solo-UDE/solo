@@ -3,15 +3,18 @@ import { z } from 'zod';
 import type { DesktopClient } from '../../../infrastructure/desktop/client';
 import type { AgentMux } from '../../../lib/mux';
 
+const globParams = z.object({
+  pattern: z.string().describe('The glob pattern to match files against (e.g., "**/*.ts")'),
+  path: z.string().optional().describe('Directory to search in (default: workspace root)'),
+});
+
 export const createGlobTool = (desktopClient: DesktopClient, mux: AgentMux, conversationId: string) =>
   tool({
     description:
       'Find files matching a glob pattern. Use this to discover files by name pattern (e.g., "**/*.ts", "src/**/*.tsx"). Returns a list of matching file paths.',
-    parameters: z.object({
-      pattern: z.string().describe('The glob pattern to match files against (e.g., "**/*.ts")'),
-      path: z.string().optional().describe('Directory to search in (default: workspace root)'),
-    }),
-    execute: async ({ pattern, path }) => {
+    inputSchema: globParams,
+    execute: async (args: z.infer<typeof globParams>) => {
+      const { pattern, path } = args;
       const toolCallId = `glob_${Date.now()}`;
       await mux.put({
         type: 'agent:tool_start',

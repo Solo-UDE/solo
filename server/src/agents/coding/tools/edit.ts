@@ -3,6 +3,12 @@ import { z } from 'zod';
 import type { DesktopClient } from '../../../infrastructure/desktop/client';
 import type { AgentMux } from '../../../lib/mux';
 
+const editParams = z.object({
+  path: z.string().describe('The file path to edit'),
+  old_string: z.string().describe('The exact string to find and replace'),
+  new_string: z.string().describe('The replacement string'),
+});
+
 export const createEditTool = (
   desktopClient: DesktopClient,
   mux: AgentMux,
@@ -12,19 +18,16 @@ export const createEditTool = (
   tool({
     description:
       'Edit a file by replacing an exact string match with new content. The old_string must match exactly (including whitespace/indentation). Use this for targeted edits to existing files rather than rewriting entire files.',
-    parameters: z.object({
-      path: z.string().describe('The file path to edit'),
-      old_string: z.string().describe('The exact string to find and replace'),
-      new_string: z.string().describe('The replacement string'),
-    }),
-    execute: async ({ path, old_string, new_string }) => {
+    inputSchema: editParams,
+    execute: async (args: z.infer<typeof editParams>) => {
+      const { path, old_string, new_string } = args;
       const toolCallId = `edit_${Date.now()}`;
-      const args = JSON.stringify({ path, old_string: old_string.slice(0, 100), new_string: new_string.slice(0, 100) });
+      const displayArgs = JSON.stringify({ path, old_string: old_string.slice(0, 100), new_string: new_string.slice(0, 100) });
 
       await mux.put({
         type: 'agent:tool_start',
         conversation_id: conversationId,
-        tool_call: { id: toolCallId, name: 'edit', arguments: args },
+        tool_call: { id: toolCallId, name: 'edit', arguments: displayArgs },
       });
 
       // Request approval for edit operations

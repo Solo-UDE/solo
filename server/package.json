@@ -9,13 +9,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@openrouter/ai-sdk-provider": "^2.2.3",
+    "ai": "^6.0.90",
     "hono": "^4.7.0",
-    "ai": "^4.3.0",
-    "@ai-sdk/anthropic": "^1.2.0",
-    "@ai-sdk/openai": "^1.3.0",
-    "@ai-sdk/google": "^1.2.0",
-    "zod": "^3.24.0",
-    "uuid": "^11.1.0"
+    "uuid": "^11.1.0",
+    "zod": "^3.24.0"
   },
   "devDependencies": {
     "@types/bun": "^1.2.0",

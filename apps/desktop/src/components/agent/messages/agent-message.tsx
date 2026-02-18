@@ -8,16 +8,13 @@ import { NotifyUserCard } from './notify-user-card';
 import { ProceedIndicator } from './proceed-indicator';
 import { TaskPhaseCard } from './task-phase-card';
 import { ToolCallBlock } from './tool-call-block';
-import { ToolApprovalInline } from '../dialogs/ToolApprovalDialog';
-
 import type { FC } from 'react';
-import type { ToolCallWithStatus } from '../../../bindings';
 
 export interface AgentToolCall {
   id: string;
   name: string;
   arguments: string;
-  status: 'pending' | 'pending_approval' | 'running' | 'completed' | 'error';
+  status: 'pending' | 'running' | 'completed' | 'error';
   result?: string;
 }
 
@@ -39,7 +36,6 @@ export interface AgentMessageContent {
     }[];
   }[];
   toolCalls?: AgentToolCall[];
-  pendingApprovals?: ToolCallWithStatus[];
   notifications?: {
     id: string;
     type: 'info' | 'warning' | 'error' | 'success';
@@ -50,7 +46,6 @@ export interface AgentMessageContent {
     }[];
   }[];
   autoProceed?: boolean;
-  isStreaming?: boolean;
 }
 
 export interface AgentMessageProps {
@@ -59,7 +54,6 @@ export interface AgentMessageProps {
   avatarUrl?: string;
   agentName?: string;
   onFeedback?: (messageId: string, feedback: 'good' | 'bad') => void;
-  onToolApproval?: (toolCallId: string, approved: boolean) => void;
   messageId?: string;
   className?: string;
 }
@@ -70,7 +64,6 @@ export const AgentMessage: FC<AgentMessageProps> = ({
   avatarUrl,
   agentName = 'Agent',
   onFeedback,
-  onToolApproval,
   messageId,
   className = '',
 }) => {
@@ -150,20 +143,6 @@ export const AgentMessage: FC<AgentMessageProps> = ({
               <ToolCallBlock
                 key={toolCall.id}
                 toolCall={toolCall}
-              />
-            ))}
-          </div>
-        ) : null}
-
-        {/* Pending Tool Approvals */}
-        {content.pendingApprovals && content.pendingApprovals.length > 0 ? (
-          <div className="space-y-2">
-            {content.pendingApprovals.map((approval) => (
-              <ToolApprovalInline
-                key={approval.tool_call.id}
-                toolCall={approval}
-                onApproved={(id) => onToolApproval?.(id, true)}
-                onRejected={(id) => onToolApproval?.(id, false)}
               />
             ))}
           </div>

@@ -1,8 +1,6 @@
-//! Provider trait and types for multi-provider AI support
+//! Provider types for multi-provider AI support
 
-use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use solo_protocol::{AgentMessage, BackendEvent};
 use thiserror::Error;
 use ts_rs::TS;
 
@@ -139,17 +137,11 @@ pub enum ProviderError {
     #[error("Serialization error: {0}")]
     SerializationError(#[from] serde_json::Error),
 
-    #[error("HTTP error: {0}")]
-    HttpError(#[from] reqwest::Error),
-
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
 
     #[error("Keychain error: {0}")]
     KeychainError(String),
-
-    #[error("OAuth error: {0}")]
-    OAuthError(String),
 
     #[error("{0}")]
     Other(String),
@@ -170,34 +162,6 @@ pub struct ToolDefinition {
     /// Whether this tool requires user approval
     #[serde(default)]
     pub needs_approval: bool,
-}
-
-/// Trait for AI providers
-#[async_trait]
-pub trait AIProvider: Send + Sync {
-    /// Get the provider type
-    fn provider_type(&self) -> ProviderType;
-
-    /// Send a message and receive streaming responses via channel
-    async fn send_message(
-        &self,
-        conversation_id: &str,
-        model: &str,
-        messages: &[AgentMessage],
-        system_prompt: Option<&str>,
-    ) -> ProviderResult<tokio::sync::mpsc::Receiver<BackendEvent>>;
-
-    /// Get available models for this provider
-    fn available_models(&self) -> Vec<String>;
-
-    /// Validate API key
-    async fn validate_credentials(&self) -> ProviderResult<bool>;
-
-    /// Set tools for tool use
-    fn set_tools(&mut self, tools: Vec<ToolDefinition>);
-
-    /// Get current tools
-    fn get_tools(&self) -> &[ToolDefinition];
 }
 
 #[cfg(test)]

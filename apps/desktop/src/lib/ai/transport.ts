@@ -121,7 +121,7 @@ export function createTauriChatTransport(sessionId: string) {
 			await setupListeners(callbacks);
 		}
 
-		await invoke('agent_send_message', {
+		await invoke('agent_send_message_server', {
 			sessionId,
 			content,
 			systemPrompt,

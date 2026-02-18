@@ -60,8 +60,8 @@ pub struct AIModel {
 lazy_static::lazy_static! {
     pub static ref ANTHROPIC_MODELS: Vec<AIModel> = vec![
         AIModel {
-            id: "claude-sonnet-4-5-20250929".to_string(),
-            display_name: "Claude Sonnet 4.5".to_string(),
+            id: "claude-sonnet-4-6".to_string(),
+            display_name: "Claude Sonnet 4.6".to_string(),
             alias: "sonnet".to_string(),
             provider: ProviderType::Anthropic,
             capabilities: ModelCapabilities {
@@ -267,7 +267,7 @@ mod tests {
     #[test]
     fn test_find_model() {
         assert!(find_model("sonnet").is_some());
-        assert!(find_model("claude-sonnet-4-5-20250929").is_some());
+        assert!(find_model("claude-sonnet-4-6").is_some());
         assert!(find_model("gpt-5.2-high").is_some());
         assert!(find_model("nonexistent").is_none());
     }

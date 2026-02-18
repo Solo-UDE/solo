@@ -8,7 +8,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
-import type { BackendEvent, AgentToolCall, ToolCallWithStatus, ContentBlock } from '../bindings';
+import type { BackendEvent, AgentToolCall, ContentBlock } from '../bindings';
 
 // =============================================================================
 // Types
@@ -19,7 +19,6 @@ export interface ChatMessage {
 	role: 'user' | 'assistant' | 'system';
 	content: string;
 	toolCalls?: AgentToolCall[];
-	pendingToolApprovals?: ToolCallWithStatus[];
 	createdAt: Date;
 	isStreaming?: boolean;
 }
@@ -28,7 +27,6 @@ export interface UseTauriChatOptions {
 	sessionId?: string;
 	systemPrompt?: string;
 	onError?: (error: Error) => void;
-	onToolApprovalNeeded?: (toolCall: ToolCallWithStatus) => void;
 }
 
 export interface UseTauriChatReturn {
@@ -49,7 +47,7 @@ export interface UseTauriChatReturn {
 // =============================================================================
 
 export function useTauriChat(options: UseTauriChatOptions = {}): UseTauriChatReturn {
-	const { systemPrompt, onError, onToolApprovalNeeded } = options;
+	const { systemPrompt, onError } = options;
 
 	const [messages, setMessages] = useState<ChatMessage[]>([]);
 	const [input, setInput] = useState('');
@@ -63,9 +61,6 @@ export function useTauriChat(options: UseTauriChatOptions = {}): UseTauriChatRet
 	// Stable refs for callbacks to avoid listener churn
 	const onErrorRef = useRef(onError);
 	onErrorRef.current = onError;
-	const onToolApprovalNeededRef = useRef(onToolApprovalNeeded);
-	onToolApprovalNeededRef.current = onToolApprovalNeeded;
-
 	// Set up event listener
 	useEffect(() => {
 		const setupListener = async () => {
@@ -109,24 +104,6 @@ export function useTauriChat(options: UseTauriChatOptions = {}): UseTauriChatRet
 									{
 										...lastMessage,
 										toolCalls: [...toolCalls, payload.payload.tool_call],
-									},
-								];
-							}
-							return prev;
-						});
-						break;
-
-					case 'agent:tool_approval_needed':
-						onToolApprovalNeededRef.current?.(payload.payload.tool_call);
-						setMessages((prev) => {
-							const lastMessage = prev[prev.length - 1];
-							if (lastMessage?.isStreaming) {
-								const pendingApprovals = lastMessage.pendingToolApprovals || [];
-								return [
-									...prev.slice(0, -1),
-									{
-										...lastMessage,
-										pendingToolApprovals: [...pendingApprovals, payload.payload.tool_call],
 									},
 								];
 							}
@@ -235,7 +212,7 @@ export function useTauriChat(options: UseTauriChatOptions = {}): UseTauriChatRet
 		currentMessageRef.current = assistantMessage;
 
 		try {
-			await invoke('agent_send_message', {
+			await invoke('agent_send_message_server', {
 				sessionId,
 				content: userMessage.content,
 				systemPrompt,
