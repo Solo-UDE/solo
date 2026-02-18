@@ -409,6 +409,7 @@ body.is-resizing *::after {
   user-select: none !important;
 }
 
+
 /* Disable text selection on UI elements */
 button,
 [role="button"],

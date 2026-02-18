@@ -643,46 +643,6 @@ pub struct WorktreeSetupConfig {
 }
 
 // =============================================================================
-// Claude Setup Verification
-// =============================================================================
-
-/// Status of Claude Code CLI setup and credential verification
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../apps/desktop/src/bindings/")]
-#[serde(rename_all = "camelCase")]
-pub struct ClaudeSetupStatus {
-    /// Whether the Claude CLI binary is installed
-    pub cli_installed: bool,
-    /// Path to the Claude CLI binary (e.g. /usr/local/bin/claude)
-    pub cli_path: Option<String>,
-    /// Whether OAuth credentials were found (keychain or file)
-    pub credentials_found: bool,
-    /// Where the credentials came from: "keychain" or "credentials-file"
-    pub credential_source: Option<String>,
-    /// Whether the token is expired
-    pub token_expired: bool,
-    /// Token expiry timestamp (ms since epoch)
-    #[ts(type = "number | null")]
-    pub token_expires_at: Option<i64>,
-    /// Seconds until token expires (negative if already expired)
-    #[ts(type = "number | null")]
-    pub token_expires_in_seconds: Option<i64>,
-    /// OAuth scopes on the token
-    pub scopes: Option<Vec<String>>,
-    /// Whether the token was verified against the API.
-    /// None = not checked, Some(true) = API call succeeded, Some(false) = rejected
-    pub api_verified: Option<bool>,
-    /// Error message if something went wrong
-    pub error: Option<String>,
-    /// Whether CLI mode is available (CLI installed + credentials found).
-    /// Subscription tokens require CLI mode; direct API calls won't work.
-    pub cli_mode_available: bool,
-    /// Whether the credential is a subscription token that requires CLI mode.
-    /// These tokens cannot be used for direct API calls.
-    pub requires_cli_mode: bool,
-}
-
-// =============================================================================
 // Backend Events (sent from Rust to TypeScript)
 // =============================================================================
 
@@ -721,21 +681,6 @@ pub enum BackendEvent {
         result: String,
     },
 
-    /// Agent tool call needs approval
-    #[serde(rename = "agent:tool_approval_needed")]
-    AgentToolApprovalNeeded {
-        conversation_id: String,
-        tool_call: ToolCallWithStatus,
-    },
-
-    /// Agent tool call approval response
-    #[serde(rename = "agent:tool_approval_response")]
-    AgentToolApprovalResponse {
-        conversation_id: String,
-        tool_call_id: String,
-        approved: bool,
-    },
-
     /// Agent message completed
     #[serde(rename = "agent:complete")]
     AgentComplete {
@@ -762,6 +707,13 @@ pub enum BackendEvent {
     AgentLoopComplete {
         conversation_id: String,
         total_turns: u32,
+    },
+
+    /// A tool call requires user approval before executing
+    #[serde(rename = "agent:tool_approval_needed")]
+    AgentToolApprovalNeeded {
+        conversation_id: String,
+        tool_call: ToolCallWithStatus,
     },
 
     /// The agentic loop was aborted by the user

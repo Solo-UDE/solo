@@ -6,6 +6,7 @@ import { MermaidBlock } from '@/components/shared/MermaidBlock';
 import { markdownTableComponents } from '@/components/shared/MarkdownTable';
 import { sharedRemarkPlugins, sharedRehypePlugins } from '@/lib/markdown/plugins';
 import { parseCalloutType, renderCallout } from '@/lib/markdown/callouts';
+import { StreamingIndicator } from './streaming-indicator';
 
 export interface AgentNarrativeProps {
   content: string;
@@ -62,6 +63,11 @@ export const AgentNarrative: FC<AgentNarrativeProps> = ({
     () => (isStreaming ? fixUnterminatedFences(content) : content),
     [content, isStreaming],
   );
+
+  // Show indicator when streaming with no content yet
+  if (isStreaming && !content.trim()) {
+    return <StreamingIndicator className={className} />;
+  }
 
   return (
     <div
@@ -167,6 +173,10 @@ export const AgentNarrative: FC<AgentNarrativeProps> = ({
       >
         {processedContent}
       </ReactMarkdown>
+      {/* Blinking cursor when streaming with content */}
+      {isStreaming && content.trim() ? (
+        <span className="inline-block w-[2px] h-4 bg-foreground/70 animate-pulse ml-0.5 align-text-bottom" />
+      ) : null}
     </div>
   );
 };

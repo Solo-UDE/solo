@@ -1,4 +1,4 @@
-export { AgentMessage, type AgentMessageProps, type AgentMessageContent } from './agent-message';
+export { AgentMessage, type AgentMessageProps, type AgentMessageContent, type AgentToolCall } from './agent-message';
 export { UserMessage, type UserMessageProps } from './user-message';
 export { MessageFeed, type MessageFeedProps, type MessageGroup } from './message-feed';
 export { MessageSection, type MessageSectionProps, type Message, type UserMessageData, type AgentMessageData } from './message-section';
@@ -11,3 +11,6 @@ export { NotifyUserCard, type NotifyUserCardProps, type NotificationAction } fro
 export { ProceedIndicator, type ProceedIndicatorProps } from './proceed-indicator';
 export { MessageFeedback, type MessageFeedbackProps } from './message-feedback';
 export { FilesEditedList, type FilesEditedListProps, type FileEditInfo } from './files-edited-list';
+export { StreamingIndicator, type StreamingIndicatorProps } from './streaming-indicator';
+export { ChainOfThoughtBlock, type ChainOfThoughtBlockProps, extractThinkingBlocks } from './chain-of-thought-block';
+export { TurnProgress, type TurnProgressProps } from './turn-progress';

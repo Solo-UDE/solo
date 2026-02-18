@@ -33,7 +33,7 @@ export const TRANSITIONS = {
 
 // Anthropic
 export const CLAUDE_OPUS_4_6 = 'claude-opus-4-6';
-export const CLAUDE_SONNET_4_5 = 'claude-sonnet-4-5-20250929';
+export const CLAUDE_SONNET_4_6 = 'claude-sonnet-4-6';
 export const CLAUDE_HAIKU_4_5 = 'claude-haiku-4-5-20251001';
 
 // OpenAI
@@ -59,7 +59,7 @@ export interface ModelOption {
 
 export const CLAUDE_MODELS: ModelOption[] = [
   { id: CLAUDE_OPUS_4_6, name: 'Claude Opus 4.6', description: 'Most capable model' },
-  { id: CLAUDE_SONNET_4_5, name: 'Claude Sonnet 4.5', description: 'Balanced performance' },
+  { id: CLAUDE_SONNET_4_6, name: 'Claude Sonnet 4.6', description: 'Balanced performance' },
   { id: CLAUDE_HAIKU_4_5, name: 'Claude Haiku 4.5', description: 'Fastest responses' },
 ];
 
@@ -91,8 +91,8 @@ export const MODEL_OPTIONS: ModelOptionConfig[] = [
     iconType: 'claude',
   },
   {
-    value: CLAUDE_SONNET_4_5,
-    label: 'Claude Sonnet 4.5',
+    value: CLAUDE_SONNET_4_6,
+    label: 'Claude Sonnet 4.6',
     description: 'Balanced speed and intelligence',
     provider: 'anthropic',
     iconType: 'claude',

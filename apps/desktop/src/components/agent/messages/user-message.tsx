@@ -1,4 +1,6 @@
 import { User, Paperclip } from '@phosphor-icons/react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 import type { FC } from 'react';
 import type { Attachment, FileMention } from '../../../stores/agentStore';
@@ -50,8 +52,37 @@ export const UserMessage: FC<UserMessageProps> = ({
           <span className="text-sm font-medium text-foreground">{userName}</span>
           <span className="text-xs text-muted-foreground">{formatTime(timestamp)}</span>
         </div>
-        <div className="text-sm text-foreground whitespace-pre-wrap break-words">
-          {content}
+        <div className="prose prose-sm dark:prose-invert max-w-none">
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+              p: ({ children }) => (
+                <p className="text-sm text-foreground leading-relaxed mb-1 last:mb-0">
+                  {children}
+                </p>
+              ),
+              code: ({ children, className }) => {
+                const isInline = !className?.includes('language-');
+                if (isInline) {
+                  return (
+                    <code className="px-1 py-0.5 rounded bg-muted text-xs font-mono text-foreground">
+                      {children}
+                    </code>
+                  );
+                }
+                return (
+                  <code className={`block p-2 rounded-md bg-muted text-xs font-mono overflow-x-auto ${className ?? ''}`}>
+                    {children}
+                  </code>
+                );
+              },
+              pre: ({ children }) => (
+                <pre className="my-1 overflow-x-auto">{children}</pre>
+              ),
+            }}
+          >
+            {content}
+          </ReactMarkdown>
         </div>
 
         {/* Image attachments */}

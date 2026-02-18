@@ -2,9 +2,9 @@
  * PrimarySidebar - Main collapsible sidebar with icon rail navigation
  */
 
-import { useState, useCallback, useMemo, forwardRef } from 'react';
+import { useCallback, useMemo, forwardRef } from 'react';
 import { FileExplorer } from '@/components/file-explorer';
-import { SessionList, ApiKeyDialog } from '@/components/agent';
+import { SessionList } from '@/components/agent';
 import { SourceControlPanel } from '@/components/source-control';
 import { IconRail } from './IconRail';
 import { ContextHeader } from './ContextHeader';
@@ -12,7 +12,6 @@ import { TRANSITIONS } from '@/lib/constants';
 import { useUIStore, useIsLeftSidebarCollapsed } from '@/stores/uiStore';
 import { useAgentStore } from '@/stores/agentStore';
 import { usePanelTabsStore } from '@/stores/panelTabsStore';
-import { useHasCredentials, useActiveProvider } from '@/stores/provider-store';
 import { BUILTIN_PANEL_TYPES } from '@/lib/panels';
 import { cn } from '@/lib/utils';
 
@@ -30,11 +29,6 @@ export const PrimarySidebar = forwardRef<HTMLElement, PrimarySidebarProps>(({ wi
 
   // Get store actions directly to avoid selector subscription issues
   const openPanel = useMemo(() => usePanelTabsStore.getState().openPanel, []);
-
-  // Provider/credentials state
-  const activeProvider = useActiveProvider();
-  const hasCredentials = useHasCredentials(activeProvider ?? 'anthropic');
-  const [showApiKeyDialog, setShowApiKeyDialog] = useState(false);
 
   // Open a session as a tab — find existing tab first, otherwise open new
   const handleSessionSelect = useCallback((sessionId: string): void => {
@@ -68,28 +62,9 @@ export const PrimarySidebar = forwardRef<HTMLElement, PrimarySidebarProps>(({ wi
     });
   }, [createSession, openPanel]);
 
+  // Server mode handles its own auth — no local credential check needed
   const handleNewSession = useCallback((): void => {
-    // Check if credentials exist before creating session
-    if (!hasCredentials) {
-      // Show API key dialog first
-      setShowApiKeyDialog(true);
-      return;
-    }
-    // Credentials exist, create session directly
     createSessionAndShow();
-  }, [hasCredentials, createSessionAndShow]);
-
-  const handleApiKeyDialogClose = useCallback((): void => {
-    setShowApiKeyDialog(false);
-  }, []);
-
-  // Called after successful API key save
-  const handleApiKeySaved = useCallback((): void => {
-    setShowApiKeyDialog(false);
-    // Small delay to ensure provider store is fully updated
-    setTimeout(() => {
-      createSessionAndShow();
-    }, 100);
   }, [createSessionAndShow]);
 
   // Compute translateX for the 3-panel reel
@@ -152,13 +127,6 @@ export const PrimarySidebar = forwardRef<HTMLElement, PrimarySidebarProps>(({ wi
         </div>
       </div>
 
-      {/* API Key Dialog for onboarding */}
-      <ApiKeyDialog
-        isOpen={showApiKeyDialog}
-        onClose={handleApiKeyDialogClose}
-        onSuccess={handleApiKeySaved}
-        provider="anthropic"
-      />
     </aside>
   );
 });

@@ -1,18 +1,26 @@
 import { Robot } from '@phosphor-icons/react';
+import { useMemo } from 'react';
 
 import { AgentNarrative } from './agent-narrative';
+import { ChainOfThoughtBlock, extractThinkingBlocks } from './chain-of-thought-block';
 import { MessageFeedback } from './message-feedback';
 import { NotifyUserCard } from './notify-user-card';
 import { ProceedIndicator } from './proceed-indicator';
 import { TaskPhaseCard } from './task-phase-card';
 import { ToolCallBlock } from './tool-call-block';
-import { ToolApprovalInline } from '../dialogs/ToolApprovalDialog';
-
 import type { FC } from 'react';
-import type { ToolCallWithStatus } from '../../../bindings';
+
+export interface AgentToolCall {
+  id: string;
+  name: string;
+  arguments: string;
+  status: 'pending' | 'running' | 'completed' | 'error';
+  result?: string;
+}
 
 export interface AgentMessageContent {
   narrative?: string;
+  isStreaming?: boolean;
   taskPhases?: {
     id: string;
     title: string;
@@ -27,14 +35,7 @@ export interface AgentMessageContent {
       status: 'pending' | 'in_progress' | 'completed' | 'failed';
     }[];
   }[];
-  toolCalls?: {
-    id: string;
-    command: string;
-    cwd: string;
-    exitCode?: number;
-    output?: string;
-  }[];
-  pendingApprovals?: ToolCallWithStatus[];
+  toolCalls?: AgentToolCall[];
   notifications?: {
     id: string;
     type: 'info' | 'warning' | 'error' | 'success';
@@ -45,7 +46,6 @@ export interface AgentMessageContent {
     }[];
   }[];
   autoProceed?: boolean;
-  isStreaming?: boolean;
 }
 
 export interface AgentMessageProps {
@@ -54,7 +54,6 @@ export interface AgentMessageProps {
   avatarUrl?: string;
   agentName?: string;
   onFeedback?: (messageId: string, feedback: 'good' | 'bad') => void;
-  onToolApproval?: (toolCallId: string, approved: boolean) => void;
   messageId?: string;
   className?: string;
 }
@@ -65,7 +64,6 @@ export const AgentMessage: FC<AgentMessageProps> = ({
   avatarUrl,
   agentName = 'Agent',
   onFeedback,
-  onToolApproval,
   messageId,
   className = '',
 }) => {
@@ -83,8 +81,14 @@ export const AgentMessage: FC<AgentMessageProps> = ({
     }
   };
 
+  // Extract thinking blocks from narrative
+  const { thinking, cleaned: narrativeContent } = useMemo(
+    () => extractThinkingBlocks(content.narrative ?? ''),
+    [content.narrative]
+  );
+
   return (
-    <div className={`flex gap-3 px-4 animate-in fade-in-0 slide-in-from-bottom-2 duration-200 ${className}`}>
+    <div className={`flex gap-3 px-4 ${className}`}>
       {/* Avatar */}
       <div className="flex-shrink-0 w-8 h-8 rounded-full bg-secondary flex items-center justify-center overflow-hidden">
         {avatarUrl ? (
@@ -103,8 +107,19 @@ export const AgentMessage: FC<AgentMessageProps> = ({
           {content.autoProceed ? <ProceedIndicator /> : null}
         </div>
 
+        {/* Chain of Thought */}
+        {thinking.length > 0 ? (
+          <div className="space-y-1.5">
+            {thinking.map((block, i) => (
+              <ChainOfThoughtBlock key={i} content={block} />
+            ))}
+          </div>
+        ) : null}
+
         {/* Narrative */}
-        {content.narrative ? <AgentNarrative content={content.narrative} isStreaming={content.isStreaming} /> : null}
+        {narrativeContent || content.isStreaming ? (
+          <AgentNarrative content={narrativeContent} isStreaming={content.isStreaming} />
+        ) : null}
 
         {/* Task Phase Cards */}
         {content.taskPhases && content.taskPhases.length > 0 ? (
@@ -127,24 +142,7 @@ export const AgentMessage: FC<AgentMessageProps> = ({
             {content.toolCalls.map((toolCall) => (
               <ToolCallBlock
                 key={toolCall.id}
-                command={toolCall.command}
-                cwd={toolCall.cwd}
-                {...(toolCall.exitCode !== undefined && { exitCode: toolCall.exitCode })}
-                {...(toolCall.output && { output: toolCall.output })}
-              />
-            ))}
-          </div>
-        ) : null}
-
-        {/* Pending Tool Approvals */}
-        {content.pendingApprovals && content.pendingApprovals.length > 0 ? (
-          <div className="space-y-2">
-            {content.pendingApprovals.map((approval) => (
-              <ToolApprovalInline
-                key={approval.tool_call.id}
-                toolCall={approval}
-                onApproved={(id) => onToolApproval?.(id, true)}
-                onRejected={(id) => onToolApproval?.(id, false)}
+                toolCall={toolCall}
               />
             ))}
           </div>

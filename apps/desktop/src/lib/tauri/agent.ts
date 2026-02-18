@@ -51,6 +51,8 @@ export async function listenToAgentEvents(
 	return listen<BackendEvent>('agent-event', (event) => {
 		const payload = event.payload;
 
+		console.debug('[Agent Event]', payload.type, (payload as any).payload?.conversation_id);
+
 		switch (payload.type) {
 			case 'agent:chunk':
 				handlers.onChunk?.(

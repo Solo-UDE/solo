@@ -1,4 +1,5 @@
 import React, { useRef, useState } from 'react';
+import { Stop } from '@phosphor-icons/react';
 
 import { ContextMenu } from './context-menu';
 import { ContextTracker } from './context-tracker';
@@ -19,6 +20,7 @@ import { DEFAULT_MODEL_ID } from '../../../lib/constants';
 export interface ChatInputContainerProps {
   onSubmit: (content: string, mode: 'planning' | 'fast', model: string, attachments?: Attachment[], mentions?: FileMention[]) => void;
   onLocalCommand?: (commandId: string) => void;
+  onAbort?: () => void;
   isAgentRunning?: boolean;
   className?: string;
   worktreeId?: string | null;
@@ -28,6 +30,7 @@ export interface ChatInputContainerProps {
 export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
   onSubmit,
   onLocalCommand,
+  onAbort,
   isAgentRunning = false,
   className = '',
   worktreeId,
@@ -122,10 +125,20 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
               )}
             </div>
 
-            <SubmitButton
-              onClick={handleSubmit}
-              disabled={isAgentRunning || !content.trim()}
-            />
+            {isAgentRunning ? (
+              <button
+                onClick={onAbort}
+                className="inline-flex items-center justify-center h-[30px] w-[30px] rounded-[8px] bg-destructive/10 text-destructive hover:bg-destructive/20 hover:scale-105 active:scale-95 transition-all duration-200"
+                aria-label="Stop generation"
+              >
+                <Stop weight="fill" className="h-3.5 w-3.5" />
+              </button>
+            ) : (
+              <SubmitButton
+                onClick={handleSubmit}
+                disabled={!content.trim()}
+              />
+            )}
           </div>
         </div>
       </div>

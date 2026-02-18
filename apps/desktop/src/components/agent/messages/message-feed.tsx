@@ -1,4 +1,5 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
+import { motion, useReducedMotion } from 'framer-motion';
 import { useRef, useEffect } from 'react';
 
 import { MessageSection } from './message-section';
@@ -15,7 +16,6 @@ export interface MessageFeedProps {
   messageGroups: MessageGroup[];
   autoScroll?: boolean;
   isStreaming?: boolean;
-  onToolApproval?: (toolCallId: string, approved: boolean) => void;
   className?: string;
 }
 
@@ -23,11 +23,13 @@ export const MessageFeed: FC<MessageFeedProps> = ({
   messageGroups,
   autoScroll = true,
   isStreaming = false,
-  onToolApproval,
   className = '',
 }) => {
   const parentRef = useRef<HTMLDivElement>(null);
   const shouldAutoScroll = useRef(autoScroll);
+  const prefersReduced = useReducedMotion();
+  // Track which groups have already been mounted (to avoid re-animation)
+  const mountedGroupsRef = useRef(new Set<string>());
 
   const virtualizer = useVirtualizer({
     count: messageGroups.length,
@@ -98,6 +100,14 @@ export const MessageFeed: FC<MessageFeedProps> = ({
           const messageGroup = messageGroups[virtualItem.index];
           if (!messageGroup) return null;
 
+          // Determine if this is a newly mounted group
+          const isNew = !mountedGroupsRef.current.has(messageGroup.id);
+          if (isNew) {
+            mountedGroupsRef.current.add(messageGroup.id);
+          }
+
+          const shouldAnimate = isNew && !prefersReduced;
+
           return (
             <div
               key={virtualItem.key}
@@ -111,11 +121,24 @@ export const MessageFeed: FC<MessageFeedProps> = ({
                 transform: `translateY(${String(virtualItem.start)}px)`,
               }}
             >
-              <MessageSection
-                sectionIndex={virtualItem.index}
-                messages={messageGroup.messages}
-                onToolApproval={onToolApproval}
-              />
+              {shouldAnimate ? (
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                >
+                  <MessageSection
+                    sectionIndex={virtualItem.index}
+                    messages={messageGroup.messages}
+
+                  />
+                </motion.div>
+              ) : (
+                <MessageSection
+                  sectionIndex={virtualItem.index}
+                  messages={messageGroup.messages}
+                />
+              )}
             </div>
           );
         })}

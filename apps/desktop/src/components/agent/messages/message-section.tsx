@@ -1,4 +1,5 @@
 import { AgentMessage } from './agent-message';
+import { TurnProgress } from './turn-progress';
 import { UserMessage } from './user-message';
 
 import type { AgentMessageContent } from './agent-message';
@@ -19,6 +20,7 @@ export interface AgentMessageData {
   type: 'agent';
   content: AgentMessageContent;
   timestamp: Date;
+  turnNumber?: number;
 }
 
 export type Message = UserMessageData | AgentMessageData;
@@ -26,14 +28,12 @@ export type Message = UserMessageData | AgentMessageData;
 export interface MessageSectionProps {
   sectionIndex: number;
   messages: Message[];
-  onToolApproval?: (toolCallId: string, approved: boolean) => void;
   className?: string;
 }
 
 export const MessageSection: FC<MessageSectionProps> = ({
   sectionIndex,
   messages,
-  onToolApproval,
   className = '',
 }) => {
   return (
@@ -56,12 +56,16 @@ export const MessageSection: FC<MessageSectionProps> = ({
 
         // message.type === 'agent'
         return (
-          <AgentMessage
-            key={message.id}
-            content={message.content}
-            timestamp={message.timestamp}
-            onToolApproval={onToolApproval}
-          />
+          <div key={message.id}>
+            {message.turnNumber && message.turnNumber > 1 && (
+              <TurnProgress turnNumber={message.turnNumber} />
+            )}
+            <AgentMessage
+              content={message.content}
+              timestamp={message.timestamp}
+
+            />
+          </div>
         );
       })}
     </section>

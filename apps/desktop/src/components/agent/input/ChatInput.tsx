@@ -4,7 +4,7 @@ import { PaperPlaneTilt, Brain, Lightning, CaretDown, GitBranch } from '@phospho
 import type { FC, KeyboardEvent } from 'react';
 import type { MessageMode } from '../../../stores/agentStore';
 import type { WorktreeInfo } from '../../../bindings';
-import { CLAUDE_SONNET_4_5, CLAUDE_OPUS_4_6, CLAUDE_HAIKU_4_5, CLAUDE_MODELS } from '../../../lib/constants';
+import { CLAUDE_SONNET_4_6, CLAUDE_OPUS_4_6, CLAUDE_HAIKU_4_5, CLAUDE_MODELS } from '../../../lib/constants';
 
 export interface ChatInputProps {
 	onSubmit: (content: string) => void;
@@ -276,7 +276,7 @@ export const ChatInput: FC<ChatInputProps> = ({
 // Helper function to get display name from model ID
 function getModelDisplayName(modelId: string): string {
 	const displayNames: Record<string, string> = {
-		[CLAUDE_SONNET_4_5]: 'Sonnet 4.5',
+		[CLAUDE_SONNET_4_6]: 'Sonnet 4.5',
 		[CLAUDE_OPUS_4_6]: 'Opus 4.6',
 		[CLAUDE_HAIKU_4_5]: 'Haiku 4.5',
 		'gpt-5.2-high': 'GPT-5.2 High',

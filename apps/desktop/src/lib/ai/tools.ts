@@ -282,20 +282,6 @@ export async function executeTool(
 }
 
 /**
- * Approve a pending tool call
- */
-export async function approveToolCall(toolCallId: string): Promise<void> {
-	return invoke('approve_tool_call', { toolCallId });
-}
-
-/**
- * Reject a pending tool call
- */
-export async function rejectToolCall(toolCallId: string): Promise<void> {
-	return invoke('reject_tool_call', { toolCallId });
-}
-
-/**
  * Convert a tool definition to JSON Schema format (for sending to AI providers)
  */
 export function toolToJsonSchema(tool: ToolDefinition): object {

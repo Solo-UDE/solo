@@ -94,8 +94,6 @@ export {
 
 	// Execution
 	executeTool,
-	approveToolCall,
-	rejectToolCall,
 
 	// Schema conversion
 	toolToJsonSchema,
