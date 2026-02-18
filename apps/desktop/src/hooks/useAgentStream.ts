@@ -34,6 +34,12 @@ export function useAgentStream(options: UseAgentStreamOptions = {}): void {
 		onPermissionRequest: useAgentStore((s) => s.handlePermissionRequest),
 		onSessionInit: useAgentStore((s) => s.handleSessionInit),
 		onError: useAgentStore((s) => s.handleError),
+		onPlanModeChanged: (_sessionId: string, enabled: boolean) => {
+			console.log('[AgentStream] Plan mode changed:', enabled);
+		},
+		onAcceptModeChanged: (_sessionId: string, enabled: boolean) => {
+			console.log('[AgentStream] Accept mode changed:', enabled);
+		},
 	};
 
 	useEffect(() => {
@@ -52,6 +58,10 @@ export function useAgentStream(options: UseAgentStreamOptions = {}): void {
 				handlersRef.current.onSessionInit?.(sessionId, sdkSessionId, isResumed, isForked),
 			onError: (message, stack) =>
 				handlersRef.current.onError?.(message, stack),
+			onPlanModeChanged: (sessionId, enabled) =>
+				handlersRef.current.onPlanModeChanged?.(sessionId, enabled),
+			onAcceptModeChanged: (sessionId, enabled) =>
+				handlersRef.current.onAcceptModeChanged?.(sessionId, enabled),
 		};
 
 		listenToAgentEvents(proxy)

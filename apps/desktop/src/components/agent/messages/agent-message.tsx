@@ -7,6 +7,7 @@ import { ProceedIndicator } from './proceed-indicator';
 import { TaskPhaseCard } from './task-phase-card';
 import { ToolCallBlock } from './tool-call-block';
 import { ToolApprovalInline } from '../dialogs/ToolApprovalDialog';
+import type { RenderBlock } from '../messageAdapter';
 
 import type { FC } from 'react';
 
@@ -18,6 +19,8 @@ export interface PendingApproval {
 
 export interface AgentMessageContent {
   narrative?: string;
+  /** Ordered blocks for interleaved rendering (text, thinking, tools mixed in order) */
+  blocks?: RenderBlock[];
   taskPhases?: {
     id: string;
     title: string;
@@ -88,6 +91,9 @@ export const AgentMessage: FC<AgentMessageProps> = ({
     }
   };
 
+  // Use ordered blocks if available, otherwise fall back to legacy rendering
+  const hasBlocks = content.blocks && content.blocks.length > 0;
+
   return (
     <div className={`flex gap-3 px-4 animate-in fade-in-0 slide-in-from-bottom-2 duration-200 ${className}`}>
       {/* Avatar */}
@@ -108,54 +114,102 @@ export const AgentMessage: FC<AgentMessageProps> = ({
           {content.autoProceed ? <ProceedIndicator /> : null}
         </div>
 
-        {/* Narrative */}
-        {content.narrative ? <AgentNarrative content={content.narrative} isStreaming={content.isStreaming} /> : null}
-
-        {/* Task Phase Cards */}
-        {content.taskPhases && content.taskPhases.length > 0 ? (
+        {/* === Ordered Blocks Rendering === */}
+        {hasBlocks ? (
           <div className="space-y-3">
-            {content.taskPhases.map((phase) => (
-              <TaskPhaseCard
-                key={phase.id}
-                title={phase.title}
-                summary={phase.summary}
-                {...(phase.filesEdited && { filesEdited: phase.filesEdited })}
-                {...(phase.progressUpdates && { progressUpdates: phase.progressUpdates })}
-              />
-            ))}
+            {content.blocks!.map((block, i) => {
+              switch (block.type) {
+                case 'narrative':
+                  return block.content ? (
+                    <AgentNarrative key={`block-${i}`} content={block.content} isStreaming={content.isStreaming} />
+                  ) : null;
+                case 'thinking':
+                  return block.content ? (
+                    <div key={`block-${i}`} className="text-xs text-muted-foreground/70 italic border-l-2 border-muted-foreground/20 pl-3 py-1">
+                      {block.content}
+                    </div>
+                  ) : null;
+                case 'toolCall':
+                  return (
+                    <ToolCallBlock
+                      key={`block-${i}`}
+                      command={block.command}
+                      cwd={block.cwd}
+                      {...(block.exitCode !== undefined && { exitCode: block.exitCode })}
+                      {...(block.output && { output: block.output })}
+                    />
+                  );
+                case 'approval':
+                  return (
+                    <ToolApprovalInline
+                      key={`block-${i}`}
+                      approval={{
+                        requestId: block.requestId,
+                        toolName: block.toolName,
+                        toolInput: block.toolInput,
+                      }}
+                      onApproved={(requestId) => onToolApproval?.(requestId, true)}
+                      onRejected={(requestId) => onToolApproval?.(requestId, false)}
+                    />
+                  );
+                default:
+                  return null;
+              }
+            })}
           </div>
-        ) : null}
+        ) : (
+          /* === Legacy (non-block) Rendering === */
+          <>
+            {/* Narrative */}
+            {content.narrative ? <AgentNarrative content={content.narrative} isStreaming={content.isStreaming} /> : null}
 
-        {/* Tool Calls */}
-        {content.toolCalls && content.toolCalls.length > 0 ? (
-          <div className="space-y-2">
-            {content.toolCalls.map((toolCall) => (
-              <ToolCallBlock
-                key={toolCall.id}
-                command={toolCall.command}
-                cwd={toolCall.cwd}
-                {...(toolCall.exitCode !== undefined && { exitCode: toolCall.exitCode })}
-                {...(toolCall.output && { output: toolCall.output })}
-              />
-            ))}
-          </div>
-        ) : null}
+            {/* Task Phase Cards */}
+            {content.taskPhases && content.taskPhases.length > 0 ? (
+              <div className="space-y-3">
+                {content.taskPhases.map((phase) => (
+                  <TaskPhaseCard
+                    key={phase.id}
+                    title={phase.title}
+                    summary={phase.summary}
+                    {...(phase.filesEdited && { filesEdited: phase.filesEdited })}
+                    {...(phase.progressUpdates && { progressUpdates: phase.progressUpdates })}
+                  />
+                ))}
+              </div>
+            ) : null}
 
-        {/* Pending Tool Approvals */}
-        {content.pendingApprovals && content.pendingApprovals.length > 0 ? (
-          <div className="space-y-2">
-            {content.pendingApprovals.map((approval) => (
-              <ToolApprovalInline
-                key={approval.requestId}
-                approval={approval}
-                onApproved={(requestId) => onToolApproval?.(requestId, true)}
-                onRejected={(requestId) => onToolApproval?.(requestId, false)}
-              />
-            ))}
-          </div>
-        ) : null}
+            {/* Tool Calls */}
+            {content.toolCalls && content.toolCalls.length > 0 ? (
+              <div className="space-y-2">
+                {content.toolCalls.map((toolCall) => (
+                  <ToolCallBlock
+                    key={toolCall.id}
+                    command={toolCall.command}
+                    cwd={toolCall.cwd}
+                    {...(toolCall.exitCode !== undefined && { exitCode: toolCall.exitCode })}
+                    {...(toolCall.output && { output: toolCall.output })}
+                  />
+                ))}
+              </div>
+            ) : null}
 
-        {/* Notifications */}
+            {/* Pending Tool Approvals */}
+            {content.pendingApprovals && content.pendingApprovals.length > 0 ? (
+              <div className="space-y-2">
+                {content.pendingApprovals.map((approval) => (
+                  <ToolApprovalInline
+                    key={approval.requestId}
+                    approval={approval}
+                    onApproved={(requestId) => onToolApproval?.(requestId, true)}
+                    onRejected={(requestId) => onToolApproval?.(requestId, false)}
+                  />
+                ))}
+              </div>
+            ) : null}
+          </>
+        )}
+
+        {/* Notifications (always rendered, not block-ordered) */}
         {content.notifications && content.notifications.length > 0 ? (
           <div className="space-y-2">
             {content.notifications.map((notification) => (

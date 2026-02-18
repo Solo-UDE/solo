@@ -41,10 +41,16 @@ export interface ToolCallState {
 	requestId?: string;
 }
 
+export type ContentBlock =
+	| { type: 'text'; text: string }
+	| { type: 'thinking'; text: string }
+	| { type: 'tool_use'; toolCall: ToolCallState };
+
 export interface Message {
 	id: string;
 	role: 'user' | 'assistant';
 	content: string;
+	blocks: ContentBlock[];
 	timestamp: Date;
 	mode?: MessageMode;
 	toolCalls?: ToolCallState[];
@@ -145,6 +151,10 @@ interface AgentActions {
 	// Message handling
 	sendMessage: (sessionId: string, content: string, mode?: MessageMode) => Promise<void>;
 	addUserMessage: (sessionId: string, content: string, mode?: MessageMode) => string;
+
+	// Mode management
+	setPlanMode: (sessionId: string, enabled: boolean) => Promise<void>;
+	setThinkingMode: (sessionId: string, enabled: boolean, maxTokens?: number) => Promise<void>;
 
 	// Bridge event handlers
 	handleAgentMessage: (sessionId: string, message: BridgeAgentMessage) => void;
@@ -319,6 +329,7 @@ export const useAgentStore = create<AgentStore>()(
 					id: assistantMessageId,
 					role: 'assistant',
 					content: '',
+					blocks: [],
 					timestamp: new Date(),
 					isStreaming: true,
 				});
@@ -355,6 +366,7 @@ export const useAgentStore = create<AgentStore>()(
 					id: messageId,
 					role: 'user',
 					content,
+					blocks: [],
 					timestamp: new Date(),
 					mode,
 				});
@@ -363,6 +375,26 @@ export const useAgentStore = create<AgentStore>()(
 
 			get().persistSessions();
 			return messageId;
+		},
+
+		// =================================================================
+		// Mode Management
+		// =================================================================
+
+		setPlanMode: async (sessionId: string, enabled: boolean) => {
+			try {
+				await backend.agentSetPlanMode(sessionId, enabled);
+			} catch (error) {
+				console.error('Failed to set plan mode:', error);
+			}
+		},
+
+		setThinkingMode: async (sessionId: string, enabled: boolean, maxTokens?: number) => {
+			try {
+				await backend.agentSetThinkingMode(sessionId, enabled, maxTokens);
+			} catch (error) {
+				console.error('Failed to set thinking mode:', error);
+			}
 		},
 
 		// =================================================================
@@ -383,6 +415,14 @@ export const useAgentStore = create<AgentStore>()(
 							const msg = messages.find((m) => m.id === streamState.streamingMessageId);
 							if (msg) {
 								msg.content = streamState.streamingContent;
+
+								// Ordered blocks: append to last text block or create new one
+								const lastBlock = msg.blocks[msg.blocks.length - 1];
+								if (lastBlock && lastBlock.type === 'text') {
+									lastBlock.text = streamState.streamingContent;
+								} else {
+									msg.blocks.push({ type: 'text', text: streamState.streamingContent });
+								}
 							}
 						}
 						break;
@@ -396,6 +436,14 @@ export const useAgentStore = create<AgentStore>()(
 							const msg = messages.find((m) => m.id === streamState.streamingMessageId);
 							if (msg) {
 								msg.thinkingContent = streamState.streamingThinking;
+
+								// Ordered blocks: thinking is always at the front
+								const firstBlock = msg.blocks[0];
+								if (firstBlock && firstBlock.type === 'thinking') {
+									firstBlock.text = streamState.streamingThinking;
+								} else {
+									msg.blocks.unshift({ type: 'thinking', text: streamState.streamingThinking });
+								}
 							}
 						}
 						break;
@@ -431,14 +479,27 @@ export const useAgentStore = create<AgentStore>()(
 								if (tc) {
 									tc.status = toolStatus as ToolCallState['status'];
 									if (meta.toolOutput) tc.output = meta.toolOutput;
+
+									// Update the matching block too
+									const block = msg.blocks.find(
+										(b) => b.type === 'tool_use' && b.toolCall.id === tc!.id
+									);
+									if (block && block.type === 'tool_use') {
+										block.toolCall.status = tc.status;
+										if (meta.toolOutput) block.toolCall.output = meta.toolOutput;
+									}
 								} else if (toolStatus === 'running') {
 									// Brand new tool (no permission required)
-									msg.toolCalls.push({
+									const newTc: ToolCallState = {
 										id: toolId,
 										name: meta.toolName || 'unknown',
 										input: meta.toolInput,
 										status: 'running',
-									});
+									};
+									msg.toolCalls.push(newTc);
+
+									// Push ordered block — this creates the interleaving
+									msg.blocks.push({ type: 'tool_use', toolCall: newTc });
 								}
 							}
 						}
@@ -529,13 +590,17 @@ export const useAgentStore = create<AgentStore>()(
 						const msg = messages.find((m) => m.id === streamState.streamingMessageId);
 						if (msg) {
 							if (!msg.toolCalls) msg.toolCalls = [];
-							msg.toolCalls.push({
+							const newTc: ToolCallState = {
 								id: request.requestId,
 								name: request.toolName,
 								input: request.toolInput,
 								status: 'awaiting-permission',
 								requestId: request.requestId,
-							});
+							};
+							msg.toolCalls.push(newTc);
+
+							// Push ordered block for interleaving
+							msg.blocks.push({ type: 'tool_use', toolCall: newTc });
 						}
 					}
 				}
@@ -569,6 +634,9 @@ export const useAgentStore = create<AgentStore>()(
 				const request = state.pendingPermissions.get(requestId);
 				state.pendingPermissions.delete(requestId);
 
+				const newStatus = decision === 'approve' ? 'running' as const : 'error' as const;
+				const denyOutput = decision === 'deny' ? 'Denied by user' : undefined;
+
 				// Update tool call status in the relevant message
 				if (request) {
 					const streamState = state.sessionStreaming.get(request.sessionId);
@@ -576,15 +644,25 @@ export const useAgentStore = create<AgentStore>()(
 						const messages = state.messages.get(request.sessionId);
 						if (messages && streamState.streamingMessageId) {
 							const msg = messages.find((m) => m.id === streamState.streamingMessageId);
-							if (msg?.toolCalls) {
-								const tc = msg.toolCalls.find(
-									(t) => t.requestId === requestId
-								);
-								if (tc) {
-									tc.status = decision === 'approve' ? 'running' : 'error';
-									if (decision === 'deny') {
-										tc.output = 'Denied by user';
+							if (msg) {
+								// Update flat toolCalls array
+								if (msg.toolCalls) {
+									const tc = msg.toolCalls.find(
+										(t) => t.requestId === requestId
+									);
+									if (tc) {
+										tc.status = newStatus;
+										if (denyOutput) tc.output = denyOutput;
 									}
+								}
+
+								// Update the matching block (Immer treats these as separate objects)
+								const block = msg.blocks.find(
+									(b) => b.type === 'tool_use' && b.toolCall.requestId === requestId
+								);
+								if (block && block.type === 'tool_use') {
+									block.toolCall.status = newStatus;
+									if (denyOutput) block.toolCall.output = denyOutput;
 								}
 							}
 						}

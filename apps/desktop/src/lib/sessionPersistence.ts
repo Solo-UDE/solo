@@ -91,6 +91,7 @@ function deserializeSession(persisted: PersistedSession): {
       id: m.id,
       role: m.role,
       content: m.content,
+      blocks: [],
       timestamp: new Date(m.timestamp),
       mode: m.mode,
       toolCalls: m.toolCalls,

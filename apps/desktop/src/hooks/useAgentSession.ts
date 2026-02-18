@@ -42,6 +42,10 @@ export interface UseAgentSessionReturn {
 	interrupt: () => Promise<void>;
 	/** Change the model */
 	setModel: (model: string) => Promise<void>;
+	/** Set plan mode on the bridge */
+	setPlanMode: (enabled: boolean) => Promise<void>;
+	/** Set thinking mode on the bridge */
+	setThinkingMode: (enabled: boolean, maxTokens?: number) => Promise<void>;
 	/** Clear any error */
 	clearError: () => void;
 }
@@ -72,6 +76,8 @@ export function useAgentSession(
 	const storeSetModel = useAgentStore((state) => state.setModel);
 	const storeInterrupt = useAgentStore((state) => state.interrupt);
 	const storeClearError = useAgentStore((state) => state.clearError);
+	const storeSetPlanMode = useAgentStore((state) => state.setPlanMode);
+	const storeSetThinkingMode = useAgentStore((state) => state.setThinkingMode);
 
 	// Track if we've attempted auto-creation
 	const autoCreated = useRef(false);
@@ -115,6 +121,18 @@ export function useAgentSession(
 		}
 	}, [storeSetModel, effectiveSessionId]);
 
+	const setPlanMode = useCallback(async (enabled: boolean) => {
+		if (effectiveSessionId) {
+			await storeSetPlanMode(effectiveSessionId, enabled);
+		}
+	}, [storeSetPlanMode, effectiveSessionId]);
+
+	const setThinkingMode = useCallback(async (enabled: boolean, maxTokens?: number) => {
+		if (effectiveSessionId) {
+			await storeSetThinkingMode(effectiveSessionId, enabled, maxTokens);
+		}
+	}, [storeSetThinkingMode, effectiveSessionId]);
+
 	const clearError = useCallback(() => {
 		if (effectiveSessionId) {
 			storeClearError(effectiveSessionId);
@@ -131,6 +149,8 @@ export function useAgentSession(
 		sendMessage,
 		interrupt,
 		setModel,
+		setPlanMode,
+		setThinkingMode,
 		clearError,
 	};
 }

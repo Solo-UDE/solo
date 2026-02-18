@@ -58,6 +58,9 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 	// Track bound worktree for this agent session
 	const [worktreeId, setWorktreeId] = useState<string | null>(initialWorktreeId ?? null);
 
+	// Track mode states for bridge sync
+	const [thinkingEnabled, setThinkingEnabled] = useState(false);
+
 	// Session management — scoped to this tab's session
 	const {
 		sessionId,
@@ -67,6 +70,8 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 		createSession,
 		sendMessage,
 		setModel,
+		setPlanMode,
+		setThinkingMode,
 		clearError,
 	} = useAgentSession({
 		sessionId: initialSessionId ?? null,
@@ -135,6 +140,24 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 		[respondPermission]
 	);
 
+	// Handle mode selector changes — sync to bridge
+	const handleModeChange = useCallback(
+		(mode: 'planning' | 'fast') => {
+			const enabled = mode === 'planning';
+			setPlanMode(enabled);
+		},
+		[setPlanMode]
+	);
+
+	// Handle thinking toggle — sync to bridge
+	const handleThinkingChange = useCallback(
+		(enabled: boolean) => {
+			setThinkingEnabled(enabled);
+			setThinkingMode(enabled);
+		},
+		[setThinkingMode]
+	);
+
 	// Handle new session
 	const handleNewSession = useCallback(() => {
 		createSession(selectedModel || undefined).then((newSessionId) => {
@@ -189,6 +212,9 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 					isAgentRunning={isRunning}
 					worktreeId={worktreeId}
 					onWorktreeChange={handleWorktreeChange}
+					onModeChange={handleModeChange}
+					thinkingEnabled={thinkingEnabled}
+					onThinkingChange={handleThinkingChange}
 				/>
 			</div>
 		);
@@ -238,6 +264,9 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 				isAgentRunning={isRunning}
 				worktreeId={worktreeId}
 				onWorktreeChange={handleWorktreeChange}
+				onModeChange={handleModeChange}
+				thinkingEnabled={thinkingEnabled}
+				onThinkingChange={handleThinkingChange}
 			/>
 		</div>
 	);

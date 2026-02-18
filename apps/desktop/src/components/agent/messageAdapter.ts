@@ -2,12 +2,33 @@
  * Adapter utilities to convert between store messages and orbit-agent message format
  */
 
-import type { Message as StoreMessage } from '../../stores/agentStore';
+import type { Message as StoreMessage, ContentBlock } from '../../stores/agentStore';
 import type {
   MessageGroup,
   Message as OrbitMessage,
   AgentMessageContent,
 } from './messages';
+
+/**
+ * A single renderable block in an agent message (ordered).
+ */
+export type RenderBlock =
+  | { type: 'narrative'; content: string }
+  | { type: 'thinking'; content: string }
+  | {
+      type: 'toolCall';
+      id: string;
+      command: string;
+      cwd: string;
+      exitCode?: number;
+      output?: string;
+    }
+  | {
+      type: 'approval';
+      requestId: string;
+      toolName: string;
+      toolInput: unknown;
+    };
 
 /**
  * Convert store Message[] to orbit-agent MessageGroup[]
@@ -37,6 +58,47 @@ export function convertToMessageGroups(storeMessages: StoreMessage[]): MessageGr
 }
 
 /**
+ * Convert ordered ContentBlock[] to RenderBlock[] for the component.
+ */
+function convertBlocksToRenderBlocks(blocks: ContentBlock[]): RenderBlock[] {
+  const result: RenderBlock[] = [];
+
+  for (const block of blocks) {
+    switch (block.type) {
+      case 'text':
+        result.push({ type: 'narrative', content: block.text });
+        break;
+      case 'thinking':
+        result.push({ type: 'thinking', content: block.text });
+        break;
+      case 'tool_use': {
+        const tc = block.toolCall;
+        if (tc.status === 'awaiting-permission') {
+          result.push({
+            type: 'approval',
+            requestId: tc.requestId || tc.id,
+            toolName: tc.name,
+            toolInput: tc.input,
+          });
+        } else {
+          result.push({
+            type: 'toolCall',
+            id: tc.id,
+            command: tc.name,
+            cwd: '.',
+            exitCode: tc.status === 'success' ? 0 : tc.status === 'error' ? 1 : undefined,
+            output: tc.output,
+          });
+        }
+        break;
+      }
+    }
+  }
+
+  return result;
+}
+
+/**
  * Convert store message to AgentMessageContent
  */
 function convertToAgentContent(msg: StoreMessage): AgentMessageContent {
@@ -45,9 +107,13 @@ function convertToAgentContent(msg: StoreMessage): AgentMessageContent {
     isStreaming: msg.isStreaming,
   };
 
-  // Convert tool calls if present
+  // If we have ordered blocks, use them for interleaved rendering
+  if (msg.blocks && msg.blocks.length > 0) {
+    content.blocks = convertBlocksToRenderBlocks(msg.blocks);
+  }
+
+  // Also keep flat arrays as fallback for backward compat
   if (msg.toolCalls && msg.toolCalls.length > 0) {
-    // Separate pending approvals from regular tool calls
     const regularCalls = msg.toolCalls.filter((tc) => tc.status !== 'awaiting-permission');
     const pendingCalls = msg.toolCalls.filter((tc) => tc.status === 'awaiting-permission');
 
