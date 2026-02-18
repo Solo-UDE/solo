@@ -32,7 +32,7 @@ export const MentionDropdown: FC<MentionDropdownProps> = ({
 	return (
 		<div
 			ref={listRef}
-			className="fixed z-50 w-72 max-h-60 overflow-y-auto rounded-md border border-border bg-popover shadow-lg"
+			className="fixed z-50 w-72 max-h-60 overflow-y-auto rounded-md bg-popover shadow-glass"
 			style={{ bottom: position.bottom, left: position.left }}
 		>
 			{results.length === 0 ? (

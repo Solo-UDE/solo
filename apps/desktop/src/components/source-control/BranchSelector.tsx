@@ -96,7 +96,7 @@ export const BranchSelector: FC = () => {
           'flex items-center gap-1.5 h-7 px-2 rounded-lg',
           'text-xs text-muted-foreground',
           'hover:bg-muted/60 hover:text-foreground',
-          'active:scale-[0.97] transition-all duration-200',
+          'active:scale-[0.97] transition-[transform,background-color,color] duration-200',
         )}
         title="Branch"
       >
@@ -123,7 +123,7 @@ export const BranchSelector: FC = () => {
               className={cn(
                 'w-5 h-5 flex items-center justify-center rounded-md',
                 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
-                'active:scale-[0.9] transition-all duration-150',
+                'active:scale-[0.9] transition-[transform,background-color] duration-150',
               )}
               title="Create branch"
             >

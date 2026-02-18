@@ -41,9 +41,9 @@ export function SelectDropdown<T extends string | number>({
         disabled={disabled}
         className={cn(
           "appearance-none w-full min-w-[160px] px-3 py-2 pr-8",
-          "bg-background border border-border rounded-lg",
+          "bg-muted/40 border-none rounded-lg",
           "text-sm text-foreground",
-          "focus:outline-none focus:ring-2 focus:ring-primary/50",
+          "focus:outline-none focus:bg-muted/60 focus:ring-1 focus:ring-ring/30",
           "disabled:cursor-not-allowed disabled:opacity-50",
           "cursor-pointer transition-colors"
         )}

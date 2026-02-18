@@ -5,6 +5,7 @@ import type { FC, KeyboardEvent } from 'react';
 import type { MessageMode } from '../../../stores/agentStore';
 import type { WorktreeInfo } from '../../../bindings';
 import { CLAUDE_SONNET_4_6, CLAUDE_OPUS_4_6, CLAUDE_HAIKU_4_5, CLAUDE_MODELS } from '../../../lib/constants';
+import { cn } from '@/lib/utils';
 
 export interface ChatInputProps {
 	onSubmit: (content: string) => void;
@@ -71,7 +72,7 @@ export const ChatInput: FC<ChatInputProps> = ({
 	const ModeIcon = modeConfig[mode].icon;
 
 	return (
-		<div className={`bg-background ${className}`}>
+		<div className={cn('bg-background', className)}>
 			<div className="max-w-4xl mx-auto p-4">
 				{/* Text input */}
 				<div className="mb-3">
@@ -81,16 +82,16 @@ export const ChatInput: FC<ChatInputProps> = ({
 						onKeyDown={handleKeyDown}
 						placeholder={placeholder}
 						disabled={isDisabled}
-						className={`
-							w-full min-h-[80px] max-h-[200px]
-							px-4 py-3 rounded-lg
-							border border-border/50 bg-background
-							text-sm text-foreground
-							placeholder:text-muted-foreground
-							focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent
-							resize-none
-							${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}
-						`}
+						className={cn(
+							'w-full min-h-[80px] max-h-[200px]',
+							'px-4 py-3 rounded-lg',
+							'bg-muted/40 border-none',
+							'text-sm text-foreground',
+							'placeholder:text-muted-foreground',
+							'focus:outline-none focus:ring-2 focus:ring-ring',
+							'resize-none',
+							isDisabled && 'opacity-50 cursor-not-allowed'
+						)}
 					/>
 				</div>
 
@@ -103,14 +104,14 @@ export const ChatInput: FC<ChatInputProps> = ({
 								<button
 									onClick={() => setShowModeMenu(!showModeMenu)}
 									disabled={isDisabled}
-									className={`
-										inline-flex items-center gap-2
-										px-3 py-1.5 rounded-lg
-										border border-border/50 bg-background
-										hover:bg-muted
-										transition-colors
-										${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}
-									`}
+									className={cn(
+										'inline-flex items-center gap-2',
+										'px-3 py-1.5 rounded-lg',
+										'bg-muted/40 border-none',
+										'hover:bg-muted',
+										'transition-colors',
+										isDisabled && 'opacity-50 cursor-not-allowed'
+									)}
 								>
 									<ModeIcon className="h-3.5 w-3.5 text-foreground" />
 									<span className="text-xs font-medium text-foreground">
@@ -119,7 +120,7 @@ export const ChatInput: FC<ChatInputProps> = ({
 									<CaretDown className="h-3 w-3 text-muted-foreground" />
 								</button>
 								{showModeMenu && (
-									<div className="absolute bottom-full left-0 mb-1 w-48 py-1 rounded-lg border border-border/50 bg-card/95 backdrop-blur-md shadow-glass z-10">
+									<div className="absolute bottom-full left-0 mb-1 w-48 py-1 rounded-lg bg-card/95 backdrop-blur-md shadow-glass z-10">
 										{Object.entries(modeConfig).map(([key, config]) => {
 											const Icon = config.icon;
 											return (
@@ -129,11 +130,11 @@ export const ChatInput: FC<ChatInputProps> = ({
 														onModeChange(key as MessageMode);
 														setShowModeMenu(false);
 													}}
-													className={`
-														w-full flex items-start gap-3 px-3 py-2
-														hover:bg-muted
-														${mode === key ? 'bg-primary/10' : ''}
-													`}
+													className={cn(
+														'w-full flex items-start gap-3 px-3 py-2',
+														'hover:bg-muted',
+														mode === key && 'bg-primary/10'
+													)}
 												>
 													<Icon className="h-3.5 w-3.5 mt-0.5 text-foreground" />
 													<div className="flex flex-col items-start">
@@ -156,14 +157,14 @@ export const ChatInput: FC<ChatInputProps> = ({
 								<button
 									onClick={() => setShowModelMenu(!showModelMenu)}
 									disabled={isDisabled}
-									className={`
-										inline-flex items-center gap-2
-										px-3 py-1.5 rounded-lg
-										border border-border/50 bg-background
-										hover:bg-muted
-										transition-colors
-										${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}
-									`}
+									className={cn(
+										'inline-flex items-center gap-2',
+										'px-3 py-1.5 rounded-lg',
+										'bg-muted/40 border-none',
+										'hover:bg-muted',
+										'transition-colors',
+										isDisabled && 'opacity-50 cursor-not-allowed'
+									)}
 								>
 									<span className="text-xs font-medium text-foreground truncate max-w-[120px]">
 										{getModelDisplayName(selectedModel)}
@@ -189,14 +190,14 @@ export const ChatInput: FC<ChatInputProps> = ({
 								<button
 									onClick={() => setShowWorktreeMenu(!showWorktreeMenu)}
 									disabled={isDisabled}
-									className={`
-										inline-flex items-center gap-2
-										px-3 py-1.5 rounded-lg
-										border border-border/50 bg-background
-										hover:bg-muted
-										transition-colors
-										${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}
-									`}
+									className={cn(
+										'inline-flex items-center gap-2',
+										'px-3 py-1.5 rounded-lg',
+										'bg-muted/40 border-none',
+										'hover:bg-muted',
+										'transition-colors',
+										isDisabled && 'opacity-50 cursor-not-allowed'
+									)}
 								>
 									<GitBranch className="h-3.5 w-3.5 text-foreground" />
 									<span className="text-xs font-medium text-foreground truncate max-w-[120px]">
@@ -207,17 +208,17 @@ export const ChatInput: FC<ChatInputProps> = ({
 									<CaretDown className="h-3 w-3 text-muted-foreground" />
 								</button>
 								{showWorktreeMenu && (
-									<div className="absolute bottom-full left-0 mb-1 w-64 py-1 rounded-lg border border-border/50 bg-card/95 backdrop-blur-md shadow-glass z-10">
+									<div className="absolute bottom-full left-0 mb-1 w-64 py-1 rounded-lg bg-card/95 backdrop-blur-md shadow-glass z-10">
 										<button
 											onClick={() => {
 												onWorktreeChange(null);
 												setShowWorktreeMenu(false);
 											}}
-											className={`
-												w-full flex flex-col items-start px-3 py-2
-												hover:bg-muted
-												${!activeWorktreeId ? 'bg-primary/10' : ''}
-											`}
+											className={cn(
+												'w-full flex flex-col items-start px-3 py-2',
+												'hover:bg-muted',
+												!activeWorktreeId && 'bg-primary/10'
+											)}
 										>
 											<span className="text-xs font-medium">main</span>
 											<span className="text-[10px] text-muted-foreground">Primary workspace</span>
@@ -231,11 +232,11 @@ export const ChatInput: FC<ChatInputProps> = ({
 														onWorktreeChange(wt.id);
 														setShowWorktreeMenu(false);
 													}}
-													className={`
-														w-full flex flex-col items-start px-3 py-2
-														hover:bg-muted
-														${activeWorktreeId === wt.id ? 'bg-primary/10' : ''}
-													`}
+													className={cn(
+														'w-full flex flex-col items-start px-3 py-2',
+														'hover:bg-muted',
+														activeWorktreeId === wt.id && 'bg-primary/10'
+													)}
 												>
 													<span className="text-xs font-medium">{wt.branch ?? wt.id}</span>
 													<span className="text-[10px] text-muted-foreground">
@@ -254,15 +255,15 @@ export const ChatInput: FC<ChatInputProps> = ({
 					<button
 						onClick={handleSubmit}
 						disabled={isDisabled || !content.trim()}
-						className={`
-							inline-flex items-center gap-2
-							px-4 py-2 rounded-lg
-							bg-primary text-primary-foreground
-							hover:brightness-110
-							active:scale-[0.97]
-							transition-all duration-200
-							${isDisabled || !content.trim() ? 'opacity-50 cursor-not-allowed' : ''}
-						`}
+						className={cn(
+							'inline-flex items-center gap-2',
+							'px-4 py-2 rounded-lg',
+							'bg-primary text-primary-foreground',
+							'hover:brightness-110',
+							'active:scale-[0.97]',
+							'transition-[background-color,box-shadow] duration-200',
+							(isDisabled || !content.trim()) && 'opacity-50 cursor-not-allowed'
+						)}
 					>
 						<PaperPlaneTilt className="h-3.5 w-3.5" />
 						<span className="text-xs font-medium">Send</span>
@@ -297,16 +298,16 @@ const ModelMenu: FC<ModelMenuProps> = ({ selectedModel, onSelect, onClose: _onCl
 	const models = CLAUDE_MODELS;
 
 	return (
-		<div className="absolute bottom-full left-0 mb-1 w-64 py-1 rounded-lg border border-border/50 bg-card/95 backdrop-blur-md shadow-glass z-10">
+		<div className="absolute bottom-full left-0 mb-1 w-64 py-1 rounded-lg bg-card/95 backdrop-blur-md shadow-glass z-10">
 			{models.map((model) => (
 				<button
 					key={model.id}
 					onClick={() => onSelect(model.id)}
-					className={`
-						w-full flex flex-col items-start px-3 py-2
-						hover:bg-muted
-						${selectedModel === model.id ? 'bg-primary/10' : ''}
-					`}
+					className={cn(
+						'w-full flex flex-col items-start px-3 py-2',
+						'hover:bg-muted',
+						selectedModel === model.id && 'bg-primary/10'
+					)}
 				>
 					<span className="text-xs font-medium">{model.name}</span>
 					<span className="text-[10px] text-muted-foreground">{model.description}</span>

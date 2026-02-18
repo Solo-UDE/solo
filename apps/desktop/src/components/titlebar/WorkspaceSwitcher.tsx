@@ -92,7 +92,7 @@ export function WorkspaceSwitcher() {
         </span>
         <button
           onClick={handleOpenFolder}
-          className="w-6 h-6 rounded-md flex items-center justify-center hover:bg-muted/60 hover:scale-105 active:scale-95 transition-all duration-150"
+          className="w-6 h-6 rounded-md flex items-center justify-center hover:bg-muted/60 hover:scale-105 active:scale-95 transition-[transform,background-color,color] duration-150"
           title="Open Folder"
         >
           <Plus className="w-3 h-3 text-muted-foreground" weight="bold" />
@@ -108,7 +108,7 @@ export function WorkspaceSwitcher() {
         ref={triggerRef}
         onClick={() => setOpen(!open)}
         className={cn(
-          'flex items-center gap-1.5 px-2 h-[26px] rounded-lg transition-all duration-150',
+          'flex items-center gap-1.5 px-2 h-[26px] rounded-lg transition-[transform,background-color,color] duration-150',
           'hover:bg-muted/60 active:scale-[0.97]',
           open && 'bg-muted/60',
         )}
@@ -130,7 +130,7 @@ export function WorkspaceSwitcher() {
       {/* Plus button — open folder dialog */}
       <button
         onClick={handleOpenFolder}
-        className="w-6 h-6 rounded-md flex items-center justify-center hover:bg-muted/60 hover:scale-105 active:scale-95 transition-all duration-150"
+        className="w-6 h-6 rounded-md flex items-center justify-center hover:bg-muted/60 hover:scale-105 active:scale-95 transition-[transform,background-color,color] duration-150"
         title="Open Folder"
       >
         <Plus className="w-3 h-3 text-muted-foreground" weight="bold" />
@@ -190,7 +190,7 @@ export function WorkspaceSwitcher() {
                   </div>
                   <button
                     onClick={(e) => handleRemoveRecent(e, path)}
-                    className="w-5 h-5 rounded flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-destructive/10 transition-all duration-150"
+                    className="w-5 h-5 rounded flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-destructive/10 transition-opacity duration-150"
                     title="Remove from recents"
                   >
                     <X className="w-3 h-3 text-muted-foreground" />

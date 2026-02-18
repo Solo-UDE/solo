@@ -112,7 +112,7 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
                   value={worktreeId ?? ''}
                   onChange={(e) => onWorktreeChange(e.target.value || null)}
                   disabled={isAgentRunning}
-                  className="h-[30px] px-2.5 text-xs font-medium rounded-[8px] bg-transparent text-muted-foreground hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/30 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="h-[30px] px-2.5 text-xs font-medium rounded-[8px] bg-transparent text-muted-foreground hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/30 transition-[transform,background-color,color] duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                   title="Worktree"
                 >
                   <option value="">Main workspace</option>
@@ -128,7 +128,7 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
             {isAgentRunning ? (
               <button
                 onClick={onAbort}
-                className="inline-flex items-center justify-center h-[30px] w-[30px] rounded-[8px] bg-destructive/10 text-destructive hover:bg-destructive/20 hover:scale-105 active:scale-95 transition-all duration-200"
+                className="inline-flex items-center justify-center h-[30px] w-[30px] rounded-[8px] bg-destructive/10 text-destructive hover:bg-destructive/20 hover:scale-105 active:scale-95 transition-[transform,background-color,color] duration-200"
                 aria-label="Stop generation"
               >
                 <Stop weight="fill" className="h-3.5 w-3.5" />

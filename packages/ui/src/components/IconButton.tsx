@@ -35,7 +35,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
         className={cn(
           "inline-flex items-center justify-center",
           "rounded-lg",
-          "transition-all duration-150",
+          "transition-[transform,background-color,color] duration-150",
           "hover:scale-105 active:scale-95",
           "disabled:opacity-50 disabled:pointer-events-none",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",

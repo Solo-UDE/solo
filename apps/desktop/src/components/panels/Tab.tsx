@@ -135,7 +135,7 @@ export function Tab({
       className={cn(
         'group relative flex items-center gap-1.5 h-[35px] px-3',
         'border-r border-border/20',
-        'transition-all duration-150 ease-out',
+        'transition-[background-color,color] duration-150 ease-out',
         'cursor-pointer select-none',
         'shrink-0 min-w-[80px] max-w-[200px]',
         isActive
@@ -169,10 +169,10 @@ export function Tab({
       ) : (
         <button
           className={cn(
-            'p-0.5 rounded-sm',
+            'p-0.5 rounded-md',
             'opacity-0 group-hover:opacity-100',
             'hover:bg-muted active:scale-95',
-            'transition-all duration-100',
+            'transition-[transform,opacity] duration-100',
             'shrink-0',
             // Always show close button if dirty
             instance.isDirty && 'opacity-100'

@@ -150,7 +150,7 @@ export function ThemeSelector({ value, onChange }: ThemeSelectorProps) {
             onClick={() => onChange(scheme)}
             className={`
               group flex flex-col items-center gap-2 rounded-xl p-2 pb-2.5
-              transition-all duration-200
+              transition-[transform,box-shadow,border-color] duration-200
               ${selected
                 ? 'bg-primary/10 ring-2 ring-primary shadow-md'
                 : 'bg-muted/30 ring-1 ring-border/40 hover:ring-border/70 hover:shadow-sm'

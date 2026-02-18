@@ -1,5 +1,4 @@
 import { useEffect, useCallback, useMemo, useRef, useState } from 'react';
-import { motion, useReducedMotion } from 'framer-motion';
 import { Plus, Robot, Lightning, Code, GitBranch } from '@phosphor-icons/react';
 
 import { MessageFeed } from './messages';
@@ -46,19 +45,9 @@ const SUGGESTED_PROMPTS = [
 
 const EmptyState: FC<{
 	onPromptClick: (prompt: string) => void;
-	prefersReduced: boolean;
-}> = ({ onPromptClick, prefersReduced }) => {
-	const Wrapper = prefersReduced ? 'div' : motion.div;
-	const wrapperProps = prefersReduced
-		? {}
-		: {
-				initial: { opacity: 0, y: 12 } as const,
-				animate: { opacity: 1, y: 0 } as const,
-				transition: { duration: 0.3, ease: [0.16, 1, 0.3, 1] as const },
-		  };
-
+}> = ({ onPromptClick }) => {
 	return (
-		<Wrapper {...wrapperProps} className="flex flex-col items-center gap-6 max-w-sm">
+		<div className="flex flex-col items-center gap-6 max-w-sm animate-fade-in-scale">
 			{/* Avatar */}
 			<div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center">
 				<Robot className="w-7 h-7 text-primary" />
@@ -78,14 +67,14 @@ const EmptyState: FC<{
 					<button
 						key={label}
 						onClick={() => onPromptClick(prompt)}
-						className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-muted/40 hover:bg-muted/70 text-xs text-muted-foreground hover:text-foreground hover:scale-[1.03] active:scale-[0.97] transition-all duration-150"
+						className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-muted/40 hover:bg-muted/70 text-xs text-muted-foreground hover:text-foreground hover:scale-[1.03] active:scale-[0.97] transition-[transform,background-color,color] duration-150"
 					>
 						<Icon className="w-3.5 h-3.5" />
 						<span>{label}</span>
 					</button>
 				))}
 			</div>
-		</Wrapper>
+		</div>
 	);
 };
 
@@ -116,7 +105,6 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 	const selectedModel = useProviderStore((state) => state.selectedModel);
 	const updateSessionModel = useAgentStore((state) => state.updateSessionModel);
 	const openPanel = usePanelTabsStore((state) => state.openPanel);
-	const prefersReduced = useReducedMotion();
 
 	useEffect(() => {
 		if (sessionId && !initialSessionId) {
@@ -221,7 +209,6 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 				<div className="flex-1 flex items-center justify-center px-6">
 					<EmptyState
 						onPromptClick={handleSuggestedPrompt}
-						prefersReduced={prefersReduced ?? false}
 					/>
 				</div>
 

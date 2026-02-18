@@ -36,7 +36,7 @@ export const IconRail: FC = () => {
           onClick={() => setActiveTab(key)}
           className={cn(
             'w-8 h-8 flex items-center justify-center rounded-lg',
-            'transition-all duration-200',
+            'transition-[transform,background-color,color] duration-200',
             activeTab === key
               ? 'text-foreground'
               : 'text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted/60 hover:scale-105 active:scale-95',

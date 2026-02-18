@@ -140,7 +140,7 @@ function ZeroState() {
         <p className="text-muted-foreground">No panels open</p>
         <button
           onClick={handleResetLayout}
-          className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:brightness-110 transition-all"
+          className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:brightness-110 transition-[transform,background-color] duration-200"
         >
           Reset Layout
         </button>

@@ -51,7 +51,7 @@ export function LoginScreen() {
 
         {/* Error message */}
         {error && (
-          <div className="mb-6 p-3 rounded-md bg-destructive/10 border border-destructive/20 flex items-start gap-2">
+          <div className="mb-6 p-3 rounded-lg bg-destructive/10 flex items-start gap-2">
             <WarningCircle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
             <p className="text-sm text-destructive">{error}</p>
           </div>
@@ -62,7 +62,7 @@ export function LoginScreen() {
           type="button"
           onClick={handleGitHubClick}
           disabled={isAuthenticating}
-          className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-md bg-foreground text-background font-medium text-sm transition-colors hover:bg-foreground/90 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-[10px] bg-foreground text-background font-medium text-sm transition-[transform,background-color] duration-200 hover:bg-foreground/90 active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isAuthenticating ? (
             <CircleNotch weight="bold" className="w-4 h-4 animate-spin" />
@@ -92,7 +92,7 @@ export function LoginScreen() {
 
         {/* Magic link form */}
         {magicLinkSent ? (
-          <div className="text-center p-4 rounded-md bg-muted/50 border border-border">
+          <div className="text-center p-4 rounded-lg bg-muted/50 shadow-sm">
             <Envelope className="w-8 h-8 mx-auto text-primary mb-2" />
             <p className="text-sm text-foreground font-medium mb-1">
               Check your email
@@ -123,12 +123,12 @@ export function LoginScreen() {
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
               disabled={isAuthenticating}
-              className="w-full px-3 py-2 rounded-md bg-muted/50 border border-border text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary disabled:opacity-50"
+              className="w-full px-3 py-2 rounded-lg bg-muted/40 border-none text-foreground text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:bg-muted/60 focus:ring-1 focus:ring-ring/30 disabled:opacity-50"
             />
             <button
               type="submit"
               disabled={isAuthenticating || !email.trim()}
-              className="w-full mt-3 flex items-center justify-center gap-2 px-4 py-2.5 rounded-md bg-muted border border-border text-foreground font-medium text-sm transition-colors hover:bg-muted/80 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full mt-3 flex items-center justify-center gap-2 px-4 py-2.5 rounded-[10px] bg-muted text-foreground font-medium text-sm shadow-sm transition-[transform,background-color] duration-200 hover:bg-muted/80 active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isAuthenticating ? (
                 <CircleNotch weight="bold" className="w-4 h-4 animate-spin" />

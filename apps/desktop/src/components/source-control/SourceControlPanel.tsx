@@ -19,7 +19,7 @@ import { usePanelTabsStore } from '@/stores/panelTabsStore';
 import { BUILTIN_PANEL_TYPES } from '@/lib/panels';
 import { FileChangeItem } from './FileChangeItem';
 import { GitHubSetup } from './GitHubSetup';
-import { ConfirmDialog } from './ConfirmDialog';
+import { ConfirmDialog } from '../ui/confirm-dialog';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -229,7 +229,7 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
                 'bg-primary text-primary-foreground',
                 'hover:brightness-110 active:scale-[0.97]',
                 'disabled:opacity-40 disabled:pointer-events-none',
-                'transition-all duration-200',
+                'transition-[transform,background-color,color] duration-200',
               )}
               title={stagedFiles.length === 0 ? 'Stage files before committing' : 'Commit staged changes (Cmd+Enter)'}
             >

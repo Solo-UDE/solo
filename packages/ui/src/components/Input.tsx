@@ -23,7 +23,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           "h-9 w-full px-3 rounded-lg",
           "bg-muted/40 text-foreground",
           "placeholder:text-muted-foreground/50",
-          "transition-all duration-150",
+          "transition-[background-color,box-shadow] duration-150",
           "focus:bg-muted/60 focus:outline-none focus:ring-1 focus:ring-ring/30",
           "disabled:opacity-50 disabled:cursor-not-allowed",
           error && "ring-1 ring-destructive/50 focus:ring-destructive/50",

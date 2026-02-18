@@ -51,7 +51,7 @@ export class EditorErrorBoundary extends Component<Props, State> {
             )}
             <button
               onClick={this.handleReset}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-[10px] hover:brightness-110 active:scale-[0.97] transition-all duration-200"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-[10px] hover:brightness-110 active:scale-[0.97] transition-[transform,background-color] duration-200"
             >
               <ArrowsClockwise className="w-4 h-4" />
               Try Again
