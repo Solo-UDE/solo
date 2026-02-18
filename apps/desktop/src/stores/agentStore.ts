@@ -6,13 +6,14 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import { enableMapSet } from 'immer';
-import type { AgentMessage, AgentToolCall, ToolCallWithStatus } from '../bindings';
+import type { AgentMessage, AgentToolCall } from '../bindings';
 import * as backend from '../lib/backend';
 import {
 	loadSessions,
 	createDebouncedSessionSave,
 } from '../lib/sessionPersistence';
 import { DEFAULT_MODEL_ID } from '../lib/constants';
+import { useProviderStore } from './provider-store';
 
 // Enable Map and Set support in Immer
 enableMapSet();
@@ -34,9 +35,8 @@ export interface ToolCallState {
 	id: string;
 	name: string;
 	arguments: string;
-	status: 'pending' | 'pending_approval' | 'running' | 'completed' | 'error';
+	status: 'pending' | 'running' | 'completed' | 'error';
 	result?: string;
-	needsApproval?: boolean;
 }
 
 export interface FileMention {
@@ -126,14 +126,10 @@ interface AgentState {
 	streamingContent: string;
 	activeToolCalls: Map<string, ToolCallState>;
 
-	// Tool approval state
-	pendingToolApprovals: Map<string, ToolCallWithStatus>;
-
 	// Per-session streaming state
 	sessionStreaming: Map<string, SessionStreamState>;
 
-	// Server mode
-	useServerMode: boolean;
+	// Model selection
 	selectedModel: string;
 
 	// UI state
@@ -149,8 +145,7 @@ interface AgentActions {
 	deleteSession: (sessionId: string) => void;
 	renameSession: (sessionId: string, name: string) => void;
 
-	// Server mode
-	setServerMode: (enabled: boolean) => void;
+	// Model selection
 	setSelectedModel: (model: string) => void;
 
 	// Message handling
@@ -161,8 +156,6 @@ interface AgentActions {
 	handleAgentChunk: (conversationId: string, content: string) => void;
 	handleAgentToolStart: (conversationId: string, toolCall: AgentToolCall) => void;
 	handleAgentToolEnd: (conversationId: string, toolCallId: string, result: string) => void;
-	handleToolApprovalNeeded: (conversationId: string, toolCall: ToolCallWithStatus) => void;
-	resolveToolApproval: (toolCallId: string, approved: boolean) => void;
 	handleAgentComplete: (conversationId: string, message: AgentMessage) => void;
 	handleAgentError: (conversationId: string, error: string) => void;
 	handleTurnStart: (conversationId: string, turnNumber: number) => void;
@@ -187,8 +180,6 @@ type AgentStore = AgentState & AgentActions;
 // Initial State
 // =============================================================================
 
-const EMPTY_APPROVALS: ToolCallWithStatus[] = [];
-
 const initialState: AgentState = {
 	sessions: new Map(),
 	activeSessionId: null,
@@ -196,9 +187,7 @@ const initialState: AgentState = {
 	streamingMessageId: null,
 	streamingContent: '',
 	activeToolCalls: new Map(),
-	pendingToolApprovals: new Map(),
 	sessionStreaming: new Map(),
-	useServerMode: false,
 	selectedModel: DEFAULT_MODEL_ID,
 	isAgentRunning: false,
 	error: null,
@@ -308,12 +297,6 @@ export const useAgentStore = create<AgentStore>()(
 			get().persistSessions();
 		},
 
-		setServerMode: (enabled: boolean) => {
-			set((state) => {
-				state.useServerMode = enabled;
-			});
-		},
-
 		setSelectedModel: (model: string) => {
 			set((state) => {
 				state.selectedModel = model;
@@ -332,25 +315,18 @@ export const useAgentStore = create<AgentStore>()(
 
 			// Initialize streaming state — the actual assistant placeholder message
 			// is created by handleTurnStart() when the backend emits TurnStart.
-			// This avoids creating an orphaned placeholder that never receives content.
 			set((state) => {
 				const streamState = getOrCreateStreamState(state.sessionStreaming, sessionId);
 				streamState.isStreaming = true;
 				streamState.error = null;
 			});
 
-			const { useServerMode, selectedModel } = get();
+			const selectedModel = useProviderStore.getState().selectedModel || get().selectedModel;
 
 			try {
-				if (useServerMode) {
-					console.log('[Store] Calling backend.sendAgentMessageServer sessionId:', sessionId, 'model:', selectedModel, 'mode:', mode);
-					await backend.sendAgentMessageServer(sessionId, content, selectedModel, mode);
-					console.log('[Store] backend.sendAgentMessageServer returned (streaming should start via events)');
-				} else {
-					console.log('[Store] Calling backend.sendAgentMessage sessionId:', sessionId, 'mode:', mode);
-					await backend.sendAgentMessage(sessionId, content, mode);
-					console.log('[Store] backend.sendAgentMessage returned (streaming should start via events)');
-				}
+				console.log('[Store] Calling backend.sendAgentMessageServer sessionId:', sessionId, 'model:', selectedModel, 'mode:', mode);
+				await backend.sendAgentMessageServer(sessionId, content, selectedModel, mode);
+				console.log('[Store] backend.sendAgentMessageServer returned (streaming should start via events)');
 			} catch (error) {
 				const errorMsg = error instanceof Error ? error.message : String(error);
 				console.error('[Store] sendAgentMessage failed:', errorMsg);
@@ -462,58 +438,6 @@ export const useAgentStore = create<AgentStore>()(
 			});
 		},
 
-		handleToolApprovalNeeded: (conversationId: string, toolCall: ToolCallWithStatus) => {
-			set((state) => {
-				// Track in pending approvals map
-				state.pendingToolApprovals.set(toolCall.tool_call.id, toolCall);
-
-				// Update existing tool call status to pending_approval, or add it
-				const streamState = getOrCreateStreamState(state.sessionStreaming, conversationId);
-				const messages = state.messages.get(conversationId);
-				if (messages && streamState.streamingMessageId) {
-					const msg = messages.find((m) => m.id === streamState.streamingMessageId);
-					if (msg) {
-						if (!msg.toolCalls) msg.toolCalls = [];
-						// Check if tool call already exists (added by handleAgentToolStart)
-						const existing = msg.toolCalls.find((tc) => tc.id === toolCall.tool_call.id);
-						if (existing) {
-							existing.status = 'pending_approval';
-							existing.needsApproval = true;
-						} else {
-							msg.toolCalls.push({
-								id: toolCall.tool_call.id,
-								name: toolCall.tool_call.name,
-								arguments: toolCall.tool_call.arguments,
-								status: 'pending_approval',
-								needsApproval: true,
-							});
-						}
-					}
-				}
-			});
-		},
-
-		resolveToolApproval: (toolCallId: string, approved: boolean) => {
-			set((state) => {
-				state.pendingToolApprovals.delete(toolCallId);
-
-				// Update tool call status in all session messages
-				for (const [, sessionMessages] of state.messages) {
-					for (const msg of sessionMessages) {
-						if (msg.toolCalls) {
-							const tc = msg.toolCalls.find((t) => t.id === toolCallId);
-							if (tc) {
-								tc.status = approved ? 'running' : 'error';
-								if (!approved) {
-									tc.result = 'Rejected by user';
-								}
-							}
-						}
-					}
-				}
-			});
-		},
-
 		handleAgentComplete: (conversationId: string, message: AgentMessage) => {
 			console.log('[Store COMPLETE] conversationId:', conversationId, 'message:', message);
 			set((state) => {
@@ -534,9 +458,6 @@ export const useAgentStore = create<AgentStore>()(
 									.join('')
 								: String(message.content));
 						msg.isStreaming = false;
-						// Do NOT overwrite tool calls here — they have live statuses
-						// from handleAgentToolStart and will be updated by
-						// handleToolApprovalNeeded / handleAgentToolEnd.
 					}
 				}
 
@@ -620,7 +541,6 @@ export const useAgentStore = create<AgentStore>()(
 					if (msg) {
 						msg.isStreaming = false;
 						// Safety net: mark any still-running tool calls as completed
-						// (handles CLI mode where AgentToolEnd may not be emitted)
 						if (msg.toolCalls) {
 							for (const tc of msg.toolCalls) {
 								if (tc.status === 'running' || tc.status === 'pending') {
@@ -726,7 +646,7 @@ export const useSessionError = (sessionId: string | null): string | null => {
 	});
 };
 
-// Legacy selectors — kept for backward compatibility but delegate to per-session state
+// Legacy selectors
 export const useIsAgentRunning = (): boolean => {
 	return useAgentStore((state) => {
 		for (const streamState of state.sessionStreaming.values()) {
@@ -750,7 +670,6 @@ export const useSessions = (): AgentSession[] => {
 	return useAgentStore((state) => {
 		if (state.sessions.size === 0) return EMPTY_SESSIONS;
 
-		// Build a key from session ids + names + last message timestamps to detect changes
 		const entries = Array.from(state.sessions.values());
 		const key = entries.map(s => {
 			const msgs = state.messages.get(s.id);
@@ -778,16 +697,6 @@ export const useSessions = (): AgentSession[] => {
 		_sessionsCache = { key, result: sorted };
 		return sorted;
 	});
-};
-
-export const usePendingToolApprovals = (): ToolCallWithStatus[] => {
-	const approvals = useAgentStore((state) => state.pendingToolApprovals);
-	if (approvals.size === 0) return EMPTY_APPROVALS;
-	return Array.from(approvals.values());
-};
-
-export const useServerMode = (): boolean => {
-	return useAgentStore((state) => state.useServerMode);
 };
 
 export const useSelectedModel = (): string => {
