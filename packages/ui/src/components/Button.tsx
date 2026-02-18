@@ -19,7 +19,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     const baseStyles = [
       "inline-flex items-center justify-center gap-2",
       "font-medium rounded-[10px]",
-      "transition-all duration-200",
+      "transition-[transform,background-color,color,box-shadow] duration-200",
       "hover:scale-[1.02] active:scale-[0.97]",
       "disabled:opacity-50 disabled:pointer-events-none",
       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",

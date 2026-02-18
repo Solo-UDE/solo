@@ -76,7 +76,7 @@ function ProviderCard({
 
   return (
     <div
-      className={`p-4 rounded-xl border bg-card/50 space-y-4 transition-all duration-200 ${
+      className={`p-4 rounded-xl border bg-card/50 space-y-4 transition-[border-color,box-shadow] duration-200 ${
         isActive
           ? 'border-primary/50 ring-2 ring-primary/20'
           : 'border-border hover:border-border/80'
@@ -374,7 +374,7 @@ export function AITab() {
               value={customApiUrl}
               onChange={(e) => setCustomApiUrl(e.target.value)}
               placeholder="https://api.example.com/v1"
-              className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground font-mono placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+              className="w-full px-3 py-2 bg-muted/40 border-none rounded-lg text-sm text-foreground font-mono placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
             />
           </div>
         </div>

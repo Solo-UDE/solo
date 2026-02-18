@@ -24,7 +24,7 @@ export function MarkdownToggle({ mode, onModeChange, className }: MarkdownToggle
       <button
         onClick={() => onModeChange('preview')}
         className={cn(
-          'flex items-center gap-1 px-2 h-5 rounded text-[11px] transition-all duration-150',
+          'flex items-center gap-1 px-2 h-5 rounded text-[11px] transition-[background-color,color] duration-150',
           mode === 'preview'
             ? 'bg-background text-foreground shadow-sm'
             : 'text-muted-foreground hover:text-foreground',
@@ -38,7 +38,7 @@ export function MarkdownToggle({ mode, onModeChange, className }: MarkdownToggle
       <button
         onClick={() => onModeChange('code')}
         className={cn(
-          'flex items-center gap-1 px-2 h-5 rounded text-[11px] transition-all duration-150',
+          'flex items-center gap-1 px-2 h-5 rounded text-[11px] transition-[background-color,color] duration-150',
           mode === 'code'
             ? 'bg-background text-foreground shadow-sm'
             : 'text-muted-foreground hover:text-foreground',

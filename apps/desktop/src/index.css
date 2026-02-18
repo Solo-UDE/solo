@@ -23,6 +23,12 @@
   --ease-smooth: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-snappy: cubic-bezier(0.4, 0, 0.2, 1);
 
+  /* Keyframe animations */
+  --animate-fade-in-scale: fade-in-scale 200ms var(--ease-smooth);
+  --animate-fade-out: fade-out 100ms var(--ease-snappy);
+  --animate-pop-in: pop-in 150ms var(--ease-spring);
+  --animate-slide-up: slide-up 200ms var(--ease-smooth);
+
   /* Monospace font */
   --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
@@ -615,6 +621,12 @@ html.dark .shadow-glass {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+  .animate-pulse, .animate-spin, .animate-bounce, .animate-ping {
+    animation: none !important;
+  }
+  .streaming-dot {
+    animation: none !important;
+  }
 }
 
 /* =============================================================================
@@ -628,6 +640,38 @@ html.dark .shadow-glass {
 @keyframes collapsible-up {
   from { height: var(--radix-collapsible-content-height); opacity: 1; }
   to { height: 0; opacity: 0; }
+}
+
+/* =============================================================================
+   UI PRIMITIVE ANIMATIONS
+   ============================================================================= */
+@keyframes fade-in-scale {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes pop-in {
+  from { opacity: 0; transform: scale(0.9) translateY(4px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes streaming-dot {
+  0%, 100% { opacity: 0.3; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+.streaming-dot {
+  animation: streaming-dot 1.2s ease-in-out infinite;
 }
 
 /* =============================================================================

@@ -23,7 +23,7 @@ export const SubmitButton: React.FC<SubmitButtonProps> = ({
         hover:brightness-110 hover:scale-105
         active:scale-95
         focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/30
-        transition-all duration-200
+        transition-[transform,background-color,color] duration-200
         disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:brightness-100
         ${className}
       `}

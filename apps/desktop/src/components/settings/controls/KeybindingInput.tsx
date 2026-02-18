@@ -118,7 +118,7 @@ export function KeybindingInput({
           onClick={handleStartRecording}
           className={`
             inline-flex items-center gap-2 px-3 py-2 min-w-[140px]
-            border rounded-none text-sm font-mono cursor-pointer
+            border rounded-lg text-sm font-mono cursor-pointer
             transition-colors
             ${isRecording
               ? 'bg-primary/10 border-primary text-primary'
@@ -142,7 +142,7 @@ export function KeybindingInput({
           <button
             type="button"
             onClick={handleClear}
-            className="p-1.5 rounded-none hover:bg-muted transition-colors cursor-pointer"
+            className="p-1.5 rounded-lg hover:bg-muted transition-colors cursor-pointer"
             title="Clear"
           >
             <X className="w-3.5 h-3.5 text-muted-foreground" />
@@ -153,7 +153,7 @@ export function KeybindingInput({
           <button
             type="button"
             onClick={handleReset}
-            className="p-1.5 rounded-none hover:bg-muted transition-colors cursor-pointer"
+            className="p-1.5 rounded-lg hover:bg-muted transition-colors cursor-pointer"
             title="Reset to default"
           >
             <ArrowCounterClockwise className="w-3.5 h-3.5 text-muted-foreground" />

@@ -6,7 +6,7 @@
 import { useCallback, useState } from 'react';
 import { X, FileText } from '@phosphor-icons/react';
 import { useEditorStore, getFileName } from '../../stores/editorStore';
-import { ConfirmDialog } from '../file-explorer/ConfirmDialog';
+import { ConfirmDialog } from '../ui/confirm-dialog';
 
 interface EditorTabsProps {
   className?: string;
@@ -98,7 +98,7 @@ export function EditorTabs({ className = '' }: EditorTabsProps) {
               onMouseDown={(e) => handleMouseDown(e, path)}
               className={`
                 group flex items-center gap-2 px-3 py-1.5 cursor-pointer
-                min-w-0 max-w-48 rounded-t-lg transition-all duration-200
+                min-w-0 max-w-48 rounded-t-lg transition-[background-color,color] duration-200
                 ${isActive
                   ? 'bg-background shadow-sm'
                   : 'hover:bg-muted/60 hover:scale-[1.01]'}
@@ -125,7 +125,7 @@ export function EditorTabs({ className = '' }: EditorTabsProps) {
                   onClick={(e) => handleCloseClick(e, path)}
                   className={`
                     w-4 h-4 rounded-md flex items-center justify-center
-                    hover:bg-muted/60 hover:scale-105 active:scale-95 transition-all duration-150
+                    hover:bg-muted/60 hover:scale-105 active:scale-95 transition-[transform,background-color] duration-150
                     ${isDirty ? 'hidden group-hover:flex' : 'opacity-0 group-hover:opacity-100'}
                   `}
                   title="Close"

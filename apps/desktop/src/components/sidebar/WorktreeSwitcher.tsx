@@ -104,7 +104,7 @@ export const WorktreeSwitcher: FC<WorktreeSwitcherProps> = ({ onClose }) => {
           className={cn(
             'w-5 h-5 flex items-center justify-center rounded-md',
             'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
-            'active:scale-[0.9] transition-all duration-150',
+            'active:scale-[0.9] transition-[transform,background-color] duration-150',
           )}
           title="Create worktree"
         >

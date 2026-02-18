@@ -11,7 +11,7 @@ export const toolbarButtonBase = cn(
   'hover:bg-muted/60 hover:text-foreground',
   'active:scale-[0.97]',
   'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/30',
-  'transition-all duration-200',
+  'transition-[transform,background-color,color] duration-200',
 );
 
 export const toolbarButtonIconOnly = cn(

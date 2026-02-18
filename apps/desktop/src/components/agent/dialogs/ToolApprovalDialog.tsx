@@ -107,13 +107,13 @@ export const ToolApprovalDialog: FC<ToolApprovalDialogProps> = ({
 							<div className="flex items-center gap-1.5 shrink-0">
 								<button
 									onClick={() => handleReject(approval.tool_call.id)}
-									className="h-7 px-2.5 rounded-lg text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-all duration-150"
+									className="h-7 px-2.5 rounded-lg text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-[transform,background-color,color] duration-150"
 								>
 									<X className="w-3.5 h-3.5" />
 								</button>
 								<button
 									onClick={() => handleApprove(approval.tool_call.id)}
-									className="h-7 px-3 rounded-lg text-[11px] font-medium bg-primary text-primary-foreground hover:brightness-110 active:scale-[0.97] transition-all duration-150"
+									className="h-7 px-3 rounded-lg text-[11px] font-medium bg-primary text-primary-foreground hover:brightness-110 active:scale-[0.97] transition-[transform,background-color,color] duration-150"
 								>
 									Approve
 								</button>

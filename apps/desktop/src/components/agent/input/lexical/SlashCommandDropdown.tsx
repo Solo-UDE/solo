@@ -35,7 +35,7 @@ export const SlashCommandDropdown: FC<SlashCommandDropdownProps> = ({
 
 	return (
 		<div
-			className="fixed z-50 w-80 max-h-72 overflow-y-auto rounded-md border border-border bg-popover shadow-lg"
+			className="fixed z-50 w-80 max-h-72 overflow-y-auto rounded-md bg-popover shadow-glass"
 			style={{ bottom: position.bottom, left: position.left }}
 		>
 			{commands.length === 0 ? (

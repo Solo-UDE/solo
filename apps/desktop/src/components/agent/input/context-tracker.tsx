@@ -160,7 +160,7 @@ export const ContextTracker: FC<ContextTrackerProps> = ({
             <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
               <div
                 className={cn(
-                  'h-full rounded-full transition-all duration-300',
+                  'h-full rounded-full transition-[width] duration-300',
                   percentage > 90
                     ? 'bg-destructive'
                     : percentage > 70

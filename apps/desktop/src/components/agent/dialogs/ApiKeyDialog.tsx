@@ -107,11 +107,11 @@ export const ApiKeyDialog: FC<ApiKeyDialogProps> = ({
 								placeholder={apiKeyPlaceholder}
 								className={`
 									w-full px-4 py-2.5 pr-10 rounded-lg
-									border border-border bg-muted/40
+									bg-muted/40 border-none
 									text-sm text-foreground
 									placeholder:text-muted-foreground
-									focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent
-									${error ? 'border-destructive' : ''}
+									focus:outline-none focus:ring-2 focus:ring-ring
+									${error ? 'ring-2 ring-destructive' : ''}
 								`}
 							/>
 							<button
@@ -155,7 +155,7 @@ export const ApiKeyDialog: FC<ApiKeyDialogProps> = ({
 							bg-primary text-primary-foreground
 							text-sm font-medium
 							hover:brightness-110 active:scale-[0.97]
-							transition-all duration-200
+							transition-[transform,background-color,color] duration-200
 							${isSubmitting || !apiKey.trim() ? 'opacity-50 cursor-not-allowed' : ''}
 						`}
 					>

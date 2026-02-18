@@ -41,7 +41,7 @@ export function PasswordInput({
         disabled={disabled}
         className={`
           w-full min-w-[200px] px-3 py-2 pr-16
-          bg-background border border-border rounded-none
+          bg-background border border-border rounded-lg
           text-sm text-foreground font-mono
           focus:outline-none focus:ring-2 focus:ring-primary/50
           disabled:cursor-not-allowed disabled:opacity-50
@@ -53,7 +53,7 @@ export function PasswordInput({
           type="button"
           onClick={handleToggleVisibility}
           disabled={disabled}
-          className="p-1.5 rounded-none hover:bg-muted transition-colors disabled:opacity-50 cursor-pointer"
+          className="p-1.5 rounded-lg hover:bg-muted transition-colors disabled:opacity-50 cursor-pointer"
           title={visible ? 'Hide' : 'Show'}
         >
           {visible ? (
@@ -67,7 +67,7 @@ export function PasswordInput({
             type="button"
             onClick={handleClear}
             disabled={disabled}
-            className="p-1.5 rounded-none hover:bg-muted transition-colors disabled:opacity-50 cursor-pointer"
+            className="p-1.5 rounded-lg hover:bg-muted transition-colors disabled:opacity-50 cursor-pointer"
             title="Clear"
           >
             <X className="w-3.5 h-3.5 text-muted-foreground" />

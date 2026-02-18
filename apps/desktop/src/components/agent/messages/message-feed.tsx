@@ -1,5 +1,4 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { motion, useReducedMotion } from 'framer-motion';
 import { useRef, useEffect } from 'react';
 
 import { MessageSection } from './message-section';
@@ -27,7 +26,6 @@ export const MessageFeed: FC<MessageFeedProps> = ({
 }) => {
   const parentRef = useRef<HTMLDivElement>(null);
   const shouldAutoScroll = useRef(autoScroll);
-  const prefersReduced = useReducedMotion();
   // Track which groups have already been mounted (to avoid re-animation)
   const mountedGroupsRef = useRef(new Set<string>());
 
@@ -106,13 +104,12 @@ export const MessageFeed: FC<MessageFeedProps> = ({
             mountedGroupsRef.current.add(messageGroup.id);
           }
 
-          const shouldAnimate = isNew && !prefersReduced;
-
           return (
             <div
               key={virtualItem.key}
               data-index={virtualItem.index}
               ref={virtualizer.measureElement}
+              className={isNew ? 'animate-slide-up' : undefined}
               style={{
                 position: 'absolute',
                 top: 0,
@@ -121,24 +118,10 @@ export const MessageFeed: FC<MessageFeedProps> = ({
                 transform: `translateY(${String(virtualItem.start)}px)`,
               }}
             >
-              {shouldAnimate ? (
-                <motion.div
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-                >
-                  <MessageSection
-                    sectionIndex={virtualItem.index}
-                    messages={messageGroup.messages}
-
-                  />
-                </motion.div>
-              ) : (
-                <MessageSection
-                  sectionIndex={virtualItem.index}
-                  messages={messageGroup.messages}
-                />
-              )}
+              <MessageSection
+                sectionIndex={virtualItem.index}
+                messages={messageGroup.messages}
+              />
             </div>
           );
         })}

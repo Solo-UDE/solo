@@ -134,7 +134,7 @@ export const ContextHeader: FC<ContextHeaderProps> = ({ onNewSession }) => {
             'flex items-center gap-1.5 h-7 px-2 rounded-lg min-w-0 max-w-full',
             'text-xs text-muted-foreground',
             'hover:bg-muted/60 hover:text-foreground',
-            'active:scale-[0.97] transition-all duration-200',
+            'active:scale-[0.97] transition-[transform,background-color,color] duration-200',
           )}
         >
           {DisplayIcon && (
@@ -211,7 +211,7 @@ const IconButton: FC<IconButtonProps> = ({ onClick, title, icon: Icon, disabled,
       'relative w-7 h-7 flex items-center justify-center rounded-lg',
       'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
       'disabled:opacity-30 disabled:pointer-events-none',
-      'active:scale-[0.9] transition-all duration-200',
+      'active:scale-[0.9] transition-[transform,background-color,color] duration-200',
       loading && 'animate-pulse',
     )}
     title={title}

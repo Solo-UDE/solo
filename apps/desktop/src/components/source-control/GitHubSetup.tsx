@@ -101,7 +101,7 @@ export const GitHubSetup: FC<GitHubSetupProps> = ({ className }) => {
             'bg-foreground text-background',
             'hover:brightness-110 active:scale-[0.97]',
             'disabled:opacity-40 disabled:pointer-events-none',
-            'transition-all duration-200',
+            'transition-[transform,background-color,color] duration-200',
           )}
         >
           <GithubLogo className="w-4 h-4" weight="bold" />
@@ -154,7 +154,7 @@ export const GitHubSetup: FC<GitHubSetupProps> = ({ className }) => {
               isPrivate
                 ? 'bg-primary/10 text-primary border border-primary/20'
                 : 'bg-muted/30 text-muted-foreground hover:bg-muted/50',
-              'transition-all duration-150',
+              'transition-[background-color,box-shadow] duration-150',
             )}
           >
             <Lock className="w-3 h-3" weight="bold" />
@@ -167,7 +167,7 @@ export const GitHubSetup: FC<GitHubSetupProps> = ({ className }) => {
               !isPrivate
                 ? 'bg-primary/10 text-primary border border-primary/20'
                 : 'bg-muted/30 text-muted-foreground hover:bg-muted/50',
-              'transition-all duration-150',
+              'transition-[background-color,box-shadow] duration-150',
             )}
           >
             <Globe className="w-3 h-3" weight="bold" />
@@ -188,7 +188,7 @@ export const GitHubSetup: FC<GitHubSetupProps> = ({ className }) => {
             'bg-primary text-primary-foreground',
             'hover:brightness-110 active:scale-[0.97]',
             'disabled:opacity-40 disabled:pointer-events-none',
-            'transition-all duration-200',
+            'transition-[transform,background-color,color] duration-200',
           )}
         >
           {isCreating ? (

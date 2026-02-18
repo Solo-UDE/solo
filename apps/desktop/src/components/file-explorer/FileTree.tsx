@@ -7,7 +7,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import { FileTreeNode } from './FileTreeNode';
 import { CreationRow } from './CreationRow';
-import { ConfirmDialog } from './ConfirmDialog';
+import { ConfirmDialog } from '../ui/confirm-dialog';
 import {
   useFileExplorerStore,
   useFlattenedTree,

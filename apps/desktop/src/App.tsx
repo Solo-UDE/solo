@@ -311,7 +311,7 @@ function AppContent() {
           <button
             onClick={toggleSidebar}
             className={cn(
-              'p-1 rounded-lg hover:bg-foreground/[0.06] transition-all duration-150 ml-1.5',
+              'p-1 rounded-lg hover:bg-foreground/[0.06] transition-[background-color,color] duration-150 ml-1.5',
               !isCollapsed && 'glow-active',
             )}
             title={isCollapsed ? 'Expand Sidebar (⌘B)' : 'Collapse Sidebar (⌘B)'}
@@ -343,7 +343,7 @@ function AppContent() {
           <button
             onClick={handleToggleTerminal}
             className={cn(
-              'p-1 rounded-lg hover:bg-foreground/[0.06] transition-all duration-150',
+              'p-1 rounded-lg hover:bg-foreground/[0.06] transition-[background-color,color] duration-150',
               terminalPanelOpen && 'glow-active',
             )}
             title="Toggle Terminal (⌘`)"
@@ -352,14 +352,14 @@ function AppContent() {
           </button>
           <button
             onClick={() => openSettings()}
-            className="p-1 rounded-lg hover:bg-foreground/[0.06] transition-all duration-150"
+            className="p-1 rounded-lg hover:bg-foreground/[0.06] transition-[background-color,color] duration-150"
             title="Settings (⌘,)"
           >
             <GearSix className="w-4 h-4 text-muted-foreground" />
           </button>
           <button
             onClick={signOut}
-            className="p-1 rounded-lg hover:bg-foreground/[0.06] transition-all duration-150"
+            className="p-1 rounded-lg hover:bg-foreground/[0.06] transition-[background-color,color] duration-150"
             title="Sign out"
           >
             <SignOut className="w-4 h-4 text-muted-foreground" />
