@@ -143,11 +143,13 @@ impl CredentialManager {
     ) -> ProviderResult<Option<CredentialInfo>> {
         // 1. Try Solo OAuth token first
         // For OpenAI, use the specialized OpenAI OAuth token
+        tracing::debug!(provider = %provider.as_str(), "Trying Solo OAuth token...");
         if provider == ProviderType::OpenAI {
             if let Some(token) = self.get_openai_oauth_token().await? {
                 // Check if token needs refresh
                 if token.needs_refresh() && token.can_refresh() {
                     if let Ok(new_token) = self.refresh_openai_oauth_token().await {
+                        tracing::info!(provider = %provider.as_str(), source = "solo-oauth", "Credential resolved (refreshed OpenAI OAuth)");
                         return Ok(Some(CredentialInfo {
                             api_key: new_token.access_token,
                             account_id: new_token.account_id,
@@ -157,17 +159,20 @@ impl CredentialManager {
                 }
 
                 if !token.is_expired() {
+                    tracing::info!(provider = %provider.as_str(), source = "solo-oauth", "Credential resolved");
                     return Ok(Some(CredentialInfo {
                         api_key: token.access_token,
                         account_id: token.account_id,
                         source: CredentialSource::SoloOAuth,
                     }));
                 }
+                tracing::debug!(provider = %provider.as_str(), "Solo OAuth token expired or unavailable");
             }
         } else if let Some(token) = self.get_oauth_token(provider).await? {
             // Check if token needs refresh
             if token.needs_refresh() && token.can_refresh() {
                 if let Ok(new_token) = self.refresh_oauth_token(provider).await {
+                    tracing::info!(provider = %provider.as_str(), source = "solo-oauth", "Credential resolved (refreshed)");
                     return Ok(Some(CredentialInfo {
                         api_key: new_token.access_token,
                         account_id: None,
@@ -177,16 +182,20 @@ impl CredentialManager {
             }
 
             if !token.is_expired() {
+                tracing::info!(provider = %provider.as_str(), source = "solo-oauth", "Credential resolved");
                 return Ok(Some(CredentialInfo {
                     api_key: token.access_token,
                     account_id: None,
                     source: CredentialSource::SoloOAuth,
                 }));
             }
+            tracing::debug!(provider = %provider.as_str(), "Solo OAuth token expired or unavailable");
         }
 
         // 2. Try API key from Keychain
+        tracing::debug!(provider = %provider.as_str(), "Trying Keychain...");
         if let Some(key) = self.get_from_keychain(provider).await? {
+            tracing::info!(provider = %provider.as_str(), source = "keychain", "Credential resolved");
             return Ok(Some(CredentialInfo {
                 api_key: key,
                 account_id: None,
@@ -196,14 +205,18 @@ impl CredentialManager {
 
         // 3. For Anthropic, try Claude Code OAuth (keychain then file)
         if provider == ProviderType::Anthropic {
+            tracing::debug!(provider = %provider.as_str(), "Trying Claude OAuth (keychain)...");
             if let Some(key) = self.get_claude_oauth().await? {
+                tracing::info!(provider = %provider.as_str(), source = "claude-oauth", "Credential resolved");
                 return Ok(Some(CredentialInfo {
                     api_key: key,
                     account_id: None,
                     source: CredentialSource::ClaudeOAuth,
                 }));
             }
+            tracing::debug!(provider = %provider.as_str(), "Trying Claude OAuth (file)...");
             if let Some(key) = self.get_claude_oauth_from_file().await? {
+                tracing::info!(provider = %provider.as_str(), source = "claude-oauth-file", "Credential resolved");
                 return Ok(Some(CredentialInfo {
                     api_key: key,
                     account_id: None,
@@ -213,7 +226,9 @@ impl CredentialManager {
         }
 
         // 4. Try environment variable
+        tracing::debug!(provider = %provider.as_str(), "Trying environment variable...");
         if let Some(key) = self.get_from_env(provider) {
+            tracing::info!(provider = %provider.as_str(), source = "environment", "Credential resolved");
             return Ok(Some(CredentialInfo {
                 api_key: key,
                 account_id: None,
@@ -221,6 +236,7 @@ impl CredentialManager {
             }));
         }
 
+        tracing::warn!(provider = %provider.as_str(), "No credentials found from any source");
         Ok(None)
     }
 

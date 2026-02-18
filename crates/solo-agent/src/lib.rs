@@ -234,11 +234,19 @@ impl AgentManager {
 
     /// Initialize a provider with credentials and register tools from the registry
     pub async fn initialize_provider(&self, provider_type: ProviderType) -> ProviderResult<()> {
+        tracing::info!(provider_type = %provider_type.as_str(), "Initializing provider — resolving credentials");
+
         let credential_info = self
             .credentials
             .get_credentials_with_source(provider_type)
             .await?
             .ok_or_else(|| ProviderError::CredentialsNotFound(provider_type))?;
+
+        tracing::info!(
+            provider_type = %provider_type.as_str(),
+            source = %credential_info.source,
+            "Credentials resolved, selecting provider implementation"
+        );
 
         // Get tool definitions from registry to set on the provider
         let tools = self.tool_registry.read().await.definitions();
@@ -261,28 +269,36 @@ impl AgentManager {
                                     .to_string(),
                             ));
                         }
+                        tracing::info!("Using ClaudeCliProvider (OAuth → CLI mode)");
                         Box::new(ClaudeCliProvider::new())
                     }
                     // Only API keys (from keychain or env) can use direct API with x-api-key
                     CredentialSource::Keychain | CredentialSource::Environment => {
+                        tracing::info!("Using AnthropicProvider (direct API mode)");
                         Box::new(AnthropicProvider::new(credential_info.api_key))
                     }
                 }
             }
             ProviderType::OpenAI => {
+                tracing::info!("Using OpenAIProvider");
                 Box::new(OpenAIProvider::new_with_oauth(
                     credential_info.api_key,
                     credential_info.account_id,
                 ))
             }
-            ProviderType::Gemini => Box::new(GeminiProvider::new(credential_info.api_key)),
+            ProviderType::Gemini => {
+                tracing::info!("Using GeminiProvider");
+                Box::new(GeminiProvider::new(credential_info.api_key))
+            }
         };
 
         // Set tools before wrapping in Arc (since set_tools requires &mut self)
-        provider.set_tools(tools);
+        provider.set_tools(tools.clone());
+        tracing::debug!(tool_count = tools.len(), "Tools registered on provider");
 
         let provider: Arc<dyn AIProvider> = Arc::from(provider);
         self.providers.write().await.insert(provider_type, provider);
+        tracing::info!(provider_type = %provider_type.as_str(), "Provider initialized successfully");
         Ok(())
     }
 
@@ -464,6 +480,28 @@ impl AgentManager {
             .ok_or_else(|| ProviderError::SessionNotFound(session_id.to_string()))?;
         session.add_assistant_message(content, tool_calls);
         Ok(())
+    }
+
+    /// Check if the current provider for a session is CLI-based.
+    ///
+    /// Returns `true` when the active provider is Anthropic AND the credential
+    /// source is an OAuth token (ClaudeOAuth, ClaudeOAuthFile, SoloOAuth).
+    /// These tokens can only go through the CLI, which runs its own agentic
+    /// loop with built-in tools — Solo should NOT run its own loop.
+    pub async fn is_cli_mode(&self) -> bool {
+        let provider_type = *self.active_provider.read().await;
+        if provider_type != ProviderType::Anthropic {
+            return false;
+        }
+        match self.credentials.get_credential_source(provider_type).await {
+            Ok(Some(source)) => matches!(
+                source,
+                CredentialSource::ClaudeOAuth
+                    | CredentialSource::ClaudeOAuthFile
+                    | CredentialSource::SoloOAuth
+            ),
+            _ => false,
+        }
     }
 
     /// Check if a provider has credentials

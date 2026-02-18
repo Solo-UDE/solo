@@ -1,6 +1,8 @@
 import { Robot } from '@phosphor-icons/react';
+import { useMemo } from 'react';
 
 import { AgentNarrative } from './agent-narrative';
+import { ChainOfThoughtBlock, extractThinkingBlocks } from './chain-of-thought-block';
 import { MessageFeedback } from './message-feedback';
 import { NotifyUserCard } from './notify-user-card';
 import { ProceedIndicator } from './proceed-indicator';
@@ -11,8 +13,17 @@ import { ToolApprovalInline } from '../dialogs/ToolApprovalDialog';
 import type { FC } from 'react';
 import type { ToolCallWithStatus } from '../../../bindings';
 
+export interface AgentToolCall {
+  id: string;
+  name: string;
+  arguments: string;
+  status: 'pending' | 'pending_approval' | 'running' | 'completed' | 'error';
+  result?: string;
+}
+
 export interface AgentMessageContent {
   narrative?: string;
+  isStreaming?: boolean;
   taskPhases?: {
     id: string;
     title: string;
@@ -27,13 +38,7 @@ export interface AgentMessageContent {
       status: 'pending' | 'in_progress' | 'completed' | 'failed';
     }[];
   }[];
-  toolCalls?: {
-    id: string;
-    command: string;
-    cwd: string;
-    exitCode?: number;
-    output?: string;
-  }[];
+  toolCalls?: AgentToolCall[];
   pendingApprovals?: ToolCallWithStatus[];
   notifications?: {
     id: string;
@@ -83,8 +88,14 @@ export const AgentMessage: FC<AgentMessageProps> = ({
     }
   };
 
+  // Extract thinking blocks from narrative
+  const { thinking, cleaned: narrativeContent } = useMemo(
+    () => extractThinkingBlocks(content.narrative ?? ''),
+    [content.narrative]
+  );
+
   return (
-    <div className={`flex gap-3 px-4 animate-in fade-in-0 slide-in-from-bottom-2 duration-200 ${className}`}>
+    <div className={`flex gap-3 px-4 ${className}`}>
       {/* Avatar */}
       <div className="flex-shrink-0 w-8 h-8 rounded-full bg-secondary flex items-center justify-center overflow-hidden">
         {avatarUrl ? (
@@ -103,8 +114,19 @@ export const AgentMessage: FC<AgentMessageProps> = ({
           {content.autoProceed ? <ProceedIndicator /> : null}
         </div>
 
+        {/* Chain of Thought */}
+        {thinking.length > 0 ? (
+          <div className="space-y-1.5">
+            {thinking.map((block, i) => (
+              <ChainOfThoughtBlock key={i} content={block} />
+            ))}
+          </div>
+        ) : null}
+
         {/* Narrative */}
-        {content.narrative ? <AgentNarrative content={content.narrative} isStreaming={content.isStreaming} /> : null}
+        {narrativeContent || content.isStreaming ? (
+          <AgentNarrative content={narrativeContent} isStreaming={content.isStreaming} />
+        ) : null}
 
         {/* Task Phase Cards */}
         {content.taskPhases && content.taskPhases.length > 0 ? (
@@ -127,10 +149,7 @@ export const AgentMessage: FC<AgentMessageProps> = ({
             {content.toolCalls.map((toolCall) => (
               <ToolCallBlock
                 key={toolCall.id}
-                command={toolCall.command}
-                cwd={toolCall.cwd}
-                {...(toolCall.exitCode !== undefined && { exitCode: toolCall.exitCode })}
-                {...(toolCall.output && { output: toolCall.output })}
+                toolCall={toolCall}
               />
             ))}
           </div>

@@ -149,14 +149,42 @@ export async function updateSessionModel(sessionId: string, model: string): Prom
  * Send a message to the agent
  * @param sessionId - Session ID
  * @param content - Message content
- * @param systemPrompt - Optional system prompt
+ * @param mode - Optional message mode ('planning' | 'fast')
  */
 export async function sendAgentMessage(
 	sessionId: string,
 	content: string,
-	systemPrompt?: string
+	mode?: string
 ): Promise<void> {
-	return invoke('agent_send_message', { sessionId, content, systemPrompt });
+	return invoke('agent_send_message', { sessionId, content, mode });
+}
+
+/**
+ * Send a message to the agent via the Solo server (server mode).
+ * Uses WebSocket to communicate with a Hono+Bun server running the
+ * Vercel AI SDK agent loop. The server delegates tool execution back
+ * to the desktop via the same WebSocket connection.
+ *
+ * @param sessionId - Session ID
+ * @param content - Message content
+ * @param model - Model ID (e.g., 'claude-sonnet-4-5', 'gpt-4o')
+ * @param mode - Optional message mode ('planning' | 'fast')
+ */
+export async function sendAgentMessageServer(
+	sessionId: string,
+	content: string,
+	model: string,
+	mode?: string
+): Promise<void> {
+	return invoke('agent_send_message_server', { sessionId, content, model, mode });
+}
+
+/**
+ * Abort an active agent session
+ * @param sessionId - Session ID to abort
+ */
+export async function abortAgentSession(sessionId: string): Promise<void> {
+	return invoke('agent_abort_session', { sessionId });
 }
 
 /**
