@@ -38,9 +38,6 @@ uuid = { version = "1.0", features = ["v4"] }
 # Event streaming (SSE)
 eventsource-stream = "0.2"
 
-# Lazy static for model registry
-lazy_static = "1.5"
-
 # OAuth dependencies
 base64 = "0.22"
 sha2 = "0.10"

@@ -11,7 +11,7 @@ use std::process::Command;
 use std::sync::Arc;
 use tauri::State;
 use tokio::sync::RwLock;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 // =============================================================================
 // Configuration
@@ -276,15 +276,15 @@ pub async fn auth_start_magic_link(
         info!("Magic link sent successfully");
         Ok(())
     } else {
-        let error: SupabaseError = response
-            .json()
-            .await
-            .unwrap_or(SupabaseError {
-                error: Some("Unknown error".to_string()),
-                error_description: None,
-                message: None,
-            });
-        Err(error.message.or(error.error_description).or(error.error)
+        let error: SupabaseError = response.json().await.unwrap_or(SupabaseError {
+            error: Some("Unknown error".to_string()),
+            error_description: None,
+            message: None,
+        });
+        Err(error
+            .message
+            .or(error.error_description)
+            .or(error.error)
             .unwrap_or_else(|| "Failed to send magic link".to_string()))
     }
 }
@@ -295,7 +295,10 @@ pub async fn auth_exchange_code(
     code: String,
     state: State<'_, AuthState>,
 ) -> Result<AuthStateResponse, String> {
-    info!("Exchanging authorization code for tokens, code={}", &code[..8]);
+    info!(
+        "Exchanging authorization code for tokens, code={}",
+        &code[..8]
+    );
 
     // Get PKCE verifier
     let pkce = match state.pkce.read().await.clone() {
@@ -369,17 +372,19 @@ pub async fn auth_exchange_code(
         let body = response.text().await.unwrap_or_default();
         warn!("Token exchange failed with status {}: {}", status, body);
 
-        let error: SupabaseError = serde_json::from_str(&body)
-            .unwrap_or(SupabaseError {
-                error: Some(format!("HTTP {}", status)),
-                error_description: Some(body),
-                message: None,
-            });
+        let error: SupabaseError = serde_json::from_str(&body).unwrap_or(SupabaseError {
+            error: Some(format!("HTTP {}", status)),
+            error_description: Some(body),
+            message: None,
+        });
 
         // Clear PKCE state on error
         *state.pkce.write().await = None;
 
-        let error_msg = error.message.or(error.error_description).or(error.error)
+        let error_msg = error
+            .message
+            .or(error.error_description)
+            .or(error.error)
             .unwrap_or_else(|| "Failed to exchange code".to_string());
         warn!("Auth error: {}", error_msg);
         Err(error_msg)
@@ -388,9 +393,7 @@ pub async fn auth_exchange_code(
 
 /// Get current session (restores from keychain if needed)
 #[tauri::command]
-pub async fn auth_get_session(
-    state: State<'_, AuthState>,
-) -> Result<AuthStateResponse, String> {
+pub async fn auth_get_session(state: State<'_, AuthState>) -> Result<AuthStateResponse, String> {
     debug!("Getting current session");
 
     // Check cached session first
@@ -477,8 +480,8 @@ pub async fn auth_refresh_session(
 ) -> Result<AuthStateResponse, String> {
     info!("Refreshing session");
 
-    let refresh_token = keychain_read(KEYCHAIN_REFRESH_TOKEN)
-        .ok_or("No refresh token available")?;
+    let refresh_token =
+        keychain_read(KEYCHAIN_REFRESH_TOKEN).ok_or("No refresh token available")?;
 
     refresh_session_internal(&state, &refresh_token).await
 }
@@ -538,9 +541,7 @@ async fn refresh_session_internal(
 
 /// Sign out - clear session and tokens
 #[tauri::command]
-pub async fn auth_sign_out(
-    state: State<'_, AuthState>,
-) -> Result<(), String> {
+pub async fn auth_sign_out(state: State<'_, AuthState>) -> Result<(), String> {
     info!("Signing out");
 
     // Try to call Supabase logout (best effort)
@@ -567,9 +568,7 @@ pub async fn auth_sign_out(
 
 /// Get the current access token (for API calls)
 #[tauri::command]
-pub async fn auth_get_access_token(
-    state: State<'_, AuthState>,
-) -> Result<Option<String>, String> {
+pub async fn auth_get_access_token(state: State<'_, AuthState>) -> Result<Option<String>, String> {
     if let Some(session) = state.session.read().await.as_ref() {
         return Ok(Some(session.access_token.clone()));
     }

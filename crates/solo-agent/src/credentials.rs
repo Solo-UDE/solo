@@ -7,7 +7,7 @@
 //! 4. Environment variables (fallback)
 
 use crate::oauth::{
-    AuthMethodInfo, AuthType, OAuthToken, OpenAIOAuthToken, AnthropicOAuthConfig, OpenAIOAuthConfig,
+    AnthropicOAuthConfig, AuthMethodInfo, AuthType, OAuthToken, OpenAIOAuthConfig, OpenAIOAuthToken,
 };
 use crate::provider::{ProviderError, ProviderResult, ProviderType};
 use serde::{Deserialize, Serialize};
@@ -170,7 +170,7 @@ impl CredentialManager {
         }
 
         // 2. Try API key from Keychain
-        if let Some(key) = self.get_from_keychain(provider).await? {
+        if let Some(key) = self.get_from_keychain(provider)? {
             return Ok(Some(CredentialInfo {
                 api_key: key,
                 source: CredentialSource::Keychain,
@@ -179,7 +179,7 @@ impl CredentialManager {
 
         // 3. For Anthropic, try Claude Code OAuth
         if provider == ProviderType::Anthropic {
-            if let Some(key) = self.get_claude_oauth().await? {
+            if let Some(key) = self.get_claude_oauth()? {
                 return Ok(Some(CredentialInfo {
                     api_key: key,
                     source: CredentialSource::ClaudeOAuth,
@@ -199,18 +199,25 @@ impl CredentialManager {
     }
 
     /// Get credential source without exposing the key
-    pub async fn get_credential_source(&self, provider: ProviderType) -> ProviderResult<Option<CredentialSource>> {
+    pub async fn get_credential_source(
+        &self,
+        provider: ProviderType,
+    ) -> ProviderResult<Option<CredentialSource>> {
         // Check cache
         if let Some(info) = self.cache.read().await.get(&provider) {
             return Ok(Some(info.source));
         }
 
         // Get fresh
-        Ok(self.get_credentials_with_source(provider).await?.map(|i| i.source))
+        Ok(self
+            .get_credentials_with_source(provider)
+            .await?
+            .map(|i| i.source))
     }
 
     /// Get credentials from macOS Keychain
-    async fn get_from_keychain(&self, provider: ProviderType) -> ProviderResult<Option<String>> {
+    #[allow(clippy::unused_self, clippy::unnecessary_wraps)]
+    fn get_from_keychain(&self, provider: ProviderType) -> ProviderResult<Option<String>> {
         let service = Self::keychain_service(provider);
 
         // Use security command to read from Keychain
@@ -220,9 +227,7 @@ impl CredentialManager {
 
         match output {
             Ok(output) if output.status.success() => {
-                let key = String::from_utf8_lossy(&output.stdout)
-                    .trim()
-                    .to_string();
+                let key = String::from_utf8_lossy(&output.stdout).trim().to_string();
                 if key.is_empty() {
                     Ok(None)
                 } else {
@@ -241,7 +246,8 @@ impl CredentialManager {
     ///
     /// Claude Code CLI stores credentials in the keychain with service name
     /// "Claude Code-credentials" as a JSON object containing OAuth tokens.
-    async fn get_claude_oauth(&self) -> ProviderResult<Option<String>> {
+    #[allow(clippy::unused_self, clippy::unnecessary_wraps)]
+    fn get_claude_oauth(&self) -> ProviderResult<Option<String>> {
         // Claude Code stores OAuth token in keychain with this service name
         let output = Command::new("security")
             .args([
@@ -254,9 +260,7 @@ impl CredentialManager {
 
         match output {
             Ok(output) if output.status.success() => {
-                let json_str = String::from_utf8_lossy(&output.stdout)
-                    .trim()
-                    .to_string();
+                let json_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
                 if json_str.is_empty() {
                     return Ok(None);
                 }
@@ -308,12 +312,17 @@ impl CredentialManager {
     }
 
     /// Get credentials from environment variable
+    #[allow(clippy::unused_self)]
     fn get_from_env(&self, provider: ProviderType) -> Option<String> {
         std::env::var(provider.env_var_name()).ok()
     }
 
     /// Store credentials in Keychain
-    pub async fn set_credentials(&self, provider: ProviderType, api_key: &str) -> ProviderResult<()> {
+    pub async fn set_credentials(
+        &self,
+        provider: ProviderType,
+        api_key: &str,
+    ) -> ProviderResult<()> {
         let service = Self::keychain_service(provider);
 
         // Delete existing entry if it exists
@@ -450,7 +459,10 @@ impl CredentialManager {
     }
 
     /// Get OAuth token for a provider
-    pub async fn get_oauth_token(&self, provider: ProviderType) -> ProviderResult<Option<OAuthToken>> {
+    pub async fn get_oauth_token(
+        &self,
+        provider: ProviderType,
+    ) -> ProviderResult<Option<OAuthToken>> {
         // Check cache first
         if let Some(info) = self.oauth_cache.read().await.get(&provider) {
             return Ok(Some(info.token.clone()));
@@ -544,8 +556,9 @@ impl CredentialManager {
         let service = Self::oauth_keychain_service(ProviderType::OpenAI);
 
         // Serialize token to JSON
-        let token_json = serde_json::to_string(&token)
-            .map_err(|e| ProviderError::OAuthError(format!("Failed to serialize OpenAI token: {}", e)))?;
+        let token_json = serde_json::to_string(&token).map_err(|e| {
+            ProviderError::OAuthError(format!("Failed to serialize OpenAI token: {}", e))
+        })?;
 
         // Delete existing entry if it exists
         let _ = Command::new("security")
@@ -641,10 +654,9 @@ impl CredentialManager {
 
     /// Refresh an OpenAI OAuth token
     pub async fn refresh_openai_oauth_token(&self) -> ProviderResult<OpenAIOAuthToken> {
-        let current_token = self
-            .get_openai_oauth_token()
-            .await?
-            .ok_or_else(|| ProviderError::OAuthError("No OpenAI OAuth token to refresh".to_string()))?;
+        let current_token = self.get_openai_oauth_token().await?.ok_or_else(|| {
+            ProviderError::OAuthError("No OpenAI OAuth token to refresh".to_string())
+        })?;
 
         let refresh_token = current_token
             .refresh_token
@@ -704,7 +716,10 @@ impl CredentialManager {
     }
 
     /// Get authentication method info for a provider
-    pub async fn get_auth_method_info(&self, provider: ProviderType) -> ProviderResult<AuthMethodInfo> {
+    pub async fn get_auth_method_info(
+        &self,
+        provider: ProviderType,
+    ) -> ProviderResult<AuthMethodInfo> {
         // Check for OAuth token first
         // For OpenAI, use the specialized token type
         if provider == ProviderType::OpenAI {

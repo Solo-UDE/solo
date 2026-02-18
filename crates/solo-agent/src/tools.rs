@@ -5,6 +5,7 @@
 //! and parallel tool execution.
 
 use std::collections::HashMap;
+use std::fmt::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -49,7 +50,10 @@ pub type ToolResult_ = Result<String, ToolError>;
 
 /// Validate that a path is safe for file operations.
 /// Resolves the path and checks it doesn't escape the allowed roots.
-fn validate_path(path_str: &str, workspace_root: Option<&Path>) -> Result<std::path::PathBuf, ToolError> {
+fn validate_path(
+    path_str: &str,
+    workspace_root: Option<&Path>,
+) -> Result<std::path::PathBuf, ToolError> {
     let path = Path::new(path_str);
 
     // Must be absolute
@@ -62,14 +66,13 @@ fn validate_path(path_str: &str, workspace_root: Option<&Path>) -> Result<std::p
     // Canonicalize to resolve symlinks and ../ components
     // Use the raw path if the file doesn't exist yet (for write operations)
     let canonical = if path.exists() {
-        path.canonicalize().map_err(|e| {
-            ToolError::PathViolation(format!("Failed to resolve path: {}", e))
-        })?
+        path.canonicalize()
+            .map_err(|e| ToolError::PathViolation(format!("Failed to resolve path: {}", e)))?
     } else {
         // For new files, canonicalize the parent directory
-        let parent = path.parent().ok_or_else(|| {
-            ToolError::PathViolation("Path has no parent directory".to_string())
-        })?;
+        let parent = path
+            .parent()
+            .ok_or_else(|| ToolError::PathViolation("Path has no parent directory".to_string()))?;
         if !parent.exists() {
             return Err(ToolError::PathViolation(format!(
                 "Parent directory does not exist: {}",
@@ -79,9 +82,10 @@ fn validate_path(path_str: &str, workspace_root: Option<&Path>) -> Result<std::p
         let canonical_parent = parent.canonicalize().map_err(|e| {
             ToolError::PathViolation(format!("Failed to resolve parent path: {}", e))
         })?;
-        canonical_parent.join(path.file_name().ok_or_else(|| {
-            ToolError::PathViolation("Path has no filename".to_string())
-        })?)
+        canonical_parent.join(
+            path.file_name()
+                .ok_or_else(|| ToolError::PathViolation("Path has no filename".to_string()))?,
+        )
     };
 
     // Block sensitive system paths
@@ -358,7 +362,10 @@ impl ToolExecutor for ReadFileTool {
         let content = tokio::fs::read_to_string(&path).await?;
 
         let offset = args.get("offset").and_then(|v| v.as_u64()).unwrap_or(1) as usize;
-        let limit = args.get("limit").and_then(|v| v.as_u64()).map(|v| v as usize);
+        let limit = args
+            .get("limit")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize);
 
         // Add line numbers starting from offset (1-indexed)
         let lines: Vec<&str> = content.lines().collect();
@@ -369,7 +376,11 @@ impl ToolExecutor for ReadFileTool {
         };
 
         if start >= lines.len() {
-            return Ok(format!("(file has {} lines, offset {} is past end)", lines.len(), offset));
+            return Ok(format!(
+                "(file has {} lines, offset {} is past end)",
+                lines.len(),
+                offset
+            ));
         }
 
         let numbered: Vec<String> = lines[start..end]
@@ -439,7 +450,11 @@ impl ToolExecutor for WriteFileTool {
         let path = validate_path(path_str, ws_root.as_deref())?;
         drop(ws_root);
         tokio::fs::write(&path, content).await?;
-        Ok(format!("Successfully wrote {} bytes to {}", content.len(), path.display()))
+        Ok(format!(
+            "Successfully wrote {} bytes to {}",
+            content.len(),
+            path.display()
+        ))
     }
 
     fn definition(&self) -> ToolDefinition {
@@ -606,11 +621,7 @@ impl ToolExecutor for BashTool {
         }
 
         // Execute with timeout
-        let result = tokio::time::timeout(
-            Duration::from_millis(timeout_ms),
-            cmd.output(),
-        )
-        .await;
+        let result = tokio::time::timeout(Duration::from_millis(timeout_ms), cmd.output()).await;
 
         match result {
             Ok(Ok(output)) => {
@@ -689,9 +700,18 @@ impl ToolExecutor for GrepTool {
             .ok_or_else(|| ToolError::ExecutionFailed("Missing 'pattern' argument".to_string()))?;
 
         let path = args.get("path").and_then(|v| v.as_str()).unwrap_or(".");
-        let max_results = args.get("max_results").and_then(|v| v.as_u64()).unwrap_or(50);
-        let context_lines = args.get("context_lines").and_then(|v| v.as_u64()).unwrap_or(0);
-        let case_insensitive = args.get("case_insensitive").and_then(|v| v.as_bool()).unwrap_or(false);
+        let max_results = args
+            .get("max_results")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(50);
+        let context_lines = args
+            .get("context_lines")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        let case_insensitive = args
+            .get("case_insensitive")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
         let file_type = args.get("file_type").and_then(|v| v.as_str());
 
         // Try ripgrep first (cached), fall back to grep
@@ -706,8 +726,10 @@ impl ToolExecutor for GrepTool {
         let output = if rg_available {
             let mut cmd = tokio::process::Command::new("rg");
             cmd.arg("--line-number")
-                .arg("--max-count").arg(max_results.to_string())
-                .arg("--context").arg(context_lines.to_string());
+                .arg("--max-count")
+                .arg(max_results.to_string())
+                .arg("--context")
+                .arg(context_lines.to_string());
             if case_insensitive {
                 cmd.arg("--ignore-case");
             }
@@ -718,8 +740,7 @@ impl ToolExecutor for GrepTool {
             cmd.output().await?
         } else {
             let mut cmd = tokio::process::Command::new("grep");
-            cmd.arg("-rn")
-                .arg("-m").arg(max_results.to_string());
+            cmd.arg("-rn").arg("-m").arg(max_results.to_string());
             if context_lines > 0 {
                 cmd.arg(format!("-C{}", context_lines));
             }
@@ -741,7 +762,8 @@ impl ToolExecutor for GrepTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: "grep".to_string(),
-            description: "Search for a regex pattern in files. Uses ripgrep (rg) when available.".to_string(),
+            description: "Search for a regex pattern in files. Uses ripgrep (rg) when available."
+                .to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -811,10 +833,8 @@ impl EditTool {
         for (i, ca) in a.chars().enumerate() {
             curr[0] = i + 1;
             for (j, cb) in b.chars().enumerate() {
-                let cost = if ca == cb { 0 } else { 1 };
-                curr[j + 1] = (prev[j + 1] + 1)
-                    .min(curr[j] + 1)
-                    .min(prev[j] + cost);
+                let cost = usize::from(ca != cb);
+                curr[j + 1] = (prev[j + 1] + 1).min(curr[j] + 1).min(prev[j] + cost);
             }
             std::mem::swap(&mut prev, &mut curr);
         }
@@ -876,7 +896,10 @@ impl ToolExecutor for EditTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| ToolError::ExecutionFailed("Missing 'new_str' argument".to_string()))?;
 
-        let create_file = args.get("create_file").and_then(|v| v.as_bool()).unwrap_or(false);
+        let create_file = args
+            .get("create_file")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
 
         let ws_root = self.workspace_root.read().await;
         let path = validate_path(path_str, ws_root.as_deref())?;
@@ -895,7 +918,11 @@ impl ToolExecutor for EditTool {
                 tokio::fs::create_dir_all(parent).await?;
             }
             tokio::fs::write(&path, new_str).await?;
-            return Ok(format!("Created new file: {} ({} bytes)", path.display(), new_str.len()));
+            return Ok(format!(
+                "Created new file: {} ({} bytes)",
+                path.display(),
+                new_str.len()
+            ));
         }
 
         // Read existing file
@@ -916,17 +943,18 @@ impl ToolExecutor for EditTool {
                 );
 
                 if let Some((line, snippet, score)) = Self::find_closest_match(&content, old_str) {
-                    msg.push_str(&format!(
+                    let _ = write!(
+                        msg,
                         "\nDid you mean to match these similar lines (starting at line {})? (similarity: {:.0}%)\n\n",
                         line,
                         score * 100.0
-                    ));
+                    );
                     for (i, l) in snippet.lines().enumerate() {
-                        msg.push_str(&format!("    {} | {}\n", line + i, l));
+                        let _ = writeln!(msg, "    {} | {}", line + i, l);
                     }
                     msg.push_str("\nYour SEARCH block had:\n\n");
                     for l in old_str.lines() {
-                        msg.push_str(&format!("    {}\n", l));
+                        let _ = writeln!(msg, "    {}", l);
                     }
                 }
 
@@ -962,18 +990,22 @@ impl ToolExecutor for EditTool {
                     let prefix = &content[..byte_offset];
                     let line_num = prefix.lines().count() + 1;
                     // Show a few lines of context
-                    let context_start = content[..byte_offset].rfind('\n').map(|p| p + 1).unwrap_or(0);
+                    let context_start = content[..byte_offset]
+                        .rfind('\n')
+                        .map(|p| p + 1)
+                        .unwrap_or(0);
                     let context_end = content[byte_offset..]
                         .find('\n')
                         .map(|p| byte_offset + p)
                         .unwrap_or(content.len());
                     let context_line = &content[context_start..context_end];
-                    msg.push_str(&format!(
-                        "  {}. Line {}: {}\n",
+                    let _ = writeln!(
+                        msg,
+                        "  {}. Line {}: {}",
                         idx + 1,
                         line_num,
                         context_line.chars().take(120).collect::<String>()
-                    ));
+                    );
                 }
                 Err(ToolError::ExecutionFailed(msg))
             }
@@ -1031,10 +1063,7 @@ impl ToolExecutor for GlobTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| ToolError::ExecutionFailed("Missing 'pattern' argument".to_string()))?;
 
-        let root = args
-            .get("path")
-            .and_then(|v| v.as_str())
-            .unwrap_or(".");
+        let root = args.get("path").and_then(|v| v.as_str()).unwrap_or(".");
 
         // Validate root path against workspace_root when set
         let ws_root_guard = self.workspace_root.read().await;
@@ -1071,9 +1100,8 @@ impl ToolExecutor for GlobTool {
             format!("{}/{}", root, pattern)
         };
 
-        let entries = glob::glob(&full_pattern).map_err(|e| {
-            ToolError::ExecutionFailed(format!("Invalid glob pattern: {}", e))
-        })?;
+        let entries = glob::glob(&full_pattern)
+            .map_err(|e| ToolError::ExecutionFailed(format!("Invalid glob pattern: {}", e)))?;
 
         let max_results = 200usize;
         let mut paths: Vec<String> = Vec::new();
@@ -1094,7 +1122,12 @@ impl ToolExecutor for GlobTool {
         } else {
             let mut result = paths.join("\n");
             if total > max_results {
-                result.push_str(&format!("\n\n... and {} more (showing first {})", total - max_results, max_results));
+                let _ = write!(
+                    result,
+                    "\n\n... and {} more (showing first {})",
+                    total - max_results,
+                    max_results
+                );
             }
             Ok(result)
         }
@@ -1268,7 +1301,9 @@ mod tests {
         // Create a temp file
         let dir = std::env::temp_dir();
         let file_path = dir.join("solo_test_read_lines.txt");
-        tokio::fs::write(&file_path, "line1\nline2\nline3\nline4\nline5\n").await.unwrap();
+        tokio::fs::write(&file_path, "line1\nline2\nline3\nline4\nline5\n")
+            .await
+            .unwrap();
 
         let tool = ReadFileTool::new(Arc::new(RwLock::new(None)));
         let args = serde_json::json!({ "path": file_path.to_str().unwrap() });
@@ -1277,7 +1312,8 @@ mod tests {
         assert!(result.contains("5 | line5"));
 
         // With offset and limit
-        let args = serde_json::json!({ "path": file_path.to_str().unwrap(), "offset": 2, "limit": 2 });
+        let args =
+            serde_json::json!({ "path": file_path.to_str().unwrap(), "offset": 2, "limit": 2 });
         let result = tool.execute(args).await.unwrap();
         assert!(result.contains("2 | line2"));
         assert!(result.contains("3 | line3"));
@@ -1291,7 +1327,9 @@ mod tests {
     async fn test_edit_tool_replace() {
         let dir = std::env::temp_dir();
         let file_path = dir.join("solo_test_edit.txt");
-        tokio::fs::write(&file_path, "fn main() {\n    println!(\"hello\");\n}\n").await.unwrap();
+        tokio::fs::write(&file_path, "fn main() {\n    println!(\"hello\");\n}\n")
+            .await
+            .unwrap();
 
         let tool = EditTool::new(Arc::new(RwLock::new(None)));
         let args = serde_json::json!({
@@ -1314,7 +1352,9 @@ mod tests {
     async fn test_edit_tool_no_match() {
         let dir = std::env::temp_dir();
         let file_path = dir.join("solo_test_edit_nomatch.txt");
-        tokio::fs::write(&file_path, "fn main() {\n    println!(\"hello\");\n}\n").await.unwrap();
+        tokio::fs::write(&file_path, "fn main() {\n    println!(\"hello\");\n}\n")
+            .await
+            .unwrap();
 
         let tool = EditTool::new(Arc::new(RwLock::new(None)));
         // Use a string that does NOT appear as a substring (typo in function name)

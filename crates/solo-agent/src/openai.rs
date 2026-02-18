@@ -10,10 +10,11 @@ use tokio::sync::mpsc;
 use crate::models::OPENAI_MODELS;
 use crate::provider::{AIProvider, ProviderError, ProviderResult, ProviderType, ToolDefinition};
 
-const OPENAI_API_URL: &str = "https://api.openai.com/v1/responses";
+const _OPENAI_API_URL: &str = "https://api.openai.com/v1/responses";
 const OPENAI_CHAT_URL: &str = "https://api.openai.com/v1/chat/completions";
 
 /// OpenAI provider implementation
+#[allow(dead_code)]
 pub struct OpenAIProvider {
     api_key: String,
     client: Client,
@@ -173,12 +174,14 @@ struct OpenAIChatRequest {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct OpenAIStreamChunk {
     id: String,
     choices: Vec<OpenAIStreamChoice>,
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct OpenAIStreamChoice {
     index: usize,
     delta: OpenAIDelta,
@@ -186,6 +189,7 @@ struct OpenAIStreamChoice {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct OpenAIDelta {
     #[serde(default)]
     role: Option<String>,
@@ -196,6 +200,7 @@ struct OpenAIDelta {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct OpenAIToolCallDelta {
     index: usize,
     #[serde(default)]
@@ -245,7 +250,14 @@ impl AIProvider for OpenAIProvider {
         let client = self.client.clone();
 
         tokio::spawn(async move {
-            let result = stream_openai_response(client, api_key, request, conversation_id.clone(), tx.clone()).await;
+            let result = stream_openai_response(
+                client,
+                api_key,
+                request,
+                conversation_id.clone(),
+                tx.clone(),
+            )
+            .await;
 
             if let Err(e) = result {
                 let _ = tx
@@ -379,9 +391,10 @@ async fn stream_openai_response(
                             // Handle tool call deltas
                             if let Some(tc_deltas) = choice.delta.tool_calls {
                                 for tc_delta in tc_deltas {
-                                    let entry = tool_calls
-                                        .entry(tc_delta.index)
-                                        .or_insert_with(|| (String::new(), String::new(), String::new()));
+                                    let entry =
+                                        tool_calls.entry(tc_delta.index).or_insert_with(|| {
+                                            (String::new(), String::new(), String::new())
+                                        });
 
                                     if let Some(id) = tc_delta.id {
                                         entry.0 = id;
@@ -400,7 +413,7 @@ async fn stream_openai_response(
                             // Check for tool call finish
                             if choice.finish_reason == Some("tool_calls".to_string()) {
                                 // Emit tool call events
-                                for (_, (id, name, arguments)) in &tool_calls {
+                                for (id, name, arguments) in tool_calls.values() {
                                     let _ = tx
                                         .send(BackendEvent::AgentToolStart {
                                             conversation_id: conversation_id.clone(),
@@ -431,7 +444,8 @@ mod tests {
     fn test_convert_messages() {
         let messages = vec![AgentMessage::text("user", "Hello")];
 
-        let converted = OpenAIProvider::convert_to_chat_messages(&messages, Some("You are helpful"));
+        let converted =
+            OpenAIProvider::convert_to_chat_messages(&messages, Some("You are helpful"));
         assert_eq!(converted.len(), 2);
         assert_eq!(converted[0].role, "system");
         assert_eq!(converted[1].role, "user");
@@ -441,11 +455,14 @@ mod tests {
     fn test_convert_tool_result_messages() {
         let messages = vec![
             AgentMessage::text("user", "Read test.txt"),
-            AgentMessage::assistant_with_tools("", &[AgentToolCall {
-                id: "tc-1".to_string(),
-                name: "read_file".to_string(),
-                arguments: r#"{"path":"/tmp/test.txt"}"#.to_string(),
-            }]),
+            AgentMessage::assistant_with_tools(
+                "",
+                &[AgentToolCall {
+                    id: "tc-1".to_string(),
+                    name: "read_file".to_string(),
+                    arguments: r#"{"path":"/tmp/test.txt"}"#.to_string(),
+                }],
+            ),
             AgentMessage::tool_result("tc-1", "file contents", false),
         ];
 

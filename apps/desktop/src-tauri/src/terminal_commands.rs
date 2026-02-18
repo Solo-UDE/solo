@@ -273,7 +273,10 @@ pub fn spawn_pty(
         .to_string();
 
     info!(id = %id, shell = %shell_path, cwd = %working_dir.display(), "Spawned PTY");
-    Ok(SpawnResult { id, shell: shell_name })
+    Ok(SpawnResult {
+        id,
+        shell: shell_name,
+    })
 }
 
 /// Blocking read loop that forwards PTY output to the frontend.
@@ -408,11 +411,7 @@ fn split_utf8(bytes: &[u8]) -> (&[u8], &[u8]) {
 
 /// Write data to a terminal's stdin.
 #[tauri::command]
-pub fn write_pty(
-    id: String,
-    data: String,
-    state: State<'_, TerminalState>,
-) -> Result<(), String> {
+pub fn write_pty(id: String, data: String, state: State<'_, TerminalState>) -> Result<(), String> {
     let terminals = state
         .terminals
         .read()
@@ -471,10 +470,7 @@ pub fn resize_pty(
 
 /// Kill a terminal process and remove it from state.
 #[tauri::command]
-pub fn kill_pty(
-    id: String,
-    state: State<'_, TerminalState>,
-) -> Result<(), String> {
+pub fn kill_pty(id: String, state: State<'_, TerminalState>) -> Result<(), String> {
     let mut terminals = state
         .terminals
         .write()

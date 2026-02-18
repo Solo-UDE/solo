@@ -75,11 +75,7 @@ impl OAuthToken {
             .unwrap_or(Duration::ZERO)
             .as_secs();
 
-        if now >= self.expires_at {
-            0
-        } else {
-            self.expires_at - now
-        }
+        self.expires_at.saturating_sub(now)
     }
 
     /// Check if token can be refreshed
@@ -319,11 +315,7 @@ impl OpenAIOAuthToken {
             .unwrap_or(std::time::Duration::ZERO)
             .as_secs();
 
-        if now >= self.expires_at {
-            0
-        } else {
-            self.expires_at - now
-        }
+        self.expires_at.saturating_sub(now)
     }
 
     /// Check if token can be refreshed
@@ -367,13 +359,7 @@ mod tests {
     #[test]
     fn test_oauth_token_needs_refresh() {
         // Token that expires in 5 minutes (within 15-min buffer)
-        let token = OAuthToken::new(
-            "access".to_string(),
-            None,
-            300,
-            "Bearer".to_string(),
-            None,
-        );
+        let token = OAuthToken::new("access".to_string(), None, 300, "Bearer".to_string(), None);
 
         assert!(!token.is_expired());
         assert!(token.needs_refresh()); // Should need refresh

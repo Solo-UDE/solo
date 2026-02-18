@@ -13,7 +13,8 @@ const CODE_VERIFIER_MAX_LENGTH: usize = 128;
 const CODE_VERIFIER_DEFAULT_LENGTH: usize = 64;
 
 /// Characters allowed in code verifier (unreserved URI characters)
-const UNRESERVED_CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
+const UNRESERVED_CHARS: &[u8] =
+    b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
 
 /// Generate a cryptographically secure code verifier
 ///
@@ -81,7 +82,8 @@ mod tests {
         for c in verifier.chars() {
             assert!(
                 c.is_ascii_alphanumeric() || c == '-' || c == '.' || c == '_' || c == '~',
-                "Invalid character in verifier: {}", c
+                "Invalid character in verifier: {}",
+                c
             );
         }
     }
@@ -109,7 +111,8 @@ mod tests {
         for c in state1.chars() {
             assert!(
                 c.is_ascii_alphanumeric() || c == '-' || c == '_',
-                "Invalid character in state: {}", c
+                "Invalid character in state: {}",
+                c
             );
         }
     }

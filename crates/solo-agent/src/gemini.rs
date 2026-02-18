@@ -6,11 +6,11 @@
 use async_trait::async_trait;
 use futures::StreamExt;
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use solo_protocol::{AgentMessage, AgentToolCall, BackendEvent, ContentBlock};
 use std::collections::HashMap;
 use tokio::sync::mpsc;
-use tracing::{debug, error, info};
+use tracing::{error, info};
 
 use crate::models::GEMINI_MODELS;
 use crate::provider::{AIProvider, ProviderError, ProviderResult, ProviderType, ToolDefinition};
@@ -70,7 +70,11 @@ impl GeminiProvider {
                             parts.push(serde_json::json!({ "text": text }));
                         }
                     }
-                    ContentBlock::ToolUse { id, name, arguments } => {
+                    ContentBlock::ToolUse {
+                        id,
+                        name,
+                        arguments,
+                    } => {
                         let args: serde_json::Value = serde_json::from_str(arguments)
                             .unwrap_or_else(|_| serde_json::json!({}));
                         parts.push(serde_json::json!({
@@ -81,7 +85,11 @@ impl GeminiProvider {
                         }));
                         let _ = id; // Gemini doesn't have native tool call IDs
                     }
-                    ContentBlock::ToolResult { tool_use_id, content, .. } => {
+                    ContentBlock::ToolResult {
+                        tool_use_id,
+                        content,
+                        ..
+                    } => {
                         // Resolve the actual function name from our lookup
                         let function_name = tool_id_to_name
                             .get(tool_use_id)
@@ -106,7 +114,9 @@ impl GeminiProvider {
             // Merge with previous message if same role (Gemini requires alternating)
             if let Some(last) = contents.last_mut() {
                 if last.get("role").and_then(|r| r.as_str()) == Some(gemini_role) {
-                    if let Some(existing_parts) = last.get_mut("parts").and_then(|p| p.as_array_mut()) {
+                    if let Some(existing_parts) =
+                        last.get_mut("parts").and_then(|p| p.as_array_mut())
+                    {
                         existing_parts.extend(parts);
                         continue;
                     }
@@ -188,9 +198,15 @@ impl AIProvider for GeminiProvider {
         let api_key = self.api_key.clone();
 
         tokio::spawn(async move {
-            let result =
-                stream_gemini_response(client, url, api_key, body, conversation_id.clone(), tx.clone())
-                    .await;
+            let result = stream_gemini_response(
+                client,
+                url,
+                api_key,
+                body,
+                conversation_id.clone(),
+                tx.clone(),
+            )
+            .await;
 
             if let Err(e) = result {
                 let _ = tx
@@ -294,6 +310,7 @@ struct GeminiFunctionCall {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct GeminiError {
     message: String,
     code: Option<i32>,
@@ -382,13 +399,10 @@ async fn stream_gemini_response(
                                         // Function call part
                                         if let Some(fc) = part.function_call {
                                             tool_call_counter += 1;
-                                            let tool_call_id = format!(
-                                                "gemini-tc-{}",
-                                                tool_call_counter
-                                            );
-                                            let arguments =
-                                                serde_json::to_string(&fc.args)
-                                                    .unwrap_or_else(|_| "{}".to_string());
+                                            let tool_call_id =
+                                                format!("gemini-tc-{}", tool_call_counter);
+                                            let arguments = serde_json::to_string(&fc.args)
+                                                .unwrap_or_else(|_| "{}".to_string());
 
                                             let tool_call = AgentToolCall {
                                                 id: tool_call_id,

@@ -1,3 +1,28 @@
+#![warn(clippy::all, clippy::pedantic)]
+#![allow(
+    clippy::module_name_repetitions,
+    clippy::must_use_candidate,
+    clippy::missing_errors_doc,
+    clippy::missing_panics_doc,
+    clippy::wildcard_imports,
+    // Casts — safe in context (tree-sitter positions, timestamps, metrics)
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    // Style preferences — not bugs
+    clippy::uninlined_format_args,
+    clippy::doc_markdown,
+    clippy::return_self_not_must_use,
+    clippy::redundant_closure_for_method_calls,
+    clippy::single_match_else,
+    clippy::if_not_else,
+    clippy::match_same_arms,
+    clippy::map_unwrap_or,
+    clippy::similar_names,
+    clippy::struct_excessive_bools,
+)]
+
 //! Solo Core - Core traits and types for the Solo IDE
 //!
 //! This crate provides the foundational abstractions used across
@@ -47,7 +72,7 @@ pub trait Service: Send + Sync {
 }
 
 /// Configuration for the Solo IDE
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct SoloConfig {
     /// Path to the workspace root
     pub workspace_root: Option<String>,
@@ -57,16 +82,6 @@ pub struct SoloConfig {
 
     /// AI agent configuration
     pub agent: AgentConfig,
-}
-
-impl Default for SoloConfig {
-    fn default() -> Self {
-        Self {
-            workspace_root: None,
-            terminal: TerminalConfig::default(),
-            agent: AgentConfig::default(),
-        }
-    }
 }
 
 /// Terminal configuration

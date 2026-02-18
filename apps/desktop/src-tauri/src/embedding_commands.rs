@@ -9,7 +9,7 @@ use solo_embeddings::{
 use std::sync::Arc;
 use tauri::State;
 use tokio::sync::RwLock;
-use tracing::{debug, info, error};
+use tracing::{debug, info};
 
 // =============================================================================
 // State
@@ -92,9 +92,9 @@ pub async fn embedding_index_code(
     state: State<'_, EmbeddingState>,
 ) -> Result<usize, String> {
     let mut index = state.code_index.write().await;
-    let index = index
-        .as_mut()
-        .ok_or_else(|| "Embedding provider not initialized. Call embedding_init first.".to_string())?;
+    let index = index.as_mut().ok_or_else(|| {
+        "Embedding provider not initialized. Call embedding_init first.".to_string()
+    })?;
 
     debug!(count = chunks.len(), "Indexing code chunks");
 
@@ -116,10 +116,7 @@ pub async fn embedding_index_code(
 
     let count = items.len();
 
-    index
-        .add_many(items)
-        .await
-        .map_err(|e| e.to_string())?;
+    index.add_many(items).await.map_err(|e| e.to_string())?;
 
     info!(count = count, total = index.len(), "Code chunks indexed");
     Ok(index.len())
@@ -133,9 +130,9 @@ pub async fn embedding_search_code(
     state: State<'_, EmbeddingState>,
 ) -> Result<Vec<CodeSearchResultResponse>, String> {
     let index = state.code_index.read().await;
-    let index = index
-        .as_ref()
-        .ok_or_else(|| "Embedding provider not initialized. Call embedding_init first.".to_string())?;
+    let index = index.as_ref().ok_or_else(|| {
+        "Embedding provider not initialized. Call embedding_init first.".to_string()
+    })?;
 
     let limit = limit.unwrap_or(10);
     debug!(query = %query, limit = limit, "Searching code");
@@ -168,16 +165,13 @@ pub async fn embedding_embed_text(
     state: State<'_, EmbeddingState>,
 ) -> Result<Vec<f32>, String> {
     let provider = state.provider.read().await;
-    let provider = provider
-        .as_ref()
-        .ok_or_else(|| "Embedding provider not initialized. Call embedding_init first.".to_string())?;
+    let provider = provider.as_ref().ok_or_else(|| {
+        "Embedding provider not initialized. Call embedding_init first.".to_string()
+    })?;
 
     debug!(text_len = text.len(), "Generating embedding");
 
-    let embedding = provider
-        .embed(&text)
-        .await
-        .map_err(|e| e.to_string())?;
+    let embedding = provider.embed(&text).await.map_err(|e| e.to_string())?;
 
     info!(dimensions = embedding.dimensions, "Embedding generated");
     Ok(embedding.values)
@@ -185,9 +179,7 @@ pub async fn embedding_embed_text(
 
 /// Clear the code index
 #[tauri::command]
-pub async fn embedding_clear_index(
-    state: State<'_, EmbeddingState>,
-) -> Result<(), String> {
+pub async fn embedding_clear_index(state: State<'_, EmbeddingState>) -> Result<(), String> {
     let mut index = state.code_index.write().await;
     if let Some(index) = index.as_mut() {
         index.clear();

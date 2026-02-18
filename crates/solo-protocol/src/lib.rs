@@ -1,3 +1,26 @@
+#![warn(clippy::all, clippy::pedantic)]
+#![allow(
+    clippy::module_name_repetitions,
+    clippy::must_use_candidate,
+    clippy::missing_errors_doc,
+    clippy::missing_panics_doc,
+    clippy::wildcard_imports,
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::uninlined_format_args,
+    clippy::doc_markdown,
+    clippy::return_self_not_must_use,
+    clippy::redundant_closure_for_method_calls,
+    clippy::single_match_else,
+    clippy::if_not_else,
+    clippy::match_same_arms,
+    clippy::map_unwrap_or,
+    clippy::similar_names,
+    clippy::struct_excessive_bools
+)]
+
 //! Solo Protocol - IPC message types for communication between Rust backend and TypeScript frontend
 //!
 //! This crate defines all message types used for Tauri IPC communication.
@@ -716,7 +739,11 @@ mod tests {
         assert_eq!(msg.content.len(), 2);
         // First is success
         match &msg.content[0] {
-            ContentBlock::ToolResult { tool_use_id, content, is_error } => {
+            ContentBlock::ToolResult {
+                tool_use_id,
+                content,
+                is_error,
+            } => {
                 assert_eq!(tool_use_id, "tc-1");
                 assert_eq!(content, "result 1");
                 assert!(!is_error);
@@ -725,7 +752,11 @@ mod tests {
         }
         // Second is error
         match &msg.content[1] {
-            ContentBlock::ToolResult { tool_use_id, is_error, .. } => {
+            ContentBlock::ToolResult {
+                tool_use_id,
+                is_error,
+                ..
+            } => {
                 assert_eq!(tool_use_id, "tc-2");
                 assert!(is_error);
             }

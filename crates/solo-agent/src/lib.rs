@@ -1,39 +1,65 @@
+#![warn(clippy::all, clippy::pedantic)]
+#![allow(
+    clippy::module_name_repetitions,
+    clippy::must_use_candidate,
+    clippy::missing_errors_doc,
+    clippy::missing_panics_doc,
+    clippy::wildcard_imports,
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::uninlined_format_args,
+    clippy::doc_markdown,
+    clippy::return_self_not_must_use,
+    clippy::redundant_closure_for_method_calls,
+    clippy::single_match_else,
+    clippy::if_not_else,
+    clippy::match_same_arms,
+    clippy::map_unwrap_or,
+    clippy::similar_names,
+    clippy::struct_excessive_bools
+)]
+
 //! Solo Agent - Multi-provider AI agent for Solo IDE
 //!
 //! This crate provides a unified interface for interacting with multiple AI providers
 //! (Anthropic/Claude and OpenAI) with support for streaming responses, tool use, and
 //! credential management.
 
-pub mod provider;
-pub mod models;
-pub mod credentials;
 pub mod anthropic;
-pub mod openai;
+pub mod credentials;
 pub mod gemini;
-pub mod tools;
 pub mod middleware;
-pub mod telemetry;
+pub mod models;
 pub mod oauth;
+pub mod openai;
+pub mod provider;
 pub mod system_prompt;
+pub mod telemetry;
+pub mod tools;
 
 // Re-export main types
-pub use provider::{AIProvider, ProviderType, ProviderConfig, ProviderError, ProviderResult, ToolDefinition};
-pub use models::{AIModel, ModelCapabilities};
-pub use credentials::{CredentialManager, CredentialSource};
 pub use anthropic::AnthropicProvider;
-pub use openai::OpenAIProvider;
+pub use credentials::{CredentialManager, CredentialSource};
 pub use gemini::GeminiProvider;
-pub use tools::{ToolRegistry, ToolExecutor, ToolError, SharedWorkspaceRoot, create_default_registry};
 pub use middleware::{
-    Middleware, MiddlewareChain, MiddlewareContext, MiddlewareResponse,
-    LoggingMiddleware, RateLimitMiddleware, GuardrailsMiddleware, MetricsMiddleware,
-    MiddlewareMetrics, create_default_middleware_chain, create_production_middleware_chain,
+    create_default_middleware_chain, create_production_middleware_chain, GuardrailsMiddleware,
+    LoggingMiddleware, MetricsMiddleware, Middleware, MiddlewareChain, MiddlewareContext,
+    MiddlewareMetrics, MiddlewareResponse, RateLimitMiddleware,
 };
-pub use telemetry::{
-    TelemetryCollector, TelemetryEvent, TelemetryValue, SpanTracker,
-    AITelemetry, TelemetrySummary,
+pub use models::{AIModel, ModelCapabilities};
+pub use openai::OpenAIProvider;
+pub use provider::{
+    AIProvider, ProviderConfig, ProviderError, ProviderResult, ProviderType, ToolDefinition,
 };
 pub use system_prompt::build_system_prompt;
+pub use telemetry::{
+    AITelemetry, SpanTracker, TelemetryCollector, TelemetryEvent, TelemetrySummary, TelemetryValue,
+};
+pub use tools::{
+    create_default_registry, SharedWorkspaceRoot, ToolError, ToolExecutor, ToolRegistry,
+};
 
 use solo_protocol::{AgentMessage, AgentToolCall, BackendEvent, ToolCallWithStatus, ToolResult};
 use std::sync::Arc;
@@ -204,12 +230,7 @@ impl AgentManager {
         // Record telemetry
         let duration_ms = start.elapsed().as_millis() as u64;
         self.ai_telemetry
-            .record_tool_call(
-                "global",
-                &tool_call.name,
-                duration_ms,
-                result.success,
-            )
+            .record_tool_call("global", &tool_call.name, duration_ms, result.success)
             .await;
 
         result
@@ -221,12 +242,18 @@ impl AgentManager {
     }
 
     /// Approve a pending tool call
-    pub async fn approve_tool_call(&self, tool_call_id: &str) -> Result<ToolCallWithStatus, ToolError> {
+    pub async fn approve_tool_call(
+        &self,
+        tool_call_id: &str,
+    ) -> Result<ToolCallWithStatus, ToolError> {
         self.tool_registry.read().await.approve(tool_call_id).await
     }
 
     /// Reject a pending tool call
-    pub async fn reject_tool_call(&self, tool_call_id: &str) -> Result<ToolCallWithStatus, ToolError> {
+    pub async fn reject_tool_call(
+        &self,
+        tool_call_id: &str,
+    ) -> Result<ToolCallWithStatus, ToolError> {
         self.tool_registry.read().await.reject(tool_call_id).await
     }
 
@@ -287,7 +314,11 @@ impl AgentManager {
     }
 
     /// Create a new session
-    pub async fn create_session(&self, session_id: String, model: Option<String>) -> ProviderResult<()> {
+    pub async fn create_session(
+        &self,
+        session_id: String,
+        model: Option<String>,
+    ) -> ProviderResult<()> {
         let provider_type = self.get_active_provider().await;
         let providers = self.providers.read().await;
 
@@ -296,9 +327,7 @@ impl AgentManager {
             .ok_or_else(|| ProviderError::ProviderNotInitialized(provider_type))?
             .clone();
 
-        let model = model.unwrap_or_else(|| {
-            models::get_default_model(provider_type).id.to_string()
-        });
+        let model = model.unwrap_or_else(|| models::get_default_model(provider_type).id.clone());
 
         let session = AgentSession::new(provider, session_id.clone(), model);
         self.sessions.write().await.insert(session_id, session);
@@ -306,7 +335,11 @@ impl AgentManager {
     }
 
     /// Update the model for an existing session
-    pub async fn update_session_model(&self, session_id: &str, model: String) -> ProviderResult<()> {
+    pub async fn update_session_model(
+        &self,
+        session_id: &str,
+        model: String,
+    ) -> ProviderResult<()> {
         let mut sessions = self.sessions.write().await;
         let session = sessions
             .get_mut(session_id)
@@ -316,7 +349,11 @@ impl AgentManager {
     }
 
     /// Get a session by ID
-    pub async fn get_session(&self, session_id: &str) -> Option<tokio::sync::RwLockReadGuard<'_, std::collections::HashMap<String, AgentSession>>> {
+    pub async fn get_session(
+        &self,
+        session_id: &str,
+    ) -> Option<tokio::sync::RwLockReadGuard<'_, std::collections::HashMap<String, AgentSession>>>
+    {
         let sessions = self.sessions.read().await;
         if sessions.contains_key(session_id) {
             Some(sessions)

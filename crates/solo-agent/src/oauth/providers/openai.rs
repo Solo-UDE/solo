@@ -49,11 +49,7 @@ impl OpenAIOAuthConfig {
             params.append_pair("codex_cli_simplified_flow", "true");
         }
 
-        let oauth_state = OAuthState::new(
-            state.clone(),
-            code_verifier,
-            "openai".to_string(),
-        );
+        let oauth_state = OAuthState::new(state.clone(), code_verifier, "openai".to_string());
 
         let result = OAuthFlowResult {
             auth_url: url.to_string(),
@@ -83,7 +79,9 @@ impl OpenAIOAuthConfig {
             ])
             .send()
             .await
-            .map_err(|e| ProviderError::OAuthError(format!("Token exchange request failed: {}", e)))?;
+            .map_err(|e| {
+                ProviderError::OAuthError(format!("Token exchange request failed: {}", e))
+            })?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -94,13 +92,14 @@ impl OpenAIOAuthConfig {
             )));
         }
 
-        let token_response: OpenAITokenResponse = response
-            .json()
-            .await
-            .map_err(|e| ProviderError::OAuthError(format!("Failed to parse token response: {}", e)))?;
+        let token_response: OpenAITokenResponse = response.json().await.map_err(|e| {
+            ProviderError::OAuthError(format!("Failed to parse token response: {}", e))
+        })?;
 
         // Extract account_id from id_token JWT
-        let account_id = token_response.id_token.as_ref()
+        let account_id = token_response
+            .id_token
+            .as_ref()
             .and_then(|id_token| extract_account_id_from_jwt(id_token));
 
         Ok(OpenAIOAuthToken::from_response(token_response, account_id))
@@ -119,7 +118,9 @@ impl OpenAIOAuthConfig {
             ])
             .send()
             .await
-            .map_err(|e| ProviderError::OAuthError(format!("Token refresh request failed: {}", e)))?;
+            .map_err(|e| {
+                ProviderError::OAuthError(format!("Token refresh request failed: {}", e))
+            })?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -130,13 +131,14 @@ impl OpenAIOAuthConfig {
             )));
         }
 
-        let token_response: OpenAITokenResponse = response
-            .json()
-            .await
-            .map_err(|e| ProviderError::OAuthError(format!("Failed to parse refresh token response: {}", e)))?;
+        let token_response: OpenAITokenResponse = response.json().await.map_err(|e| {
+            ProviderError::OAuthError(format!("Failed to parse refresh token response: {}", e))
+        })?;
 
         // Extract account_id from id_token JWT (may be present in refresh response)
-        let account_id = token_response.id_token.as_ref()
+        let account_id = token_response
+            .id_token
+            .as_ref()
             .and_then(|id_token| extract_account_id_from_jwt(id_token));
 
         Ok(OpenAIOAuthToken::from_response(token_response, account_id))
@@ -260,7 +262,8 @@ mod tests {
         // Note: This is a test token, not cryptographically signed
 
         let header = URL_SAFE_NO_PAD.encode(r#"{"alg":"none","typ":"JWT"}"#);
-        let payload = URL_SAFE_NO_PAD.encode(r#"{"chatgpt_account_id":"acct_test123","sub":"user123"}"#);
+        let payload =
+            URL_SAFE_NO_PAD.encode(r#"{"chatgpt_account_id":"acct_test123","sub":"user123"}"#);
         let signature = "";
 
         let test_jwt = format!("{}.{}.{}", header, payload, signature);
@@ -273,7 +276,8 @@ mod tests {
     fn test_extract_account_id_from_jwt_nested() {
         // Test with nested claim format
         let header = URL_SAFE_NO_PAD.encode(r#"{"alg":"none","typ":"JWT"}"#);
-        let payload = URL_SAFE_NO_PAD.encode(r#"{"https://api.openai.com/auth":{"chatgpt_account_id":"acct_nested"}}"#);
+        let payload = URL_SAFE_NO_PAD
+            .encode(r#"{"https://api.openai.com/auth":{"chatgpt_account_id":"acct_nested"}}"#);
         let signature = "";
 
         let test_jwt = format!("{}.{}.{}", header, payload, signature);

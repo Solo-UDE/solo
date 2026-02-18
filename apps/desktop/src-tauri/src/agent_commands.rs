@@ -4,24 +4,25 @@
 //! including the agentic loop that executes tool calls and
 //! feeds results back to the LLM.
 
+use crate::fs_commands::FsState;
 use solo_agent::{
     build_system_prompt,
     models::{get_all_models, get_models_for_provider},
     oauth::{
-        AuthMethodInfo, OAuthFlowResult, OAuthMethod, OAuthState,
-        AnthropicOAuthConfig, OpenAIOAuthConfig,
-        start_callback_server,
+        start_callback_server, AnthropicOAuthConfig, AuthMethodInfo, OAuthFlowResult, OAuthMethod,
+        OAuthState, OpenAIOAuthConfig,
     },
     AgentManager, CredentialManager, ProviderType,
 };
-use solo_protocol::{AgentMessage, AgentToolCall, BackendEvent, ToolCallStatus, ToolCallWithStatus, ToolResult};
+use solo_protocol::{
+    AgentMessage, AgentToolCall, BackendEvent, ToolCallStatus, ToolCallWithStatus, ToolResult,
+};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::{oneshot, watch, RwLock};
 use tracing::{debug, error, info, warn};
-use crate::fs_commands::FsState;
 
 /// Maximum number of agentic loop turns before stopping
 const MAX_AGENTIC_TURNS: u32 = 25;
@@ -397,9 +398,7 @@ async fn run_agentic_loop(
                 )
             } else {
                 (
-                    result
-                        .error
-                        .unwrap_or_else(|| "Unknown error".to_string()),
+                    result.error.unwrap_or_else(|| "Unknown error".to_string()),
                     true,
                 )
             };
@@ -418,10 +417,7 @@ async fn run_agentic_loop(
 
         // ── add all tool results as a single user message ───────────────
         if let Err(e) = manager
-            .add_message_to_session(
-                &session_id,
-                AgentMessage::tool_results(tool_results),
-            )
+            .add_message_to_session(&session_id, AgentMessage::tool_results(tool_results))
             .await
         {
             error!(session_id = %session_id, error = %e, "Failed to add tool results to history");
@@ -465,14 +461,16 @@ async fn run_agentic_loop(
 #[tauri::command]
 pub async fn get_providers() -> Result<Vec<String>, String> {
     debug!("Getting available providers");
-    Ok(vec!["anthropic".to_string(), "openai".to_string(), "gemini".to_string()])
+    Ok(vec![
+        "anthropic".to_string(),
+        "openai".to_string(),
+        "gemini".to_string(),
+    ])
 }
 
 /// Get the currently active provider
 #[tauri::command]
-pub async fn get_active_provider(
-    state: State<'_, AgentState>,
-) -> Result<String, String> {
+pub async fn get_active_provider(state: State<'_, AgentState>) -> Result<String, String> {
     debug!("Getting active provider");
     let provider = state.manager.get_active_provider().await;
     Ok(provider.as_str().to_string())
@@ -489,7 +487,8 @@ pub async fn set_active_provider(
     let provider_type = ProviderType::from_str(&provider)
         .ok_or_else(|| format!("Unknown provider: {}", provider))?;
 
-    state.manager
+    state
+        .manager
         .set_active_provider(provider_type)
         .await
         .map_err(|e| e.to_string())
@@ -506,12 +505,11 @@ pub async fn get_provider_status(
     let provider_type = ProviderType::from_str(&provider)
         .ok_or_else(|| format!("Unknown provider: {}", provider))?;
 
-    let has_credentials = state.credentials
-        .has_credentials(provider_type)
-        .await;
+    let has_credentials = state.credentials.has_credentials(provider_type).await;
 
     let credential_source = if has_credentials {
-        state.credentials
+        state
+            .credentials
             .get_credential_source(provider_type)
             .await
             .ok()
@@ -543,13 +541,15 @@ pub async fn set_credentials(
     let provider_type = ProviderType::from_str(&provider)
         .ok_or_else(|| format!("Unknown provider: {}", provider))?;
 
-    state.credentials
+    state
+        .credentials
         .set_credentials(provider_type, &api_key)
         .await
         .map_err(|e| e.to_string())?;
 
     // Initialize the provider with the new credentials
-    state.manager
+    state
+        .manager
         .initialize_provider(provider_type)
         .await
         .map_err(|e| e.to_string())?;
@@ -643,7 +643,8 @@ pub async fn agent_create_session(
     if !state.manager.is_provider_initialized(provider_type).await {
         if state.credentials.has_credentials(provider_type).await {
             info!(provider = %provider_type.as_str(), "Auto-initializing provider with existing credentials");
-            state.manager
+            state
+                .manager
                 .initialize_provider(provider_type)
                 .await
                 .map_err(|e| e.to_string())?;
@@ -655,7 +656,8 @@ pub async fn agent_create_session(
         }
     }
 
-    state.manager
+    state
+        .manager
         .create_session(session_id.clone(), model)
         .await
         .map_err(|e| e.to_string())?;
@@ -671,7 +673,8 @@ pub async fn agent_update_session_model(
     state: State<'_, AgentState>,
 ) -> Result<(), String> {
     info!(session_id = %session_id, model = %model, "Updating session model");
-    state.manager
+    state
+        .manager
         .update_session_model(&session_id, model)
         .await
         .map_err(|e| e.to_string())
@@ -722,7 +725,8 @@ pub async fn agent_send_message(
     };
 
     // Get the streaming receiver for the initial user message
-    let receiver = state.manager
+    let receiver = state
+        .manager
         .send_message(&session_id, content, effective_prompt.clone())
         .await
         .map_err(|e| {
@@ -787,7 +791,8 @@ pub async fn agent_get_history(
 ) -> Result<Vec<AgentMessage>, String> {
     debug!(session_id = %session_id, "Getting conversation history");
 
-    let sessions = state.manager
+    let sessions = state
+        .manager
         .get_session(&session_id)
         .await
         .ok_or_else(|| format!("Session not found: {}", session_id))?;
@@ -868,7 +873,9 @@ pub async fn approve_tool_call(
     info!(tool_call_id = %tool_call_id, "Approving tool call");
 
     // Check if there's a loop approval channel for this tool call
-    if let Some((original_tool_call, sender)) = state.loop_approvals.write().await.remove(&tool_call_id) {
+    if let Some((original_tool_call, sender)) =
+        state.loop_approvals.write().await.remove(&tool_call_id)
+    {
         let _ = sender.send(true);
         return Ok(ToolCallWithStatus {
             tool_call: original_tool_call,
@@ -880,7 +887,8 @@ pub async fn approve_tool_call(
     }
 
     // Fall back to registry-based approval
-    state.manager
+    state
+        .manager
         .approve_tool_call(&tool_call_id)
         .await
         .map_err(|e| e.to_string())
@@ -898,7 +906,9 @@ pub async fn reject_tool_call(
     info!(tool_call_id = %tool_call_id, "Rejecting tool call");
 
     // Check if there's a loop approval channel for this tool call
-    if let Some((original_tool_call, sender)) = state.loop_approvals.write().await.remove(&tool_call_id) {
+    if let Some((original_tool_call, sender)) =
+        state.loop_approvals.write().await.remove(&tool_call_id)
+    {
         let _ = sender.send(false);
         return Ok(ToolCallWithStatus {
             tool_call: original_tool_call,
@@ -910,7 +920,8 @@ pub async fn reject_tool_call(
     }
 
     // Fall back to registry-based rejection
-    state.manager
+    state
+        .manager
         .reject_tool_call(&tool_call_id)
         .await
         .map_err(|e| e.to_string())
@@ -942,7 +953,8 @@ pub async fn get_auth_method(
     let provider_type = ProviderType::from_str(&provider)
         .ok_or_else(|| format!("Unknown provider: {}", provider))?;
 
-    state.credentials
+    state
+        .credentials
         .get_auth_method_info(provider_type)
         .await
         .map_err(|e| e.to_string())
@@ -968,16 +980,15 @@ pub async fn start_oauth_flow(
         ProviderType::Anthropic => {
             AnthropicOAuthConfig::build_auth_url().map_err(|e| e.to_string())?
         }
-        ProviderType::OpenAI => {
-            OpenAIOAuthConfig::build_auth_url().map_err(|e| e.to_string())?
-        }
+        ProviderType::OpenAI => OpenAIOAuthConfig::build_auth_url().map_err(|e| e.to_string())?,
         ProviderType::Gemini => {
             return Err("Gemini does not support OAuth".to_string());
         }
     };
 
     // Store the OAuth state for later verification
-    state.oauth_pending
+    state
+        .oauth_pending
         .write()
         .await
         .insert(oauth_state.state.clone(), oauth_state);
@@ -995,7 +1006,8 @@ pub async fn complete_oauth_flow(
     info!("Completing OAuth flow");
 
     // Look up the pending OAuth state
-    let pending_state = state.oauth_pending
+    let pending_state = state
+        .oauth_pending
         .write()
         .await
         .remove(&oauth_state)
@@ -1014,7 +1026,8 @@ pub async fn complete_oauth_flow(
                 .await
                 .map_err(|e| e.to_string())?;
 
-            state.credentials
+            state
+                .credentials
                 .set_oauth_token(provider_type, token)
                 .await
                 .map_err(|e| e.to_string())?;
@@ -1024,7 +1037,8 @@ pub async fn complete_oauth_flow(
                 .await
                 .map_err(|e| e.to_string())?;
 
-            state.credentials
+            state
+                .credentials
                 .set_openai_oauth_token(token)
                 .await
                 .map_err(|e| e.to_string())?;
@@ -1035,7 +1049,8 @@ pub async fn complete_oauth_flow(
     }
 
     // Re-initialize the provider with the new credentials
-    state.manager
+    state
+        .manager
         .initialize_provider(provider_type)
         .await
         .map_err(|e| e.to_string())?;
@@ -1068,7 +1083,8 @@ pub async fn disconnect_oauth(
     let provider_type = ProviderType::from_str(&provider)
         .ok_or_else(|| format!("Unknown provider: {}", provider))?;
 
-    state.credentials
+    state
+        .credentials
         .disconnect_oauth(provider_type)
         .await
         .map_err(|e| e.to_string())?;
@@ -1099,19 +1115,21 @@ pub async fn set_oauth_token_manual(
     // tokens don't have known expiry; user can re-paste when it expires.
     let oauth_token = solo_agent::oauth::OAuthToken::new(
         token,
-        None,             // no refresh token
-        365 * 24 * 3600,  // 1 year expiry
+        None,            // no refresh token
+        365 * 24 * 3600, // 1 year expiry
         "Bearer".to_string(),
         None,
     );
 
-    state.credentials
+    state
+        .credentials
         .set_oauth_token(provider_type, oauth_token)
         .await
         .map_err(|e| e.to_string())?;
 
     // Re-initialize the provider with the new OAuth credential
-    state.manager
+    state
+        .manager
         .initialize_provider(provider_type)
         .await
         .map_err(|e| e.to_string())?;
@@ -1127,13 +1145,12 @@ pub async fn set_oauth_token_manual(
 
 /// Check if Claude Code auth is complete (token exists in keychain)
 #[tauri::command]
-pub async fn check_claude_auth_status(
-    state: State<'_, AgentState>,
-) -> Result<bool, String> {
+pub async fn check_claude_auth_status(state: State<'_, AgentState>) -> Result<bool, String> {
     debug!("Checking Claude Code auth status");
 
     // Check if we have Claude Code OAuth credentials
-    let info = state.credentials
+    let info = state
+        .credentials
         .get_auth_method_info(ProviderType::Anthropic)
         .await
         .map_err(|e| e.to_string())?;

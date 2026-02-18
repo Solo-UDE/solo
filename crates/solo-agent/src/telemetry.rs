@@ -227,12 +227,21 @@ impl AITelemetry {
         success: bool,
     ) {
         let mut attrs = HashMap::new();
-        attrs.insert("conversation_id".to_string(), TelemetryValue::String(conversation_id.to_string()));
-        attrs.insert("model".to_string(), TelemetryValue::String(model.to_string()));
+        attrs.insert(
+            "conversation_id".to_string(),
+            TelemetryValue::String(conversation_id.to_string()),
+        );
+        attrs.insert(
+            "model".to_string(),
+            TelemetryValue::String(model.to_string()),
+        );
         attrs.insert("success".to_string(), TelemetryValue::Bool(success));
 
         if let Some(tokens) = tokens_used {
-            attrs.insert("tokens_used".to_string(), TelemetryValue::Int(tokens as i64));
+            attrs.insert(
+                "tokens_used".to_string(),
+                TelemetryValue::Int(tokens as i64),
+            );
         }
 
         let event = TelemetryEvent {
@@ -257,8 +266,14 @@ impl AITelemetry {
         success: bool,
     ) {
         let mut attrs = HashMap::new();
-        attrs.insert("conversation_id".to_string(), TelemetryValue::String(conversation_id.to_string()));
-        attrs.insert("tool_name".to_string(), TelemetryValue::String(tool_name.to_string()));
+        attrs.insert(
+            "conversation_id".to_string(),
+            TelemetryValue::String(conversation_id.to_string()),
+        );
+        attrs.insert(
+            "tool_name".to_string(),
+            TelemetryValue::String(tool_name.to_string()),
+        );
         attrs.insert("success".to_string(), TelemetryValue::Bool(success));
 
         let event = TelemetryEvent {
@@ -275,15 +290,16 @@ impl AITelemetry {
     }
 
     /// Record an embedding event
-    pub async fn record_embedding(
-        &self,
-        text_count: usize,
-        dimensions: usize,
-        duration_ms: u64,
-    ) {
+    pub async fn record_embedding(&self, text_count: usize, dimensions: usize, duration_ms: u64) {
         let mut attrs = HashMap::new();
-        attrs.insert("text_count".to_string(), TelemetryValue::Int(text_count as i64));
-        attrs.insert("dimensions".to_string(), TelemetryValue::Int(dimensions as i64));
+        attrs.insert(
+            "text_count".to_string(),
+            TelemetryValue::Int(text_count as i64),
+        );
+        attrs.insert(
+            "dimensions".to_string(),
+            TelemetryValue::Int(dimensions as i64),
+        );
 
         let event = TelemetryEvent {
             name: "ai.embedding".to_string(),
@@ -434,8 +450,12 @@ mod tests {
         let collector = Arc::new(TelemetryCollector::new(100));
         let telemetry = AITelemetry::new(collector);
 
-        telemetry.record_completion("conv-1", "gpt-4", 1000, Some(100), true).await;
-        telemetry.record_tool_call("conv-1", "read_file", 50, true).await;
+        telemetry
+            .record_completion("conv-1", "gpt-4", 1000, Some(100), true)
+            .await;
+        telemetry
+            .record_tool_call("conv-1", "read_file", 50, true)
+            .await;
 
         let summary = telemetry.get_summary().await;
         assert_eq!(summary.total_requests, 1);

@@ -3,6 +3,8 @@
 //! Generates a system prompt that describes available tools, workspace context,
 //! and behavioral guidelines.
 
+use std::fmt::Write;
+
 use crate::provider::ToolDefinition;
 
 /// Build a coding-agent system prompt from the current tool set and workspace info.
@@ -18,7 +20,11 @@ pub fn build_system_prompt(tools: &[ToolDefinition], workspace_root: &str) -> St
     );
 
     // ── Workspace context ────────────────────────────────────────────
-    prompt.push_str(&format!("## Workspace\n\nCurrent workspace root: `{}`\n\n", workspace_root));
+    let _ = write!(
+        prompt,
+        "## Workspace\n\nCurrent workspace root: `{}`\n\n",
+        workspace_root
+    );
 
     // ── Tool descriptions ────────────────────────────────────────────
     if !tools.is_empty() {
@@ -29,14 +35,14 @@ pub fn build_system_prompt(tools: &[ToolDefinition], workspace_root: &str) -> St
         );
 
         for tool in tools {
-            prompt.push_str(&format!("### `{}`\n", tool.name));
-            prompt.push_str(&format!("{}\n", tool.description));
+            let _ = writeln!(prompt, "### `{}`", tool.name);
+            let _ = writeln!(prompt, "{}", tool.description);
             if tool.needs_approval {
                 prompt.push_str("*Requires user approval before execution.*\n");
             }
             // Include a compact schema
             if let Ok(schema_str) = serde_json::to_string_pretty(&tool.input_schema) {
-                prompt.push_str(&format!("```json\n{}\n```\n", schema_str));
+                let _ = write!(prompt, "```json\n{}\n```\n", schema_str);
             }
             prompt.push('\n');
         }

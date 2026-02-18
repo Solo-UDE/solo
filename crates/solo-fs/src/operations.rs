@@ -26,17 +26,17 @@ pub fn validate_path(path: &Path, workspace_root: &Path) -> FsResult<std::path::
             .map_err(|e| FsError::from_io_error(e, &path.display().to_string()))?
     } else {
         // For new files, canonicalize the parent and append the filename
-        let parent = path.parent().ok_or_else(|| {
-            FsError::InvalidPath("Path has no parent directory".to_string())
-        })?;
+        let parent = path
+            .parent()
+            .ok_or_else(|| FsError::InvalidPath("Path has no parent directory".to_string()))?;
 
         let parent_canonical = parent
             .canonicalize()
             .map_err(|e| FsError::from_io_error(e, &parent.display().to_string()))?;
 
-        let filename = path.file_name().ok_or_else(|| {
-            FsError::InvalidPath("Path has no filename".to_string())
-        })?;
+        let filename = path
+            .file_name()
+            .ok_or_else(|| FsError::InvalidPath("Path has no filename".to_string()))?;
 
         parent_canonical.join(filename)
     };
@@ -133,9 +133,9 @@ pub fn create_file(path: &Path, content: Option<&str>, workspace_root: &Path) ->
 /// * `workspace_root` - Workspace root for path validation
 pub fn create_directory(path: &Path, workspace_root: &Path) -> FsResult<()> {
     // For new directories, validate the parent path
-    let parent = path.parent().ok_or_else(|| {
-        FsError::InvalidPath("Path has no parent directory".to_string())
-    })?;
+    let parent = path
+        .parent()
+        .ok_or_else(|| FsError::InvalidPath("Path has no parent directory".to_string()))?;
 
     // Validate parent exists and is within workspace
     let _ = validate_path(parent, workspace_root)?;
@@ -151,8 +151,7 @@ pub fn create_directory(path: &Path, workspace_root: &Path) -> FsResult<()> {
 
     info!(path = %path.display(), "Creating directory");
 
-    fs::create_dir_all(path)
-        .map_err(|e| FsError::from_io_error(e, &path.display().to_string()))?;
+    fs::create_dir_all(path).map_err(|e| FsError::from_io_error(e, &path.display().to_string()))?;
 
     Ok(())
 }
@@ -393,8 +392,11 @@ mod tests {
         fs::write(temp.path().join("outside.txt"), "secret").unwrap();
 
         let result = validate_path(&malicious_path, &workspace);
-        assert!(matches!(result, Err(FsError::PathOutsideWorkspace(_))),
-            "Expected PathOutsideWorkspace error, got {:?}", result);
+        assert!(
+            matches!(result, Err(FsError::PathOutsideWorkspace(_))),
+            "Expected PathOutsideWorkspace error, got {:?}",
+            result
+        );
     }
 
     #[test]

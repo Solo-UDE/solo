@@ -46,11 +46,7 @@ impl AnthropicOAuthConfig {
             params.append_pair("code_challenge_method", "S256");
         }
 
-        let oauth_state = OAuthState::new(
-            state.clone(),
-            code_verifier,
-            "anthropic".to_string(),
-        );
+        let oauth_state = OAuthState::new(state.clone(), code_verifier, "anthropic".to_string());
 
         let result = OAuthFlowResult {
             auth_url: url.to_string(),
@@ -80,7 +76,9 @@ impl AnthropicOAuthConfig {
             ])
             .send()
             .await
-            .map_err(|e| ProviderError::OAuthError(format!("Token exchange request failed: {}", e)))?;
+            .map_err(|e| {
+                ProviderError::OAuthError(format!("Token exchange request failed: {}", e))
+            })?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -91,10 +89,9 @@ impl AnthropicOAuthConfig {
             )));
         }
 
-        let token_response: TokenResponse = response
-            .json()
-            .await
-            .map_err(|e| ProviderError::OAuthError(format!("Failed to parse token response: {}", e)))?;
+        let token_response: TokenResponse = response.json().await.map_err(|e| {
+            ProviderError::OAuthError(format!("Failed to parse token response: {}", e))
+        })?;
 
         Ok(OAuthToken::from(token_response))
     }
@@ -112,7 +109,9 @@ impl AnthropicOAuthConfig {
             ])
             .send()
             .await
-            .map_err(|e| ProviderError::OAuthError(format!("Token refresh request failed: {}", e)))?;
+            .map_err(|e| {
+                ProviderError::OAuthError(format!("Token refresh request failed: {}", e))
+            })?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -123,10 +122,9 @@ impl AnthropicOAuthConfig {
             )));
         }
 
-        let token_response: TokenResponse = response
-            .json()
-            .await
-            .map_err(|e| ProviderError::OAuthError(format!("Failed to parse refresh token response: {}", e)))?;
+        let token_response: TokenResponse = response.json().await.map_err(|e| {
+            ProviderError::OAuthError(format!("Failed to parse refresh token response: {}", e))
+        })?;
 
         Ok(OAuthToken::from(token_response))
     }

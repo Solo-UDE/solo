@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
-use tracing::{debug, info, warn, error, span, Level};
+use tracing::{debug, error, info, span, warn, Level};
 
 use crate::provider::ProviderResult;
 use solo_protocol::{AgentMessage, BackendEvent};
@@ -95,13 +95,20 @@ impl MiddlewareResponse {
 pub trait Middleware: Send + Sync {
     /// Process a request before it's sent to the provider
     /// Return `Ok(None)` to continue processing, or `Ok(Some(events))` to short-circuit
-    async fn before_request(&self, ctx: &mut MiddlewareContext) -> ProviderResult<MiddlewareResponse> {
+    async fn before_request(
+        &self,
+        ctx: &mut MiddlewareContext,
+    ) -> ProviderResult<MiddlewareResponse> {
         let _ = ctx;
         Ok(MiddlewareResponse::pass_through())
     }
 
     /// Process response events after receiving from the provider
-    async fn after_response(&self, ctx: &MiddlewareContext, events: &[BackendEvent]) -> ProviderResult<()> {
+    async fn after_response(
+        &self,
+        ctx: &MiddlewareContext,
+        events: &[BackendEvent],
+    ) -> ProviderResult<()> {
         let _ = (ctx, events);
         Ok(())
     }
@@ -138,7 +145,10 @@ impl MiddlewareChain {
     }
 
     /// Process a request through all middleware
-    pub async fn before_request(&self, ctx: &mut MiddlewareContext) -> ProviderResult<Option<Vec<BackendEvent>>> {
+    pub async fn before_request(
+        &self,
+        ctx: &mut MiddlewareContext,
+    ) -> ProviderResult<Option<Vec<BackendEvent>>> {
         for middleware in &self.middlewares {
             let response = middleware.before_request(ctx).await?;
             if response.handled {
@@ -149,7 +159,11 @@ impl MiddlewareChain {
     }
 
     /// Process response events through all middleware
-    pub async fn after_response(&self, ctx: &MiddlewareContext, events: &[BackendEvent]) -> ProviderResult<()> {
+    pub async fn after_response(
+        &self,
+        ctx: &MiddlewareContext,
+        events: &[BackendEvent],
+    ) -> ProviderResult<()> {
         for middleware in &self.middlewares {
             middleware.after_response(ctx, events).await?;
         }
@@ -208,7 +222,10 @@ impl Default for LoggingMiddleware {
 
 #[async_trait]
 impl Middleware for LoggingMiddleware {
-    async fn before_request(&self, ctx: &mut MiddlewareContext) -> ProviderResult<MiddlewareResponse> {
+    async fn before_request(
+        &self,
+        ctx: &mut MiddlewareContext,
+    ) -> ProviderResult<MiddlewareResponse> {
         if self.log_requests {
             let span = span!(
                 Level::INFO,
@@ -242,7 +259,11 @@ impl Middleware for LoggingMiddleware {
         Ok(MiddlewareResponse::pass_through())
     }
 
-    async fn after_response(&self, ctx: &MiddlewareContext, events: &[BackendEvent]) -> ProviderResult<()> {
+    async fn after_response(
+        &self,
+        ctx: &MiddlewareContext,
+        events: &[BackendEvent],
+    ) -> ProviderResult<()> {
         if self.log_responses {
             let elapsed = ctx.elapsed();
             let event_count = events.len();
@@ -308,7 +329,7 @@ impl RateLimitMiddleware {
     async fn check_rate_limit(&self) -> bool {
         let mut requests = self.requests.write().await;
         let now = Instant::now();
-        let one_minute_ago = now - Duration::from_secs(60);
+        let one_minute_ago = now.checked_sub(Duration::from_secs(60)).unwrap_or(now);
 
         // Remove old requests
         requests.retain(|&t| t > one_minute_ago);
@@ -329,7 +350,10 @@ impl RateLimitMiddleware {
 
 #[async_trait]
 impl Middleware for RateLimitMiddleware {
-    async fn before_request(&self, ctx: &mut MiddlewareContext) -> ProviderResult<MiddlewareResponse> {
+    async fn before_request(
+        &self,
+        ctx: &mut MiddlewareContext,
+    ) -> ProviderResult<MiddlewareResponse> {
         if !self.check_rate_limit().await {
             let error_event = BackendEvent::AgentError {
                 conversation_id: ctx.conversation_id.clone(),
@@ -393,7 +417,10 @@ impl Default for GuardrailsMiddleware {
 
 #[async_trait]
 impl Middleware for GuardrailsMiddleware {
-    async fn before_request(&self, ctx: &mut MiddlewareContext) -> ProviderResult<MiddlewareResponse> {
+    async fn before_request(
+        &self,
+        ctx: &mut MiddlewareContext,
+    ) -> ProviderResult<MiddlewareResponse> {
         // Check message length
         for (i, msg) in ctx.messages.iter().enumerate() {
             let msg_len = msg.display_text().len();
@@ -402,9 +429,7 @@ impl Middleware for GuardrailsMiddleware {
                     conversation_id: ctx.conversation_id.clone(),
                     error: format!(
                         "Message {} exceeds maximum length ({} > {})",
-                        i,
-                        msg_len,
-                        self.max_message_length
+                        i, msg_len, self.max_message_length
                     ),
                 };
                 return Ok(MiddlewareResponse::handled(vec![error_event]));
@@ -522,12 +547,19 @@ impl MiddlewareMetrics {
 
 #[async_trait]
 impl Middleware for MetricsMiddleware {
-    async fn before_request(&self, _ctx: &mut MiddlewareContext) -> ProviderResult<MiddlewareResponse> {
+    async fn before_request(
+        &self,
+        _ctx: &mut MiddlewareContext,
+    ) -> ProviderResult<MiddlewareResponse> {
         *self.total_requests.write().await += 1;
         Ok(MiddlewareResponse::pass_through())
     }
 
-    async fn after_response(&self, ctx: &MiddlewareContext, _events: &[BackendEvent]) -> ProviderResult<()> {
+    async fn after_response(
+        &self,
+        ctx: &MiddlewareContext,
+        _events: &[BackendEvent],
+    ) -> ProviderResult<()> {
         *self.successful_requests.write().await += 1;
         *self.total_latency_ms.write().await += ctx.elapsed().as_millis() as u64;
         Ok(())

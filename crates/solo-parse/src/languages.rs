@@ -99,7 +99,7 @@ impl LanguageRegistry {
         let ext = Path::new(path)
             .extension()
             .and_then(|e| e.to_str())
-            .map(|e| e.to_lowercase());
+            .map(str::to_lowercase);
 
         ext.as_deref().and_then(|e| self.extensions.get(e).copied())
     }

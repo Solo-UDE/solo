@@ -2,13 +2,13 @@
 //!
 //! A one-shot HTTP server that handles OAuth redirects from the browser.
 
+use bytes::Bytes;
+use http_body_util::Full;
 use hyper::body::Incoming;
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Request, Response, StatusCode};
 use hyper_util::rt::TokioIo;
-use http_body_util::Full;
-use bytes::Bytes;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::time::Duration;
@@ -152,7 +152,8 @@ fn success_html() -> &'static str {
 
 /// HTML response for error
 fn error_html(error: &str) -> String {
-    format!(r#"<!DOCTYPE html>
+    format!(
+        r#"<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -233,11 +234,14 @@ fn error_html(error: &str) -> String {
         <div class="error-message">{}</div>
     </div>
 </body>
-</html>"#, error)
+</html>"#,
+        error
+    )
 }
 
 /// Handle incoming HTTP request
-async fn handle_request(
+#[allow(clippy::needless_pass_by_value, clippy::unnecessary_wraps)]
+fn handle_request(
     req: Request<Incoming>,
     tx: oneshot::Sender<Result<CallbackResult, CallbackError>>,
 ) -> Result<Response<Full<Bytes>>, hyper::Error> {
@@ -247,11 +251,15 @@ async fn handle_request(
 
     // Check for OAuth error
     if let Some(error) = params.get("error") {
-        let description = params.get("error_description")
+        let description = params
+            .get("error_description")
             .map(|s| s.as_str())
             .unwrap_or("Unknown error");
 
-        let _ = tx.send(Err(CallbackError::OAuthError(format!("{}: {}", error, description))));
+        let _ = tx.send(Err(CallbackError::OAuthError(format!(
+            "{}: {}",
+            error, description
+        ))));
 
         let html = error_html(description);
         return Ok(Response::builder()
@@ -314,7 +322,9 @@ async fn handle_request(
 /// # Returns
 /// * `Ok(CallbackResult)` - The authorization code and state
 /// * `Err(CallbackError)` - If binding, timeout, or OAuth error occurs
-pub async fn start_callback_server(timeout: Option<Duration>) -> Result<CallbackResult, CallbackError> {
+pub async fn start_callback_server(
+    timeout: Option<Duration>,
+) -> Result<CallbackResult, CallbackError> {
     let timeout = timeout.unwrap_or(Duration::from_secs(300)); // 5 minutes default
 
     let addr = SocketAddr::from(([127, 0, 0, 1], CALLBACK_PORT));
@@ -343,7 +353,7 @@ pub async fn start_callback_server(timeout: Option<Duration>) -> Result<Callback
                     async move {
                         let tx = tx.lock().await.take();
                         match tx {
-                            Some(tx) => handle_request(req, tx).await,
+                            Some(tx) => handle_request(req, tx),
                             None => {
                                 // Already handled, return simple response
                                 Ok(Response::builder()
@@ -356,10 +366,7 @@ pub async fn start_callback_server(timeout: Option<Duration>) -> Result<Callback
                 });
 
                 // Serve the connection
-                if let Err(e) = http1::Builder::new()
-                    .serve_connection(io, service)
-                    .await
-                {
+                if let Err(e) = http1::Builder::new().serve_connection(io, service).await {
                     tracing::warn!("Error serving connection: {}", e);
                 }
             }
@@ -367,7 +374,8 @@ pub async fn start_callback_server(timeout: Option<Duration>) -> Result<Callback
                 tracing::error!("Failed to accept connection: {}", e);
             }
         }
-    }).await;
+    })
+    .await;
 
     // Check if we timed out
     if result.is_err() {
@@ -406,6 +414,9 @@ mod tests {
 
     #[test]
     fn test_callback_url() {
-        assert_eq!(get_callback_url(), format!("http://127.0.0.1:{}/callback", CALLBACK_PORT));
+        assert_eq!(
+            get_callback_url(),
+            format!("http://127.0.0.1:{}/callback", CALLBACK_PORT)
+        );
     }
 }

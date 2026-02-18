@@ -6,11 +6,11 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use solo_protocol::{AgentMessage, AgentToolCall, BackendEvent, ContentBlock};
 use tokio::sync::mpsc;
-use tracing::{debug, info, error};
+use tracing::{debug, error, info};
 
 use std::time::Duration;
 
-use crate::models::{ANTHROPIC_MODELS, find_model};
+use crate::models::{find_model, ANTHROPIC_MODELS};
 use crate::provider::{AIProvider, ProviderError, ProviderResult, ProviderType, ToolDefinition};
 
 const ANTHROPIC_API_URL: &str = "https://api.anthropic.com/v1/messages";
@@ -73,18 +73,27 @@ impl AnthropicProvider {
             .map(|m| {
                 // Check if message has tool-related content blocks
                 let has_tool_content = m.content.iter().any(|b| {
-                    matches!(b, ContentBlock::ToolUse { .. } | ContentBlock::ToolResult { .. })
+                    matches!(
+                        b,
+                        ContentBlock::ToolUse { .. } | ContentBlock::ToolResult { .. }
+                    )
                 });
 
                 if has_tool_content {
                     // Build structured content array for Anthropic
-                    let content_blocks: Vec<serde_json::Value> = m.content.iter().map(|block| {
-                        match block {
+                    let content_blocks: Vec<serde_json::Value> = m
+                        .content
+                        .iter()
+                        .map(|block| match block {
                             ContentBlock::Text { text } => serde_json::json!({
                                 "type": "text",
                                 "text": text
                             }),
-                            ContentBlock::ToolUse { id, name, arguments } => {
+                            ContentBlock::ToolUse {
+                                id,
+                                name,
+                                arguments,
+                            } => {
                                 let input: serde_json::Value = serde_json::from_str(arguments)
                                     .unwrap_or_else(|_| serde_json::json!({}));
                                 serde_json::json!({
@@ -93,15 +102,19 @@ impl AnthropicProvider {
                                     "name": name,
                                     "input": input
                                 })
-                            },
-                            ContentBlock::ToolResult { tool_use_id, content, is_error } => serde_json::json!({
+                            }
+                            ContentBlock::ToolResult {
+                                tool_use_id,
+                                content,
+                                is_error,
+                            } => serde_json::json!({
                                 "type": "tool_result",
                                 "tool_use_id": tool_use_id,
                                 "content": content,
                                 "is_error": is_error
                             }),
-                        }
-                    }).collect();
+                        })
+                        .collect();
 
                     AnthropicMessage {
                         role: m.role.clone(),
@@ -153,6 +166,7 @@ struct AnthropicRequest {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct AnthropicStreamEvent {
     #[serde(rename = "type")]
     event_type: String,
@@ -169,6 +183,7 @@ struct AnthropicStreamEvent {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct AnthropicDelta {
     #[serde(rename = "type")]
     delta_type: Option<String>,
@@ -177,6 +192,7 @@ struct AnthropicDelta {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct AnthropicContentBlock {
     #[serde(rename = "type")]
     block_type: String,
@@ -191,6 +207,7 @@ struct AnthropicContentBlock {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct AnthropicResponseMessage {
     id: String,
     role: String,
@@ -239,7 +256,15 @@ impl AIProvider for AnthropicProvider {
         let client = self.client.clone();
 
         tokio::spawn(async move {
-            let result = stream_anthropic_response(client, api_key, auth_mode, request, conversation_id.clone(), tx.clone()).await;
+            let result = stream_anthropic_response(
+                client,
+                api_key,
+                auth_mode,
+                request,
+                conversation_id.clone(),
+                tx.clone(),
+            )
+            .await;
 
             if let Err(e) = result {
                 let _ = tx
@@ -303,7 +328,7 @@ fn compute_backoff(attempt: u32) -> Duration {
     // Add +/- 25% jitter using getrandom
     let mut buf = [0u8; 2];
     let _ = getrandom::getrandom(&mut buf);
-    let jitter_factor = (u16::from_le_bytes(buf) as f64) / (u16::MAX as f64);
+    let jitter_factor = f64::from(u16::from_le_bytes(buf)) / f64::from(u16::MAX);
     let jitter_range = capped as f64 * 0.5;
     let jitter = (jitter_factor * jitter_range) - (jitter_range / 2.0);
     let final_ms = ((capped as f64) + jitter).max(100.0) as u64;
@@ -326,6 +351,7 @@ fn parse_retry_after(response: &reqwest::Response) -> Option<Duration> {
         .map(Duration::from_secs)
 }
 
+#[allow(clippy::too_many_lines)]
 async fn stream_anthropic_response(
     client: Client,
     api_key: String,
@@ -352,8 +378,7 @@ async fn stream_anthropic_response(
             }
         };
 
-        let response = match req_builder.send().await
-        {
+        let response = match req_builder.send().await {
             Ok(resp) => resp,
             Err(e) => {
                 tracing::warn!(
@@ -397,14 +422,20 @@ async fn stream_anthropic_response(
                 };
                 tokio::time::sleep(backoff).await;
 
-                last_error = Some(ProviderError::ApiError(format!("HTTP {}: {}", status_code, error_text)));
+                last_error = Some(ProviderError::ApiError(format!(
+                    "HTTP {}: {}",
+                    status_code, error_text
+                )));
                 continue;
             }
 
             // Non-retryable error or retries exhausted
             let error_text = response.text().await.unwrap_or_default();
             error!(conversation_id = %conversation_id, status = %status, error = %error_text, "Anthropic API error");
-            return Err(ProviderError::ApiError(format!("HTTP {}: {}", status, error_text)));
+            return Err(ProviderError::ApiError(format!(
+                "HTTP {}: {}",
+                status, error_text
+            )));
         }
 
         // Success — stream SSE events
@@ -488,7 +519,10 @@ async fn stream_anthropic_response(
                                     let _ = tx
                                         .send(BackendEvent::AgentComplete {
                                             conversation_id: conversation_id.clone(),
-                                            message: AgentMessage::text("assistant", &accumulated_text),
+                                            message: AgentMessage::text(
+                                                "assistant",
+                                                &accumulated_text,
+                                            ),
                                         })
                                         .await;
                                 }
@@ -498,25 +532,33 @@ async fn stream_anthropic_response(
                                             error.error_type.as_str(),
                                             "overloaded_error" | "rate_limit_error" | "api_error"
                                         );
-                                        let no_content_sent = accumulated_text.is_empty() && current_tool_call.is_none();
+                                        let no_content_sent = accumulated_text.is_empty()
+                                            && current_tool_call.is_none();
 
-                                        if is_retryable_sse && no_content_sent && attempt < MAX_RETRIES {
+                                        if is_retryable_sse
+                                            && no_content_sent
+                                            && attempt < MAX_RETRIES
+                                        {
                                             tracing::warn!(
                                                 conversation_id = %conversation_id,
                                                 error_type = %error.error_type,
                                                 attempt = attempt,
                                                 "Retryable SSE error before any content was streamed"
                                             );
-                                            last_error = Some(ProviderError::ApiError(
-                                                format!("{}: {}", error.error_type, error.message),
-                                            ));
+                                            last_error = Some(ProviderError::ApiError(format!(
+                                                "{}: {}",
+                                                error.error_type, error.message
+                                            )));
                                             should_retry = true;
                                         } else {
                                             error!(conversation_id = %conversation_id, error_type = %error.error_type, message = %error.message, "Anthropic API returned error during stream");
                                             let _ = tx
                                                 .send(BackendEvent::AgentError {
                                                     conversation_id: conversation_id.clone(),
-                                                    error: format!("{}: {}", error.error_type, error.message),
+                                                    error: format!(
+                                                        "{}: {}",
+                                                        error.error_type, error.message
+                                                    ),
                                                 })
                                                 .await;
                                         }
@@ -549,7 +591,8 @@ async fn stream_anthropic_response(
 
     // All retries exhausted
     error!(conversation_id = %conversation_id, max_retries = MAX_RETRIES, "All retry attempts exhausted");
-    Err(last_error.unwrap_or_else(|| ProviderError::ApiError("All retry attempts exhausted".to_string())))
+    Err(last_error
+        .unwrap_or_else(|| ProviderError::ApiError("All retry attempts exhausted".to_string())))
 }
 
 #[cfg(test)]
@@ -563,18 +606,24 @@ mod tests {
         let converted = AnthropicProvider::convert_messages(&messages);
         assert_eq!(converted.len(), 1);
         assert_eq!(converted[0].role, "user");
-        assert_eq!(converted[0].content, serde_json::Value::String("Hello".to_string()));
+        assert_eq!(
+            converted[0].content,
+            serde_json::Value::String("Hello".to_string())
+        );
     }
 
     #[test]
     fn test_convert_tool_result_messages() {
         let messages = vec![
             AgentMessage::text("user", "Read test.txt"),
-            AgentMessage::assistant_with_tools("", &[AgentToolCall {
-                id: "tc-1".to_string(),
-                name: "read_file".to_string(),
-                arguments: r#"{"path":"/tmp/test.txt"}"#.to_string(),
-            }]),
+            AgentMessage::assistant_with_tools(
+                "",
+                &[AgentToolCall {
+                    id: "tc-1".to_string(),
+                    name: "read_file".to_string(),
+                    arguments: r#"{"path":"/tmp/test.txt"}"#.to_string(),
+                }],
+            ),
             AgentMessage::tool_result("tc-1", "file contents", false),
         ];
 
