@@ -26,13 +26,10 @@ pub fn get_api_key(provider: &str) -> Result<Option<String>, String> {
     #[cfg(target_os = "macos")]
     {
         use security_framework::passwords::get_generic_password;
-        match get_generic_password(SERVICE_NAME, provider) {
-            Ok(bytes) => {
-                let key = String::from_utf8(bytes.to_vec())
-                    .map_err(|e| format!("Invalid UTF-8 in keychain: {}", e))?;
-                return Ok(Some(key));
-            }
-            Err(_) => {} // Fall through to env var
+        if let Ok(bytes) = get_generic_password(SERVICE_NAME, provider) {
+            let key = String::from_utf8(bytes.clone())
+                .map_err(|e| format!("Invalid UTF-8 in keychain: {}", e))?;
+            return Ok(Some(key));
         }
     }
 
@@ -58,7 +55,7 @@ pub fn clear_api_key(provider: &str) -> Result<(), String> {
     {
         use security_framework::passwords::delete_generic_password;
         match delete_generic_password(SERVICE_NAME, provider) {
-            Ok(_) => Ok(()),
+            Ok(()) => Ok(()),
             Err(e) => {
                 // If not found, that's fine
                 let msg = e.to_string();

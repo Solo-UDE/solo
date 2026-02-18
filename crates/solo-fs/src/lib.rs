@@ -1,3 +1,26 @@
+#![warn(clippy::all, clippy::pedantic)]
+#![allow(
+    clippy::module_name_repetitions,
+    clippy::must_use_candidate,
+    clippy::missing_errors_doc,
+    clippy::missing_panics_doc,
+    clippy::wildcard_imports,
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::uninlined_format_args,
+    clippy::doc_markdown,
+    clippy::return_self_not_must_use,
+    clippy::redundant_closure_for_method_calls,
+    clippy::single_match_else,
+    clippy::if_not_else,
+    clippy::match_same_arms,
+    clippy::map_unwrap_or,
+    clippy::similar_names,
+    clippy::struct_excessive_bools
+)]
+
 //! Solo File System - File operations and watching for Solo IDE
 //!
 //! This crate provides file system functionality for the Solo IDE, including:

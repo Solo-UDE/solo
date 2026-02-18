@@ -167,6 +167,7 @@ impl Parser {
         symbols
     }
 
+    #[allow(clippy::too_many_lines)]
     fn extract_rust_node(&self, node: &tree_sitter::Node, source: &str) -> Option<Symbol> {
         let kind = node.kind();
 
@@ -322,6 +323,7 @@ impl Parser {
         symbols
     }
 
+    #[allow(clippy::too_many_lines)]
     fn extract_ts_node_recursive(
         &self,
         node: &tree_sitter::Node,
@@ -333,17 +335,23 @@ impl Parser {
         match kind {
             "function_declaration" | "function" => {
                 if let Some(name_node) = node.child_by_field_name("name") {
-                    let symbol =
-                        Symbol::new(self.get_node_text(&name_node, source), SymbolKind::Function, Range::from_node(node))
-                            .with_selection_range(Range::from_node(&name_node));
+                    let symbol = Symbol::new(
+                        self.get_node_text(&name_node, source),
+                        SymbolKind::Function,
+                        Range::from_node(node),
+                    )
+                    .with_selection_range(Range::from_node(&name_node));
                     symbols.push(symbol);
                 }
             }
             "class_declaration" | "class" => {
                 if let Some(name_node) = node.child_by_field_name("name") {
-                    let mut symbol =
-                        Symbol::new(self.get_node_text(&name_node, source), SymbolKind::Class, Range::from_node(node))
-                            .with_selection_range(Range::from_node(&name_node));
+                    let mut symbol = Symbol::new(
+                        self.get_node_text(&name_node, source),
+                        SymbolKind::Class,
+                        Range::from_node(node),
+                    )
+                    .with_selection_range(Range::from_node(&name_node));
 
                     // Extract methods
                     if let Some(body) = node.child_by_field_name("body") {
@@ -402,9 +410,12 @@ impl Parser {
             }
             "enum_declaration" => {
                 if let Some(name_node) = node.child_by_field_name("name") {
-                    let symbol =
-                        Symbol::new(self.get_node_text(&name_node, source), SymbolKind::Enum, Range::from_node(node))
-                            .with_selection_range(Range::from_node(&name_node));
+                    let symbol = Symbol::new(
+                        self.get_node_text(&name_node, source),
+                        SymbolKind::Enum,
+                        Range::from_node(node),
+                    )
+                    .with_selection_range(Range::from_node(&name_node));
                     symbols.push(symbol);
                 }
             }
@@ -474,17 +485,23 @@ impl Parser {
         match kind {
             "function_definition" => {
                 if let Some(name_node) = node.child_by_field_name("name") {
-                    let symbol =
-                        Symbol::new(self.get_node_text(&name_node, source), SymbolKind::Function, Range::from_node(node))
-                            .with_selection_range(Range::from_node(&name_node));
+                    let symbol = Symbol::new(
+                        self.get_node_text(&name_node, source),
+                        SymbolKind::Function,
+                        Range::from_node(node),
+                    )
+                    .with_selection_range(Range::from_node(&name_node));
                     symbols.push(symbol);
                 }
             }
             "class_definition" => {
                 if let Some(name_node) = node.child_by_field_name("name") {
-                    let mut symbol =
-                        Symbol::new(self.get_node_text(&name_node, source), SymbolKind::Class, Range::from_node(node))
-                            .with_selection_range(Range::from_node(&name_node));
+                    let mut symbol = Symbol::new(
+                        self.get_node_text(&name_node, source),
+                        SymbolKind::Class,
+                        Range::from_node(node),
+                    )
+                    .with_selection_range(Range::from_node(&name_node));
 
                     // Extract methods
                     if let Some(body) = node.child_by_field_name("body") {
@@ -532,9 +549,12 @@ impl Parser {
                                 let key_text = self.get_node_text(&key, source);
                                 // Remove quotes
                                 let name = key_text.trim_matches('"');
-                                let symbol =
-                                    Symbol::new(name, SymbolKind::Property, Range::from_node(&child))
-                                        .with_selection_range(Range::from_node(&key));
+                                let symbol = Symbol::new(
+                                    name,
+                                    SymbolKind::Property,
+                                    Range::from_node(&child),
+                                )
+                                .with_selection_range(Range::from_node(&key));
                                 symbols.push(symbol);
                             }
                         }
@@ -547,6 +567,7 @@ impl Parser {
     }
 
     /// Extract symbols from HTML
+    #[allow(clippy::unused_self)]
     fn extract_html_symbols(&self, _root: &tree_sitter::Node, _source: &str) -> Vec<Symbol> {
         // HTML doesn't have meaningful "symbols" in the traditional sense
         Vec::new()
@@ -606,6 +627,7 @@ impl Parser {
         errors
     }
 
+    #[allow(clippy::self_only_used_in_recursion)]
     fn collect_errors_recursive(&self, node: &tree_sitter::Node, errors: &mut Vec<ParseError>) {
         if node.is_error() || node.is_missing() {
             errors.push(ParseError {
@@ -620,11 +642,12 @@ impl Parser {
 
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
-            self.collect_errors_recursive(&child, errors);
+            Self::collect_errors_recursive(self, &child, errors);
         }
     }
 
     /// Get the text content of a node
+    #[allow(clippy::unused_self)]
     fn get_node_text(&self, node: &tree_sitter::Node, source: &str) -> String {
         source[node.byte_range()].to_string()
     }

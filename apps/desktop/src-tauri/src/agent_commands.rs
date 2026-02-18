@@ -4,20 +4,20 @@
 //! through the Solo server via WebSocket — the desktop app manages sessions,
 //! credentials (keychain), and tool execution for server-delegated tools.
 
+use crate::fs_commands::FsState;
+use futures_util::{SinkExt, StreamExt};
 use solo_agent::{
+    keychain,
     models::{get_all_models, get_models_for_provider},
     AgentManager, ProviderType,
-    keychain,
 };
 use solo_protocol::{AgentMessage, AgentToolCall, BackendEvent, ContentBlock, ToolResult};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::{watch, RwLock};
-use tracing::{debug, error, info, warn};
-use futures_util::{SinkExt, StreamExt};
 use tokio_tungstenite::{connect_async, tungstenite::Message as WsMessage};
-use crate::fs_commands::FsState;
+use tracing::{debug, error, info, warn};
 
 // =============================================================================
 // State
@@ -30,7 +30,8 @@ pub struct AgentState {
     /// Abort senders per session — send `true` to cancel a running stream
     abort_senders: Arc<RwLock<HashMap<String, watch::Sender<bool>>>>,
     /// Approval channels per session — frontend sends (tool_call_id, approved) tuples
-    approval_channels: Arc<RwLock<HashMap<String, tokio::sync::mpsc::UnboundedSender<(String, bool)>>>>,
+    approval_channels:
+        Arc<RwLock<HashMap<String, tokio::sync::mpsc::UnboundedSender<(String, bool)>>>>,
 }
 
 impl AgentState {
@@ -92,14 +93,16 @@ pub struct ToolDefinitionResponse {
 #[tauri::command]
 pub async fn get_providers() -> Result<Vec<String>, String> {
     debug!("Getting available providers");
-    Ok(vec!["anthropic".to_string(), "openai".to_string(), "gemini".to_string()])
+    Ok(vec![
+        "anthropic".to_string(),
+        "openai".to_string(),
+        "gemini".to_string(),
+    ])
 }
 
 /// Get the currently active provider
 #[tauri::command]
-pub async fn get_active_provider(
-    state: State<'_, AgentState>,
-) -> Result<String, String> {
+pub async fn get_active_provider(state: State<'_, AgentState>) -> Result<String, String> {
     debug!("Getting active provider");
     let provider = state.manager.get_active_provider().await;
     Ok(provider.as_str().to_string())
@@ -270,7 +273,8 @@ pub async fn agent_create_session(
 
     info!(session_id = %session_id, model = ?model, "Creating agent session");
 
-    state.manager
+    state
+        .manager
         .create_session(session_id.clone(), model)
         .await
         .map_err(|e| e.to_string())?;
@@ -286,7 +290,8 @@ pub async fn agent_update_session_model(
     state: State<'_, AgentState>,
 ) -> Result<(), String> {
     info!(session_id = %session_id, model = %model, "Updating session model");
-    state.manager
+    state
+        .manager
         .update_session_model(&session_id, model)
         .await
         .map_err(|e| e.to_string())
@@ -324,29 +329,38 @@ pub async fn agent_send_message_server(
 
     // Read workspace root
     let fs_state = app.state::<FsState>();
-    let workspace_root = fs_state.workspace_root.read().await.clone()
+    let workspace_root = fs_state
+        .workspace_root
+        .read()
+        .await
+        .clone()
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_default();
 
     // Build chat history from the session
-    let chat_history: Vec<serde_json::Value> = if let Some(sessions) = state.manager.get_session(&session_id).await {
-        if let Some(session) = sessions.get(&session_id) {
-            session.history().iter().map(|msg| {
-                serde_json::json!({
-                    "role": msg.role,
-                    "content": msg.display_text()
-                })
-            }).collect()
+    let chat_history: Vec<serde_json::Value> =
+        if let Some(sessions) = state.manager.get_session(&session_id).await {
+            if let Some(session) = sessions.get(&session_id) {
+                session
+                    .history()
+                    .iter()
+                    .map(|msg| {
+                        serde_json::json!({
+                            "role": msg.role,
+                            "content": msg.display_text()
+                        })
+                    })
+                    .collect()
+            } else {
+                vec![]
+            }
         } else {
             vec![]
-        }
-    } else {
-        vec![]
-    };
+        };
 
     // Build the server URL
-    let server_url = std::env::var("SOLO_SERVER_URL")
-        .unwrap_or_else(|_| DEFAULT_SERVER_URL.to_string());
+    let server_url =
+        std::env::var("SOLO_SERVER_URL").unwrap_or_else(|_| DEFAULT_SERVER_URL.to_string());
     let ws_url = format!("{}/agent/ws/agent", server_url);
 
     info!(session_id = %session_id, ws_url = %ws_url, "Connecting to Solo server");
@@ -825,7 +839,8 @@ pub async fn agent_get_history(
 ) -> Result<Vec<AgentMessage>, String> {
     debug!(session_id = %session_id, "Getting conversation history");
 
-    let sessions = state.manager
+    let sessions = state
+        .manager
         .get_session(&session_id)
         .await
         .ok_or_else(|| format!("Session not found: {}", session_id))?;

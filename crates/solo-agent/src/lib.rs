@@ -1,21 +1,47 @@
+#![warn(clippy::all, clippy::pedantic)]
+#![allow(
+    clippy::module_name_repetitions,
+    clippy::must_use_candidate,
+    clippy::missing_errors_doc,
+    clippy::missing_panics_doc,
+    clippy::wildcard_imports,
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::uninlined_format_args,
+    clippy::doc_markdown,
+    clippy::return_self_not_must_use,
+    clippy::redundant_closure_for_method_calls,
+    clippy::single_match_else,
+    clippy::if_not_else,
+    clippy::match_same_arms,
+    clippy::map_unwrap_or,
+    clippy::similar_names,
+    clippy::struct_excessive_bools
+)]
+
 //! Solo Agent - AI agent for Solo IDE
 //!
 //! This crate provides session management, tool infrastructure, and model
 //! definitions for the AI agent. All LLM communication is routed through the
 //! Solo server (Vercel AI SDK) via WebSocket — no direct API providers remain.
 
-pub mod provider;
-pub mod models;
-pub mod tools;
-pub mod system_prompt;
 pub mod keychain;
+pub mod models;
+pub mod provider;
+pub mod system_prompt;
+pub mod tools;
 
 // Re-export main types
-pub use provider::{ProviderType, ProviderConfig, ProviderError, ProviderResult, ToolDefinition};
+pub use keychain::{clear_api_key, get_api_key, has_api_key, set_api_key};
 pub use models::{AIModel, ModelCapabilities};
-pub use tools::{ToolRegistry, ToolExecutor, ToolError, ToolContext, SharedWorkspaceRoot, create_default_registry};
+pub use provider::{ProviderConfig, ProviderError, ProviderResult, ProviderType, ToolDefinition};
 pub use system_prompt::build_system_prompt;
-pub use keychain::{set_api_key, get_api_key, has_api_key, clear_api_key};
+pub use tools::{
+    create_default_registry, SharedWorkspaceRoot, ToolContext, ToolError, ToolExecutor,
+    ToolRegistry,
+};
 
 use solo_protocol::AgentMessage;
 use std::sync::Arc;
@@ -88,7 +114,10 @@ impl AgentManager {
     }
 
     /// Execute a tool call
-    pub async fn execute_tool(&self, tool_call: &solo_protocol::AgentToolCall) -> solo_protocol::ToolResult {
+    pub async fn execute_tool(
+        &self,
+        tool_call: &solo_protocol::AgentToolCall,
+    ) -> solo_protocol::ToolResult {
         let registry = self.tool_registry.read().await;
         registry.execute(tool_call).await
     }
@@ -104,11 +133,13 @@ impl AgentManager {
     }
 
     /// Create a new session
-    pub async fn create_session(&self, session_id: String, model: Option<String>) -> ProviderResult<()> {
+    pub async fn create_session(
+        &self,
+        session_id: String,
+        model: Option<String>,
+    ) -> ProviderResult<()> {
         let provider_type = self.get_active_provider().await;
-        let model = model.unwrap_or_else(|| {
-            models::get_default_model(provider_type).id.to_string()
-        });
+        let model = model.unwrap_or_else(|| models::get_default_model(provider_type).id.clone());
 
         let session = AgentSession::new(session_id.clone(), model);
         self.sessions.write().await.insert(session_id, session);
@@ -116,7 +147,11 @@ impl AgentManager {
     }
 
     /// Update the model for an existing session
-    pub async fn update_session_model(&self, session_id: &str, model: String) -> ProviderResult<()> {
+    pub async fn update_session_model(
+        &self,
+        session_id: &str,
+        model: String,
+    ) -> ProviderResult<()> {
         let mut sessions = self.sessions.write().await;
         let session = sessions
             .get_mut(session_id)
@@ -126,7 +161,11 @@ impl AgentManager {
     }
 
     /// Get a session by ID (returns read guard over all sessions)
-    pub async fn get_session(&self, session_id: &str) -> Option<tokio::sync::RwLockReadGuard<'_, std::collections::HashMap<String, AgentSession>>> {
+    pub async fn get_session(
+        &self,
+        session_id: &str,
+    ) -> Option<tokio::sync::RwLockReadGuard<'_, std::collections::HashMap<String, AgentSession>>>
+    {
         let sessions = self.sessions.read().await;
         if sessions.contains_key(session_id) {
             Some(sessions)
@@ -136,6 +175,7 @@ impl AgentManager {
     }
 
     /// Check if a provider has credentials (via keychain)
+    #[allow(clippy::unused_async)]
     pub async fn has_credentials(&self, provider_type: ProviderType) -> bool {
         has_api_key(provider_type.as_str()).unwrap_or(false)
     }
