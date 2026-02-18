@@ -1,5 +1,5 @@
 /**
- * Adapter utilities to convert between Athens store messages and orbit-agent message format
+ * Adapter utilities to convert between store messages and orbit-agent message format
  */
 
 import type { Message as StoreMessage } from '../../stores/agentStore';
@@ -10,7 +10,7 @@ import type {
 } from './messages';
 
 /**
- * Convert Athens store Message[] to orbit-agent MessageGroup[]
+ * Convert store Message[] to orbit-agent MessageGroup[]
  * Each message becomes its own group for simplicity
  */
 export function convertToMessageGroups(storeMessages: StoreMessage[]): MessageGroup[] {
@@ -42,35 +42,30 @@ export function convertToMessageGroups(storeMessages: StoreMessage[]): MessageGr
 function convertToAgentContent(msg: StoreMessage): AgentMessageContent {
   const content: AgentMessageContent = {
     narrative: msg.content,
+    isStreaming: msg.isStreaming,
   };
 
   // Convert tool calls if present
   if (msg.toolCalls && msg.toolCalls.length > 0) {
     // Separate pending approvals from regular tool calls
-    const regularCalls = msg.toolCalls.filter((tc) => tc.status !== 'pending_approval');
-    const pendingCalls = msg.toolCalls.filter((tc) => tc.status === 'pending_approval');
+    const regularCalls = msg.toolCalls.filter((tc) => tc.status !== 'awaiting-permission');
+    const pendingCalls = msg.toolCalls.filter((tc) => tc.status === 'awaiting-permission');
 
     if (regularCalls.length > 0) {
       content.toolCalls = regularCalls.map((tc) => ({
         id: tc.id,
         command: tc.name,
         cwd: '.',
-        exitCode: tc.status === 'completed' ? 0 : tc.status === 'error' ? 1 : undefined,
-        output: tc.result,
+        exitCode: tc.status === 'success' ? 0 : tc.status === 'error' ? 1 : undefined,
+        output: tc.output,
       }));
     }
 
     if (pendingCalls.length > 0) {
       content.pendingApprovals = pendingCalls.map((tc) => ({
-        tool_call: {
-          id: tc.id,
-          name: tc.name,
-          arguments: tc.arguments,
-        },
-        status: 'pending_approval' as const,
-        result: null,
-        error: null,
-        needs_approval: true,
+        requestId: tc.requestId || tc.id,
+        toolName: tc.name,
+        toolInput: tc.input,
       }));
     }
   }

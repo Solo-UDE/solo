@@ -1,4 +1,4 @@
-export { AgentMessage, type AgentMessageProps, type AgentMessageContent } from './agent-message';
+export { AgentMessage, type AgentMessageProps, type AgentMessageContent, type PendingApproval } from './agent-message';
 export { UserMessage, type UserMessageProps } from './user-message';
 export { MessageFeed, type MessageFeedProps, type MessageGroup } from './message-feed';
 export { MessageSection, type MessageSectionProps, type Message, type UserMessageData, type AgentMessageData } from './message-section';

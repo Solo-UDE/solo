@@ -66,6 +66,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 		error,
 		createSession,
 		sendMessage,
+		setModel,
 		clearError,
 	} = useAgentSession({
 		sessionId: initialSessionId ?? null,
@@ -75,7 +76,6 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 
 	// Provider state for model selection
 	const selectedModel = useProviderStore((state) => state.selectedModel);
-	const updateSessionModel = useAgentStore((state) => state.updateSessionModel);
 
 	// Panel system for opening new tabs
 	const openPanel = usePanelTabsStore((state) => state.openPanel);
@@ -101,9 +101,9 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 	useEffect(() => {
 		if (sessionId && selectedModel && selectedModel !== prevModelRef.current) {
 			prevModelRef.current = selectedModel;
-			updateSessionModel(sessionId, selectedModel);
+			setModel(selectedModel);
 		}
-	}, [sessionId, selectedModel, updateSessionModel]);
+	}, [sessionId, selectedModel, setModel]);
 
 	// Convert messages to message groups for the new MessageFeed
 	const messageGroups = useMemo(
@@ -127,12 +127,12 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 	);
 
 	// Handle tool approval/rejection
-	const resolveToolApproval = useAgentStore((state) => state.resolveToolApproval);
+	const respondPermission = useAgentStore((state) => state.respondPermission);
 	const handleToolApproval = useCallback(
-		(toolCallId: string, approved: boolean) => {
-			resolveToolApproval(toolCallId, approved);
+		(requestId: string, approved: boolean) => {
+			respondPermission(requestId, approved ? 'approve' : 'deny');
 		},
-		[resolveToolApproval]
+		[respondPermission]
 	);
 
 	// Handle new session

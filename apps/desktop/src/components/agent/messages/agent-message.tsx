@@ -9,7 +9,12 @@ import { ToolCallBlock } from './tool-call-block';
 import { ToolApprovalInline } from '../dialogs/ToolApprovalDialog';
 
 import type { FC } from 'react';
-import type { ToolCallWithStatus } from '../../../bindings';
+
+export interface PendingApproval {
+  requestId: string;
+  toolName: string;
+  toolInput: unknown;
+}
 
 export interface AgentMessageContent {
   narrative?: string;
@@ -34,7 +39,7 @@ export interface AgentMessageContent {
     exitCode?: number;
     output?: string;
   }[];
-  pendingApprovals?: ToolCallWithStatus[];
+  pendingApprovals?: PendingApproval[];
   notifications?: {
     id: string;
     type: 'info' | 'warning' | 'error' | 'success';
@@ -141,10 +146,10 @@ export const AgentMessage: FC<AgentMessageProps> = ({
           <div className="space-y-2">
             {content.pendingApprovals.map((approval) => (
               <ToolApprovalInline
-                key={approval.tool_call.id}
-                toolCall={approval}
-                onApproved={(id) => onToolApproval?.(id, true)}
-                onRejected={(id) => onToolApproval?.(id, false)}
+                key={approval.requestId}
+                approval={approval}
+                onApproved={(requestId) => onToolApproval?.(requestId, true)}
+                onRejected={(requestId) => onToolApproval?.(requestId, false)}
               />
             ))}
           </div>

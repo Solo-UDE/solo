@@ -15,6 +15,7 @@
 import { useEffect, useRef } from 'react';
 import { useAgentStore } from '../stores/agentStore';
 import { listenToAgentEvents, type AgentEventHandlers } from '../lib/tauri/agent';
+import type { BridgeAgentMessage, PermissionRequest } from '../bindings';
 
 interface UseAgentStreamOptions {
 	enabled?: boolean;
@@ -29,15 +30,10 @@ export function useAgentStream(options: UseAgentStreamOptions = {}): void {
 
 	// Update handlers ref on every render (cheap, no effect dependency)
 	handlersRef.current = {
-		onChunk: useAgentStore((s) => s.handleAgentChunk),
-		onToolStart: useAgentStore((s) => s.handleAgentToolStart),
-		onToolEnd: useAgentStore((s) => s.handleAgentToolEnd),
-		onToolApprovalNeeded: useAgentStore((s) => s.handleToolApprovalNeeded),
-		onComplete: useAgentStore((s) => s.handleAgentComplete),
-		onError: useAgentStore((s) => s.handleAgentError),
-		onTurnStart: useAgentStore((s) => s.handleTurnStart),
-		onLoopComplete: useAgentStore((s) => s.handleLoopComplete),
-		onAborted: useAgentStore((s) => s.handleAborted),
+		onMessage: useAgentStore((s) => s.handleAgentMessage),
+		onPermissionRequest: useAgentStore((s) => s.handlePermissionRequest),
+		onSessionInit: useAgentStore((s) => s.handleSessionInit),
+		onError: useAgentStore((s) => s.handleError),
 	};
 
 	useEffect(() => {
@@ -48,15 +44,14 @@ export function useAgentStream(options: UseAgentStreamOptions = {}): void {
 
 		// Proxy handlers delegate through the ref so we always call the latest
 		const proxy: AgentEventHandlers = {
-			onChunk: (id, content) => handlersRef.current.onChunk?.(id, content),
-			onToolStart: (id, tc) => handlersRef.current.onToolStart?.(id, tc),
-			onToolEnd: (id, tcId, result) => handlersRef.current.onToolEnd?.(id, tcId, result),
-			onToolApprovalNeeded: (id, tc) => handlersRef.current.onToolApprovalNeeded?.(id, tc),
-			onComplete: (id, msg) => handlersRef.current.onComplete?.(id, msg),
-			onError: (id, err) => handlersRef.current.onError?.(id, err),
-			onTurnStart: (id, turn) => handlersRef.current.onTurnStart?.(id, turn),
-			onLoopComplete: (id, turns) => handlersRef.current.onLoopComplete?.(id, turns),
-			onAborted: (id, reason) => handlersRef.current.onAborted?.(id, reason),
+			onMessage: (sessionId: string, message: BridgeAgentMessage) =>
+				handlersRef.current.onMessage?.(sessionId, message),
+			onPermissionRequest: (request: PermissionRequest) =>
+				handlersRef.current.onPermissionRequest?.(request),
+			onSessionInit: (sessionId, sdkSessionId, isResumed, isForked) =>
+				handlersRef.current.onSessionInit?.(sessionId, sdkSessionId, isResumed, isForked),
+			onError: (message, stack) =>
+				handlersRef.current.onError?.(message, stack),
 		};
 
 		listenToAgentEvents(proxy)

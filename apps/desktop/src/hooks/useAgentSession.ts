@@ -38,6 +38,10 @@ export interface UseAgentSessionReturn {
 	createSession: (model?: string) => Promise<string>;
 	/** Send a message */
 	sendMessage: (content: string, mode?: MessageMode) => Promise<void>;
+	/** Interrupt the running agent */
+	interrupt: () => Promise<void>;
+	/** Change the model */
+	setModel: (model: string) => Promise<void>;
 	/** Clear any error */
 	clearError: () => void;
 }
@@ -65,6 +69,8 @@ export function useAgentSession(
 
 	const storeCreateSession = useAgentStore((state) => state.createSession);
 	const storeSendMessage = useAgentStore((state) => state.sendMessage);
+	const storeSetModel = useAgentStore((state) => state.setModel);
+	const storeInterrupt = useAgentStore((state) => state.interrupt);
 	const storeClearError = useAgentStore((state) => state.clearError);
 
 	// Track if we've attempted auto-creation
@@ -90,12 +96,24 @@ export function useAgentSession(
 	);
 
 	const sendMessage = useCallback(
-		async (content: string, mode: MessageMode = 'planning') => {
+		async (content: string, mode?: MessageMode) => {
 			if (!content.trim() || !effectiveSessionId) return;
 			await storeSendMessage(effectiveSessionId, content, mode);
 		},
 		[storeSendMessage, effectiveSessionId]
 	);
+
+	const interrupt = useCallback(async () => {
+		if (effectiveSessionId) {
+			await storeInterrupt(effectiveSessionId);
+		}
+	}, [storeInterrupt, effectiveSessionId]);
+
+	const setModel = useCallback(async (model: string) => {
+		if (effectiveSessionId) {
+			await storeSetModel(effectiveSessionId, model);
+		}
+	}, [storeSetModel, effectiveSessionId]);
 
 	const clearError = useCallback(() => {
 		if (effectiveSessionId) {
@@ -111,6 +129,8 @@ export function useAgentSession(
 		error,
 		createSession,
 		sendMessage,
+		interrupt,
+		setModel,
 		clearError,
 	};
 }

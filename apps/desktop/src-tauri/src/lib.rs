@@ -2,9 +2,11 @@
 //!
 //! This module provides the library interface for the Solo desktop application.
 
+mod agent;
 mod commands;
 mod fs_commands;
 mod agent_commands;
+mod provider_commands;
 mod parse_commands;
 mod auth_commands;
 mod embedding_commands;
@@ -12,7 +14,7 @@ mod terminal_commands;
 mod worktree_commands;
 
 use fs_commands::FsState;
-use agent_commands::AgentState;
+use provider_commands::ProviderAuthState;
 use auth_commands::AuthState;
 use embedding_commands::EmbeddingState;
 use terminal_commands::TerminalState;
@@ -21,6 +23,10 @@ use tauri::Emitter;
 #[cfg(target_os = "macos")]
 use tauri_plugin_decorum::WebviewWindowExt;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+use std::env;
+use std::path::PathBuf;
+use std::sync::Arc;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -34,6 +40,26 @@ pub fn run() {
         .init();
 
     tracing::info!("Starting Solo IDE...");
+
+    // Initialize agent session manager
+    // Resolve agent-bridge path from the Cargo manifest directory (compile-time)
+    let sidecar_path = {
+        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        // manifest_dir = apps/desktop/src-tauri → go up 3 levels to workspace root
+        let dev_path = manifest_dir.join("../../../agent-bridge/dist/index.js");
+        if dev_path.exists() {
+            dev_path
+        } else {
+            // Fallback: try relative to cwd (for production bundles)
+            env::current_dir().map_or_else(
+                |_| PathBuf::from("agent-bridge/dist/index.js"),
+                |p| p.join("agent-bridge/dist/index.js"),
+            )
+        }
+    };
+    tracing::info!("Agent bridge sidecar path: {}", sidecar_path.display());
+    let session_manager = Arc::new(agent::SessionManager::new(sidecar_path));
+    let session_manager_for_state = Arc::clone(&session_manager);
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -52,7 +78,7 @@ pub fn run() {
                 }
             }
         }))
-        .setup(|app| {
+        .setup(move |app| {
             // Register deep link handler
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             {
@@ -79,6 +105,9 @@ pub fn run() {
                 tracing::info!("Deep link handler registered");
             }
 
+            // Wire up agent event callbacks
+            agent_commands::setup_event_callbacks(app.handle(), &session_manager);
+
             // macOS: position traffic lights and apply native vibrancy
             #[cfg(target_os = "macos")]
             {
@@ -98,7 +127,8 @@ pub fn run() {
             Ok(())
         })
         .manage(FsState::new())
-        .manage(AgentState::new())
+        .manage(ProviderAuthState::new())
+        .manage(session_manager_for_state)
         .manage(AuthState::new())
         .manage(EmbeddingState::new())
         .manage(TerminalState::new())
@@ -119,41 +149,41 @@ pub fn run() {
             fs_commands::start_watching,
             fs_commands::stop_watching,
             fs_commands::reveal_in_finder,
-            // Agent commands
-            agent_commands::get_providers,
-            agent_commands::get_active_provider,
-            agent_commands::set_active_provider,
-            agent_commands::get_provider_status,
-            agent_commands::set_credentials,
-            agent_commands::has_credentials,
-            agent_commands::clear_credentials,
-            agent_commands::get_models,
-            agent_commands::get_models_for_provider_cmd,
+            // Agent commands (bridge-based)
             agent_commands::agent_create_session,
-            agent_commands::agent_update_session_model,
+            agent_commands::agent_delete_session,
             agent_commands::agent_send_message,
-            agent_commands::agent_abort_session,
-            agent_commands::agent_get_history,
-            agent_commands::agent_clear_history,
-            // Tool commands
-            agent_commands::get_tools,
-            agent_commands::execute_tool,
-            agent_commands::approve_tool_call,
-            agent_commands::reject_tool_call,
-            agent_commands::tool_requires_approval,
-            // Auth method commands
-            agent_commands::get_auth_method,
-            // OAuth commands
-            agent_commands::start_oauth_flow,
-            agent_commands::complete_oauth_flow,
-            agent_commands::wait_for_oauth_callback,
-            agent_commands::disconnect_oauth,
-            // Claude Code CLI commands
-            agent_commands::check_claude_auth_status,
-            agent_commands::check_claude_cli_installed,
-            agent_commands::start_claude_login,
-            agent_commands::install_claude_cli,
-            agent_commands::verify_claude_setup,
+            agent_commands::agent_interrupt,
+            agent_commands::agent_is_session_ready,
+            agent_commands::agent_get_sdk_session_id,
+            agent_commands::agent_respond_permission,
+            agent_commands::agent_set_thinking_mode,
+            agent_commands::agent_get_thinking_mode,
+            agent_commands::agent_set_model,
+            agent_commands::agent_set_plan_mode,
+            agent_commands::agent_get_plan_mode,
+            agent_commands::agent_set_accept_mode,
+            agent_commands::agent_get_accept_mode,
+            // Provider/auth commands
+            provider_commands::get_providers,
+            provider_commands::get_active_provider,
+            provider_commands::set_active_provider,
+            provider_commands::get_provider_status,
+            provider_commands::set_credentials,
+            provider_commands::has_credentials,
+            provider_commands::clear_credentials,
+            provider_commands::get_models,
+            provider_commands::get_models_for_provider_cmd,
+            provider_commands::get_auth_method,
+            provider_commands::start_oauth_flow,
+            provider_commands::complete_oauth_flow,
+            provider_commands::wait_for_oauth_callback,
+            provider_commands::disconnect_oauth,
+            provider_commands::check_claude_auth_status,
+            provider_commands::check_claude_cli_installed,
+            provider_commands::start_claude_login,
+            provider_commands::install_claude_cli,
+            provider_commands::verify_claude_setup,
             // Parse commands
             parse_commands::parse_file,
             parse_commands::parse_content,

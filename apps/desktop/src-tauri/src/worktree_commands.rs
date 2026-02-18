@@ -10,7 +10,6 @@ use tauri::{AppHandle, Emitter, State};
 use tokio::sync::RwLock;
 use tracing::{debug, info};
 
-use crate::agent_commands::AgentState;
 use crate::fs_commands::FsState;
 
 /// Application state for worktree operations
@@ -229,18 +228,17 @@ pub async fn worktree_get(
     manager.get(&id).map_err(|e| e.to_string())
 }
 
-/// Set the active worktree (switches agent workspace context).
+/// Set the active worktree (switches workspace context).
 /// Pass None/null to return to the main workspace.
 #[tauri::command]
 pub async fn worktree_set_active(
     id: Option<String>,
     wt_state: State<'_, WorktreeState>,
     fs_state: State<'_, FsState>,
-    agent_state: State<'_, AgentState>,
 ) -> Result<(), String> {
     info!(id = ?id, "Setting active worktree");
 
-    // Determine the target path
+    // Determine the target path (for logging)
     let target_path = if let Some(ref wt_id) = id {
         let repo_path = get_manager(&wt_state, &fs_state).await?;
         let managers = wt_state.managers.read().await;
@@ -258,10 +256,6 @@ pub async fn worktree_set_active(
 
     // Update active worktree ID
     *wt_state.active_worktree_id.write().await = id;
-
-    // Update the agent's tool registry workspace root
-    let registry = agent_state.manager.tool_registry();
-    registry.read().await.set_workspace_root(&target_path).await;
 
     debug!(path = %target_path.display(), "Active worktree path set");
 

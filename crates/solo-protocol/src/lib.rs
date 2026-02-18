@@ -2,6 +2,10 @@
 //!
 //! This crate defines all message types used for Tauri IPC communication.
 //! Types are annotated with `ts-rs` to generate TypeScript definitions.
+//!
+//! Note: Agent protocol types are now handled by the agent-bridge sidecar.
+//! Agent events flow through Tauri emit channels (agent:message, agent:permission_request, etc.)
+//! rather than through BackendEvent variants.
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -50,242 +54,6 @@ pub struct TerminalResizeRequest {
     pub cols: u16,
     /// Number of rows
     pub rows: u16,
-}
-
-// =============================================================================
-// Agent Protocol
-// =============================================================================
-
-/// Request to send a message to the AI agent
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../apps/desktop/src/bindings/")]
-pub struct AgentSendMessageRequest {
-    /// Conversation ID (optional, creates new if not provided)
-    pub conversation_id: Option<String>,
-    /// User message content
-    pub content: String,
-    /// Optional system prompt override
-    pub system_prompt: Option<String>,
-}
-
-/// A tool call from the agent
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../apps/desktop/src/bindings/")]
-pub struct AgentToolCall {
-    /// Tool call ID
-    pub id: String,
-    /// Tool name
-    pub name: String,
-    /// Tool arguments as JSON
-    pub arguments: String,
-}
-
-/// Status of a tool call
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../apps/desktop/src/bindings/")]
-#[serde(rename_all = "snake_case")]
-pub enum ToolCallStatus {
-    /// Tool call is pending approval
-    PendingApproval,
-    /// Tool call has been approved
-    Approved,
-    /// Tool call has been rejected
-    Rejected,
-    /// Tool is currently executing
-    Running,
-    /// Tool completed successfully
-    Completed,
-    /// Tool execution failed
-    Failed,
-}
-
-/// A tool call with its current status and result
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../apps/desktop/src/bindings/")]
-pub struct ToolCallWithStatus {
-    /// The tool call
-    pub tool_call: AgentToolCall,
-    /// Current status
-    pub status: ToolCallStatus,
-    /// Result (if completed)
-    pub result: Option<String>,
-    /// Error message (if failed)
-    pub error: Option<String>,
-    /// Whether this tool requires approval
-    pub needs_approval: bool,
-}
-
-/// Tool definition for registration
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../apps/desktop/src/bindings/")]
-pub struct ToolDefinitionProto {
-    /// Tool name (unique identifier)
-    pub name: String,
-    /// Human-readable description
-    pub description: String,
-    /// JSON Schema for parameters (as JSON string)
-    pub parameters: String,
-    /// Whether this tool requires user approval
-    pub needs_approval: bool,
-    /// Tool category for grouping
-    pub category: String,
-}
-
-/// Result of a tool execution
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../apps/desktop/src/bindings/")]
-pub struct ToolResult {
-    /// Tool call ID this result is for
-    pub tool_call_id: String,
-    /// Whether execution succeeded
-    pub success: bool,
-    /// Result content (for success)
-    pub content: Option<String>,
-    /// Error message (for failure)
-    pub error: Option<String>,
-}
-
-/// A content block within a message (supports text, tool use, and tool results)
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../apps/desktop/src/bindings/")]
-#[serde(tag = "type")]
-pub enum ContentBlock {
-    /// Plain text content
-    #[serde(rename = "text")]
-    Text { text: String },
-
-    /// A tool use request from the assistant
-    #[serde(rename = "tool_use")]
-    ToolUse {
-        id: String,
-        name: String,
-        /// JSON-encoded arguments
-        arguments: String,
-    },
-
-    /// A tool result (sent back to the LLM after execution)
-    #[serde(rename = "tool_result")]
-    ToolResult {
-        tool_use_id: String,
-        content: String,
-        is_error: bool,
-    },
-}
-
-/// A message in the conversation
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../apps/desktop/src/bindings/")]
-pub struct AgentMessage {
-    /// Message role (user, assistant, system)
-    pub role: String,
-    /// Structured content blocks
-    pub content: Vec<ContentBlock>,
-    /// Flattened text for display (computed from text blocks)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub text: Option<String>,
-}
-
-impl AgentMessage {
-    /// Create a simple text message
-    pub fn text(role: &str, text: &str) -> Self {
-        Self {
-            role: role.to_string(),
-            content: vec![ContentBlock::Text {
-                text: text.to_string(),
-            }],
-            text: Some(text.to_string()),
-        }
-    }
-
-    /// Create a tool-result message
-    pub fn tool_result(tool_use_id: &str, result: &str, is_error: bool) -> Self {
-        Self {
-            role: "user".to_string(),
-            content: vec![ContentBlock::ToolResult {
-                tool_use_id: tool_use_id.to_string(),
-                content: result.to_string(),
-                is_error,
-            }],
-            text: None,
-        }
-    }
-
-    /// Create an assistant message with text and tool use blocks
-    pub fn assistant_with_tools(text: &str, tool_calls: &[AgentToolCall]) -> Self {
-        let mut blocks = Vec::new();
-        if !text.is_empty() {
-            blocks.push(ContentBlock::Text {
-                text: text.to_string(),
-            });
-        }
-        for tc in tool_calls {
-            blocks.push(ContentBlock::ToolUse {
-                id: tc.id.clone(),
-                name: tc.name.clone(),
-                arguments: tc.arguments.clone(),
-            });
-        }
-        Self {
-            role: "assistant".to_string(),
-            content: blocks,
-            text: if text.is_empty() {
-                None
-            } else {
-                Some(text.to_string())
-            },
-        }
-    }
-
-    /// Extract plain text from all text content blocks
-    pub fn display_text(&self) -> String {
-        if let Some(ref t) = self.text {
-            return t.clone();
-        }
-        self.content
-            .iter()
-            .filter_map(|b| match b {
-                ContentBlock::Text { text } => Some(text.as_str()),
-                _ => None,
-            })
-            .collect::<Vec<_>>()
-            .join("")
-    }
-
-    /// Create a user message with multiple tool results (for multi-tool turns)
-    pub fn tool_results(results: Vec<(String, String, bool)>) -> Self {
-        let blocks = results
-            .into_iter()
-            .map(|(id, content, is_error)| ContentBlock::ToolResult {
-                tool_use_id: id,
-                content,
-                is_error,
-            })
-            .collect();
-        Self {
-            role: "user".to_string(),
-            content: blocks,
-            text: None,
-        }
-    }
-
-    /// Extract tool use blocks as AgentToolCall
-    pub fn tool_calls(&self) -> Vec<AgentToolCall> {
-        self.content
-            .iter()
-            .filter_map(|b| match b {
-                ContentBlock::ToolUse {
-                    id,
-                    name,
-                    arguments,
-                } => Some(AgentToolCall {
-                    id: id.clone(),
-                    name: name.clone(),
-                    arguments: arguments.clone(),
-                }),
-                _ => None,
-            })
-            .collect()
-    }
 }
 
 // =============================================================================
@@ -549,7 +317,11 @@ pub struct ClaudeSetupStatus {
 // Backend Events (sent from Rust to TypeScript)
 // =============================================================================
 
-/// Events emitted from the backend to the frontend
+/// Events emitted from the backend to the frontend.
+///
+/// Note: Agent events now flow through dedicated Tauri emit channels
+/// (agent:message, agent:permission_request, etc.) from the agent bridge,
+/// not through BackendEvent.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../apps/desktop/src/bindings/")]
 #[serde(tag = "type", content = "payload")]
@@ -561,78 +333,6 @@ pub enum BackendEvent {
     /// Terminal exited
     #[serde(rename = "terminal:exit")]
     TerminalExit { id: String, code: Option<i32> },
-
-    /// Agent streaming text chunk
-    #[serde(rename = "agent:chunk")]
-    AgentChunk {
-        conversation_id: String,
-        content: String,
-    },
-
-    /// Agent tool call started
-    #[serde(rename = "agent:tool_start")]
-    AgentToolStart {
-        conversation_id: String,
-        tool_call: AgentToolCall,
-    },
-
-    /// Agent tool call completed
-    #[serde(rename = "agent:tool_end")]
-    AgentToolEnd {
-        conversation_id: String,
-        tool_call_id: String,
-        result: String,
-    },
-
-    /// Agent tool call needs approval
-    #[serde(rename = "agent:tool_approval_needed")]
-    AgentToolApprovalNeeded {
-        conversation_id: String,
-        tool_call: ToolCallWithStatus,
-    },
-
-    /// Agent tool call approval response
-    #[serde(rename = "agent:tool_approval_response")]
-    AgentToolApprovalResponse {
-        conversation_id: String,
-        tool_call_id: String,
-        approved: bool,
-    },
-
-    /// Agent message completed
-    #[serde(rename = "agent:complete")]
-    AgentComplete {
-        conversation_id: String,
-        message: AgentMessage,
-    },
-
-    /// Agent error
-    #[serde(rename = "agent:error")]
-    AgentError {
-        conversation_id: String,
-        error: String,
-    },
-
-    /// A new turn in the agentic loop is starting
-    #[serde(rename = "agent:turn_start")]
-    AgentTurnStart {
-        conversation_id: String,
-        turn_number: u32,
-    },
-
-    /// The agentic loop has fully completed (all turns done)
-    #[serde(rename = "agent:loop_complete")]
-    AgentLoopComplete {
-        conversation_id: String,
-        total_turns: u32,
-    },
-
-    /// The agentic loop was aborted by the user
-    #[serde(rename = "agent:aborted")]
-    AgentAborted {
-        conversation_id: String,
-        reason: String,
-    },
 
     /// File changed externally
     #[serde(rename = "file:changed")]
@@ -790,74 +490,5 @@ mod tests {
         let json = serde_json::to_string(&event).unwrap();
         assert!(json.contains("terminal:data"));
         assert!(json.contains("term-1"));
-    }
-
-    #[test]
-    fn test_agent_message_serialization() {
-        let msg = AgentMessage::text("assistant", "Hello!");
-        let json = serde_json::to_string(&msg).unwrap();
-        assert!(json.contains("assistant"));
-        assert!(json.contains("Hello!"));
-    }
-
-    #[test]
-    fn test_agent_message_with_tools() {
-        let tool_calls = vec![AgentToolCall {
-            id: "tc-1".to_string(),
-            name: "read_file".to_string(),
-            arguments: r#"{"path":"/tmp/test.txt"}"#.to_string(),
-        }];
-        let msg = AgentMessage::assistant_with_tools("Let me read that file.", &tool_calls);
-        assert_eq!(msg.role, "assistant");
-        assert_eq!(msg.content.len(), 2); // text + tool_use
-        assert_eq!(msg.display_text(), "Let me read that file.");
-        assert_eq!(msg.tool_calls().len(), 1);
-    }
-
-    #[test]
-    fn test_agent_message_tool_result() {
-        let msg = AgentMessage::tool_result("tc-1", "file contents here", false);
-        assert_eq!(msg.role, "user");
-        assert!(msg.tool_calls().is_empty());
-    }
-
-    #[test]
-    fn test_content_block_serialization() {
-        let block = ContentBlock::ToolUse {
-            id: "tc-1".to_string(),
-            name: "bash".to_string(),
-            arguments: r#"{"command":"ls"}"#.to_string(),
-        };
-        let json = serde_json::to_string(&block).unwrap();
-        assert!(json.contains("tool_use"));
-        assert!(json.contains("bash"));
-    }
-
-    #[test]
-    fn test_agent_message_tool_results_multi() {
-        let results = vec![
-            ("tc-1".to_string(), "result 1".to_string(), false),
-            ("tc-2".to_string(), "error msg".to_string(), true),
-        ];
-        let msg = AgentMessage::tool_results(results);
-        assert_eq!(msg.role, "user");
-        assert_eq!(msg.content.len(), 2);
-        // First is success
-        match &msg.content[0] {
-            ContentBlock::ToolResult { tool_use_id, content, is_error } => {
-                assert_eq!(tool_use_id, "tc-1");
-                assert_eq!(content, "result 1");
-                assert!(!is_error);
-            }
-            _ => panic!("Expected ToolResult"),
-        }
-        // Second is error
-        match &msg.content[1] {
-            ContentBlock::ToolResult { tool_use_id, is_error, .. } => {
-                assert_eq!(tool_use_id, "tc-2");
-                assert!(is_error);
-            }
-            _ => panic!("Expected ToolResult"),
-        }
     }
 }

@@ -8,7 +8,7 @@
 import type { AgentSession, Message, ToolCallState } from '@/stores/agentStore';
 
 const STORAGE_KEY = 'solo-agent-sessions';
-const VERSION = 1;
+const VERSION = 2;
 
 /** Serialized message format for persistence */
 interface PersistedMessage {
