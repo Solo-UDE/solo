@@ -1,3 +1,26 @@
+#![warn(clippy::all, clippy::pedantic)]
+#![allow(
+    clippy::module_name_repetitions,
+    clippy::must_use_candidate,
+    clippy::missing_errors_doc,
+    clippy::missing_panics_doc,
+    clippy::wildcard_imports,
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::uninlined_format_args,
+    clippy::doc_markdown,
+    clippy::return_self_not_must_use,
+    clippy::redundant_closure_for_method_calls,
+    clippy::single_match_else,
+    clippy::if_not_else,
+    clippy::match_same_arms,
+    clippy::map_unwrap_or,
+    clippy::similar_names,
+    clippy::struct_excessive_bools
+)]
+
 //! Solo Embeddings - Vector embedding provider for semantic search
 //!
 //! This crate provides embedding functionality for semantic code search and RAG.
@@ -9,7 +32,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use thiserror::Error;
-use tracing::{debug, info, error};
+use tracing::{debug, error, info};
 
 // =============================================================================
 // Error Types
@@ -230,6 +253,7 @@ struct OpenAIEmbeddingData {
 
 #[derive(Debug, Deserialize)]
 struct OpenAIUsage {
+    #[allow(dead_code)]
     prompt_tokens: u32,
     total_tokens: u32,
 }
@@ -271,7 +295,9 @@ impl EmbeddingProvider for OpenAIEmbeddingProvider {
         let result: OpenAIEmbeddingResponse = response.json().await?;
 
         if result.data.is_empty() {
-            return Err(EmbeddingError::InvalidResponse("No embeddings returned".to_string()));
+            return Err(EmbeddingError::InvalidResponse(
+                "No embeddings returned".to_string(),
+            ));
         }
 
         info!(
@@ -281,7 +307,9 @@ impl EmbeddingProvider for OpenAIEmbeddingProvider {
             "Embedding generated"
         );
 
-        Ok(Embedding::new(result.data.into_iter().next().unwrap().embedding))
+        Ok(Embedding::new(
+            result.data.into_iter().next().unwrap().embedding,
+        ))
     }
 
     async fn embed_many(&self, texts: &[String]) -> EmbeddingResult<Vec<Embedding>> {
@@ -333,7 +361,10 @@ impl EmbeddingProvider for OpenAIEmbeddingProvider {
         let mut data = result.data;
         data.sort_by_key(|d| d.index);
 
-        Ok(data.into_iter().map(|d| Embedding::new(d.embedding)).collect())
+        Ok(data
+            .into_iter()
+            .map(|d| Embedding::new(d.embedding))
+            .collect())
     }
 
     fn dimensions(&self) -> usize {
@@ -401,7 +432,11 @@ impl<T: Clone + Send + Sync> EmbeddingIndex<T> {
             .collect();
 
         // Sort by score descending
-        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         // Take top results
         results.truncate(limit);

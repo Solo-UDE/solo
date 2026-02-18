@@ -3,7 +3,8 @@
 //! This module contains all file system related IPC commands.
 
 use solo_fs::{
-    operations, tree, watcher::{FileEventType, FileWatcher},
+    operations, tree,
+    watcher::{FileEventType, FileWatcher},
 };
 use solo_protocol::{
     BackendEvent, DirectoryReadRequest, DirectoryReadResponse, FileCreateRequest,
@@ -85,9 +86,7 @@ pub async fn open_folder_dialog(app: AppHandle) -> Result<Option<String>, String
             debug!("Folder dialog cancelled");
             Ok(None)
         }
-        Err(_) => {
-            Err("Dialog was cancelled".to_string())
-        }
+        Err(_) => Err("Dialog was cancelled".to_string()),
     }
 }
 
@@ -147,10 +146,7 @@ pub async fn read_directory(
     // Count total entries for progress indication
     let total_count = tree::count_entries(&path).unwrap_or(0);
 
-    Ok(DirectoryReadResponse {
-        entry,
-        total_count,
-    })
+    Ok(DirectoryReadResponse { entry, total_count })
 }
 
 /// Create a new file
@@ -216,11 +212,13 @@ pub async fn read_file(
         path: request.path.clone(),
     })?;
 
-    let workspace_canonical = workspace_path.canonicalize().map_err(|e| FileOperationError {
-        code: FileErrorCode::IoError,
-        message: e.to_string(),
-        path: request.path.clone(),
-    })?;
+    let workspace_canonical = workspace_path
+        .canonicalize()
+        .map_err(|e| FileOperationError {
+            code: FileErrorCode::IoError,
+            message: e.to_string(),
+            path: request.path.clone(),
+        })?;
 
     if !canonical.starts_with(&workspace_canonical) {
         return Err(FileOperationError {
@@ -270,11 +268,13 @@ pub async fn write_file(
         path: request.path.clone(),
     })?;
 
-    let workspace_canonical = workspace_path.canonicalize().map_err(|e| FileOperationError {
-        code: FileErrorCode::IoError,
-        message: e.to_string(),
-        path: request.path.clone(),
-    })?;
+    let workspace_canonical = workspace_path
+        .canonicalize()
+        .map_err(|e| FileOperationError {
+            code: FileErrorCode::IoError,
+            message: e.to_string(),
+            path: request.path.clone(),
+        })?;
 
     if !canonical.starts_with(&workspace_canonical) {
         return Err(FileOperationError {
@@ -386,7 +386,10 @@ pub async fn start_watching(
 
     // Start watching FIRST - if this fails, we don't spawn the event task
     let path_buf = PathBuf::from(&path);
-    watcher.watch(&path_buf, recursive).await.map_err(|e| e.to_string())?;
+    watcher
+        .watch(&path_buf, recursive)
+        .await
+        .map_err(|e| e.to_string())?;
 
     // Only spawn the event forwarder task for new watchers, after watch succeeds
     if is_new_watcher {

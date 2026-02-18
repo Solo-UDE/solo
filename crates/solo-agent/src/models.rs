@@ -1,5 +1,7 @@
 //! AI Model definitions and registry
 
+use std::sync::LazyLock;
+
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -56,9 +58,9 @@ pub struct AIModel {
     pub description: String,
 }
 
-// Since we can't use String in const, we use lazy_static to get models
-lazy_static::lazy_static! {
-    pub static ref ANTHROPIC_MODELS: Vec<AIModel> = vec![
+// Since we can't use String in const, we use LazyLock to get models
+pub static ANTHROPIC_MODELS: LazyLock<Vec<AIModel>> = LazyLock::new(|| {
+    vec![
         AIModel {
             id: "claude-sonnet-4-6".to_string(),
             display_name: "Claude Sonnet 4.6".to_string(),
@@ -107,9 +109,11 @@ lazy_static::lazy_static! {
             is_default: false,
             description: "Fast and efficient for simple tasks".to_string(),
         },
-    ];
+    ]
+});
 
-    pub static ref GEMINI_MODELS: Vec<AIModel> = vec![
+pub static GEMINI_MODELS: LazyLock<Vec<AIModel>> = LazyLock::new(|| {
+    vec![
         AIModel {
             id: "gemini-3-pro".to_string(),
             display_name: "Gemini 3 Pro".to_string(),
@@ -142,9 +146,11 @@ lazy_static::lazy_static! {
             is_default: false,
             description: "Fast multimodal model".to_string(),
         },
-    ];
+    ]
+});
 
-    pub static ref OPENAI_MODELS: Vec<AIModel> = vec![
+pub static OPENAI_MODELS: LazyLock<Vec<AIModel>> = LazyLock::new(|| {
+    vec![
         AIModel {
             id: "gpt-5.2-high".to_string(),
             display_name: "GPT-5.2 High".to_string(),
@@ -193,8 +199,8 @@ lazy_static::lazy_static! {
             is_default: false,
             description: "Fast and cost-effective".to_string(),
         },
-    ];
-}
+    ]
+});
 
 /// Get all models for a provider
 pub fn get_models_for_provider(provider: ProviderType) -> &'static [AIModel] {
@@ -208,10 +214,7 @@ pub fn get_models_for_provider(provider: ProviderType) -> &'static [AIModel] {
 /// Get default model for a provider
 pub fn get_default_model(provider: ProviderType) -> &'static AIModel {
     let models = get_models_for_provider(provider);
-    models
-        .iter()
-        .find(|m| m.is_default)
-        .unwrap_or(&models[0])
+    models.iter().find(|m| m.is_default).unwrap_or(&models[0])
 }
 
 /// Find a model by ID or alias

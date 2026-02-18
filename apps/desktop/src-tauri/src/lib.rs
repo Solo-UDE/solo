@@ -1,28 +1,55 @@
+#![warn(clippy::all, clippy::pedantic)]
+#![allow(
+    clippy::module_name_repetitions,
+    clippy::must_use_candidate,
+    clippy::missing_errors_doc,
+    clippy::missing_panics_doc,
+    clippy::wildcard_imports,
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::uninlined_format_args,
+    clippy::doc_markdown,
+    clippy::return_self_not_must_use,
+    clippy::redundant_closure_for_method_calls,
+    clippy::single_match_else,
+    clippy::if_not_else,
+    clippy::match_same_arms,
+    clippy::map_unwrap_or,
+    clippy::similar_names,
+    clippy::struct_excessive_bools,
+    // Tauri-specific: commands have AppHandle + State + many params
+    clippy::too_many_arguments,
+    clippy::too_many_lines,
+    clippy::needless_pass_by_value,
+)]
+
 //! Solo Desktop Library
 //!
 //! This module provides the library interface for the Solo desktop application.
 
-mod commands;
-mod fs_commands;
 mod agent_commands;
-mod parse_commands;
 mod auth_commands;
+mod commands;
 mod embedding_commands;
-mod terminal_commands;
+mod fs_commands;
 mod git_commands;
+mod parse_commands;
+mod terminal_commands;
 mod worktree_commands;
 
-use fs_commands::FsState;
 use agent_commands::AgentState;
 use auth_commands::AuthState;
 use embedding_commands::EmbeddingState;
-use terminal_commands::TerminalState;
+use fs_commands::FsState;
 use git_commands::GitState;
-use worktree_commands::WorktreeState;
 use tauri::Emitter;
 #[cfg(target_os = "macos")]
 use tauri_plugin_decorum::WebviewWindowExt;
+use terminal_commands::TerminalState;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use worktree_commands::WorktreeState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -84,8 +111,8 @@ pub fn run() {
             // macOS: position traffic lights and apply native vibrancy
             #[cfg(target_os = "macos")]
             {
-                use tauri::Manager;
                 use tauri::window::{Effect, EffectState, EffectsBuilder};
+                use tauri::Manager;
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.set_traffic_lights_inset(13.0, 13.0);
                     let _ = window.set_effects(

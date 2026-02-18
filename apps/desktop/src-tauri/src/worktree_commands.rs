@@ -3,7 +3,9 @@
 //! This module contains all git worktree related IPC commands.
 
 use solo_git::WorktreeManager;
-use solo_protocol::{BackendEvent, CreateWorktreeRequest, RemoveWorktreeRequest, WorktreeInfo, WorktreeSetupConfig};
+use solo_protocol::{
+    BackendEvent, CreateWorktreeRequest, RemoveWorktreeRequest, WorktreeInfo, WorktreeSetupConfig,
+};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use tauri::{AppHandle, Emitter, State};
@@ -37,10 +39,7 @@ impl Default for WorktreeState {
 }
 
 /// Get or create a WorktreeManager for the current workspace.
-async fn get_manager(
-    wt_state: &WorktreeState,
-    fs_state: &FsState,
-) -> Result<PathBuf, String> {
+async fn get_manager(wt_state: &WorktreeState, fs_state: &FsState) -> Result<PathBuf, String> {
     let workspace = fs_state.workspace_root.read().await;
     let repo_path = workspace
         .as_ref()
@@ -49,8 +48,7 @@ async fn get_manager(
 
     let mut managers = wt_state.managers.write().await;
     if !managers.contains_key(&repo_path) {
-        let manager = WorktreeManager::new(repo_path.clone())
-            .map_err(|e| e.to_string())?;
+        let manager = WorktreeManager::new(&repo_path).map_err(|e| e.to_string())?;
         managers.insert(repo_path.clone(), manager);
     }
 
@@ -85,20 +83,26 @@ pub async fn worktree_create(
     let repo_path = get_manager(&wt_state, &fs_state).await?;
 
     // Emit progress
-    let _ = app.emit("backend-event", &BackendEvent::WorktreeProgress {
-        worktree_id: request.branch.clone(),
-        message: format!("Creating worktree for branch '{}'...", request.branch),
-    });
+    let _ = app.emit(
+        "backend-event",
+        &BackendEvent::WorktreeProgress {
+            worktree_id: request.branch.clone(),
+            message: format!("Creating worktree for branch '{}'...", request.branch),
+        },
+    );
 
     let managers = wt_state.managers.read().await;
     let manager = managers.get(&repo_path).unwrap();
 
     match manager.create(&request) {
         Ok(info) => {
-            let _ = app.emit("backend-event", &BackendEvent::WorktreeReady {
-                worktree_id: info.id.clone(),
-                info: info.clone(),
-            });
+            let _ = app.emit(
+                "backend-event",
+                &BackendEvent::WorktreeReady {
+                    worktree_id: info.id.clone(),
+                    info: info.clone(),
+                },
+            );
 
             // Run setup commands in background if configured
             let setup_commands = manager.get_setup_commands().unwrap_or_default();
@@ -109,13 +113,16 @@ pub async fn worktree_create(
 
                 tokio::spawn(async move {
                     for cmd in &setup_commands {
-                        let _ = app_clone.emit("backend-event", &BackendEvent::WorktreeSetupProgress {
-                            worktree_id: wt_id.clone(),
-                            command: cmd.clone(),
-                            output: format!("Running: {}", cmd),
-                            is_error: false,
-                            is_complete: false,
-                        });
+                        let _ = app_clone.emit(
+                            "backend-event",
+                            &BackendEvent::WorktreeSetupProgress {
+                                worktree_id: wt_id.clone(),
+                                command: cmd.clone(),
+                                output: format!("Running: {}", cmd),
+                                is_error: false,
+                                is_complete: false,
+                            },
+                        );
 
                         let output = tokio::process::Command::new("sh")
                             .args(["-c", cmd])
@@ -130,44 +137,60 @@ pub async fn worktree_create(
                                 let is_error = !out.status.success();
 
                                 if !stdout.is_empty() {
-                                    let _ = app_clone.emit("backend-event", &BackendEvent::WorktreeSetupProgress {
-                                        worktree_id: wt_id.clone(),
-                                        command: cmd.clone(),
-                                        output: stdout,
-                                        is_error: false,
-                                        is_complete: false,
-                                    });
+                                    let _ = app_clone.emit(
+                                        "backend-event",
+                                        &BackendEvent::WorktreeSetupProgress {
+                                            worktree_id: wt_id.clone(),
+                                            command: cmd.clone(),
+                                            output: stdout,
+                                            is_error: false,
+                                            is_complete: false,
+                                        },
+                                    );
                                 }
                                 if !stderr.is_empty() || is_error {
-                                    let _ = app_clone.emit("backend-event", &BackendEvent::WorktreeSetupProgress {
-                                        worktree_id: wt_id.clone(),
-                                        command: cmd.clone(),
-                                        output: if stderr.is_empty() { "Command failed".to_string() } else { stderr },
-                                        is_error,
-                                        is_complete: false,
-                                    });
+                                    let _ = app_clone.emit(
+                                        "backend-event",
+                                        &BackendEvent::WorktreeSetupProgress {
+                                            worktree_id: wt_id.clone(),
+                                            command: cmd.clone(),
+                                            output: if stderr.is_empty() {
+                                                "Command failed".to_string()
+                                            } else {
+                                                stderr
+                                            },
+                                            is_error,
+                                            is_complete: false,
+                                        },
+                                    );
                                 }
                             }
                             Err(e) => {
-                                let _ = app_clone.emit("backend-event", &BackendEvent::WorktreeSetupProgress {
-                                    worktree_id: wt_id.clone(),
-                                    command: cmd.clone(),
-                                    output: format!("Failed to run command: {}", e),
-                                    is_error: true,
-                                    is_complete: false,
-                                });
+                                let _ = app_clone.emit(
+                                    "backend-event",
+                                    &BackendEvent::WorktreeSetupProgress {
+                                        worktree_id: wt_id.clone(),
+                                        command: cmd.clone(),
+                                        output: format!("Failed to run command: {}", e),
+                                        is_error: true,
+                                        is_complete: false,
+                                    },
+                                );
                             }
                         }
                     }
 
                     // Signal all setup commands complete
-                    let _ = app_clone.emit("backend-event", &BackendEvent::WorktreeSetupProgress {
-                        worktree_id: wt_id,
-                        command: String::new(),
-                        output: "Setup complete".to_string(),
-                        is_error: false,
-                        is_complete: true,
-                    });
+                    let _ = app_clone.emit(
+                        "backend-event",
+                        &BackendEvent::WorktreeSetupProgress {
+                            worktree_id: wt_id,
+                            command: String::new(),
+                            output: "Setup complete".to_string(),
+                            is_error: false,
+                            is_complete: true,
+                        },
+                    );
                 });
             }
 
@@ -175,10 +198,13 @@ pub async fn worktree_create(
         }
         Err(e) => {
             let error_msg = e.to_string();
-            let _ = app.emit("backend-event", &BackendEvent::WorktreeError {
-                worktree_id: request.branch.clone(),
-                error: error_msg.clone(),
-            });
+            let _ = app.emit(
+                "backend-event",
+                &BackendEvent::WorktreeError {
+                    worktree_id: request.branch.clone(),
+                    error: error_msg.clone(),
+                },
+            );
             Err(error_msg)
         }
     }
@@ -198,7 +224,9 @@ pub async fn worktree_remove(
     let managers = wt_state.managers.read().await;
     let manager = managers.get(&repo_path).unwrap();
 
-    manager.remove(&request.id, request.force).map_err(|e| e.to_string())?;
+    manager
+        .remove(&request.id, request.force)
+        .map_err(|e| e.to_string())?;
 
     // If we removed the active worktree, reset to main
     let mut active = wt_state.active_worktree_id.write().await;
@@ -206,9 +234,12 @@ pub async fn worktree_remove(
         *active = None;
     }
 
-    let _ = app.emit("backend-event", &BackendEvent::WorktreeRemoved {
-        worktree_id: request.id,
-    });
+    let _ = app.emit(
+        "backend-event",
+        &BackendEvent::WorktreeRemoved {
+            worktree_id: request.id,
+        },
+    );
 
     Ok(())
 }
@@ -245,15 +276,14 @@ pub async fn worktree_set_active(
         let repo_path = get_manager(&wt_state, &fs_state).await?;
         let managers = wt_state.managers.read().await;
         let manager = managers.get(&repo_path).unwrap();
-        let wt_path = manager.worktree_path(wt_id)
+        let wt_path = manager
+            .worktree_path(wt_id)
             .ok_or_else(|| format!("Worktree not found: {}", wt_id))?;
         wt_path
     } else {
         // Reset to main workspace
         let workspace = fs_state.workspace_root.read().await;
-        workspace.as_ref()
-            .ok_or("No workspace root set")?
-            .clone()
+        workspace.as_ref().ok_or("No workspace root set")?.clone()
     };
 
     // Update active worktree ID
@@ -302,7 +332,9 @@ pub async fn worktree_lock(
     let managers = wt_state.managers.read().await;
     let manager = managers.get(&repo_path).unwrap();
 
-    manager.lock(&id, reason.as_deref()).map_err(|e| e.to_string())
+    manager
+        .lock(&id, reason.as_deref())
+        .map_err(|e| e.to_string())
 }
 
 /// Unlock a worktree
@@ -355,13 +387,18 @@ pub async fn worktree_set_setup_commands(
     wt_state: State<'_, WorktreeState>,
     fs_state: State<'_, FsState>,
 ) -> Result<(), String> {
-    info!(count = config.commands.len(), "Setting worktree setup commands");
+    info!(
+        count = config.commands.len(),
+        "Setting worktree setup commands"
+    );
 
     let repo_path = get_manager(&wt_state, &fs_state).await?;
     let managers = wt_state.managers.read().await;
     let manager = managers.get(&repo_path).unwrap();
 
-    manager.set_setup_commands(config.commands).map_err(|e| e.to_string())
+    manager
+        .set_setup_commands(config.commands)
+        .map_err(|e| e.to_string())
 }
 
 /// Get setup commands for new worktrees

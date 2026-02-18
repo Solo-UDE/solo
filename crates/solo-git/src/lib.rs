@@ -1,3 +1,26 @@
+#![warn(clippy::all, clippy::pedantic)]
+#![allow(
+    clippy::module_name_repetitions,
+    clippy::must_use_candidate,
+    clippy::missing_errors_doc,
+    clippy::missing_panics_doc,
+    clippy::wildcard_imports,
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::uninlined_format_args,
+    clippy::doc_markdown,
+    clippy::return_self_not_must_use,
+    clippy::redundant_closure_for_method_calls,
+    clippy::single_match_else,
+    clippy::if_not_else,
+    clippy::match_same_arms,
+    clippy::map_unwrap_or,
+    clippy::similar_names,
+    clippy::struct_excessive_bools
+)]
+
 //! Solo Git — Git operations for Solo IDE
 //!
 //! Provides worktree management using `git2` (libgit2) for core operations
@@ -27,16 +50,16 @@ pub struct WorktreeManager {
 
 impl WorktreeManager {
     /// Create a new WorktreeManager for a repository path.
-    pub fn new(repo_path: PathBuf) -> Result<Self, GitError> {
+    pub fn new(repo_path: &Path) -> Result<Self, GitError> {
         // Validate that the path is a git repo by opening it
-        let repo = git2::Repository::open(&repo_path)
+        let repo = git2::Repository::open(repo_path)
             .map_err(|_| GitError::RepoNotFound(repo_path.display().to_string()))?;
 
         // Use the workdir or the repo path itself
         let actual_repo_path = repo
             .workdir()
             .map(|p| p.to_path_buf())
-            .unwrap_or_else(|| repo_path.clone());
+            .unwrap_or_else(|| repo_path.to_path_buf());
 
         let worktrees_dir = config::worktrees_base_dir(&actual_repo_path)?;
         let config_path = config::config_path(&actual_repo_path)?;
@@ -64,18 +87,16 @@ impl WorktreeManager {
                 .map(|oid| oid.to_string())
                 .unwrap_or_default();
 
-            let branch = repo
-                .head()
-                .ok()
-                .and_then(|r| {
-                    if r.is_branch() {
-                        r.shorthand().map(|s| s.to_string())
-                    } else {
-                        None
-                    }
-                });
+            let branch = repo.head().ok().and_then(|r| {
+                if r.is_branch() {
+                    r.shorthand().map(|s| s.to_string())
+                } else {
+                    None
+                }
+            });
 
-            let is_dirty = repo.statuses(None)
+            let is_dirty = repo
+                .statuses(None)
                 .map(|s| s.iter().any(|e| e.status() != git2::Status::CURRENT))
                 .unwrap_or(false);
 
@@ -101,29 +122,41 @@ impl WorktreeManager {
                     let wt_path = wt.path().to_path_buf();
 
                     // Open the worktree repo for HEAD info
-                    let (head_sha, branch, is_dirty) = if let Ok(wt_repo) = git2::Repository::open(&wt_path) {
-                        let sha = wt_repo.head().ok()
-                            .and_then(|r| r.target())
-                            .map(|oid| oid.to_string())
-                            .unwrap_or_default();
-                        let br = wt_repo.head().ok()
-                            .and_then(|r| {
-                                if r.is_branch() { r.shorthand().map(|s| s.to_string()) } else { None }
+                    let (head_sha, branch, is_dirty) =
+                        if let Ok(wt_repo) = git2::Repository::open(&wt_path) {
+                            let sha = wt_repo
+                                .head()
+                                .ok()
+                                .and_then(|r| r.target())
+                                .map(|oid| oid.to_string())
+                                .unwrap_or_default();
+                            let br = wt_repo.head().ok().and_then(|r| {
+                                if r.is_branch() {
+                                    r.shorthand().map(|s| s.to_string())
+                                } else {
+                                    None
+                                }
                             });
-                        let dirty = wt_repo.statuses(None)
-                            .map(|s| s.iter().any(|e| e.status() != git2::Status::CURRENT))
-                            .unwrap_or(false);
-                        (sha, br, dirty)
-                    } else {
-                        (String::new(), None, false)
-                    };
+                            let dirty = wt_repo
+                                .statuses(None)
+                                .map(|s| s.iter().any(|e| e.status() != git2::Status::CURRENT))
+                                .unwrap_or(false);
+                            (sha, br, dirty)
+                        } else {
+                            (String::new(), None, false)
+                        };
 
                     // Merge metadata from config
-                    let meta = config.worktrees.values()
+                    let meta = config
+                        .worktrees
+                        .values()
                         .find(|m| m.path == wt_path.display().to_string());
 
-                    let id = meta.map(|m| m.id.clone()).unwrap_or_else(|| name.to_string());
-                    let is_locked = wt.is_locked()
+                    let id = meta
+                        .map(|m| m.id.clone())
+                        .unwrap_or_else(|| name.to_string());
+                    let is_locked = wt
+                        .is_locked()
                         .map(|status| matches!(status, git2::WorktreeLockStatus::Locked(_)))
                         .unwrap_or(false);
                     let lock_reason = meta.and_then(|m| m.lock_reason.clone());
@@ -179,32 +212,44 @@ impl WorktreeManager {
             let base_commit = base_obj.peel_to_commit()?;
 
             // Check if branch already exists
-            if repo.find_branch(&request.branch, git2::BranchType::Local).is_ok() {
+            if repo
+                .find_branch(&request.branch, git2::BranchType::Local)
+                .is_ok()
+            {
                 return Err(GitError::BranchAlreadyExists(request.branch.clone()));
             }
 
             let branch = repo.branch(&request.branch, &base_commit, false)?;
             let branch_ref = branch.into_reference();
-            let ref_name = branch_ref.name()
+            let ref_name = branch_ref
+                .name()
                 .ok_or_else(|| GitError::Config("Invalid branch reference name".to_string()))?;
 
             repo.worktree(
                 &wt_id,
                 &wt_path,
-                Some(git2::WorktreeAddOptions::new().reference(Some(&repo.find_reference(ref_name)?))),
+                Some(
+                    git2::WorktreeAddOptions::new()
+                        .reference(Some(&repo.find_reference(ref_name)?)),
+                ),
             )?;
         } else {
             // Use existing branch
-            let branch = repo.find_branch(&request.branch, git2::BranchType::Local)
+            let branch = repo
+                .find_branch(&request.branch, git2::BranchType::Local)
                 .map_err(|_| GitError::BranchNotFound(request.branch.clone()))?;
             let branch_ref = branch.into_reference();
-            let ref_name = branch_ref.name()
+            let ref_name = branch_ref
+                .name()
                 .ok_or_else(|| GitError::Config("Invalid branch reference name".to_string()))?;
 
             repo.worktree(
                 &wt_id,
                 &wt_path,
-                Some(git2::WorktreeAddOptions::new().reference(Some(&repo.find_reference(ref_name)?))),
+                Some(
+                    git2::WorktreeAddOptions::new()
+                        .reference(Some(&repo.find_reference(ref_name)?)),
+                ),
             )?;
         }
 
@@ -215,11 +260,14 @@ impl WorktreeManager {
 
         // Get HEAD info from the new worktree
         let (head_sha, is_dirty) = if let Ok(wt_repo) = git2::Repository::open(&wt_path) {
-            let sha = wt_repo.head().ok()
+            let sha = wt_repo
+                .head()
+                .ok()
                 .and_then(|r| r.target())
                 .map(|oid| oid.to_string())
                 .unwrap_or_default();
-            let dirty = wt_repo.statuses(None)
+            let dirty = wt_repo
+                .statuses(None)
                 .map(|s| s.iter().any(|e| e.status() != git2::Status::CURRENT))
                 .unwrap_or(false);
             (sha, dirty)
@@ -263,7 +311,8 @@ impl WorktreeManager {
         }
 
         let mut config = WorktreeConfig::load(&self.config_path)?;
-        let meta = config.get(id)
+        let meta = config
+            .get(id)
             .ok_or_else(|| GitError::WorktreeNotFound(id.to_string()))?;
 
         if meta.is_locked && !force {
@@ -291,7 +340,8 @@ impl WorktreeManager {
                 warn!(id = %id, "Worktree directory already removed, cleaning up config");
             } else {
                 return Err(GitError::CommandFailed(format!(
-                    "git worktree remove failed: {}", stderr.trim()
+                    "git worktree remove failed: {}",
+                    stderr.trim()
                 )));
             }
         }
@@ -324,10 +374,12 @@ impl WorktreeManager {
         }
 
         let repo = git2::Repository::open(&self.repo_path)?;
-        let wt = repo.find_worktree(id)
+        let wt = repo
+            .find_worktree(id)
             .map_err(|_| GitError::WorktreeNotFound(id.to_string()))?;
 
-        let locked = wt.is_locked()
+        let locked = wt
+            .is_locked()
             .map(|status| matches!(status, git2::WorktreeLockStatus::Locked(_)))
             .unwrap_or(false);
         if locked {
@@ -355,10 +407,12 @@ impl WorktreeManager {
         }
 
         let repo = git2::Repository::open(&self.repo_path)?;
-        let wt = repo.find_worktree(id)
+        let wt = repo
+            .find_worktree(id)
             .map_err(|_| GitError::WorktreeNotFound(id.to_string()))?;
 
-        let locked = wt.is_locked()
+        let locked = wt
+            .is_locked()
             .map(|status| matches!(status, git2::WorktreeLockStatus::Locked(_)))
             .unwrap_or(false);
         if !locked {
@@ -435,7 +489,7 @@ impl WorktreeManager {
             } else if let Some(max_days) = max_age_days {
                 let age_secs = now.saturating_sub(meta.created_at);
                 let age_days = age_secs / 86400;
-                if age_days > max_days as u64 {
+                if age_days > u64::from(max_days) {
                     info!(id = %id, age_days, max_days, "Pruning stale worktree");
                     true
                 } else {
@@ -517,14 +571,14 @@ mod tests {
 
     #[test]
     fn test_new_validates_repo() {
-        let result = WorktreeManager::new(PathBuf::from("/nonexistent/path"));
+        let result = WorktreeManager::new(Path::new("/nonexistent/path"));
         assert!(result.is_err());
     }
 
     #[test]
     fn test_list_includes_main() {
         let (_dir, repo_path) = setup_test_repo();
-        let mgr = WorktreeManager::new(repo_path).unwrap();
+        let mgr = WorktreeManager::new(&repo_path).unwrap();
         let list = mgr.list().unwrap();
         assert_eq!(list.len(), 1);
         assert!(list[0].is_main);
@@ -534,7 +588,7 @@ mod tests {
     #[test]
     fn test_create_and_list() {
         let (_dir, repo_path) = setup_test_repo();
-        let mgr = WorktreeManager::new(repo_path).unwrap();
+        let mgr = WorktreeManager::new(&repo_path).unwrap();
 
         let req = CreateWorktreeRequest {
             branch: "feature-test".to_string(),
@@ -555,7 +609,7 @@ mod tests {
     #[test]
     fn test_create_and_remove() {
         let (_dir, repo_path) = setup_test_repo();
-        let mgr = WorktreeManager::new(repo_path).unwrap();
+        let mgr = WorktreeManager::new(&repo_path).unwrap();
 
         let req = CreateWorktreeRequest {
             branch: "feature-remove".to_string(),
@@ -578,7 +632,7 @@ mod tests {
     #[test]
     fn test_lock_unlock() {
         let (_dir, repo_path) = setup_test_repo();
-        let mgr = WorktreeManager::new(repo_path).unwrap();
+        let mgr = WorktreeManager::new(&repo_path).unwrap();
 
         let req = CreateWorktreeRequest {
             branch: "feature-lock".to_string(),
@@ -604,7 +658,7 @@ mod tests {
     #[test]
     fn test_cannot_remove_main() {
         let (_dir, repo_path) = setup_test_repo();
-        let mgr = WorktreeManager::new(repo_path).unwrap();
+        let mgr = WorktreeManager::new(&repo_path).unwrap();
         assert!(mgr.remove("main", false).is_err());
     }
 }

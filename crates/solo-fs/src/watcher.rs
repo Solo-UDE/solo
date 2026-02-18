@@ -105,25 +105,22 @@ impl FileWatcher {
 
             // Start the debouncing task
             tokio::spawn(async move {
-                let mut pending_events: HashMap<PathBuf, (FileEventType, Instant, Option<PathBuf>)> =
-                    HashMap::new();
+                let mut pending_events: HashMap<
+                    PathBuf,
+                    (FileEventType, Instant, Option<PathBuf>),
+                > = HashMap::new();
 
                 loop {
                     // Check for new events with timeout
-                    let timeout = tokio::time::timeout(
-                        Duration::from_millis(50),
-                        rx.recv(),
-                    )
-                    .await;
+                    let timeout = tokio::time::timeout(Duration::from_millis(50), rx.recv()).await;
 
                     match timeout {
                         Ok(Some(event)) => {
                             // Process the event
-                            if let Some((path, event_type, new_path)) = process_notify_event(&event) {
-                                pending_events.insert(
-                                    path.clone(),
-                                    (event_type, Instant::now(), new_path),
-                                );
+                            if let Some((path, event_type, new_path)) = process_notify_event(&event)
+                            {
+                                pending_events
+                                    .insert(path.clone(), (event_type, Instant::now(), new_path));
                             }
                         }
                         Ok(None) => {
@@ -239,7 +236,14 @@ impl Default for FileWatcher {
 
 /// Check if a path contains any of the ignored directory names as a component
 fn should_ignore_path(path: &Path) -> bool {
-    const IGNORED_DIRS: &[&str] = &[".git", "node_modules", "target", ".next", "dist", "__pycache__"];
+    const IGNORED_DIRS: &[&str] = &[
+        ".git",
+        "node_modules",
+        "target",
+        ".next",
+        "dist",
+        "__pycache__",
+    ];
 
     for component in path.components() {
         if let std::path::Component::Normal(name) = component {
@@ -341,8 +345,10 @@ mod tests {
         let event = result.unwrap().unwrap();
         // Note: On macOS FSEvents, file creation may be reported as Created or Modified
         assert!(
-            event.event_type == FileEventType::Created || event.event_type == FileEventType::Modified,
-            "Expected Created or Modified event, got {:?}", event.event_type
+            event.event_type == FileEventType::Created
+                || event.event_type == FileEventType::Modified,
+            "Expected Created or Modified event, got {:?}",
+            event.event_type
         );
     }
 

@@ -110,26 +110,24 @@ fn read_directory_children(path: &Path, remaining_depth: u32) -> FsResult<Vec<Fi
     // WHY: read_dir returns an iterator, not a vector
     // This is memory-efficient for large directories
     // DOCS: https://doc.rust-lang.org/std/fs/fn.read_dir.html
-    let entries = fs::read_dir(path).map_err(|e| FsError::from_io_error(e, &path.display().to_string()))?;
+    let entries =
+        fs::read_dir(path).map_err(|e| FsError::from_io_error(e, &path.display().to_string()))?;
 
     let mut children: Vec<FileTreeEntry> = Vec::new();
 
     for entry in entries {
         // WHY: Each entry in the iterator is a Result, so we need to handle errors
         // This handles cases like permission denied on individual files
-        let entry = entry.map_err(|e| FsError::Io(e))?;
+        let entry = entry.map_err(FsError::Io)?;
         let entry_path = entry.path();
 
         // WHY: metadata() gives us file type, size, and modification time
         // DOCS: https://doc.rust-lang.org/std/fs/struct.Metadata.html
-        let metadata = entry.metadata().map_err(|e| FsError::Io(e))?;
+        let metadata = entry.metadata().map_err(FsError::Io)?;
 
         // WHY: OsStr -> String conversion needed for JSON serialization
         // to_string_lossy() replaces invalid UTF-8 with replacement characters
-        let name = entry
-            .file_name()
-            .to_string_lossy()
-            .to_string();
+        let name = entry.file_name().to_string_lossy().to_string();
 
         let path_str = entry_path.display().to_string();
         let is_dir = metadata.is_dir();
@@ -164,7 +162,7 @@ fn read_directory_children(path: &Path, remaining_depth: u32) -> FsResult<Vec<Fi
             // DOCS: https://doc.rust-lang.org/std/time/struct.SystemTime.html
             let modified = metadata
                 .modified()
-                .ok()  // Ignore errors (not all filesystems support this)
+                .ok() // Ignore errors (not all filesystems support this)
                 .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                 .map(|d| d.as_secs());
             (size, modified)
@@ -187,7 +185,7 @@ fn read_directory_children(path: &Path, remaining_depth: u32) -> FsResult<Vec<Fi
     // DOCS: https://doc.rust-lang.org/std/vec/struct.Vec.html#method.sort_by
     children.sort_by(|a, b| {
         match (a.is_dir, b.is_dir) {
-            (true, false) => std::cmp::Ordering::Less,    // dirs before files
+            (true, false) => std::cmp::Ordering::Less, // dirs before files
             (false, true) => std::cmp::Ordering::Greater, // files after dirs
             _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()), // alphabetical
         }
@@ -198,8 +196,8 @@ fn read_directory_children(path: &Path, remaining_depth: u32) -> FsResult<Vec<Fi
 
 /// Get file metadata (size and modified time)
 pub fn get_file_metadata(path: &Path) -> FsResult<FileMetadata> {
-    let metadata = fs::metadata(path)
-        .map_err(|e| FsError::from_io_error(e, &path.display().to_string()))?;
+    let metadata =
+        fs::metadata(path).map_err(|e| FsError::from_io_error(e, &path.display().to_string()))?;
 
     let modified = metadata
         .modified()
@@ -259,7 +257,7 @@ pub struct FileMetadata {
 /// };
 /// let result = count_entries_with_config(path, config)?;
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct CountConfig {
     /// Maximum number of entries to count before stopping.
     /// This prevents counting millions of files in huge directories.
@@ -602,9 +600,16 @@ mod tests {
         let result = count_entries_with_config(temp.path(), config).unwrap();
 
         // Should stop at or near 50
-        assert!(result.count <= 51, "Expected ~50 entries, got {}", result.count);
+        assert!(
+            result.count <= 51,
+            "Expected ~50 entries, got {}",
+            result.count
+        );
         assert!(!result.is_exact, "Expected is_exact to be false");
-        assert!(result.truncation_reason.is_some(), "Expected truncation reason");
+        assert!(
+            result.truncation_reason.is_some(),
+            "Expected truncation reason"
+        );
     }
 
     #[test]
@@ -637,7 +642,8 @@ mod tests {
             respect_gitignore: false,
             ..CountConfig::default()
         };
-        let result_without = count_entries_with_config(temp.path(), config_without_gitignore).unwrap();
+        let result_without =
+            count_entries_with_config(temp.path(), config_without_gitignore).unwrap();
 
         // The count without gitignore should be higher (includes ignored/ and its contents)
         assert!(
@@ -685,7 +691,11 @@ mod tests {
         let result = count_entries_with_config(temp.path(), CountConfig::default()).unwrap();
 
         // Empty directory should have count of 0 or 1 (depending on whether root is counted)
-        assert!(result.count <= 1, "Expected 0 or 1 for empty dir, got {}", result.count);
+        assert!(
+            result.count <= 1,
+            "Expected 0 or 1 for empty dir, got {}",
+            result.count
+        );
         assert!(result.is_exact, "Expected exact count for empty directory");
     }
 

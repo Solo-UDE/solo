@@ -32,9 +32,6 @@ tracing = "0.1"
 # UUID for message/tool IDs
 uuid = { version = "1.0", features = ["v4"] }
 
-# Lazy static for model registry
-lazy_static = "1.5"
-
 # File globbing (used by tools)
 glob = "0.3"
 
