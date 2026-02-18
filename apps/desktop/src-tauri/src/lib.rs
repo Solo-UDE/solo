@@ -30,7 +30,7 @@ pub fn run() {
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "solo_desktop=debug,tauri=info".into()),
+                .unwrap_or_else(|_| "solo_desktop=debug,solo_agent=debug,tauri=info".into()),
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
@@ -135,6 +135,7 @@ pub fn run() {
             agent_commands::agent_create_session,
             agent_commands::agent_update_session_model,
             agent_commands::agent_send_message,
+            agent_commands::agent_send_message_server,
             agent_commands::agent_abort_session,
             agent_commands::agent_get_history,
             agent_commands::agent_clear_history,

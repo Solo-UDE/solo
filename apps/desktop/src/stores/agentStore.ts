@@ -65,6 +65,7 @@ export interface Message {
 	isStreaming?: boolean;
 	attachments?: Attachment[];
 	mentions?: FileMention[];
+	turnNumber?: number;
 }
 
 export interface AgentSession {
@@ -131,6 +132,10 @@ interface AgentState {
 	// Per-session streaming state
 	sessionStreaming: Map<string, SessionStreamState>;
 
+	// Server mode
+	useServerMode: boolean;
+	selectedModel: string;
+
 	// UI state
 	isAgentRunning: boolean;
 	error: string | null;
@@ -143,6 +148,10 @@ interface AgentActions {
 	setActiveSession: (sessionId: string) => void;
 	deleteSession: (sessionId: string) => void;
 	renameSession: (sessionId: string, name: string) => void;
+
+	// Server mode
+	setServerMode: (enabled: boolean) => void;
+	setSelectedModel: (model: string) => void;
 
 	// Message handling
 	sendMessage: (sessionId: string, content: string, mode: MessageMode, attachments?: Attachment[], mentions?: FileMention[]) => Promise<void>;
@@ -163,6 +172,9 @@ interface AgentActions {
 	// Persistence
 	loadPersistedSessions: () => void;
 	persistSessions: () => void;
+
+	// Abort
+	abortSession: (sessionId: string) => Promise<void>;
 
 	// Utilities
 	clearError: (sessionId: string) => void;
@@ -186,6 +198,8 @@ const initialState: AgentState = {
 	activeToolCalls: new Map(),
 	pendingToolApprovals: new Map(),
 	sessionStreaming: new Map(),
+	useServerMode: false,
+	selectedModel: DEFAULT_MODEL_ID,
 	isAgentRunning: false,
 	error: null,
 };
@@ -294,6 +308,18 @@ export const useAgentStore = create<AgentStore>()(
 			get().persistSessions();
 		},
 
+		setServerMode: (enabled: boolean) => {
+			set((state) => {
+				state.useServerMode = enabled;
+			});
+		},
+
+		setSelectedModel: (model: string) => {
+			set((state) => {
+				state.selectedModel = model;
+			});
+		},
+
 		sendMessage: async (sessionId: string, content: string, mode: MessageMode, attachments?: Attachment[], mentions?: FileMention[]) => {
 			console.log('[Store SEND] sessionId:', sessionId, 'content:', content, 'mode:', mode);
 			if (!sessionId) {
@@ -304,38 +330,27 @@ export const useAgentStore = create<AgentStore>()(
 			// Add user message
 			get().addUserMessage(sessionId, content, mode, attachments, mentions);
 
-			// Create placeholder for assistant response
-			const assistantMessageId = `msg-${Date.now()}-assistant`;
-			console.log('[Store] Created assistant placeholder:', assistantMessageId);
-
+			// Initialize streaming state — the actual assistant placeholder message
+			// is created by handleTurnStart() when the backend emits TurnStart.
+			// This avoids creating an orphaned placeholder that never receives content.
 			set((state) => {
-				const sessionMessages = state.messages.get(sessionId) || [];
-				sessionMessages.push({
-					id: assistantMessageId,
-					role: 'assistant',
-					content: '',
-					timestamp: new Date(),
-					isStreaming: true,
-				});
-				state.messages.set(sessionId, sessionMessages);
-
-				// Update per-session streaming state
 				const streamState = getOrCreateStreamState(state.sessionStreaming, sessionId);
-				streamState.streamingMessageId = assistantMessageId;
-				streamState.streamingContent = '';
 				streamState.isStreaming = true;
 				streamState.error = null;
 			});
 
-			try {
-				// Build system prompt based on mode
-				const systemPrompt = mode === 'planning'
-					? 'You are a thoughtful assistant. Take your time to think through problems step by step before providing solutions.'
-					: undefined;
+			const { useServerMode, selectedModel } = get();
 
-				console.log('[Store] Calling backend.sendAgentMessage sessionId:', sessionId, 'systemPrompt:', systemPrompt);
-				await backend.sendAgentMessage(sessionId, content, systemPrompt);
-				console.log('[Store] backend.sendAgentMessage returned (streaming should start via events)');
+			try {
+				if (useServerMode) {
+					console.log('[Store] Calling backend.sendAgentMessageServer sessionId:', sessionId, 'model:', selectedModel, 'mode:', mode);
+					await backend.sendAgentMessageServer(sessionId, content, selectedModel, mode);
+					console.log('[Store] backend.sendAgentMessageServer returned (streaming should start via events)');
+				} else {
+					console.log('[Store] Calling backend.sendAgentMessage sessionId:', sessionId, 'mode:', mode);
+					await backend.sendAgentMessage(sessionId, content, mode);
+					console.log('[Store] backend.sendAgentMessage returned (streaming should start via events)');
+				}
 			} catch (error) {
 				const errorMsg = error instanceof Error ? error.message : String(error);
 				console.error('[Store] sendAgentMessage failed:', errorMsg);
@@ -395,6 +410,7 @@ export const useAgentStore = create<AgentStore>()(
 		},
 
 		handleAgentToolStart: (conversationId: string, toolCall: AgentToolCall) => {
+			console.log('[Store TOOL_START]', toolCall.name, toolCall.id);
 			set((state) => {
 				const streamState = getOrCreateStreamState(state.sessionStreaming, conversationId);
 				streamState.activeToolCalls.set(toolCall.id, {
@@ -422,6 +438,7 @@ export const useAgentStore = create<AgentStore>()(
 		},
 
 		handleAgentToolEnd: (conversationId: string, toolCallId: string, result: string) => {
+			console.log('[Store TOOL_END]', toolCallId, 'resultLen:', result.length);
 			set((state) => {
 				const streamState = getOrCreateStreamState(state.sessionStreaming, conversationId);
 				const toolCall = streamState.activeToolCalls.get(toolCallId);
@@ -540,14 +557,24 @@ export const useAgentStore = create<AgentStore>()(
 				streamState.error = error;
 				streamState.isStreaming = false;
 
-				// Mark streaming message as error
 				const messages = state.messages.get(conversationId);
 				if (messages && streamState.streamingMessageId) {
+					// Mark existing streaming message as error
 					const msg = messages.find((m) => m.id === streamState.streamingMessageId);
 					if (msg) {
 						msg.isStreaming = false;
 						msg.content = `Error: ${error}`;
 					}
+				} else if (messages) {
+					// No streaming message yet (error before TurnStart) — create one
+					messages.push({
+						id: `msg-${Date.now()}-error`,
+						role: 'assistant',
+						content: `Error: ${error}`,
+						timestamp: new Date(),
+						isStreaming: false,
+					});
+					state.messages.set(conversationId, messages);
 				}
 
 				streamState.streamingMessageId = null;
@@ -570,6 +597,7 @@ export const useAgentStore = create<AgentStore>()(
 					content: '',
 					timestamp: new Date(),
 					isStreaming: true,
+					turnNumber,
 				});
 				state.messages.set(conversationId, messages);
 
@@ -591,6 +619,15 @@ export const useAgentStore = create<AgentStore>()(
 					const msg = messages.find((m) => m.id === streamState.streamingMessageId);
 					if (msg) {
 						msg.isStreaming = false;
+						// Safety net: mark any still-running tool calls as completed
+						// (handles CLI mode where AgentToolEnd may not be emitted)
+						if (msg.toolCalls) {
+							for (const tc of msg.toolCalls) {
+								if (tc.status === 'running' || tc.status === 'pending') {
+									tc.status = 'completed';
+								}
+							}
+						}
 					}
 				}
 
@@ -614,6 +651,14 @@ export const useAgentStore = create<AgentStore>()(
 				streamState.streamingContent = '';
 				streamState.activeToolCalls = new Map();
 			});
+		},
+
+		abortSession: async (sessionId: string) => {
+			try {
+				await backend.abortAgentSession(sessionId);
+			} catch (error) {
+				console.error('Failed to abort session:', error);
+			}
 		},
 
 		clearError: (sessionId: string) => {
@@ -739,4 +784,12 @@ export const usePendingToolApprovals = (): ToolCallWithStatus[] => {
 	const approvals = useAgentStore((state) => state.pendingToolApprovals);
 	if (approvals.size === 0) return EMPTY_APPROVALS;
 	return Array.from(approvals.values());
+};
+
+export const useServerMode = (): boolean => {
+	return useAgentStore((state) => state.useServerMode);
+};
+
+export const useSelectedModel = (): string => {
+	return useAgentStore((state) => state.selectedModel);
 };

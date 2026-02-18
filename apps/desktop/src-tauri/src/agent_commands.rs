@@ -6,6 +6,7 @@
 
 use solo_agent::{
     build_system_prompt,
+    claude_cli,
     models::{get_all_models, get_models_for_provider},
     oauth::{
         AuthMethodInfo, OAuthFlowResult, OAuthMethod, OAuthState,
@@ -14,17 +15,20 @@ use solo_agent::{
     },
     AgentManager, CredentialManager, ProviderType,
 };
-use solo_protocol::{AgentMessage, AgentToolCall, BackendEvent, ClaudeSetupStatus, ToolCallStatus, ToolCallWithStatus, ToolResult};
+use solo_protocol::{AgentMessage, AgentToolCall, BackendEvent, ClaudeSetupStatus, ContentBlock, ToolCallStatus, ToolCallWithStatus, ToolResult};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::{oneshot, watch, RwLock};
 use tracing::{debug, error, info, warn};
+use futures_util::{SinkExt, StreamExt};
+use tokio_tungstenite::{connect_async, tungstenite::Message as WsMessage};
 use crate::fs_commands::FsState;
 
 /// Maximum number of agentic loop turns before stopping
 const MAX_AGENTIC_TURNS: u32 = 25;
+
 /// Timeout for tool approval (5 minutes)
 const TOOL_APPROVAL_TIMEOUT_SECS: u64 = 300;
 /// Maximum size of tool result before compression (50KB)
@@ -384,8 +388,10 @@ async fn run_agentic_loop(
             }
 
             // ── execute the tool ────────────────────────────────────────
-            info!(session_id = %session_id, tool = %tool_call.name, id = %tool_call.id, "Executing tool");
+            info!(session_id = %session_id, tool = %tool_call.name, id = %tool_call.id, args_len = tool_call.arguments.len(), "Executing tool");
+            let tool_start = std::time::Instant::now();
             let result = manager.execute_tool(tool_call).await;
+            let tool_elapsed_ms = tool_start.elapsed().as_millis();
 
             let (result_text, is_error) = if result.success {
                 (
@@ -404,6 +410,15 @@ async fn run_agentic_loop(
                 )
             };
 
+            info!(
+                session_id = %session_id,
+                tool = %tool_call.name,
+                success = !is_error,
+                result_len = result_text.len(),
+                elapsed_ms = %tool_elapsed_ms,
+                "Tool execution complete"
+            );
+
             tool_results.push((tool_call.id.clone(), result_text.clone(), is_error));
 
             let _ = app.emit(
@@ -417,6 +432,7 @@ async fn run_agentic_loop(
         }
 
         // ── add all tool results as a single user message ───────────────
+        debug!(session_id = %session_id, turn, tool_results_count = tool_results.len(), "Conversation state before next turn");
         if let Err(e) = manager
             .add_message_to_session(
                 &session_id,
@@ -721,11 +737,11 @@ pub async fn agent_update_session_model(
 pub async fn agent_send_message(
     session_id: String,
     content: String,
-    system_prompt: Option<String>,
+    mode: Option<String>,
     app: AppHandle,
     state: State<'_, AgentState>,
 ) -> Result<(), String> {
-    info!(session_id = %session_id, content_len = content.len(), "Sending message to agent (agentic loop)");
+    info!(session_id = %session_id, content_len = content.len(), mode = ?mode, "Sending message to agent (agentic loop)");
 
     // Abort any existing loop for this session
     if let Some(old_sender) = state.abort_senders.write().await.remove(&session_id) {
@@ -737,33 +753,62 @@ pub async fn agent_send_message(
     let fs_state = app.state::<FsState>();
     let workspace_root = fs_state.workspace_root.read().await.clone();
 
-    // Set workspace root on tool registry so file tools enforce path containment
-    if let Some(ref root) = workspace_root {
-        let registry = state.manager.tool_registry();
-        registry.read().await.set_workspace_root(root.clone()).await;
-        info!(workspace_root = %root.display(), "Tool registry workspace root set");
-    }
+    // Detect whether we're using the CLI (OAuth) or direct API
+    let is_cli = state.manager.is_cli_mode().await;
+    info!(session_id = %session_id, is_cli = is_cli, "Provider mode detected");
 
-    // Build system prompt: use provided one, or generate a default from tool definitions
-    let effective_prompt = if system_prompt.is_some() {
-        system_prompt
+    let effective_prompt = if is_cli {
+        // CLI mode: the CLI has its own tools — only provide workspace context.
+        // Do NOT embed Solo's tool definitions (the CLI can't use them).
+        let ws_info = workspace_root
+            .as_ref()
+            .map(|p| format!("Current workspace root: `{}`", p.to_string_lossy()))
+            .unwrap_or_else(|| {
+                "No workspace is currently open. The user has not opened a folder yet. \
+                 Ask them to open a folder if file operations are needed."
+                    .to_string()
+            });
+
+        let mut prompt = format!("## Workspace\n\n{}\n", ws_info);
+        if mode.as_deref() == Some("planning") {
+            prompt = format!(
+                "IMPORTANT: You are in planning mode. Take your time to think through problems step by step \
+                 before providing solutions. Break down complex tasks into clear steps and explain your \
+                 reasoning before writing code.\n\n{}",
+                prompt
+            );
+        }
+        Some(prompt)
     } else {
+        // Direct API mode: build full prompt with Solo's tool definitions
+        // Set workspace root on tool registry so file tools enforce path containment
+        if let Some(ref root) = workspace_root {
+            let registry = state.manager.tool_registry();
+            registry.read().await.set_workspace_root(root.clone()).await;
+            info!(workspace_root = %root.display(), "Tool registry workspace root set");
+        }
+
         let tools = state.manager.get_tool_definitions().await;
         let ws_root = workspace_root
             .as_ref()
             .map(|p| p.to_string_lossy().to_string())
-            .unwrap_or_else(|| "/".to_string());
-        Some(build_system_prompt(&tools, &ws_root))
-    };
+            .unwrap_or_else(|| {
+                "No workspace is currently open. The user has not opened a folder yet. \
+                 Ask them to open a folder if file operations are needed."
+                    .to_string()
+            });
+        let mut prompt = build_system_prompt(&tools, &ws_root);
 
-    // Get the streaming receiver for the initial user message
-    let receiver = state.manager
-        .send_message(&session_id, content, effective_prompt.clone())
-        .await
-        .map_err(|e| {
-            error!(error = %e, session_id = %session_id, "Failed to send message");
-            e.to_string()
-        })?;
+        if mode.as_deref() == Some("planning") {
+            prompt = format!(
+                "IMPORTANT: You are in planning mode. Take your time to think through problems step by step \
+                 before providing solutions. Break down complex tasks into clear steps and explain your \
+                 reasoning before writing code.\n\n{}",
+                prompt
+            );
+        }
+        Some(prompt)
+    };
 
     // Set up abort channel
     let (abort_tx, abort_rx) = watch::channel(false);
@@ -778,23 +823,614 @@ pub async fn agent_send_message(
     let abort_senders = state.abort_senders.clone();
     let sid = session_id.clone();
 
-    // Spawn the agentic loop
-    tokio::spawn(async move {
-        run_agentic_loop(
-            manager,
-            app,
-            sid.clone(),
-            effective_prompt,
-            receiver,
-            abort_rx,
-            loop_approvals,
-            MAX_AGENTIC_TURNS,
-        )
-        .await;
+    if is_cli {
+        // CLI mode: call stream_cli_response directly with the shared approval
+        // map so the native `--permission-prompt-tool stdio` control protocol
+        // bridges to Solo's existing approve/reject infrastructure.
+        let model = {
+            if let Some(sessions) = state.manager.get_session(&session_id).await {
+                sessions.get(&session_id).map(|s| s.model.clone())
+                    .unwrap_or_else(|| "claude-sonnet-4-6".to_string())
+            } else {
+                "claude-sonnet-4-6".to_string()
+            }
+        };
 
-        // Clean up the abort sender for this session
+        let (event_tx, mut event_rx) = tokio::sync::mpsc::channel(100);
+        let approvals_for_cli = loop_approvals.clone();
+
+        // Spawn the CLI streaming task with the native permission bridge
+        let cli_sid = sid.clone();
+        let cli_prompt = content;
+        let cli_system = effective_prompt;
+        let cli_model = model;
+        let cli_tx = event_tx.clone();
+        tokio::spawn(async move {
+            let result = claude_cli::stream_cli_response(
+                cli_model,
+                cli_prompt,
+                cli_system,
+                cli_sid.clone(),
+                cli_tx.clone(),
+                Some(approvals_for_cli),
+            )
+            .await;
+
+            if let Err(e) = result {
+                let _ = cli_tx
+                    .send(BackendEvent::AgentError {
+                        conversation_id: cli_sid,
+                        error: e.to_string(),
+                    })
+                    .await;
+            }
+        });
+
+        // Forwarding task: reads events from stream_cli_response and emits to frontend
+        tokio::spawn(async move {
+            // Emit TurnStart so the frontend knows streaming has begun
+            let _ = app.emit(
+                "agent-event",
+                &BackendEvent::AgentTurnStart {
+                    conversation_id: sid.clone(),
+                    turn_number: 1,
+                },
+            );
+
+            // Forward all events from the CLI (including AgentToolApprovalNeeded)
+            while let Some(event) = event_rx.recv().await {
+                let event_type = match &event {
+                    BackendEvent::AgentChunk { .. } => "AgentChunk",
+                    BackendEvent::AgentToolStart { .. } => "AgentToolStart",
+                    BackendEvent::AgentToolEnd { .. } => "AgentToolEnd",
+                    BackendEvent::AgentToolApprovalNeeded { .. } => "AgentToolApprovalNeeded",
+                    BackendEvent::AgentComplete { .. } => "AgentComplete",
+                    BackendEvent::AgentError { .. } => "AgentError",
+                    _ => "Other",
+                };
+                debug!(session_id = %sid, event_type, "Forwarding CLI event to frontend");
+                let _ = app.emit("agent-event", &event);
+            }
+
+            // Emit LoopComplete so the frontend knows the response is finished
+            info!(session_id = %sid, "CLI streaming finished, emitting LoopComplete");
+            let _ = app.emit(
+                "agent-event",
+                &BackendEvent::AgentLoopComplete {
+                    conversation_id: sid.clone(),
+                    total_turns: 1,
+                },
+            );
+
+            abort_senders.write().await.remove(&sid);
+            info!(session_id = %sid, "CLI streaming task finished");
+        });
+    } else {
+        // Direct API mode: get the streaming receiver via the provider trait
+        // and run Solo's full agentic loop with custom tools
+        let receiver = state.manager
+            .send_message(&session_id, content, effective_prompt.clone())
+            .await
+            .map_err(|e| {
+                error!(error = %e, session_id = %session_id, "Failed to send message");
+                e.to_string()
+            })?;
+
+        tokio::spawn(async move {
+            run_agentic_loop(
+                manager,
+                app,
+                sid.clone(),
+                effective_prompt,
+                receiver,
+                abort_rx,
+                loop_approvals,
+                MAX_AGENTIC_TURNS,
+            )
+            .await;
+
+            // Clean up the abort sender for this session
+            abort_senders.write().await.remove(&sid);
+            info!(session_id = %sid, "Agentic loop task finished");
+        });
+    }
+
+    Ok(())
+}
+
+/// Default Solo server URL (local dev)
+const DEFAULT_SERVER_URL: &str = "ws://localhost:3001";
+
+/// Send a message to the agent via the Solo server (WebSocket mode).
+///
+/// Opens a WebSocket to the server, sends the user request, and streams
+/// events back to the frontend. File operations requested by the server
+/// are executed locally and responses sent back.
+#[tauri::command]
+pub async fn agent_send_message_server(
+    session_id: String,
+    content: String,
+    model: String,
+    mode: Option<String>,
+    app: AppHandle,
+    state: State<'_, AgentState>,
+) -> Result<(), String> {
+    info!(
+        session_id = %session_id,
+        content_len = content.len(),
+        model = %model,
+        mode = ?mode,
+        "Sending message to agent via server"
+    );
+
+    // Abort any existing loop for this session
+    if let Some(old_sender) = state.abort_senders.write().await.remove(&session_id) {
+        let _ = old_sender.send(true);
+    }
+
+    // Read workspace root
+    let fs_state = app.state::<FsState>();
+    let workspace_root = fs_state.workspace_root.read().await.clone()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    // Build chat history from the session
+    let chat_history: Vec<serde_json::Value> = if let Some(sessions) = state.manager.get_session(&session_id).await {
+        if let Some(session) = sessions.get(&session_id) {
+            session.history().iter().map(|msg| {
+                serde_json::json!({
+                    "role": msg.role,
+                    "content": msg.display_text()
+                })
+            }).collect()
+        } else {
+            vec![]
+        }
+    } else {
+        vec![]
+    };
+
+    // Build the server URL
+    let server_url = std::env::var("SOLO_SERVER_URL")
+        .unwrap_or_else(|_| DEFAULT_SERVER_URL.to_string());
+    let ws_url = format!("{}/agent/ws/agent", server_url);
+
+    info!(session_id = %session_id, ws_url = %ws_url, "Connecting to Solo server");
+
+    // Connect to server WebSocket
+    let (ws_stream, _response) = connect_async(&ws_url)
+        .await
+        .map_err(|e| format!("Failed to connect to Solo server: {}", e))?;
+
+    let (mut write, mut read) = ws_stream.split();
+
+    // Send user_request message
+    let user_request = serde_json::json!({
+        "type": "user_request",
+        "data": {
+            "sessionId": session_id,
+            "prompt": content,
+            "model": model,
+            "mode": mode.unwrap_or_else(|| "fast".to_string()),
+            "workspaceRoot": workspace_root,
+            "chatHistory": chat_history
+        }
+    });
+
+    write
+        .send(WsMessage::Text(user_request.to_string()))
+        .await
+        .map_err(|e| format!("Failed to send message to server: {}", e))?;
+
+    // Set up abort channel
+    let (abort_tx, mut abort_rx) = watch::channel(false);
+    state
+        .abort_senders
+        .write()
+        .await
+        .insert(session_id.clone(), abort_tx);
+
+    let abort_senders = state.abort_senders.clone();
+    let loop_approvals = state.loop_approvals.clone();
+    let sid = session_id.clone();
+
+    // Spawn task to read server events and forward to frontend
+    tokio::spawn(async move {
+        while let Some(msg_result) = read.next().await {
+            // Check abort
+            if *abort_rx.borrow() {
+                info!(session_id = %sid, "Server mode aborted");
+                let _ = write
+                    .send(WsMessage::Text(
+                        serde_json::json!({"type": "cancel"}).to_string(),
+                    ))
+                    .await;
+                break;
+            }
+
+            let msg = match msg_result {
+                Ok(m) => m,
+                Err(e) => {
+                    error!(session_id = %sid, error = %e, "WebSocket read error");
+                    let _ = app.emit(
+                        "agent-event",
+                        &BackendEvent::AgentError {
+                            conversation_id: sid.clone(),
+                            error: format!("Server connection error: {}", e),
+                        },
+                    );
+                    break;
+                }
+            };
+
+            let text = match msg {
+                WsMessage::Text(t) => t,
+                WsMessage::Close(_) => {
+                    debug!(session_id = %sid, "WebSocket closed by server");
+                    break;
+                }
+                WsMessage::Ping(data) => {
+                    let _ = write.send(WsMessage::Pong(data)).await;
+                    continue;
+                }
+                _ => continue,
+            };
+
+            // Parse the server message
+            let server_msg: serde_json::Value = match serde_json::from_str(&text) {
+                Ok(v) => v,
+                Err(e) => {
+                    warn!(session_id = %sid, error = %e, "Failed to parse server message");
+                    continue;
+                }
+            };
+
+            let msg_type = server_msg.get("type").and_then(|v| v.as_str()).unwrap_or("");
+
+            match msg_type {
+                "connected" | "init" => {
+                    debug!(session_id = %sid, msg_type, "Server handshake message");
+                }
+
+                "agent:chunk" => {
+                    let conversation_id = server_msg["conversation_id"].as_str().unwrap_or(&sid).to_string();
+                    let chunk_content = server_msg["content"].as_str().unwrap_or("").to_string();
+                    let _ = app.emit(
+                        "agent-event",
+                        &BackendEvent::AgentChunk {
+                            conversation_id,
+                            content: chunk_content,
+                        },
+                    );
+                }
+
+                "agent:turn_start" => {
+                    let conversation_id = server_msg["conversation_id"].as_str().unwrap_or(&sid).to_string();
+                    let turn_number = server_msg["turn_number"].as_u64().unwrap_or(1) as u32;
+                    let _ = app.emit(
+                        "agent-event",
+                        &BackendEvent::AgentTurnStart {
+                            conversation_id,
+                            turn_number,
+                        },
+                    );
+                }
+
+                "agent:tool_start" => {
+                    let conversation_id = server_msg["conversation_id"].as_str().unwrap_or(&sid).to_string();
+                    if let Some(tc) = server_msg.get("tool_call") {
+                        let tool_call = AgentToolCall {
+                            id: tc["id"].as_str().unwrap_or("").to_string(),
+                            name: tc["name"].as_str().unwrap_or("").to_string(),
+                            arguments: tc["arguments"].as_str().unwrap_or("{}").to_string(),
+                        };
+                        let _ = app.emit(
+                            "agent-event",
+                            &BackendEvent::AgentToolStart {
+                                conversation_id,
+                                tool_call,
+                            },
+                        );
+                    }
+                }
+
+                "agent:tool_end" => {
+                    let conversation_id = server_msg["conversation_id"].as_str().unwrap_or(&sid).to_string();
+                    let tool_call_id = server_msg["tool_call_id"].as_str().unwrap_or("").to_string();
+                    let result = server_msg["result"].as_str().unwrap_or("").to_string();
+                    let _ = app.emit(
+                        "agent-event",
+                        &BackendEvent::AgentToolEnd {
+                            conversation_id,
+                            tool_call_id,
+                            result,
+                        },
+                    );
+                }
+
+                "agent:tool_approval_needed" => {
+                    let conversation_id = server_msg["conversation_id"].as_str().unwrap_or(&sid).to_string();
+                    if let Some(tc_data) = server_msg.get("tool_call") {
+                        let tool_call_inner = tc_data.get("tool_call").unwrap_or(tc_data);
+                        let tool_call = AgentToolCall {
+                            id: tool_call_inner["id"].as_str().unwrap_or("").to_string(),
+                            name: tool_call_inner["name"].as_str().unwrap_or("").to_string(),
+                            arguments: tool_call_inner["arguments"].as_str().unwrap_or("{}").to_string(),
+                        };
+                        let tool_call_id = tool_call.id.clone();
+
+                        let _ = app.emit(
+                            "agent-event",
+                            &BackendEvent::AgentToolApprovalNeeded {
+                                conversation_id: conversation_id.clone(),
+                                tool_call: ToolCallWithStatus {
+                                    tool_call: tool_call.clone(),
+                                    status: ToolCallStatus::PendingApproval,
+                                    result: None,
+                                    error: None,
+                                    needs_approval: true,
+                                },
+                            },
+                        );
+
+                        // Create oneshot for the approve/reject commands to resolve
+                        let (approval_tx, approval_rx) = oneshot::channel();
+                        loop_approvals
+                            .write()
+                            .await
+                            .insert(tool_call_id.clone(), (tool_call, approval_tx));
+
+                        // Wait for approval and send response back to server
+                        let approved = tokio::select! {
+                            result = approval_rx => result.unwrap_or(false),
+                            _ = tokio::time::sleep(Duration::from_secs(TOOL_APPROVAL_TIMEOUT_SECS)) => {
+                                warn!(session_id = %sid, tool_call_id = %tool_call_id, "Server mode tool approval timed out");
+                                loop_approvals.write().await.remove(&tool_call_id);
+                                false
+                            }
+                            _ = abort_rx.changed() => {
+                                loop_approvals.write().await.remove(&tool_call_id);
+                                false
+                            }
+                        };
+
+                        // Send approval response back to server
+                        let approval_response = serde_json::json!({
+                            "type": "tool_approval_response",
+                            "toolCallId": tool_call_id,
+                            "approved": approved
+                        });
+                        let _ = write
+                            .send(WsMessage::Text(approval_response.to_string()))
+                            .await;
+                    }
+                }
+
+                "agent:complete" => {
+                    let conversation_id = server_msg["conversation_id"].as_str().unwrap_or(&sid).to_string();
+                    // Build AgentMessage from server data
+                    let text = server_msg["message"]["text"].as_str().map(String::from);
+                    let content_blocks: Vec<ContentBlock> = if let Some(ref t) = text {
+                        vec![ContentBlock::Text { text: t.clone() }]
+                    } else {
+                        vec![]
+                    };
+                    let agent_msg = AgentMessage {
+                        role: "assistant".to_string(),
+                        content: content_blocks,
+                        text,
+                    };
+                    let _ = app.emit(
+                        "agent-event",
+                        &BackendEvent::AgentComplete {
+                            conversation_id,
+                            message: agent_msg,
+                        },
+                    );
+                }
+
+                "agent:error" => {
+                    let conversation_id = server_msg["conversation_id"].as_str().unwrap_or(&sid).to_string();
+                    let error_msg = server_msg["error"].as_str().unwrap_or("Unknown server error").to_string();
+                    let _ = app.emit(
+                        "agent-event",
+                        &BackendEvent::AgentError {
+                            conversation_id,
+                            error: error_msg,
+                        },
+                    );
+                }
+
+                "agent:loop_complete" => {
+                    let conversation_id = server_msg["conversation_id"].as_str().unwrap_or(&sid).to_string();
+                    let total_turns = server_msg["total_turns"].as_u64().unwrap_or(1) as u32;
+                    let _ = app.emit(
+                        "agent-event",
+                        &BackendEvent::AgentLoopComplete {
+                            conversation_id,
+                            total_turns,
+                        },
+                    );
+                }
+
+                "agent:aborted" => {
+                    let conversation_id = server_msg["conversation_id"].as_str().unwrap_or(&sid).to_string();
+                    let reason = server_msg["reason"].as_str().unwrap_or("Unknown").to_string();
+                    let _ = app.emit(
+                        "agent-event",
+                        &BackendEvent::AgentAborted {
+                            conversation_id,
+                            reason,
+                        },
+                    );
+                }
+
+                "fs_operation" => {
+                    // Server is requesting a local file operation
+                    let op_id = server_msg["id"].as_str().unwrap_or("").to_string();
+                    let operation = server_msg["operation"].as_str().unwrap_or("");
+
+                    let (success, data, error_msg) = match operation {
+                        "read" => {
+                            let path = server_msg["path"].as_str().unwrap_or("");
+                            match tokio::fs::read_to_string(path).await {
+                                Ok(content) => (true, Some(serde_json::Value::String(content)), None),
+                                Err(e) => (false, None, Some(e.to_string())),
+                            }
+                        }
+                        "write" => {
+                            let path = server_msg["path"].as_str().unwrap_or("");
+                            let file_content = server_msg["content"].as_str().unwrap_or("");
+                            // Ensure parent directory exists
+                            if let Some(parent) = std::path::Path::new(path).parent() {
+                                let _ = tokio::fs::create_dir_all(parent).await;
+                            }
+                            match tokio::fs::write(path, file_content).await {
+                                Ok(_) => (true, Some(serde_json::Value::String("ok".to_string())), None),
+                                Err(e) => (false, None, Some(e.to_string())),
+                            }
+                        }
+                        "list" => {
+                            let path = server_msg["path"].as_str().unwrap_or(".");
+                            match tokio::fs::read_dir(path).await {
+                                Ok(mut entries) => {
+                                    let mut items = Vec::new();
+                                    while let Ok(Some(entry)) = entries.next_entry().await {
+                                        items.push(entry.file_name().to_string_lossy().to_string());
+                                    }
+                                    (true, Some(serde_json::json!(items)), None)
+                                }
+                                Err(e) => (false, None, Some(e.to_string())),
+                            }
+                        }
+                        "run_command" => {
+                            let cmd = server_msg["command"].as_str().unwrap_or("");
+                            let cwd = if workspace_root.is_empty() { "." } else { &workspace_root };
+                            match tokio::process::Command::new("sh")
+                                .arg("-c")
+                                .arg(cmd)
+                                .current_dir(cwd)
+                                .output()
+                                .await
+                            {
+                                Ok(output) => {
+                                    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+                                    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+                                    let combined = if stderr.is_empty() {
+                                        stdout
+                                    } else {
+                                        format!("{}\n{}", stdout, stderr)
+                                    };
+                                    (output.status.success(), Some(serde_json::Value::String(combined.clone())), if !output.status.success() { Some(combined) } else { None })
+                                }
+                                Err(e) => (false, None, Some(e.to_string())),
+                            }
+                        }
+                        "ripgrep" => {
+                            if let Some(params) = server_msg.get("ripgrepParameters") {
+                                let pattern = params["pattern"].as_str().unwrap_or("");
+                                let search_path = params["path"].as_str().unwrap_or(".");
+                                let mut args = vec![pattern.to_string(), search_path.to_string()];
+                                if params.get("caseInsensitive").and_then(|v| v.as_bool()).unwrap_or(false) {
+                                    args.insert(0, "-i".to_string());
+                                }
+                                let output_mode = params["output_mode"].as_str().unwrap_or("files_with_matches");
+                                match output_mode {
+                                    "files_with_matches" => args.insert(0, "-l".to_string()),
+                                    "count" => args.insert(0, "-c".to_string()),
+                                    _ => {} // "content" is the default
+                                }
+                                if let Some(glob_pat) = params["glob"].as_str() {
+                                    args.insert(0, format!("--glob={}", glob_pat));
+                                }
+                                match tokio::process::Command::new("rg")
+                                    .args(&args)
+                                    .output()
+                                    .await
+                                {
+                                    Ok(output) => {
+                                        let result = String::from_utf8_lossy(&output.stdout).to_string();
+                                        (true, Some(serde_json::Value::String(result)), None)
+                                    }
+                                    Err(e) => (false, None, Some(e.to_string())),
+                                }
+                            } else {
+                                (false, None, Some("Missing ripgrepParameters".to_string()))
+                            }
+                        }
+                        "glob" => {
+                            if let Some(params) = server_msg.get("globParameters") {
+                                let pattern = params["pattern"].as_str().unwrap_or("*");
+                                let search_path = params["path"].as_str().unwrap_or(".");
+                                // Use fd or find as a fallback for glob
+                                let cmd = format!("find {} -name '{}' -type f 2>/dev/null | head -100", search_path, pattern);
+                                match tokio::process::Command::new("sh")
+                                    .arg("-c")
+                                    .arg(&cmd)
+                                    .output()
+                                    .await
+                                {
+                                    Ok(output) => {
+                                        let result = String::from_utf8_lossy(&output.stdout).to_string();
+                                        (true, Some(serde_json::Value::String(result)), None)
+                                    }
+                                    Err(e) => (false, None, Some(e.to_string())),
+                                }
+                            } else {
+                                (false, None, Some("Missing globParameters".to_string()))
+                            }
+                        }
+                        "delete" => {
+                            let path = server_msg["path"].as_str().unwrap_or("");
+                            match tokio::fs::remove_file(path).await {
+                                Ok(_) => (true, Some(serde_json::Value::String("ok".to_string())), None),
+                                Err(e) => (false, None, Some(e.to_string())),
+                            }
+                        }
+                        _ => {
+                            (false, None, Some(format!("Unknown operation: {}", operation)))
+                        }
+                    };
+
+                    // Send response back to server
+                    let response = serde_json::json!({
+                        "type": "fs_operation_response",
+                        "id": op_id,
+                        "success": success,
+                        "data": data,
+                        "error": error_msg
+                    });
+                    let _ = write
+                        .send(WsMessage::Text(response.to_string()))
+                        .await;
+                }
+
+                "complete" | "cancelled" => {
+                    debug!(session_id = %sid, msg_type, "Server session ended");
+                    break;
+                }
+
+                "error" => {
+                    let error_data = server_msg["data"].as_str().unwrap_or("Unknown server error");
+                    error!(session_id = %sid, error = %error_data, "Server error message");
+                    let _ = app.emit(
+                        "agent-event",
+                        &BackendEvent::AgentError {
+                            conversation_id: sid.clone(),
+                            error: error_data.to_string(),
+                        },
+                    );
+                }
+
+                _ => {
+                    debug!(session_id = %sid, msg_type, "Unknown server message type");
+                }
+            }
+        }
+
+        // Clean up
         abort_senders.write().await.remove(&sid);
-        info!(session_id = %sid, "Agentic loop task finished");
+        info!(session_id = %sid, "Server mode task finished");
     });
 
     Ok(())
