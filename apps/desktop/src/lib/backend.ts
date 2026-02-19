@@ -38,7 +38,7 @@ export interface ModelInfo {
 }
 
 // Re-export for convenience
-export type { ProviderType, OAuthMethod, OAuthFlowResult, AuthMethodInfo, AuthType, ClaudeSetupStatus };
+export type { ProviderType };
 
 // =============================================================================
 // Provider Commands

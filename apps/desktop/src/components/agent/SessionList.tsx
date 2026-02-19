@@ -191,7 +191,7 @@ const SessionItem: FC<{
         }}
         onDoubleClick={onDoubleClickRename}
         className={cn(
-          'w-full px-3 py-2 flex items-center gap-2 rounded-lg text-left transition-all duration-150',
+          'w-full px-3 py-2 flex items-center gap-2 rounded-lg text-left transition-[background-color,color] duration-150',
           'hover:bg-muted/60 hover:scale-[1.02] active:scale-[0.97]',
           isActive
             ? 'bg-muted text-foreground'
@@ -335,7 +335,7 @@ export const SessionList: FC<SessionListProps> = ({
         <div className="p-2 border-b border-border/30">
           <button
             onClick={onNewSession}
-            className="w-full h-9 px-3 flex items-center gap-2 rounded-lg bg-primary text-primary-foreground hover:brightness-110 active:scale-[0.97] transition-all duration-200"
+            className="w-full h-9 px-3 flex items-center gap-2 rounded-lg bg-primary text-primary-foreground hover:brightness-110 active:scale-[0.97] transition-[transform,background-color] duration-200"
           >
             <Plus className="h-4 w-4" />
             <span className="text-sm font-medium">New session</span>

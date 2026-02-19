@@ -18,16 +18,18 @@ export const SubmitButton: React.FC<SubmitButtonProps> = ({
       disabled={disabled}
       className={`
         inline-flex items-center justify-center
-        h-9 w-9 rounded-lg
-        bg-primary hover:bg-primary/90
-        focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2
-        transition-colors
-        disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-primary
+        h-[30px] w-[30px] rounded-[8px]
+        bg-primary text-primary-foreground
+        hover:brightness-110 hover:scale-105
+        active:scale-95
+        focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/30
+        transition-[transform,background-color,color] duration-200
+        disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:brightness-100
         ${className}
       `}
       aria-label="Submit message"
     >
-      <ArrowUp className="h-5 w-5 text-primary-foreground" />
+      <ArrowUp className="h-4 w-4" />
     </button>
   );
 };

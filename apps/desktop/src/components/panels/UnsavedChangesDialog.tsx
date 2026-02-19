@@ -1,10 +1,20 @@
 /**
  * UnsavedChangesDialog - Modal dialog for unsaved changes warning
  * Shows when closing a tab with dirty state
+ * Built on the AlertDialog primitive
  */
 
-import { useCallback, useEffect, useRef } from 'react';
-import { Warning, X } from '@phosphor-icons/react';
+import { Warning } from '@phosphor-icons/react';
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from '../ui/alert-dialog';
 
 interface UnsavedChangesDialogProps {
   isOpen: boolean;
@@ -21,87 +31,42 @@ export function UnsavedChangesDialog({
   onDontSave,
   onCancel,
 }: UnsavedChangesDialogProps) {
-  const dontSaveButtonRef = useRef<HTMLButtonElement>(null);
-
-  // Focus the "Don't Save" button when dialog opens
-  useEffect(() => {
-    if (isOpen) {
-      setTimeout(() => {
-        dontSaveButtonRef.current?.focus();
-      }, 50);
-    }
-  }, [isOpen]);
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        onCancel();
-      }
-    },
-    [onCancel]
-  );
-
-  if (!isOpen) return null;
-
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-      onClick={onCancel}
-      onKeyDown={handleKeyDown}
-    >
-      <div
-        className="bg-card border border-border rounded-lg shadow-xl w-96 p-4"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <Warning className="w-4 h-4 text-yellow-500" />
-            <h3 className="text-sm font-medium text-foreground">Unsaved Changes</h3>
-          </div>
-          <button
-            type="button"
-            onClick={onCancel}
-            className="p-1 rounded hover:bg-muted transition-colors"
-          >
-            <X className="w-4 h-4 text-muted-foreground" />
-          </button>
-        </div>
-
-        <p className="text-sm text-muted-foreground mb-4">
-          Do you want to save changes to "{title}" before closing?
-        </p>
-        <p className="text-xs text-muted-foreground/70 mb-4">
-          Your changes will be lost if you don't save them.
-        </p>
-
-        <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors"
-          >
+    <AlertDialog open={isOpen} onOpenChange={(open) => { if (!open) onCancel(); }}>
+      <AlertDialogContent className="w-96 p-4 gap-0">
+        <AlertDialogHeader className="mb-3">
+          <AlertDialogTitle className="flex items-center gap-2 text-sm font-medium">
+            <Warning className="w-4 h-4 text-warning" />
+            Unsaved Changes
+          </AlertDialogTitle>
+          <AlertDialogDescription asChild>
+            <div>
+              <p className="text-sm text-muted-foreground mb-1">
+                Do you want to save changes to &ldquo;{title}&rdquo; before closing?
+              </p>
+              <p className="text-xs text-muted-foreground/70">
+                Your changes will be lost if you don&apos;t save them.
+              </p>
+            </div>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={onCancel}>
             Cancel
-          </button>
-          <button
-            ref={dontSaveButtonRef}
-            type="button"
+          </AlertDialogCancel>
+          <AlertDialogAction
             onClick={onDontSave}
-            className="px-3 py-1.5 text-sm bg-destructive text-destructive-foreground hover:bg-destructive/90 rounded transition-colors"
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90 hover:brightness-100"
           >
-            Don't Save
-          </button>
+            Don&apos;t Save
+          </AlertDialogAction>
           {onSave && (
-            <button
-              type="button"
-              onClick={onSave}
-              className="px-3 py-1.5 text-sm bg-primary text-primary-foreground hover:bg-primary/90 rounded transition-colors"
-            >
+            <AlertDialogAction onClick={onSave}>
               Save
-            </button>
+            </AlertDialogAction>
           )}
-        </div>
-      </div>
-    </div>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }

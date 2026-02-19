@@ -15,7 +15,6 @@ export interface MessageFeedProps {
   messageGroups: MessageGroup[];
   autoScroll?: boolean;
   isStreaming?: boolean;
-  onToolApproval?: (toolCallId: string, approved: boolean) => void;
   className?: string;
 }
 
@@ -23,11 +22,12 @@ export const MessageFeed: FC<MessageFeedProps> = ({
   messageGroups,
   autoScroll = true,
   isStreaming = false,
-  onToolApproval,
   className = '',
 }) => {
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
   const shouldAutoScroll = useRef(autoScroll);
+  // Track which groups have already been mounted (to avoid re-animation)
+  const mountedGroupsRef = useRef(new Set<string>());
 
   const virtualizer = useVirtualizer({
     count: messageGroups.length,
@@ -96,11 +96,18 @@ export const MessageFeed: FC<MessageFeedProps> = ({
           const messageGroup = messageGroups[virtualItem.index];
           if (!messageGroup) return null;
 
+          // Determine if this is a newly mounted group
+          const isNew = !mountedGroupsRef.current.has(messageGroup.id);
+          if (isNew) {
+            mountedGroupsRef.current.add(messageGroup.id);
+          }
+
           return (
             <div
               key={virtualItem.key}
               data-index={virtualItem.index}
               ref={virtualizer.measureElement}
+              className={isNew ? 'animate-slide-up' : undefined}
               style={{
                 position: 'absolute',
                 top: 0,
@@ -112,7 +119,6 @@ export const MessageFeed: FC<MessageFeedProps> = ({
               <MessageSection
                 sectionIndex={virtualItem.index}
                 messages={messageGroup.messages}
-                onToolApproval={onToolApproval}
               />
             </div>
           );

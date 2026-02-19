@@ -14,6 +14,7 @@ import {
 	loadSessions,
 	createDebouncedSessionSave,
 } from '../lib/sessionPersistence';
+import { DEFAULT_MODEL_ID } from '../lib/constants';
 
 // Enable Map and Set support in Immer
 enableMapSet();
@@ -61,6 +62,24 @@ export interface ImageAttachment {
 	height?: number;
 }
 
+/** Unified attachment type (master model) */
+export interface Attachment {
+	id: string;
+	type: 'file' | 'image';
+	path: string;
+	name: string;
+	mimeType?: string;
+	thumbnailUrl?: string;
+	size?: number;
+}
+
+/** File mention from @-mention in Lexical editor */
+export interface FileMention {
+	path: string;
+	name: string;
+	relativePath: string;
+}
+
 export interface Message {
 	id: string;
 	role: 'user' | 'assistant';
@@ -75,6 +94,9 @@ export interface Message {
 	thinkingDurationMs?: number;
 	attachedFiles?: FileAttachment[];
 	attachedImages?: ImageAttachment[];
+	attachments?: Attachment[];
+	mentions?: FileMention[];
+	turnNumber?: number;
 	usage?: TokenUsage;
 	costUsd?: number;
 	durationMs?: number;
@@ -155,6 +177,9 @@ interface AgentState {
 	// Per-session streaming state
 	sessionStreaming: Map<string, SessionStreamState>;
 
+	// Model selection
+	selectedModel: string;
+
 	// UI state
 	isAgentRunning: boolean;
 	error: string | null;
@@ -169,9 +194,12 @@ interface AgentActions {
 	setModel: (sessionId: string, model: string) => Promise<void>;
 	interrupt: (sessionId: string) => Promise<void>;
 
+	// Model selection
+	setSelectedModel: (model: string) => void;
+
 	// Message handling
-	sendMessage: (sessionId: string, content: string, mode?: MessageMode) => Promise<void>;
-	addUserMessage: (sessionId: string, content: string, mode?: MessageMode) => string;
+	sendMessage: (sessionId: string, content: string, mode?: MessageMode, attachments?: Attachment[], mentions?: FileMention[]) => Promise<void>;
+	addUserMessage: (sessionId: string, content: string, mode?: MessageMode, attachments?: Attachment[], mentions?: FileMention[]) => string;
 
 	// Mode management
 	setPlanMode: (sessionId: string, enabled: boolean) => Promise<void>;
@@ -183,6 +211,10 @@ interface AgentActions {
 	handleSessionInit: (sessionId: string, sdkSessionId: string, isResumed: boolean, isForked: boolean) => void;
 	handleError: (message: string, stack?: string) => void;
 	respondPermission: (requestId: string, decision: 'approve' | 'deny', always?: boolean) => Promise<void>;
+
+	// Abort / tool approval (compatibility with master's API surface)
+	abortSession: (sessionId: string) => Promise<void>;
+	resolveToolApproval: (sessionId: string, toolCallId: string, approved: boolean) => Promise<void>;
 
 	// Persistence
 	loadPersistedSessions: () => void;
@@ -205,6 +237,7 @@ const initialState: AgentState = {
 	messages: new Map(),
 	pendingPermissions: new Map(),
 	sessionStreaming: new Map(),
+	selectedModel: DEFAULT_MODEL_ID,
 	isAgentRunning: false,
 	error: null,
 };
@@ -360,15 +393,21 @@ export const useAgentStore = create<AgentStore>()(
 			get().persistSessions();
 		},
 
+		setSelectedModel: (model: string) => {
+			set((state) => {
+				state.selectedModel = model;
+			});
+		},
+
 		// =================================================================
 		// Message Handling
 		// =================================================================
 
-		sendMessage: async (sessionId: string, content: string, mode?: MessageMode) => {
+		sendMessage: async (sessionId: string, content: string, mode?: MessageMode, attachments?: Attachment[], mentions?: FileMention[]) => {
 			if (!sessionId) return;
 
 			// Add user message
-			get().addUserMessage(sessionId, content, mode);
+			get().addUserMessage(sessionId, content, mode, attachments, mentions);
 
 			// Create placeholder for assistant response
 			const assistantMessageId = `msg-${Date.now()}-assistant`;
@@ -407,7 +446,7 @@ export const useAgentStore = create<AgentStore>()(
 			}
 		},
 
-		addUserMessage: (sessionId: string, content: string, mode?: MessageMode) => {
+		addUserMessage: (sessionId: string, content: string, mode?: MessageMode, attachments?: Attachment[], mentions?: FileMention[]) => {
 			const messageId = `msg-${Date.now()}-user`;
 
 			set((state) => {
@@ -419,6 +458,8 @@ export const useAgentStore = create<AgentStore>()(
 					blocks: [],
 					timestamp: new Date(),
 					mode,
+					attachments: attachments?.length ? attachments : undefined,
+					mentions: mentions?.length ? mentions : undefined,
 				});
 				state.messages.set(sessionId, sessionMessages);
 			});
@@ -765,6 +806,21 @@ export const useAgentStore = create<AgentStore>()(
 		},
 
 		// =================================================================
+		// Abort / Tool Approval (master API compatibility)
+		// =================================================================
+
+		abortSession: async (sessionId: string) => {
+			// Delegates to interrupt (bridge equivalent of abort)
+			await get().interrupt(sessionId);
+		},
+
+		resolveToolApproval: async (sessionId: string, toolCallId: string, approved: boolean) => {
+			// Map master's resolveToolApproval to bridge's respondPermission
+			// The toolCallId here is the requestId in the bridge permission model
+			await get().respondPermission(toolCallId, approved ? 'approve' : 'deny');
+		},
+
+		// =================================================================
 		// Utilities
 		// =================================================================
 
@@ -890,4 +946,13 @@ export const usePendingPermissions = (): PermissionRequest[] => {
 	const permissions = useAgentStore((state) => state.pendingPermissions);
 	if (permissions.size === 0) return EMPTY_PERMISSIONS;
 	return Array.from(permissions.values());
+};
+
+/** Master-style tool approval selector (maps bridge permissions to PendingApproval shape) */
+export const usePendingToolApprovals = (): PermissionRequest[] => {
+	return usePendingPermissions();
+};
+
+export const useSelectedModel = (): string => {
+	return useAgentStore((state) => state.selectedModel);
 };

@@ -43,6 +43,7 @@ impl ProviderType {
     }
 
     /// Parse from string
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "anthropic" | "claude" => Some(ProviderType::Anthropic),
@@ -127,17 +128,11 @@ pub enum ProviderError {
     #[error("Serialization error: {0}")]
     SerializationError(#[from] serde_json::Error),
 
-    #[error("HTTP error: {0}")]
-    HttpError(#[from] reqwest::Error),
-
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
 
     #[error("Keychain error: {0}")]
     KeychainError(String),
-
-    #[error("OAuth error: {0}")]
-    OAuthError(String),
 
     #[error("{0}")]
     Other(String),
@@ -152,8 +147,14 @@ mod tests {
 
     #[test]
     fn test_provider_type_parsing() {
-        assert_eq!(ProviderType::from_str("anthropic"), Some(ProviderType::Anthropic));
-        assert_eq!(ProviderType::from_str("claude"), Some(ProviderType::Anthropic));
+        assert_eq!(
+            ProviderType::from_str("anthropic"),
+            Some(ProviderType::Anthropic)
+        );
+        assert_eq!(
+            ProviderType::from_str("claude"),
+            Some(ProviderType::Anthropic)
+        );
         assert_eq!(ProviderType::from_str("openai"), Some(ProviderType::OpenAI));
         assert_eq!(ProviderType::from_str("gpt"), Some(ProviderType::OpenAI));
         assert_eq!(ProviderType::from_str("gemini"), Some(ProviderType::Gemini));

@@ -135,11 +135,11 @@ export function Tab({
       className={cn(
         'group relative flex items-center gap-1.5 h-[35px] px-3',
         'border-r border-border/20',
-        'transition-all duration-150 ease-out',
+        'transition-[background-color,color] duration-150 ease-out',
         'cursor-pointer select-none',
         'shrink-0 min-w-[80px] max-w-[200px]',
         isActive
-          ? 'bg-card text-foreground'
+          ? 'bg-card/60 text-foreground'
           : 'bg-transparent text-muted-foreground hover:text-foreground hover:bg-muted/40',
         isDragging && 'opacity-50',
         isOver && !isDragging && 'bg-primary/10'
@@ -169,10 +169,10 @@ export function Tab({
       ) : (
         <button
           className={cn(
-            'p-0.5 rounded-sm',
+            'p-0.5 rounded-md',
             'opacity-0 group-hover:opacity-100',
             'hover:bg-muted active:scale-95',
-            'transition-all duration-100',
+            'transition-[transform,opacity] duration-100',
             'shrink-0',
             // Always show close button if dirty
             instance.isDirty && 'opacity-100'
@@ -187,7 +187,7 @@ export function Tab({
 
       {/* Active tab indicator line */}
       {isActive && (
-        <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-primary" />
+        <div className="absolute bottom-0 left-0 right-0 h-px bg-primary/60" />
       )}
     </div>
   );

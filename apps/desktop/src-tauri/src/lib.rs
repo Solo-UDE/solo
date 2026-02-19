@@ -1,15 +1,46 @@
+#![warn(clippy::all, clippy::pedantic)]
+#![allow(
+    clippy::module_name_repetitions,
+    clippy::must_use_candidate,
+    clippy::missing_errors_doc,
+    clippy::missing_panics_doc,
+    clippy::wildcard_imports,
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::uninlined_format_args,
+    clippy::doc_markdown,
+    clippy::return_self_not_must_use,
+    clippy::redundant_closure_for_method_calls,
+    clippy::single_match_else,
+    clippy::if_not_else,
+    clippy::match_same_arms,
+    clippy::map_unwrap_or,
+    clippy::similar_names,
+    clippy::struct_excessive_bools,
+    // Tauri-specific: commands have AppHandle + State + many params
+    clippy::too_many_arguments,
+    clippy::too_many_lines,
+    clippy::needless_pass_by_value,
+)]
+
 //! Solo Desktop Library
 //!
 //! This module provides the library interface for the Solo desktop application.
 
 mod agent;
+mod agent_commands;
 mod commands;
 mod fs_commands;
-mod agent_commands;
 mod provider_commands;
 mod parse_commands;
 mod auth_commands;
+mod commands;
 mod embedding_commands;
+mod fs_commands;
+mod git_commands;
+mod parse_commands;
 mod terminal_commands;
 mod worktree_commands;
 
@@ -17,12 +48,14 @@ use fs_commands::FsState;
 use provider_commands::ProviderAuthState;
 use auth_commands::AuthState;
 use embedding_commands::EmbeddingState;
-use terminal_commands::TerminalState;
-use worktree_commands::WorktreeState;
+use fs_commands::FsState;
+use git_commands::GitState;
 use tauri::Emitter;
 #[cfg(target_os = "macos")]
 use tauri_plugin_decorum::WebviewWindowExt;
+use terminal_commands::TerminalState;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use worktree_commands::WorktreeState;
 
 use std::env;
 use std::path::PathBuf;
@@ -34,7 +67,7 @@ pub fn run() {
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "solo_desktop=debug,tauri=info".into()),
+                .unwrap_or_else(|_| "solo_desktop=debug,solo_agent=debug,tauri=info".into()),
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
@@ -111,8 +144,8 @@ pub fn run() {
             // macOS: position traffic lights and apply native vibrancy
             #[cfg(target_os = "macos")]
             {
-                use tauri::Manager;
                 use tauri::window::{Effect, EffectState, EffectsBuilder};
+                use tauri::Manager;
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.set_traffic_lights_inset(13.0, 13.0);
                     let _ = window.set_effects(
@@ -132,6 +165,7 @@ pub fn run() {
         .manage(AuthState::new())
         .manage(EmbeddingState::new())
         .manage(TerminalState::new())
+        .manage(GitState::new())
         .manage(WorktreeState::new())
         .invoke_handler(tauri::generate_handler![
             // Core commands
@@ -208,6 +242,23 @@ pub fn run() {
             terminal_commands::write_pty,
             terminal_commands::resize_pty,
             terminal_commands::kill_pty,
+            // Git commands
+            git_commands::git_get_status,
+            git_commands::git_setup,
+            git_commands::git_commit,
+            git_commands::git_push,
+            git_commands::git_pull,
+            git_commands::git_get_current_sha,
+            git_commands::git_get_changes,
+            git_commands::git_get_file_diff,
+            git_commands::git_discard_file,
+            git_commands::git_discard_all,
+            git_commands::git_cleanup_locks,
+            git_commands::git_stage_file,
+            git_commands::git_unstage_file,
+            git_commands::git_stage_all,
+            git_commands::git_unstage_all,
+            git_commands::git_create_branch,
             // Worktree commands
             worktree_commands::worktree_list,
             worktree_commands::worktree_create,

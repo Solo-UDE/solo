@@ -55,3 +55,6 @@ apps/desktop/src/components/sidebar/CLAUDE.md
 apps/desktop/src/components/panels/CLAUDE.md
 apps/desktop/src/components/file-explorer/CLAUDE.md
 apps/desktop/src/components/editor/CLAUDE.md
+
+# Local-only migration planning docs
+docs/MIGRATION.md

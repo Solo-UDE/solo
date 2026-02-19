@@ -8,6 +8,7 @@ import { FileViewerPanel } from '@/components/panels/FileViewerPanel';
 import { WelcomePanel } from '@/components/panels/WelcomePanel';
 import { AgentPanel } from '@/components/panels/AgentPanel';
 import { TerminalPanel } from '@/components/panels/TerminalPanel';
+import { GitDiffPanel } from '@/components/panels/GitDiffPanel';
 
 /**
  * Register all built-in panel types
@@ -70,6 +71,20 @@ export function registerBuiltinPanels(): void {
     defaultIcon: 'terminal',
     component: TerminalPanel,
     getDefaultTitle: () => 'Terminal',
+    allowMultiple: true,
+    preferredRegion: 'editor',
+  });
+  // Git Diff Panel — no serialization: diffs should be fresh each time
+  panelRegistry.register({
+    id: 'git-diff',
+    displayName: 'Diff',
+    defaultIcon: 'git-diff',
+    component: GitDiffPanel,
+    getDefaultTitle: (data) => {
+      const filePath = data.filePath as string | undefined;
+      if (!filePath) return 'Diff';
+      return `Diff: ${filePath.split('/').pop() ?? 'Diff'}`;
+    },
     allowMultiple: true,
     preferredRegion: 'editor',
   });

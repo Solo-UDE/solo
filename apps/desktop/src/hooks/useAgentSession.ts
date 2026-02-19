@@ -37,7 +37,7 @@ export interface UseAgentSessionReturn {
 	/** Create a new session */
 	createSession: (model?: string) => Promise<string>;
 	/** Send a message */
-	sendMessage: (content: string, mode?: MessageMode) => Promise<void>;
+	sendMessage: (content: string, mode?: MessageMode, attachments?: import('../stores/agentStore').Attachment[], mentions?: import('../stores/agentStore').FileMention[]) => Promise<void>;
 	/** Interrupt the running agent */
 	interrupt: () => Promise<void>;
 	/** Change the model */
@@ -86,6 +86,18 @@ export function useAgentSession(
 	useEffect(() => {
 		if (autoCreate && !propSessionId && !localSessionId && !autoCreated.current) {
 			autoCreated.current = true;
+
+			// Reuse the most recent existing session instead of creating a duplicate
+			const existingSessions = useAgentStore.getState().sessions;
+			if (existingSessions.size > 0) {
+				const mostRecent = [...existingSessions.values()]
+					.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+				if (mostRecent) {
+					setLocalSessionId(mostRecent.id);
+					return;
+				}
+			}
+
 			storeCreateSession(defaultModel)
 				.then((newId) => {
 					setLocalSessionId(newId);
@@ -102,9 +114,9 @@ export function useAgentSession(
 	);
 
 	const sendMessage = useCallback(
-		async (content: string, mode?: MessageMode) => {
-			if (!content.trim() || !effectiveSessionId) return;
-			await storeSendMessage(effectiveSessionId, content, mode);
+		async (content: string, mode?: MessageMode, attachments?: import('../stores/agentStore').Attachment[], mentions?: import('../stores/agentStore').FileMention[]) => {
+			if ((!content.trim() && (!attachments || attachments.length === 0)) || !effectiveSessionId) return;
+			await storeSendMessage(effectiveSessionId, content, mode, attachments, mentions);
 		},
 		[storeSendMessage, effectiveSessionId]
 	);

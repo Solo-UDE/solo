@@ -109,11 +109,14 @@ pub async fn parse_file(
             path: path.clone(),
         })?;
 
-        let workspace_canonical = workspace_path.canonicalize().map_err(|e| FileOperationError {
-            code: FileErrorCode::IoError,
-            message: e.to_string(),
-            path: path.clone(),
-        })?;
+        let workspace_canonical =
+            workspace_path
+                .canonicalize()
+                .map_err(|e| FileOperationError {
+                    code: FileErrorCode::IoError,
+                    message: e.to_string(),
+                    path: path.clone(),
+                })?;
 
         if !canonical.starts_with(&workspace_canonical) {
             return Err(FileOperationError {

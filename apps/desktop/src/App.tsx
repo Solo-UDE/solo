@@ -17,19 +17,24 @@ import { useColorScheme } from "./hooks/useColorScheme";
 import { useTitlebarStyle } from "./hooks/usePlatform";
 import { useAgentStream } from "./hooks/useAgentStream";
 import { useTerminalStream } from "./hooks/useTerminalStream";
+import { useGitStream } from "./hooks/useGitStream";
 import { useWorktreeStream } from "./hooks/useWorktreeStream";
 import { useTerminalStore, clearActiveTerminal, findInActiveTerminal } from "./stores/terminalStore";
 import { useFileExplorerStore } from "./stores/fileExplorerStore";
 import { createTerminal, killTerminal } from "./lib/tauri/terminal";
 import { SIDEBAR } from "./lib/constants";
 import { cn } from "./lib/utils";
+import { DndProvider } from "react-dnd";
+import { HTML5Backend } from "react-dnd-html5-backend";
+import { Toaster } from "sonner";
+import { WorkspaceSwitcher } from "./components/titlebar/WorkspaceSwitcher";
 
 // Register built-in panels on module load
 registerBuiltinPanels();
 
 function AppContent() {
   const [backendStatus, setBackendStatus] = useState<string>("Connecting...");
-  const [isDragging, setIsDragging] = useState(false);
+  const sidebarRef = useRef<HTMLElement>(null);
   const dragStartX = useRef<number>(0);
   const dragStartWidth = useRef<number>(0);
 
@@ -59,8 +64,21 @@ function AppContent() {
   // Enable autosave on blur and tab switch
   useAutosave();
 
+  // A2: beforeunload warning for unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      const hasDirty = usePanelTabsStore.getState().hasDirtyPanels();
+      if (hasDirty) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, []);
+
   // Apply color scheme to document
-  useColorScheme();
+  const resolvedTheme = useColorScheme();
 
   // Set vibrancy attribute from React (Rust's window.eval fires before DOM is ready)
   useEffect(() => {
@@ -96,6 +114,7 @@ function AppContent() {
   // Set up event stream listeners (hooks manage their own lifecycle)
   useAgentStream();
   useTerminalStream();
+  useGitStream();
   useWorktreeStream();
 
   // Load persisted agent sessions on startup
@@ -147,6 +166,10 @@ function AppContent() {
       // Terminal-specific shortcuts (only when terminal panel is open)
       const isTerminalOpen = useUIStore.getState().terminalPanelOpen;
       if (!isTerminalOpen) return;
+
+      // A6: Don't intercept shortcuts when Monaco editor is focused
+      const isEditorFocused = document.activeElement?.closest('.monaco-editor');
+      if (isEditorFocused) return;
 
       // Cmd+T — new terminal
       if (e.key === 't' && e.metaKey && !e.shiftKey) {
@@ -210,44 +233,36 @@ function AppContent() {
     openPanel(BUILTIN_PANEL_TYPES.FILE_VIEWER, { filePath: path, fileName });
   }, [openPanel]);
 
-  // Sidebar resize handlers
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+  // Sidebar resize handlers — direct DOM manipulation for zero-lag dragging
+  const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
-    setIsDragging(true);
+    e.currentTarget.setPointerCapture(e.pointerId);
     dragStartX.current = e.clientX;
-    dragStartWidth.current = leftSidebarWidth;
-  }, [leftSidebarWidth]);
+    dragStartWidth.current = useUIStore.getState().leftSidebarWidth;
+    document.body.classList.add('is-resizing');
+  }, []);
 
-  const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (!isDragging) return;
+  const handlePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
+    const delta = e.clientX - dragStartX.current;
+    const newWidth = Math.max(SIDEBAR.min, Math.min(SIDEBAR.max, dragStartWidth.current + delta));
+    if (sidebarRef.current) {
+      sidebarRef.current.style.width = `${newWidth}px`;
+    }
+  }, []);
+
+  const handlePointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
+    document.body.classList.remove('is-resizing');
+    // Commit final width to store
     const delta = e.clientX - dragStartX.current;
     const newWidth = Math.max(SIDEBAR.min, Math.min(SIDEBAR.max, dragStartWidth.current + delta));
     setLeftSidebarWidth(newWidth);
-  }, [isDragging, setLeftSidebarWidth]);
-
-  const handleMouseUp = useCallback(() => {
-    setIsDragging(false);
-  }, []);
+  }, [setLeftSidebarWidth]);
 
   const handleDoubleClick = useCallback(() => {
     setLeftSidebarWidth(SIDEBAR.expanded);
   }, [setLeftSidebarWidth]);
-
-  // Attach global mouse events for sidebar drag
-  useEffect(() => {
-    if (isDragging) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-      document.body.style.cursor = 'col-resize';
-      document.body.style.userSelect = 'none';
-    }
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    };
-  }, [isDragging, handleMouseMove, handleMouseUp]);
 
   // Terminal panel divider drag handlers
   const handleTerminalDragStart = useCallback((e: React.MouseEvent) => {
@@ -295,19 +310,20 @@ function AppContent() {
         <div className="flex-1 flex items-center" data-tauri-drag-region>
           <button
             onClick={toggleSidebar}
-            className="p-1 rounded hover:bg-foreground/[0.08] transition-colors ml-1.5"
+            className={cn(
+              'p-1 rounded-lg hover:bg-foreground/[0.06] transition-[background-color,color] duration-150 ml-1.5',
+              !isCollapsed && 'glow-active',
+            )}
             title={isCollapsed ? 'Expand Sidebar (⌘B)' : 'Collapse Sidebar (⌘B)'}
           >
             <SidebarSimple
               weight={isCollapsed ? 'regular' : 'fill'}
-              className="w-4 h-4 text-muted-foreground"
+              className={cn('w-4 h-4', isCollapsed ? 'text-muted-foreground' : 'text-primary')}
             />
           </button>
         </div>
 
-        <span className="text-sm font-medium text-muted-foreground/60" data-tauri-drag-region>
-          Solo
-        </span>
+        <WorkspaceSwitcher />
 
         <div className="flex-1 flex items-center justify-end gap-2">
           <div
@@ -327,23 +343,23 @@ function AppContent() {
           <button
             onClick={handleToggleTerminal}
             className={cn(
-              'p-1 rounded hover:bg-foreground/[0.08] transition-colors',
-              terminalPanelOpen && 'bg-foreground/[0.08]',
+              'p-1 rounded-lg hover:bg-foreground/[0.06] transition-[background-color,color] duration-150',
+              terminalPanelOpen && 'glow-active',
             )}
             title="Toggle Terminal (⌘`)"
           >
-            <Terminal className="w-4 h-4 text-muted-foreground" />
+            <Terminal className={cn('w-4 h-4', terminalPanelOpen ? 'text-primary' : 'text-muted-foreground')} />
           </button>
           <button
             onClick={() => openSettings()}
-            className="p-1 rounded hover:bg-foreground/[0.08] transition-colors"
+            className="p-1 rounded-lg hover:bg-foreground/[0.06] transition-[background-color,color] duration-150"
             title="Settings (⌘,)"
           >
             <GearSix className="w-4 h-4 text-muted-foreground" />
           </button>
           <button
             onClick={signOut}
-            className="p-1 rounded hover:bg-foreground/[0.08] transition-colors"
+            className="p-1 rounded-lg hover:bg-foreground/[0.06] transition-[background-color,color] duration-150"
             title="Sign out"
           >
             <SignOut className="w-4 h-4 text-muted-foreground" />
@@ -357,22 +373,21 @@ function AppContent() {
           <SettingsView />
         </div>
       ) : (
+        <DndProvider backend={HTML5Backend}>
         <div className="flex h-full">
-          <PrimarySidebar width={leftSidebarWidth} onFileOpen={handleFileOpen} />
+          <PrimarySidebar ref={sidebarRef} width={leftSidebarWidth} onFileOpen={handleFileOpen} />
 
           <div
-            className={cn('split-divider', isDragging && 'dragging', isCollapsed && 'hidden')}
-            onMouseDown={handleMouseDown}
+            className="split-divider"
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
             onDoubleClick={handleDoubleClick}
-          >
-            <div className="split-divider-grip">
-              <span /><span /><span />
-            </div>
-          </div>
+          />
 
-          {/* Right column: transparent so terminal vibrancy shows through */}
-          <div className="flex-1 flex flex-col overflow-hidden min-h-0 pt-[38px]">
-            <div className="flex-1 overflow-hidden min-h-0 bg-background">
+          {/* Right column: opaque background covers vibrancy for editor area */}
+          <div className="flex-1 flex flex-col overflow-hidden min-h-0 pt-[38px] bg-background">
+            <div className="flex-1 overflow-hidden min-h-0">
               <MosaicLayout />
             </div>
 
@@ -401,7 +416,10 @@ function AppContent() {
             </div>
           </div>
         </div>
+        </DndProvider>
       )}
+
+      <Toaster richColors position="bottom-right" theme={resolvedTheme} />
     </div>
   );
 }

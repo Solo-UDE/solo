@@ -78,14 +78,14 @@ export function ShortcutsTab() {
             placeholder="Search shortcuts..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 bg-background border border-border rounded-none text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+            className="w-full pl-9 pr-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
           />
         </div>
         {hasCustomizations && (
           <button
             type="button"
             onClick={resetAllKeybindings}
-            className="flex items-center gap-1.5 px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted rounded-none transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
           >
             <ArrowCounterClockwise className="w-4 h-4" />
             Reset All
@@ -97,7 +97,7 @@ export function ShortcutsTab() {
       <div className="space-y-8">
         {filteredCategories.map((category) => (
           <div key={category.id}>
-            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4">
+            <h3 className="text-xs font-semibold text-muted-foreground mb-4">
               {category.label}
             </h3>
             <div className="divide-y divide-border">

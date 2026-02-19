@@ -20,6 +20,8 @@ interface PanelTabsState {
   tileTabs: Map<TileId, TileTabState>;
   /** Counter for generating unique panel instance IDs */
   nextInstanceId: number;
+  /** Save callbacks registered by panel components */
+  saveCallbacks: Map<PanelInstanceId, () => Promise<void>>;
 }
 
 interface PanelTabsActions {
@@ -94,6 +96,18 @@ interface PanelTabsActions {
 
   /** Close the active tab in a tile */
   closeActiveTab: (tileId: TileId) => void;
+
+  /** Close all panels across all tiles */
+  closeAll: () => void;
+
+  /** Register a save callback for a panel (for autosave) */
+  registerSaveCallback: (instanceId: PanelInstanceId, saveFn: (() => Promise<void>) | undefined) => void;
+
+  /** Check if any panels have unsaved changes */
+  hasDirtyPanels: () => boolean;
+
+  /** Get dirty panels with their save callbacks */
+  getDirtyPanelsWithSave: () => { instanceId: PanelInstanceId; save: () => Promise<void> }[];
 }
 
 type PanelTabsStore = PanelTabsState & PanelTabsActions;
@@ -102,6 +116,7 @@ const initialState: PanelTabsState = {
   instances: new Map(),
   tileTabs: new Map(),
   nextInstanceId: 1,
+  saveCallbacks: new Map(),
 };
 
 export const usePanelTabsStore = create<PanelTabsStore>()(
@@ -418,6 +433,49 @@ export const usePanelTabsStore = create<PanelTabsStore>()(
       if (!tileState?.activeTabId) return;
 
       get().closePanelInTile(tileState.activeTabId, tileId);
+    },
+
+    closeAll: () => {
+      // Close all panels in every tile
+      for (const tileId of get().tileTabs.keys()) {
+        get().closeAllInTile(tileId);
+      }
+      set((state) => {
+        state.instances = new Map();
+        state.tileTabs = new Map();
+        state.saveCallbacks = new Map();
+      });
+    },
+
+    registerSaveCallback: (instanceId: PanelInstanceId, saveFn: (() => Promise<void>) | undefined) => {
+      set((state) => {
+        if (saveFn) {
+          state.saveCallbacks.set(instanceId, saveFn);
+        } else {
+          state.saveCallbacks.delete(instanceId);
+        }
+      });
+    },
+
+    hasDirtyPanels: () => {
+      for (const instance of get().instances.values()) {
+        if (instance.isDirty) return true;
+      }
+      return false;
+    },
+
+    getDirtyPanelsWithSave: () => {
+      const result: { instanceId: PanelInstanceId; save: () => Promise<void> }[] = [];
+      const callbacks = get().saveCallbacks;
+      for (const instance of get().instances.values()) {
+        if (instance.isDirty) {
+          const save = callbacks.get(instance.id);
+          if (save) {
+            result.push({ instanceId: instance.id, save });
+          }
+        }
+      }
+      return result;
     },
   }))
 );

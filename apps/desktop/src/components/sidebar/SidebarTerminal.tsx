@@ -155,7 +155,7 @@ export const SidebarTerminal: FC = () => {
         <div className="flex items-center gap-0.5 shrink-0">
           <button
             onClick={handleNewTerminal}
-            className="p-1 rounded-lg cursor-pointer text-muted-foreground hover:text-foreground hover:bg-muted/60 hover:scale-105 active:scale-95 transition-all duration-150"
+            className="p-1 rounded-lg cursor-pointer text-muted-foreground hover:text-foreground hover:bg-muted/60 hover:scale-105 active:scale-95 transition-[transform,background-color,color] duration-150"
             title="New Terminal"
           >
             <Plus className="w-3.5 h-3.5" />
