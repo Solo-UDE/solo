@@ -16,7 +16,7 @@ const TAB_LABELS: Record<SettingsTabId, string> = {
   terminal: 'Terminal',
   files: 'Files',
   shortcuts: 'Shortcuts',
-  ai: 'AI',
+  ai: 'Providers',
 };
 
 export function SettingsView() {

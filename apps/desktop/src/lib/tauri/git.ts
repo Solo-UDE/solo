@@ -89,3 +89,7 @@ export const gitUnstageAll = () =>
 /** Create a new local branch and check it out */
 export const gitCreateBranch = (branchName: string) =>
   invoke<void>('git_create_branch', { branchName });
+
+/** Clone a git repository to a target path */
+export const gitClone = (repositoryUrl: string, targetPath: string) =>
+  invoke<string>('git_clone', { repositoryUrl, targetPath });

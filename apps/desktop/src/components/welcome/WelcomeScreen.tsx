@@ -1,0 +1,186 @@
+import { useState, useCallback, useEffect } from 'react';
+import { FolderOpen, GitBranch, Clock, FolderSimple, X } from '@phosphor-icons/react';
+import SoloDecryptAnimation from '../agent/SoloDecryptAnimation';
+import { CloneDialog } from './CloneDialog';
+import { openFolderDialog } from '@/lib/tauri/fs';
+import { useWorkspaceStore } from '@/stores/workspaceStore';
+import { cn } from '@/lib/utils';
+
+/** Extract the last segment of a path */
+const dirName = (p: string) => {
+  const sep = p.includes('\\') ? '\\' : '/';
+  return p.split(sep).pop() ?? p;
+};
+
+/** Truncate a path for display */
+const truncatePath = (p: string, maxLen = 50) => {
+  if (p.length <= maxLen) return p;
+  const sep = p.includes('\\') ? '\\' : '/';
+  const parts = p.split(sep);
+  if (parts.length <= 3) return p;
+  return `...${sep}${parts.slice(-3).join(sep)}`;
+};
+
+export function WelcomeScreen() {
+  const recentDirectories = useWorkspaceStore((s) => s.recentDirectories);
+  const switchWorkspace = useWorkspaceStore((s) => s.switchWorkspace);
+  const removeRecent = useWorkspaceStore((s) => s.removeRecent);
+  const [cloneOpen, setCloneOpen] = useState(false);
+  const [showContent, setShowContent] = useState(false);
+
+  // Reveal content after the decrypt animation assembles (~1.6s)
+  useEffect(() => {
+    const t = setTimeout(() => setShowContent(true), 1600);
+    return () => clearTimeout(t);
+  }, []);
+
+  // ⌘O keyboard shortcut to open project
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.metaKey && e.key === 'o') {
+        e.preventDefault();
+        handleOpenProject();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [handleOpenProject]);
+
+  const handleOpenProject = useCallback(async () => {
+    const path = await openFolderDialog();
+    if (path) {
+      await switchWorkspace(path);
+    }
+  }, [switchWorkspace]);
+
+  const handleSwitchTo = useCallback(
+    async (path: string) => {
+      await switchWorkspace(path);
+    },
+    [switchWorkspace],
+  );
+
+  const handleRemoveRecent = useCallback(
+    (e: React.MouseEvent, path: string) => {
+      e.stopPropagation();
+      removeRecent(path);
+    },
+    [removeRecent],
+  );
+
+  return (
+    <>
+      <div className="relative bg-background flex-1 flex flex-col items-center justify-center h-[calc(100vh-38px)] mt-[38px] overflow-hidden select-none">
+        {/* Ambient primary glow behind animation */}
+        <div className="absolute top-[30%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[200px] rounded-full bg-primary/[0.06] blur-[80px] pointer-events-none" />
+
+        {/* Solo decrypt animation */}
+        <SoloDecryptAnimation />
+
+        {/* Tagline */}
+        <p className="text-xs text-muted-foreground/50 tracking-wide mt-4">
+          Your AI coding agent
+        </p>
+
+        {/* Action buttons — fade in after decrypt assembles */}
+        <div
+          className="flex items-center gap-3 mt-8"
+          style={{
+            opacity: showContent ? 1 : 0,
+            transform: showContent ? 'translateY(0)' : 'translateY(8px)',
+            transition: 'opacity 280ms var(--ease-smooth), transform 280ms var(--ease-smooth)',
+          }}
+        >
+          <button
+            onClick={handleOpenProject}
+            className="h-9 px-4 rounded-[10px] bg-primary text-primary-foreground text-xs font-medium shadow-sm hover:brightness-110 active:scale-[0.97] transition-all duration-200 flex items-center gap-2 cursor-pointer"
+          >
+            <FolderOpen className="w-3.5 h-3.5" weight="duotone" />
+            Open Project
+            <kbd className="ml-1 text-[10px] opacity-60 font-normal">⌘O</kbd>
+          </button>
+          <button
+            onClick={() => setCloneOpen(true)}
+            className="h-9 px-4 rounded-[10px] bg-muted/40 text-foreground/80 text-xs font-medium hover:bg-muted/60 hover:scale-[1.02] active:scale-[0.97] transition-all duration-200 flex items-center gap-2 cursor-pointer"
+          >
+            <GitBranch className="w-3.5 h-3.5 text-muted-foreground" />
+            Clone from GitHub
+          </button>
+        </div>
+
+        {/* Recent Projects — staggered fade-in */}
+        {recentDirectories.length > 0 && (
+          <div
+            className="mt-8 w-full max-w-sm"
+            style={{
+              opacity: showContent ? 1 : 0,
+              transform: showContent ? 'translateY(0)' : 'translateY(8px)',
+              transition: 'opacity 280ms var(--ease-smooth) 60ms, transform 280ms var(--ease-smooth) 60ms',
+            }}
+          >
+            <div className="rounded-xl bg-card/50 border border-border/30 p-3">
+              <div className="flex items-center gap-1.5 mb-2">
+                <Clock className="w-3 h-3 text-muted-foreground/50" />
+                <span className="text-[10px] font-medium text-muted-foreground/50 tracking-wide">
+                  Recent Projects
+                </span>
+              </div>
+              <div className="space-y-0.5">
+                {recentDirectories.slice(0, 5).map((path, i) => (
+                  <button
+                    key={path}
+                    onClick={() => handleSwitchTo(path)}
+                    className="group w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs hover:bg-muted/40 active:scale-[0.99] transition-all duration-150 cursor-pointer"
+                    style={{
+                      opacity: showContent ? 1 : 0,
+                      transform: showContent ? 'translateY(0)' : 'translateY(8px)',
+                      transition: `opacity 250ms var(--ease-smooth) ${100 + i * 40}ms, transform 250ms var(--ease-smooth) ${100 + i * 40}ms`,
+                    }}
+                  >
+                    <FolderSimple className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                    <div className="flex-1 min-w-0 text-left">
+                      <div className="text-foreground/80 truncate">{dirName(path)}</div>
+                      <div
+                        className="text-[10px] text-muted-foreground/50 truncate"
+                        title={path}
+                      >
+                        {truncatePath(path)}
+                      </div>
+                    </div>
+                    <button
+                      onClick={(e) => handleRemoveRecent(e, path)}
+                      className={cn(
+                        'w-5 h-5 rounded flex items-center justify-center',
+                        'opacity-0 group-hover:opacity-100 hover:bg-destructive/10',
+                        'transition-opacity duration-150',
+                      )}
+                      title="Remove from recents"
+                    >
+                      <X className="w-3 h-3 text-muted-foreground" />
+                    </button>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Version footer */}
+        <div
+          className="absolute bottom-4 text-[10px] text-muted-foreground/30"
+          style={{
+            opacity: showContent ? 1 : 0,
+            transition: 'opacity 400ms var(--ease-smooth) 200ms',
+          }}
+        >
+          v0.1.0
+        </div>
+      </div>
+
+      {/* Clone dialog */}
+      {cloneOpen && (
+        <CloneDialog onClose={() => setCloneOpen(false)} />
+      )}
+    </>
+  );
+}

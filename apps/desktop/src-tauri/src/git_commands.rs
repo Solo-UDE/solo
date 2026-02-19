@@ -1524,6 +1524,35 @@ pub async fn git_unstage_all(
     .map_err(|e| format!("Task join error: {}", e))?
 }
 
+/// Clone a git repository to a target path using system git
+#[tauri::command]
+pub async fn git_clone(
+    app: AppHandle,
+    repository_url: String,
+    target_path: String,
+) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || {
+        emit_git_progress(&app, "clone", "Cloning repository...");
+
+        let output = std::process::Command::new("git")
+            .args(["clone", "--progress", &repository_url, &target_path])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .output()
+            .map_err(|e| format!("Failed to run git clone: {}", e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("git clone failed: {}", stderr.trim()));
+        }
+
+        emit_git_progress(&app, "clone", "Clone complete");
+        Ok(target_path)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
 /// Create a new local branch and check it out
 #[tauri::command]
 pub async fn git_create_branch(
