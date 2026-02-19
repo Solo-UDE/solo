@@ -34,18 +34,6 @@ export function WelcomeScreen() {
     return () => clearTimeout(t);
   }, []);
 
-  // ⌘O keyboard shortcut to open project
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.metaKey && e.key === 'o') {
-        e.preventDefault();
-        handleOpenProject();
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [handleOpenProject]);
-
   const handleOpenProject = useCallback(async () => {
     const path = await openFolderDialog();
     if (path) {
@@ -67,6 +55,18 @@ export function WelcomeScreen() {
     },
     [removeRecent],
   );
+
+  // ⌘O keyboard shortcut to open project
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.metaKey && e.key === 'o') {
+        e.preventDefault();
+        handleOpenProject();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [handleOpenProject]);
 
   return (
     <>
