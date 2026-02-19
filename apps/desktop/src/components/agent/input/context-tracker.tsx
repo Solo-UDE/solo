@@ -61,10 +61,11 @@ function computeBreakdown(messages: Message[], modelId: string | null, models: M
     }
     if (msg.toolCalls) {
       for (const tc of msg.toolCalls) {
-        // Tool call arguments
-        toolResultTokens += estimateTokens(tc.arguments || '');
-        // Tool results
-        toolResultTokens += estimateTokens(tc.result || '');
+        // Tool call input
+        const inputStr = typeof tc.input === 'string' ? tc.input : JSON.stringify(tc.input || '');
+        toolResultTokens += estimateTokens(inputStr);
+        // Tool output
+        toolResultTokens += estimateTokens(tc.output || '');
       }
     }
   }

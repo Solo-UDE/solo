@@ -4,6 +4,7 @@ import { Stop } from '@phosphor-icons/react';
 import { ContextMenu } from './context-menu';
 import { ContextTracker } from './context-tracker';
 import { LexicalEditor } from './lexical-editor';
+import { ThinkingToggle } from './thinking-toggle';
 import { AttachmentBar } from './AttachmentBar';
 import { DropZoneOverlay } from './DropZoneOverlay';
 
@@ -25,6 +26,9 @@ export interface ChatInputContainerProps {
   className?: string;
   worktreeId?: string | null;
   onWorktreeChange?: (id: string | null) => void;
+  onModeChange?: (mode: 'planning' | 'fast') => void;
+  thinkingEnabled?: boolean;
+  onThinkingChange?: (enabled: boolean) => void;
 }
 
 export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
@@ -35,6 +39,9 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
   className = '',
   worktreeId,
   onWorktreeChange,
+  onModeChange,
+  thinkingEnabled = false,
+  onThinkingChange,
 }) => {
   const [content, setContent] = useState('');
   const [mode, setMode] = useState<'planning' | 'fast'>('planning');
@@ -73,6 +80,11 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
     }
   };
 
+  const handleModeChange = (newMode: 'planning' | 'fast') => {
+    setMode(newMode);
+    onModeChange?.(newMode);
+  };
+
   // Only show the selector when there are linked worktrees (more than just main)
   const showWorktreeSelector = onWorktreeChange && worktrees.length > 1;
 
@@ -103,8 +115,13 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
           <div className="flex items-center justify-between px-3 pb-3 pt-1">
             <div className="flex items-center gap-1.5">
               <ContextMenu disabled={isAgentRunning} />
-              <ModeSelector value={mode} onChange={setMode} disabled={isAgentRunning} />
+              <ModeSelector value={mode} onChange={handleModeChange} disabled={isAgentRunning} />
               <ModelPicker side="top" disabled={isAgentRunning} />
+              <ThinkingToggle
+                enabled={thinkingEnabled}
+                onChange={(enabled) => onThinkingChange?.(enabled)}
+                disabled={isAgentRunning}
+              />
               <ContextTracker disabled={isAgentRunning} />
 
               {showWorktreeSelector && (

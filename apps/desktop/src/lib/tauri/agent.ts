@@ -1,26 +1,35 @@
 /**
- * Tauri IPC utilities for agent communication
+ * Tauri IPC utilities for agent communication (bridge pattern)
  *
- * Provides typed wrappers for Tauri events and commands related to the AI agent.
+ * Listens to agent:* events emitted by the Rust agent bridge.
+ * Each event type has its own Tauri channel (not a single BackendEvent union).
  */
 
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import type { BackendEvent, AgentToolCall, AgentMessage, ToolCallWithStatus } from '../../bindings';
+import type {
+	AgentMessageEvent,
+	AgentPermissionRequestEvent,
+	AgentSessionInitEvent,
+	AgentModeChangedEvent,
+	AgentTurnStartEvent,
+	AgentErrorEvent,
+	BridgeAgentMessage,
+	PermissionRequest,
+} from '../../bindings';
 
 // =============================================================================
-// Event Types
+// Event Handlers
 // =============================================================================
 
 export interface AgentEventHandlers {
-	onChunk?: (conversationId: string, content: string) => void;
-	onToolStart?: (conversationId: string, toolCall: AgentToolCall) => void;
-	onToolEnd?: (conversationId: string, toolCallId: string, result: string) => void;
-	onToolApprovalNeeded?: (conversationId: string, toolCall: ToolCallWithStatus) => void;
-	onComplete?: (conversationId: string, message: AgentMessage) => void;
-	onError?: (conversationId: string, error: string) => void;
-	onTurnStart?: (conversationId: string, turnNumber: number) => void;
-	onLoopComplete?: (conversationId: string, totalTurns: number) => void;
-	onAborted?: (conversationId: string, reason: string) => void;
+	onMessage?: (sessionId: string, message: BridgeAgentMessage) => void;
+	onPermissionRequest?: (request: PermissionRequest) => void;
+	onSessionInit?: (sessionId: string, sdkSessionId: string, isResumed: boolean, isForked: boolean) => void;
+	onTurnStart?: (sessionId: string, turnNumber: number) => void;
+	onPlanModeChanged?: (sessionId: string, enabled: boolean) => void;
+	onAcceptModeChanged?: (sessionId: string, enabled: boolean) => void;
+	onError?: (message: string, stack?: string) => void;
+	onReady?: () => void;
 }
 
 // =============================================================================
@@ -28,137 +37,97 @@ export interface AgentEventHandlers {
 // =============================================================================
 
 /**
- * Listen to agent events from the backend
- *
- * @param handlers - Event handlers for different agent events
- * @returns Cleanup function to stop listening
- *
- * @example
- * ```ts
- * const cleanup = await listenToAgentEvents({
- *   onChunk: (id, content) => console.log('Chunk:', content),
- *   onComplete: (id, msg) => console.log('Complete:', msg),
- *   onError: (id, err) => console.error('Error:', err),
- * });
- *
- * // Later, to cleanup:
- * cleanup();
- * ```
+ * Listen to all agent events from the bridge.
+ * Returns a cleanup function that removes all listeners.
  */
 export async function listenToAgentEvents(
 	handlers: AgentEventHandlers
 ): Promise<UnlistenFn> {
-	return listen<BackendEvent>('agent-event', (event) => {
-		const payload = event.payload;
+	const unlistens: UnlistenFn[] = [];
 
-		console.debug('[Agent Event]', payload.type, (payload as any).payload?.conversation_id);
+	if (handlers.onMessage) {
+		const h = handlers.onMessage;
+		unlistens.push(
+			await listen<AgentMessageEvent>('agent:message', (event) => {
+				h(event.payload.sessionId, event.payload.message);
+			})
+		);
+	}
 
-		switch (payload.type) {
-			case 'agent:chunk':
-				handlers.onChunk?.(
-					payload.payload.conversation_id,
-					payload.payload.content
+	if (handlers.onPermissionRequest) {
+		const h = handlers.onPermissionRequest;
+		unlistens.push(
+			await listen<AgentPermissionRequestEvent>('agent:permission_request', (event) => {
+				h({
+					sessionId: event.payload.sessionId,
+					toolName: event.payload.toolName,
+					toolInput: event.payload.toolInput,
+					requestId: event.payload.requestId,
+				});
+			})
+		);
+	}
+
+	if (handlers.onSessionInit) {
+		const h = handlers.onSessionInit;
+		unlistens.push(
+			await listen<AgentSessionInitEvent>('agent:session_init', (event) => {
+				h(
+					event.payload.sessionId,
+					event.payload.sdkSessionId,
+					event.payload.isResumed,
+					event.payload.isForked,
 				);
-				break;
+			})
+		);
+	}
 
-			case 'agent:tool_start':
-				handlers.onToolStart?.(
-					payload.payload.conversation_id,
-					payload.payload.tool_call
-				);
-				break;
+	if (handlers.onTurnStart) {
+		const h = handlers.onTurnStart;
+		unlistens.push(
+			await listen<AgentTurnStartEvent>('agent:turn_start', (event) => {
+				h(event.payload.sessionId, event.payload.turnNumber);
+			})
+		);
+	}
 
-			case 'agent:tool_end':
-				handlers.onToolEnd?.(
-					payload.payload.conversation_id,
-					payload.payload.tool_call_id,
-					payload.payload.result
-				);
-				break;
+	if (handlers.onPlanModeChanged) {
+		const h = handlers.onPlanModeChanged;
+		unlistens.push(
+			await listen<AgentModeChangedEvent>('agent:plan_mode_changed', (event) => {
+				h(event.payload.sessionId, event.payload.enabled);
+			})
+		);
+	}
 
-			case 'agent:tool_approval_needed':
-				handlers.onToolApprovalNeeded?.(
-					payload.payload.conversation_id,
-					payload.payload.tool_call
-				);
-				break;
+	if (handlers.onAcceptModeChanged) {
+		const h = handlers.onAcceptModeChanged;
+		unlistens.push(
+			await listen<AgentModeChangedEvent>('agent:accept_mode_changed', (event) => {
+				h(event.payload.sessionId, event.payload.enabled);
+			})
+		);
+	}
 
-			case 'agent:complete':
-				handlers.onComplete?.(
-					payload.payload.conversation_id,
-					payload.payload.message
-				);
-				break;
+	if (handlers.onError) {
+		const h = handlers.onError;
+		unlistens.push(
+			await listen<AgentErrorEvent>('agent:error', (event) => {
+				h(event.payload.message, event.payload.stack);
+			})
+		);
+	}
 
-			case 'agent:error':
-				handlers.onError?.(
-					payload.payload.conversation_id,
-					payload.payload.error
-				);
-				break;
+	if (handlers.onReady) {
+		const h = handlers.onReady;
+		unlistens.push(
+			await listen('agent:ready', () => {
+				h();
+			})
+		);
+	}
 
-			case 'agent:turn_start':
-				handlers.onTurnStart?.(
-					payload.payload.conversation_id,
-					payload.payload.turn_number
-				);
-				break;
-
-			case 'agent:loop_complete':
-				handlers.onLoopComplete?.(
-					payload.payload.conversation_id,
-					payload.payload.total_turns
-				);
-				break;
-
-			case 'agent:aborted':
-				handlers.onAborted?.(
-					payload.payload.conversation_id,
-					payload.payload.reason
-				);
-				break;
-		}
-	});
-}
-
-/**
- * Listen to agent events for a specific session
- *
- * @param sessionId - Session ID to filter events for
- * @param handlers - Event handlers
- * @returns Cleanup function
- */
-export async function listenToSessionEvents(
-	sessionId: string,
-	handlers: AgentEventHandlers
-): Promise<UnlistenFn> {
-	return listenToAgentEvents({
-		onChunk: (id, content) => {
-			if (id === sessionId) handlers.onChunk?.(id, content);
-		},
-		onToolStart: (id, toolCall) => {
-			if (id === sessionId) handlers.onToolStart?.(id, toolCall);
-		},
-		onToolEnd: (id, toolCallId, result) => {
-			if (id === sessionId) handlers.onToolEnd?.(id, toolCallId, result);
-		},
-		onToolApprovalNeeded: (id, toolCall) => {
-			if (id === sessionId) handlers.onToolApprovalNeeded?.(id, toolCall);
-		},
-		onComplete: (id, message) => {
-			if (id === sessionId) handlers.onComplete?.(id, message);
-		},
-		onError: (id, error) => {
-			if (id === sessionId) handlers.onError?.(id, error);
-		},
-		onTurnStart: (id, turnNumber) => {
-			if (id === sessionId) handlers.onTurnStart?.(id, turnNumber);
-		},
-		onLoopComplete: (id, totalTurns) => {
-			if (id === sessionId) handlers.onLoopComplete?.(id, totalTurns);
-		},
-		onAborted: (id, reason) => {
-			if (id === sessionId) handlers.onAborted?.(id, reason);
-		},
-	});
+	return () => {
+		for (const u of unlistens) u();
+	};
 }

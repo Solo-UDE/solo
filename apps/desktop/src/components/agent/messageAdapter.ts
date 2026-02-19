@@ -1,8 +1,8 @@
 /**
- * Adapter utilities to convert between Athens store messages and orbit-agent message format
+ * Adapter utilities to convert between store messages and orbit-agent message format
  */
 
-import type { Message as StoreMessage } from '../../stores/agentStore';
+import type { Message as StoreMessage, ContentBlock } from '../../stores/agentStore';
 import type {
   MessageGroup,
   Message as OrbitMessage,
@@ -10,14 +10,42 @@ import type {
 } from './messages';
 
 /**
- * Convert Athens store Message[] to orbit-agent MessageGroup[]
- * Consecutive assistant messages are merged into a single group so they
- * render as one bubble with turn separators instead of separate bubbles.
+ * A single renderable block in an agent message (ordered).
+ */
+export type RenderBlock =
+  | { type: 'narrative'; content: string }
+  | { type: 'thinking'; content: string; durationMs?: number; isStreaming?: boolean }
+  | {
+      type: 'toolCall';
+      id: string;
+      toolName: string;
+      toolInput: Record<string, unknown>;
+      status: 'running' | 'success' | 'error';
+      output?: string;
+    }
+  | {
+      type: 'approval';
+      requestId: string;
+      toolName: string;
+      toolInput: unknown;
+    };
+
+/**
+ * Convert store Message[] to orbit-agent MessageGroup[]
+ * Each message becomes its own group for simplicity
  */
 export function convertToMessageGroups(storeMessages: StoreMessage[]): MessageGroup[] {
-  const groups: MessageGroup[] = [];
+  // Find the last assistant message index for MessageActions rendering
+  let lastAssistantIdx = -1;
+  for (let i = storeMessages.length - 1; i >= 0; i--) {
+    if (storeMessages[i].role === 'assistant') {
+      lastAssistantIdx = i;
+      break;
+    }
+  }
 
-  for (const msg of storeMessages) {
+  return storeMessages.map((msg, index) => {
+    const isLastAssistant = index === lastAssistantIdx;
     const orbitMessage: OrbitMessage = msg.role === 'user'
       ? {
           id: msg.id,
@@ -30,49 +58,114 @@ export function convertToMessageGroups(storeMessages: StoreMessage[]): MessageGr
       : {
           id: msg.id,
           type: 'agent',
-          content: convertToAgentContent(msg),
+          content: convertToAgentContent(msg, isLastAssistant),
           timestamp: msg.timestamp,
-          turnNumber: msg.turnNumber,
         };
 
-    // Merge consecutive assistant messages into the same group
-    const lastGroup = groups[groups.length - 1];
-    if (
-      msg.role === 'assistant' &&
-      lastGroup &&
-      lastGroup.messages.length > 0 &&
-      lastGroup.messages[lastGroup.messages.length - 1].type === 'agent'
-    ) {
-      lastGroup.messages.push(orbitMessage);
-    } else {
-      groups.push({
-        id: `group-${groups.length}`,
-        messages: [orbitMessage],
-      });
+    return {
+      id: `group-${index}`,
+      messages: [orbitMessage],
+    };
+  });
+}
+
+/**
+ * Convert ordered ContentBlock[] to RenderBlock[] for the component.
+ */
+function convertBlocksToRenderBlocks(
+  blocks: ContentBlock[],
+  msg: StoreMessage
+): RenderBlock[] {
+  const result: RenderBlock[] = [];
+
+  for (const block of blocks) {
+    switch (block.type) {
+      case 'text':
+        result.push({ type: 'narrative', content: block.text });
+        break;
+      case 'thinking':
+        result.push({
+          type: 'thinking',
+          content: block.text,
+          durationMs: msg.thinkingDurationMs,
+          isStreaming: msg.isStreaming,
+        });
+        break;
+      case 'tool_use': {
+        const tc = block.toolCall;
+        if (tc.status === 'awaiting-permission') {
+          result.push({
+            type: 'approval',
+            requestId: tc.requestId || tc.id,
+            toolName: tc.name,
+            toolInput: tc.input,
+          });
+        } else {
+          const toolInput = (typeof tc.input === 'object' && tc.input !== null)
+            ? tc.input as Record<string, unknown>
+            : {};
+          result.push({
+            type: 'toolCall',
+            id: tc.id,
+            toolName: tc.name,
+            toolInput,
+            status: tc.status as 'running' | 'success' | 'error',
+            output: tc.output,
+          });
+        }
+        break;
+      }
     }
   }
 
-  return groups;
+  return result;
 }
 
 /**
  * Convert store message to AgentMessageContent
  */
-function convertToAgentContent(msg: StoreMessage): AgentMessageContent {
+function convertToAgentContent(msg: StoreMessage, isLastAssistant: boolean = false): AgentMessageContent {
   const content: AgentMessageContent = {
     narrative: msg.content,
     isStreaming: msg.isStreaming,
+    isInterrupted: msg.isInterrupted,
+    isLastAssistantMessage: isLastAssistant,
   };
 
-  // Convert tool calls if present
+  // If we have ordered blocks, use them for interleaved rendering
+  if (msg.blocks && msg.blocks.length > 0) {
+    content.blocks = convertBlocksToRenderBlocks(msg.blocks, msg);
+  }
+
+  // Pass turn number if available
+  if (msg.turnNumber !== undefined) {
+    content.turnNumber = msg.turnNumber;
+  }
+
+  // Also keep flat arrays as fallback for backward compat
   if (msg.toolCalls && msg.toolCalls.length > 0) {
-    content.toolCalls = msg.toolCalls.map((tc) => ({
-      id: tc.id,
-      name: tc.name,
-      arguments: tc.arguments,
-      status: tc.status,
-      result: tc.result,
-    }));
+    const regularCalls = msg.toolCalls.filter((tc) => tc.status !== 'awaiting-permission');
+    const pendingCalls = msg.toolCalls.filter((tc) => tc.status === 'awaiting-permission');
+
+    if (regularCalls.length > 0) {
+      content.toolCalls = regularCalls.map((tc) => ({
+        id: tc.id,
+        toolName: tc.name,
+        toolInput: (typeof tc.input === 'object' && tc.input !== null)
+          ? tc.input as Record<string, unknown>
+          : {},
+        status: tc.status as 'running' | 'success' | 'error',
+        output: tc.output,
+      }));
+    }
+
+    if (pendingCalls.length > 0) {
+      content.pendingApprovals = pendingCalls.map((tc) => ({
+        requestId: tc.requestId || tc.id,
+        toolName: tc.name,
+        toolInput: tc.input,
+      }));
+    }
   }
 
   return content;

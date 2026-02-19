@@ -20,7 +20,8 @@ use tracing::{info, warn};
 
 /// Application state for git operations
 pub struct GitState {
-    /// Cached workspace path
+    /// Cached workspace path (reserved for future use)
+    #[allow(dead_code)]
     pub workspace_path: RwLock<Option<PathBuf>>,
 }
 

@@ -9,7 +9,7 @@ use solo_embeddings::{
 use std::sync::Arc;
 use tauri::State;
 use tokio::sync::RwLock;
-use tracing::{debug, error, info};
+use tracing::{debug, info};
 
 // =============================================================================
 // State

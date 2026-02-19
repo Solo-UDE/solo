@@ -1,19 +1,20 @@
 /**
  * Agent Zustand Store
- * Manages agent sessions, messages, and streaming state
+ *
+ * Manages agent sessions, messages, and streaming state.
+ * Uses the agent-bridge protocol (Claude Agent SDK via Node.js sidecar).
  */
 
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import { enableMapSet } from 'immer';
-import type { AgentMessage, AgentToolCall, ToolCallWithStatus } from '../bindings';
+import type { BridgeAgentMessage, PermissionRequest, TokenUsage, AttachmentContentBlock } from '../bindings';
 import * as backend from '../lib/backend';
 import {
 	loadSessions,
 	createDebouncedSessionSave,
 } from '../lib/sessionPersistence';
 import { DEFAULT_MODEL_ID } from '../lib/constants';
-import { useProviderStore } from './provider-store';
 
 // Enable Map and Set support in Immer
 enableMapSet();
@@ -24,6 +25,7 @@ enableMapSet();
 
 const EMPTY_MESSAGES: Message[] = [];
 const EMPTY_SESSIONS: AgentSession[] = [];
+const EMPTY_PERMISSIONS: PermissionRequest[] = [];
 
 // =============================================================================
 // Types
@@ -34,17 +36,33 @@ export type MessageMode = 'planning' | 'fast';
 export interface ToolCallState {
 	id: string;
 	name: string;
-	arguments: string;
-	status: 'pending' | 'running' | 'completed' | 'error';
-	result?: string;
+	input: unknown;
+	status: 'awaiting-permission' | 'running' | 'success' | 'error';
+	output?: string;
+	requestId?: string;
 }
 
-export interface FileMention {
-	path: string;
+export type ContentBlock =
+	| { type: 'text'; text: string }
+	| { type: 'thinking'; text: string }
+	| { type: 'tool_use'; toolCall: ToolCallState };
+
+export interface FileAttachment {
 	name: string;
-	relativePath: string;
+	path: string;
+	mimeType?: string;
+	size?: number;
 }
 
+export interface ImageAttachment {
+	name: string;
+	path: string;
+	previewUrl?: string;
+	width?: number;
+	height?: number;
+}
+
+/** Unified attachment type (master model) */
 export interface Attachment {
 	id: string;
 	type: 'file' | 'image';
@@ -55,29 +73,49 @@ export interface Attachment {
 	size?: number;
 }
 
+/** File mention from @-mention in Lexical editor */
+export interface FileMention {
+	path: string;
+	name: string;
+	relativePath: string;
+}
+
 export interface Message {
 	id: string;
 	role: 'user' | 'assistant';
 	content: string;
+	blocks: ContentBlock[];
 	timestamp: Date;
 	mode?: MessageMode;
 	toolCalls?: ToolCallState[];
 	isStreaming?: boolean;
+	isInterrupted?: boolean;
+	thinkingContent?: string;
+	thinkingDurationMs?: number;
+	attachedFiles?: FileAttachment[];
+	attachedImages?: ImageAttachment[];
 	attachments?: Attachment[];
 	mentions?: FileMention[];
 	turnNumber?: number;
+	usage?: TokenUsage;
+	costUsd?: number;
+	durationMs?: number;
 }
 
 export interface AgentSession {
 	id: string;
+	sdkSessionId?: string;
 	createdAt: Date;
 	model: string;
 	name?: string;
+	currentTurn?: number;
 }
 
 export interface SessionStreamState {
 	streamingMessageId: string | null;
 	streamingContent: string;
+	streamingThinking: string;
+	thinkingStartTime: number | null;
 	activeToolCalls: Map<string, ToolCallState>;
 	isStreaming: boolean;
 	error: string | null;
@@ -87,10 +125,53 @@ export interface SessionStreamState {
 // Helpers
 // =============================================================================
 
+function generateSessionId(): string {
+	return `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/** Map full model ID to bridge AgentModel alias */
+function toAgentModel(modelId: string): 'haiku' | 'sonnet' | 'opus' {
+	if (modelId.includes('haiku')) return 'haiku';
+	if (modelId.includes('sonnet')) return 'sonnet';
+	return 'opus';
+}
+
+/** Convert unified Attachment + FileMention arrays into AttachmentContentBlock[] for the bridge */
+function toContentBlocks(
+	attachments?: Attachment[],
+	mentions?: FileMention[],
+): AttachmentContentBlock[] | undefined {
+	const blocks: AttachmentContentBlock[] = [];
+
+	if (attachments) {
+		for (const att of attachments) {
+			blocks.push({
+				type: att.type === 'image' ? 'image' : 'document',
+				name: att.name,
+				filePath: att.path,
+			});
+		}
+	}
+
+	if (mentions) {
+		for (const mention of mentions) {
+			blocks.push({
+				type: 'text',
+				name: mention.name,
+				filePath: mention.path,
+			});
+		}
+	}
+
+	return blocks.length > 0 ? blocks : undefined;
+}
+
 function createDefaultStreamState(): SessionStreamState {
 	return {
 		streamingMessageId: null,
 		streamingContent: '',
+		streamingThinking: '',
+		thinkingStartTime: null,
 		activeToolCalls: new Map(),
 		isStreaming: false,
 		error: null,
@@ -121,16 +202,11 @@ interface AgentState {
 	// Messages per session (sessionId -> messages)
 	messages: Map<string, Message[]>;
 
-	// Streaming state
-	streamingMessageId: string | null;
-	streamingContent: string;
-	activeToolCalls: Map<string, ToolCallState>;
+	// Pending permission requests
+	pendingPermissions: Map<string, PermissionRequest>;
 
 	// Per-session streaming state
 	sessionStreaming: Map<string, SessionStreamState>;
-
-	// Tool approval state
-	pendingToolApprovals: Map<string, ToolCallWithStatus>;
 
 	// Model selection
 	selectedModel: string;
@@ -143,36 +219,38 @@ interface AgentState {
 interface AgentActions {
 	// Session management
 	createSession: (model?: string) => Promise<string>;
-	updateSessionModel: (sessionId: string, model: string) => Promise<void>;
 	setActiveSession: (sessionId: string) => void;
 	deleteSession: (sessionId: string) => void;
 	renameSession: (sessionId: string, name: string) => void;
+	setModel: (sessionId: string, model: string) => Promise<void>;
+	interrupt: (sessionId: string) => Promise<void>;
 
 	// Model selection
 	setSelectedModel: (model: string) => void;
 
 	// Message handling
-	sendMessage: (sessionId: string, content: string, mode: MessageMode, attachments?: Attachment[], mentions?: FileMention[]) => Promise<void>;
-	addUserMessage: (sessionId: string, content: string, mode: MessageMode, attachments?: Attachment[], mentions?: FileMention[]) => string;
+	sendMessage: (sessionId: string, content: string, mode?: MessageMode, attachments?: Attachment[], mentions?: FileMention[]) => Promise<void>;
+	addUserMessage: (sessionId: string, content: string, mode?: MessageMode, attachments?: Attachment[], mentions?: FileMention[]) => string;
 
-	// Streaming handlers (called from event listener)
-	handleAgentChunk: (conversationId: string, content: string) => void;
-	handleAgentToolStart: (conversationId: string, toolCall: AgentToolCall) => void;
-	handleAgentToolEnd: (conversationId: string, toolCallId: string, result: string) => void;
-	handleToolApprovalNeeded: (conversationId: string, toolCall: ToolCallWithStatus) => void;
+	// Mode management
+	setPlanMode: (sessionId: string, enabled: boolean) => Promise<void>;
+	setThinkingMode: (sessionId: string, enabled: boolean, maxTokens?: number) => Promise<void>;
+
+	// Bridge event handlers
+	handleAgentMessage: (sessionId: string, message: BridgeAgentMessage) => void;
+	handlePermissionRequest: (request: PermissionRequest) => void;
+	handleSessionInit: (sessionId: string, sdkSessionId: string, isResumed: boolean, isForked: boolean) => void;
+	handleTurnStart: (sessionId: string, turnNumber: number) => void;
+	handleError: (message: string, stack?: string) => void;
+	respondPermission: (requestId: string, decision: 'approve' | 'deny', always?: boolean) => Promise<void>;
+
+	// Abort / tool approval (compatibility with master's API surface)
+	abortSession: (sessionId: string) => Promise<void>;
 	resolveToolApproval: (sessionId: string, toolCallId: string, approved: boolean) => Promise<void>;
-	handleAgentComplete: (conversationId: string, message: AgentMessage) => void;
-	handleAgentError: (conversationId: string, error: string) => void;
-	handleTurnStart: (conversationId: string, turnNumber: number) => void;
-	handleLoopComplete: (conversationId: string, totalTurns: number) => void;
-	handleAborted: (conversationId: string, reason: string) => void;
 
 	// Persistence
 	loadPersistedSessions: () => void;
 	persistSessions: () => void;
-
-	// Abort
-	abortSession: (sessionId: string) => Promise<void>;
 
 	// Utilities
 	clearError: (sessionId: string) => void;
@@ -189,10 +267,7 @@ const initialState: AgentState = {
 	sessions: new Map(),
 	activeSessionId: null,
 	messages: new Map(),
-	streamingMessageId: null,
-	streamingContent: '',
-	activeToolCalls: new Map(),
-	pendingToolApprovals: new Map(),
+	pendingPermissions: new Map(),
 	sessionStreaming: new Map(),
 	selectedModel: DEFAULT_MODEL_ID,
 	isAgentRunning: false,
@@ -210,13 +285,16 @@ export const useAgentStore = create<AgentStore>()(
 	immer((set, get) => ({
 		...initialState,
 
+		// =================================================================
+		// Persistence
+		// =================================================================
+
 		loadPersistedSessions: () => {
 			const persisted = loadSessions();
 			if (persisted) {
 				set((state) => {
 					state.sessions = persisted.sessions;
 					state.messages = persisted.messages;
-					// Initialize empty streaming state for each loaded session
 					for (const sessionId of persisted.sessions.keys()) {
 						if (!state.sessionStreaming.has(sessionId)) {
 							state.sessionStreaming.set(sessionId, createDefaultStreamState());
@@ -231,23 +309,28 @@ export const useAgentStore = create<AgentStore>()(
 			debouncedSave.save(state.sessions, state.messages);
 		},
 
+		// =================================================================
+		// Session Management
+		// =================================================================
+
 		createSession: async (model?: string) => {
+			const sessionId = generateSessionId();
+			const agentModel = toAgentModel(model || 'opus');
+
 			try {
-				const sessionId = await backend.createAgentSession(model);
+				await backend.agentCreateSession(sessionId, { model: agentModel });
 
 				set((state) => {
 					state.sessions.set(sessionId, {
 						id: sessionId,
 						createdAt: new Date(),
-						model: model || DEFAULT_MODEL_ID,
+						model: model || 'opus',
 					});
 					state.messages.set(sessionId, []);
 					state.sessionStreaming.set(sessionId, createDefaultStreamState());
 				});
 
-				// Persist after creating session
 				get().persistSessions();
-
 				return sessionId;
 			} catch (error) {
 				const errorMsg = error instanceof Error ? error.message : String(error);
@@ -256,9 +339,9 @@ export const useAgentStore = create<AgentStore>()(
 			}
 		},
 
-		updateSessionModel: async (sessionId: string, model: string) => {
+		setModel: async (sessionId: string, model: string) => {
 			try {
-				await backend.updateSessionModel(sessionId, model);
+				await backend.agentSetModel(sessionId, toAgentModel(model));
 				set((state) => {
 					const session = state.sessions.get(sessionId);
 					if (session) {
@@ -266,8 +349,45 @@ export const useAgentStore = create<AgentStore>()(
 					}
 				});
 			} catch (error) {
-				console.error('Failed to update session model:', error);
+				console.error('Failed to set model:', error);
 			}
+		},
+
+		interrupt: async (sessionId: string) => {
+			try {
+				await backend.agentInterrupt(sessionId);
+			} catch (error) {
+				console.error('Failed to interrupt session:', error);
+			}
+
+			set((state) => {
+				const streamState = state.sessionStreaming.get(sessionId);
+				if (streamState && streamState.streamingMessageId) {
+					const messages = state.messages.get(sessionId);
+					if (messages) {
+						const msg = messages.find((m) => m.id === streamState.streamingMessageId);
+						if (msg) {
+							msg.isStreaming = false;
+							msg.isInterrupted = true;
+						}
+					}
+
+					// Clear pending permissions
+					for (const [id, perm] of state.pendingPermissions) {
+						if (perm.sessionId === sessionId) {
+							state.pendingPermissions.delete(id);
+						}
+					}
+
+					// Reset streaming state
+					streamState.streamingMessageId = null;
+					streamState.streamingContent = '';
+					streamState.streamingThinking = '';
+					streamState.thinkingStartTime = null;
+					streamState.activeToolCalls = new Map();
+					streamState.isStreaming = false;
+				}
+			});
 		},
 
 		setActiveSession: (sessionId: string) => {
@@ -279,6 +399,9 @@ export const useAgentStore = create<AgentStore>()(
 		},
 
 		deleteSession: (sessionId: string) => {
+			// Delete from bridge (fire-and-forget)
+			backend.agentDeleteSession(sessionId).catch(console.error);
+
 			set((state) => {
 				state.sessions.delete(sessionId);
 				state.messages.delete(sessionId);
@@ -288,7 +411,6 @@ export const useAgentStore = create<AgentStore>()(
 					state.activeSessionId = remaining.length > 0 ? remaining[0] : null;
 				}
 			});
-			// Persist after deletion
 			get().persistSessions();
 		},
 
@@ -309,33 +431,44 @@ export const useAgentStore = create<AgentStore>()(
 			});
 		},
 
-		sendMessage: async (sessionId: string, content: string, mode: MessageMode, attachments?: Attachment[], mentions?: FileMention[]) => {
-			console.log('[Store SEND] sessionId:', sessionId, 'content:', content, 'mode:', mode);
-			if (!sessionId) {
-				console.error('[Store] No session ID provided!');
-				return;
-			}
+		// =================================================================
+		// Message Handling
+		// =================================================================
+
+		sendMessage: async (sessionId: string, content: string, mode?: MessageMode, attachments?: Attachment[], mentions?: FileMention[]) => {
+			if (!sessionId) return;
 
 			// Add user message
 			get().addUserMessage(sessionId, content, mode, attachments, mentions);
 
-			// Initialize streaming state — the actual assistant placeholder message
-			// is created by handleTurnStart() when the backend emits TurnStart.
+			// Create placeholder for assistant response
+			const assistantMessageId = `msg-${Date.now()}-assistant`;
+
 			set((state) => {
+				const sessionMessages = state.messages.get(sessionId) || [];
+				sessionMessages.push({
+					id: assistantMessageId,
+					role: 'assistant',
+					content: '',
+					blocks: [],
+					timestamp: new Date(),
+					isStreaming: true,
+				});
+				state.messages.set(sessionId, sessionMessages);
+
 				const streamState = getOrCreateStreamState(state.sessionStreaming, sessionId);
+				streamState.streamingMessageId = assistantMessageId;
+				streamState.streamingContent = '';
+				streamState.streamingThinking = '';
 				streamState.isStreaming = true;
 				streamState.error = null;
 			});
 
-			const selectedModel = useProviderStore.getState().selectedModel || get().selectedModel;
-
 			try {
-				console.log('[Store] Calling backend.sendAgentMessageServer sessionId:', sessionId, 'model:', selectedModel, 'mode:', mode);
-				await backend.sendAgentMessageServer(sessionId, content, selectedModel, mode);
-				console.log('[Store] backend.sendAgentMessageServer returned (streaming should start via events)');
+				await backend.agentSendMessage(sessionId, content, toContentBlocks(attachments, mentions));
 			} catch (error) {
 				const errorMsg = error instanceof Error ? error.message : String(error);
-				console.error('[Store] sendAgentMessage failed:', errorMsg);
+				console.error('[Agent] sendMessage failed:', errorMsg);
 				set((state) => {
 					const streamState = getOrCreateStreamState(state.sessionStreaming, sessionId);
 					streamState.error = `Failed to send message: ${errorMsg}`;
@@ -345,7 +478,7 @@ export const useAgentStore = create<AgentStore>()(
 			}
 		},
 
-		addUserMessage: (sessionId: string, content: string, mode: MessageMode, attachments?: Attachment[], mentions?: FileMention[]) => {
+		addUserMessage: (sessionId: string, content: string, mode?: MessageMode, attachments?: Attachment[], mentions?: FileMention[]) => {
 			const messageId = `msg-${Date.now()}-user`;
 
 			set((state) => {
@@ -354,6 +487,7 @@ export const useAgentStore = create<AgentStore>()(
 					id: messageId,
 					role: 'user',
 					content,
+					blocks: [],
 					timestamp: new Date(),
 					mode,
 					attachments: attachments?.length ? attachments : undefined,
@@ -362,262 +496,389 @@ export const useAgentStore = create<AgentStore>()(
 				state.messages.set(sessionId, sessionMessages);
 			});
 
-			// Persist after adding user message (for title generation)
 			get().persistSessions();
-
 			return messageId;
 		},
 
-		handleAgentChunk: (conversationId: string, content: string) => {
-			console.log('[Store CHUNK] conversationId:', conversationId, 'content:', content);
-			set((state) => {
-				const streamState = getOrCreateStreamState(state.sessionStreaming, conversationId);
-				streamState.streamingContent += content;
-				console.log('[Store] streamingContent now:', streamState.streamingContent.length, 'chars');
+		// =================================================================
+		// Mode Management
+		// =================================================================
 
-				// Update the streaming message
-				const messages = state.messages.get(conversationId);
-				if (messages && streamState.streamingMessageId) {
-					const msg = messages.find((m) => m.id === streamState.streamingMessageId);
-					if (msg) {
-						msg.content = streamState.streamingContent;
-						console.log('[Store] Updated message content');
-					} else {
-						console.warn('[Store] Could not find streaming message:', streamState.streamingMessageId);
-					}
-				} else {
-					console.warn('[Store] No messages for conversationId:', conversationId, 'or no streamingMessageId:', streamState.streamingMessageId);
-				}
-			});
-		},
-
-		handleAgentToolStart: (conversationId: string, toolCall: AgentToolCall) => {
-			console.log('[Store TOOL_START]', toolCall.name, toolCall.id);
-			set((state) => {
-				const streamState = getOrCreateStreamState(state.sessionStreaming, conversationId);
-				streamState.activeToolCalls.set(toolCall.id, {
-					id: toolCall.id,
-					name: toolCall.name,
-					arguments: toolCall.arguments,
-					status: 'running',
-				});
-
-				// Add tool call to streaming message
-				const messages = state.messages.get(conversationId);
-				if (messages && streamState.streamingMessageId) {
-					const msg = messages.find((m) => m.id === streamState.streamingMessageId);
-					if (msg) {
-						if (!msg.toolCalls) msg.toolCalls = [];
-						msg.toolCalls.push({
-							id: toolCall.id,
-							name: toolCall.name,
-							arguments: toolCall.arguments,
-							status: 'running',
-						});
-					}
-				}
-			});
-		},
-
-		handleAgentToolEnd: (conversationId: string, toolCallId: string, result: string) => {
-			console.log('[Store TOOL_END]', toolCallId, 'resultLen:', result.length);
-			set((state) => {
-				const streamState = getOrCreateStreamState(state.sessionStreaming, conversationId);
-				const toolCall = streamState.activeToolCalls.get(toolCallId);
-				if (toolCall) {
-					toolCall.status = 'completed';
-					toolCall.result = result;
-				}
-
-				// Update tool call in message
-				const messages = state.messages.get(conversationId);
-				if (messages && streamState.streamingMessageId) {
-					const msg = messages.find((m) => m.id === streamState.streamingMessageId);
-					if (msg?.toolCalls) {
-						const tc = msg.toolCalls.find((t) => t.id === toolCallId);
-						if (tc) {
-							tc.status = 'completed';
-							tc.result = result;
-						}
-					}
-				}
-			});
-		},
-
-		handleToolApprovalNeeded: (conversationId: string, toolCall: ToolCallWithStatus) => {
-			console.log('[Store TOOL_APPROVAL_NEEDED]', toolCall.tool_call.name, toolCall.tool_call.id);
-			set((state) => {
-				state.pendingToolApprovals.set(toolCall.tool_call.id, toolCall);
-
-				// Update tool call status in message to show pending_approval
-				const streamState = getOrCreateStreamState(state.sessionStreaming, conversationId);
-				const messages = state.messages.get(conversationId);
-				if (messages && streamState.streamingMessageId) {
-					const msg = messages.find((m) => m.id === streamState.streamingMessageId);
-					if (msg?.toolCalls) {
-						const tc = msg.toolCalls.find((t) => t.id === toolCall.tool_call.id);
-						if (tc) {
-							tc.status = 'pending';
-						}
-					}
-				}
-			});
-		},
-
-		resolveToolApproval: async (sessionId: string, toolCallId: string, approved: boolean) => {
-			console.log('[Store RESOLVE_APPROVAL]', toolCallId, approved);
-			set((state) => {
-				state.pendingToolApprovals.delete(toolCallId);
-			});
+		setPlanMode: async (sessionId: string, enabled: boolean) => {
 			try {
-				await backend.resolveToolApproval(sessionId, toolCallId, approved);
+				await backend.agentSetPlanMode(sessionId, enabled);
 			} catch (error) {
-				console.error('Failed to resolve tool approval:', error);
+				console.error('Failed to set plan mode:', error);
 			}
 		},
 
-		handleAgentComplete: (conversationId: string, message: AgentMessage) => {
-			console.log('[Store COMPLETE] conversationId:', conversationId, 'message:', message);
-			set((state) => {
-				const streamState = getOrCreateStreamState(state.sessionStreaming, conversationId);
-
-				// Finalize the streaming message text content
-				const messages = state.messages.get(conversationId);
-				if (messages && streamState.streamingMessageId) {
-					const msg = messages.find((m) => m.id === streamState.streamingMessageId);
-					if (msg) {
-						console.log('[Store] Finalizing message, content length:', message.content.length);
-						// Use pre-computed text field, or extract text from ContentBlock[]
-						msg.content = message.text
-							?? (Array.isArray(message.content)
-								? message.content
-									.filter((block: { type: string }) => block.type === 'text')
-									.map((block: { type: string; text?: string }) => block.text ?? '')
-									.join('')
-								: String(message.content));
-						msg.isStreaming = false;
-					}
-				}
-
-				// Reset streaming content (text accumulation is done) but keep
-				// streamingMessageId alive so tool events can still reference it.
-				// Full reset happens in handleLoopComplete.
-				streamState.streamingContent = '';
-			});
-
-			// Persist after message completion
-			get().persistSessions();
+		setThinkingMode: async (sessionId: string, enabled: boolean, maxTokens?: number) => {
+			try {
+				await backend.agentSetThinkingMode(sessionId, enabled, maxTokens);
+			} catch (error) {
+				console.error('Failed to set thinking mode:', error);
+			}
 		},
 
-		handleAgentError: (conversationId: string, error: string) => {
-			console.error('[Store ERROR] conversationId:', conversationId, 'error:', error);
+		// =================================================================
+		// Bridge Event Handlers
+		// =================================================================
+
+		handleAgentMessage: (sessionId: string, message: BridgeAgentMessage) => {
 			set((state) => {
-				const streamState = getOrCreateStreamState(state.sessionStreaming, conversationId);
-				streamState.error = error;
-				streamState.isStreaming = false;
+				const streamState = getOrCreateStreamState(state.sessionStreaming, sessionId);
+				const messages = state.messages.get(sessionId);
 
-				const messages = state.messages.get(conversationId);
-				if (messages && streamState.streamingMessageId) {
-					// Mark existing streaming message as error
-					const msg = messages.find((m) => m.id === streamState.streamingMessageId);
-					if (msg) {
-						msg.isStreaming = false;
-						msg.content = `Error: ${error}`;
-					}
-				} else if (messages) {
-					// No streaming message yet (error before TurnStart) — create one
-					messages.push({
-						id: `msg-${Date.now()}-error`,
-						role: 'assistant',
-						content: `Error: ${error}`,
-						timestamp: new Date(),
-						isStreaming: false,
-					});
-					state.messages.set(conversationId, messages);
-				}
+				switch (message.type) {
+					case 'text': {
+						// Append text delta to streaming content
+						streamState.streamingContent += message.content;
 
-				streamState.streamingMessageId = null;
-				streamState.streamingContent = '';
-				streamState.activeToolCalls = new Map();
-			});
-		},
+						if (messages && streamState.streamingMessageId) {
+							const msg = messages.find((m) => m.id === streamState.streamingMessageId);
+							if (msg) {
+								msg.content = streamState.streamingContent;
 
-		handleTurnStart: (conversationId: string, turnNumber: number) => {
-			console.log('[Store TURN_START] conversationId:', conversationId, 'turn:', turnNumber);
-			set((state) => {
-				const streamState = getOrCreateStreamState(state.sessionStreaming, conversationId);
-				const messages = state.messages.get(conversationId) || [];
-
-				// Create a new assistant placeholder message for this turn
-				const newMsgId = `msg-${Date.now()}-assistant-t${turnNumber}`;
-				messages.push({
-					id: newMsgId,
-					role: 'assistant',
-					content: '',
-					timestamp: new Date(),
-					isStreaming: true,
-					turnNumber,
-				});
-				state.messages.set(conversationId, messages);
-
-				streamState.streamingMessageId = newMsgId;
-				streamState.streamingContent = '';
-				streamState.activeToolCalls = new Map();
-				streamState.isStreaming = true;
-			});
-		},
-
-		handleLoopComplete: (conversationId: string, totalTurns: number) => {
-			console.log('[Store LOOP_COMPLETE] conversationId:', conversationId, 'totalTurns:', totalTurns);
-			set((state) => {
-				const streamState = getOrCreateStreamState(state.sessionStreaming, conversationId);
-
-				// Mark current streaming message as done if still active
-				const messages = state.messages.get(conversationId);
-				if (messages && streamState.streamingMessageId) {
-					const msg = messages.find((m) => m.id === streamState.streamingMessageId);
-					if (msg) {
-						msg.isStreaming = false;
-						// Safety net: mark any still-running tool calls as completed
-						if (msg.toolCalls) {
-							for (const tc of msg.toolCalls) {
-								if (tc.status === 'running' || tc.status === 'pending') {
-									tc.status = 'completed';
+								// Ordered blocks: append to last text block or create new one
+								const lastBlock = msg.blocks[msg.blocks.length - 1];
+								if (lastBlock && lastBlock.type === 'text') {
+									lastBlock.text = streamState.streamingContent;
+								} else {
+									msg.blocks.push({ type: 'text', text: streamState.streamingContent });
 								}
 							}
 						}
+						break;
+					}
+
+					case 'thinking': {
+						// Record start time on first thinking chunk
+						if (streamState.thinkingStartTime === null) {
+							streamState.thinkingStartTime = Date.now();
+						}
+
+						// Accumulate thinking content
+						streamState.streamingThinking += message.content;
+						const currentDuration = Date.now() - streamState.thinkingStartTime;
+
+						if (messages && streamState.streamingMessageId) {
+							const msg = messages.find((m) => m.id === streamState.streamingMessageId);
+							if (msg) {
+								msg.thinkingContent = streamState.streamingThinking;
+								msg.thinkingDurationMs = currentDuration;
+
+								// Ordered blocks: thinking is always at the front
+								const firstBlock = msg.blocks[0];
+								if (firstBlock && firstBlock.type === 'thinking') {
+									firstBlock.text = streamState.streamingThinking;
+								} else {
+									msg.blocks.unshift({ type: 'thinking', text: streamState.streamingThinking });
+								}
+							}
+						}
+						break;
+					}
+
+					case 'tool_use': {
+						const meta = message.metadata;
+						if (!meta?.toolId) break;
+
+						const toolId = meta.toolId;
+						const toolStatus = meta.status || 'running';
+
+						if (messages && streamState.streamingMessageId) {
+							const msg = messages.find((m) => m.id === streamState.streamingMessageId);
+							if (msg) {
+								if (!msg.toolCalls) msg.toolCalls = [];
+
+								// Try to find existing entry by toolId first
+								let tc = msg.toolCalls.find((t) => t.id === toolId);
+
+								if (!tc && toolStatus === 'running') {
+									// Check for a permission-created entry with same name
+									tc = [...msg.toolCalls].reverse().find(
+										(t) => t.name === meta.toolName &&
+											(t.status === 'awaiting-permission' || t.status === 'running')
+									);
+									if (tc) {
+										// Link permission entry to real tool ID
+										tc.id = toolId;
+									}
+								}
+
+								if (tc) {
+									tc.status = toolStatus as ToolCallState['status'];
+									if (meta.toolOutput) tc.output = meta.toolOutput;
+
+									// Update the matching block too
+									const block = msg.blocks.find(
+										(b) => b.type === 'tool_use' && b.toolCall.id === tc!.id
+									);
+									if (block && block.type === 'tool_use') {
+										block.toolCall.status = tc.status;
+										if (meta.toolOutput) block.toolCall.output = meta.toolOutput;
+									}
+								} else if (toolStatus === 'running') {
+									// Brand new tool (no permission required)
+									const newTc: ToolCallState = {
+										id: toolId,
+										name: meta.toolName || 'unknown',
+										input: meta.toolInput,
+										status: 'running',
+									};
+									msg.toolCalls.push(newTc);
+
+									// Push ordered block — this creates the interleaving
+									msg.blocks.push({ type: 'tool_use', toolCall: newTc });
+								}
+							}
+						}
+
+						// Update activeToolCalls tracking
+						if (toolStatus === 'running') {
+							streamState.activeToolCalls.set(toolId, {
+								id: toolId,
+								name: meta.toolName || 'unknown',
+								input: meta.toolInput,
+								status: 'running',
+							});
+						} else {
+							const existing = streamState.activeToolCalls.get(toolId);
+							if (existing) {
+								existing.status = toolStatus as ToolCallState['status'];
+								existing.output = meta.toolOutput;
+							}
+						}
+						break;
+					}
+
+					case 'result': {
+						// Agentic loop complete — finalize message
+						if (messages && streamState.streamingMessageId) {
+							const msg = messages.find((m) => m.id === streamState.streamingMessageId);
+							if (msg) {
+								msg.isStreaming = false;
+								// Finalize thinking duration
+								if (streamState.thinkingStartTime !== null && msg.thinkingContent) {
+									msg.thinkingDurationMs = Date.now() - streamState.thinkingStartTime;
+								}
+								if (message.usage) {
+									msg.usage = message.usage;
+								}
+								if (message.totalCostUsd !== undefined) {
+									msg.costUsd = message.totalCostUsd;
+								}
+								if (message.durationMs !== undefined) {
+									msg.durationMs = message.durationMs;
+								}
+								// Set turn number from session's current turn (emitted by bridge via TurnStart)
+								const session = state.sessions.get(sessionId);
+								if (session?.currentTurn !== undefined) {
+									msg.turnNumber = session.currentTurn;
+								} else {
+									// Derive from completed assistant message count
+									const completedAssistant = messages.filter(
+										(m) => m.role === 'assistant' && !m.isStreaming
+									).length;
+									msg.turnNumber = completedAssistant;
+								}
+							}
+						}
+
+						// Reset streaming state + turn counter
+						const session = state.sessions.get(sessionId);
+						if (session) {
+							session.currentTurn = undefined;
+						}
+						streamState.streamingMessageId = null;
+						streamState.streamingContent = '';
+						streamState.streamingThinking = '';
+						streamState.thinkingStartTime = null;
+						streamState.activeToolCalls = new Map();
+						streamState.isStreaming = false;
+						break;
+					}
+
+					case 'error': {
+						streamState.error = message.content;
+						streamState.isStreaming = false;
+
+						if (messages && streamState.streamingMessageId) {
+							const msg = messages.find((m) => m.id === streamState.streamingMessageId);
+							if (msg) {
+								msg.isStreaming = false;
+								if (!msg.content) {
+									msg.content = `Error: ${message.content}`;
+								}
+							}
+						}
+
+						streamState.streamingMessageId = null;
+						streamState.streamingContent = '';
+						streamState.streamingThinking = '';
+						streamState.thinkingStartTime = null;
+						streamState.activeToolCalls = new Map();
+						break;
 					}
 				}
-
-				// Full reset of streaming state
-				streamState.streamingMessageId = null;
-				streamState.streamingContent = '';
-				streamState.activeToolCalls = new Map();
-				streamState.isStreaming = false;
 			});
 
-			get().persistSessions();
-		},
-
-		handleAborted: (conversationId: string, reason: string) => {
-			console.log('[Store ABORTED] conversationId:', conversationId, 'reason:', reason);
-			set((state) => {
-				const streamState = getOrCreateStreamState(state.sessionStreaming, conversationId);
-				streamState.error = `Aborted: ${reason}`;
-				streamState.isStreaming = false;
-				streamState.streamingMessageId = null;
-				streamState.streamingContent = '';
-				streamState.activeToolCalls = new Map();
-			});
-		},
-
-		abortSession: async (sessionId: string) => {
-			try {
-				await backend.abortAgentSession(sessionId);
-			} catch (error) {
-				console.error('Failed to abort session:', error);
+			// Persist on result/error
+			if (message.type === 'result' || message.type === 'error') {
+				get().persistSessions();
 			}
 		},
+
+		handlePermissionRequest: (request: PermissionRequest) => {
+			set((state) => {
+				state.pendingPermissions.set(request.requestId, request);
+
+				// Create a tool call entry in the streaming message
+				const streamState = state.sessionStreaming.get(request.sessionId);
+				if (streamState) {
+					const messages = state.messages.get(request.sessionId);
+					if (messages && streamState.streamingMessageId) {
+						const msg = messages.find((m) => m.id === streamState.streamingMessageId);
+						if (msg) {
+							if (!msg.toolCalls) msg.toolCalls = [];
+							const newTc: ToolCallState = {
+								id: request.requestId,
+								name: request.toolName,
+								input: request.toolInput,
+								status: 'awaiting-permission',
+								requestId: request.requestId,
+							};
+							msg.toolCalls.push(newTc);
+
+							// Push ordered block for interleaving
+							msg.blocks.push({ type: 'tool_use', toolCall: newTc });
+						}
+					}
+				}
+			});
+		},
+
+		handleSessionInit: (sessionId: string, sdkSessionId: string, _isResumed: boolean, _isForked: boolean) => {
+			set((state) => {
+				const session = state.sessions.get(sessionId);
+				if (session) {
+					session.sdkSessionId = sdkSessionId;
+				}
+			});
+		},
+
+		handleTurnStart: (sessionId: string, turnNumber: number) => {
+			set((state) => {
+				const session = state.sessions.get(sessionId);
+				if (session) {
+					session.currentTurn = turnNumber;
+				}
+			});
+		},
+
+		handleError: (message: string, _stack?: string) => {
+			console.error('[Agent bridge error]', message);
+			set((state) => {
+				state.error = message;
+			});
+		},
+
+		respondPermission: async (requestId: string, decision: 'approve' | 'deny', always: boolean = false) => {
+			try {
+				await backend.agentRespondPermission(requestId, decision, always);
+			} catch (error) {
+				console.error('Failed to respond to permission:', error);
+			}
+
+			// On deny: also interrupt the agent and clear all pending permissions
+			if (decision === 'deny') {
+				const request = get().pendingPermissions.get(requestId);
+				if (request) {
+					backend.agentInterrupt(request.sessionId).catch(console.error);
+				}
+			}
+
+			set((state) => {
+				const request = state.pendingPermissions.get(requestId);
+
+				if (decision === 'deny') {
+					// Clear ALL pending permissions on deny (agent is being stopped)
+					state.pendingPermissions.clear();
+				} else {
+					state.pendingPermissions.delete(requestId);
+				}
+
+				const newStatus = decision === 'approve' ? 'running' as const : 'error' as const;
+				const denyOutput = decision === 'deny' ? 'Denied by user' : undefined;
+
+				// Update tool call status in the relevant message
+				if (request) {
+					const streamState = state.sessionStreaming.get(request.sessionId);
+					if (streamState) {
+						const messages = state.messages.get(request.sessionId);
+						if (messages && streamState.streamingMessageId) {
+							const msg = messages.find((m) => m.id === streamState.streamingMessageId);
+							if (msg) {
+								// Update flat toolCalls array
+								if (msg.toolCalls) {
+									const tc = msg.toolCalls.find(
+										(t) => t.requestId === requestId
+									);
+									if (tc) {
+										tc.status = newStatus;
+										if (denyOutput) tc.output = denyOutput;
+									}
+								}
+
+								// Update the matching block (Immer treats these as separate objects)
+								const block = msg.blocks.find(
+									(b) => b.type === 'tool_use' && b.toolCall.requestId === requestId
+								);
+								if (block && block.type === 'tool_use') {
+									block.toolCall.status = newStatus;
+									if (denyOutput) block.toolCall.output = denyOutput;
+								}
+
+								// On deny: mark message as interrupted
+								if (decision === 'deny') {
+									msg.isStreaming = false;
+									msg.isInterrupted = true;
+								}
+							}
+						}
+
+						// Reset streaming state on deny
+						if (decision === 'deny') {
+							streamState.streamingMessageId = null;
+							streamState.streamingContent = '';
+							streamState.streamingThinking = '';
+							streamState.thinkingStartTime = null;
+							streamState.activeToolCalls = new Map();
+							streamState.isStreaming = false;
+						}
+					}
+				}
+			});
+		},
+
+		// =================================================================
+		// Abort / Tool Approval (master API compatibility)
+		// =================================================================
+
+		abortSession: async (sessionId: string) => {
+			// Delegates to interrupt (bridge equivalent of abort)
+			await get().interrupt(sessionId);
+		},
+
+		resolveToolApproval: async (_sessionId: string, toolCallId: string, approved: boolean) => {
+			// Map master's resolveToolApproval to bridge's respondPermission
+			// The toolCallId here is the requestId in the bridge permission model
+			await get().respondPermission(toolCallId, approved ? 'approve' : 'deny');
+		},
+
+		// =================================================================
+		// Utilities
+		// =================================================================
 
 		clearError: (sessionId: string) => {
 			set((state) => {
@@ -684,7 +945,7 @@ export const useSessionError = (sessionId: string | null): string | null => {
 	});
 };
 
-// Legacy selectors
+// Legacy selectors — kept for backward compatibility
 export const useIsAgentRunning = (): boolean => {
 	return useAgentStore((state) => {
 		for (const streamState of state.sessionStreaming.values()) {
@@ -737,14 +998,17 @@ export const useSessions = (): AgentSession[] => {
 	});
 };
 
-export const useSelectedModel = (): string => {
-	return useAgentStore((state) => state.selectedModel);
+export const usePendingPermissions = (): PermissionRequest[] => {
+	const permissions = useAgentStore((state) => state.pendingPermissions);
+	if (permissions.size === 0) return EMPTY_PERMISSIONS;
+	return Array.from(permissions.values());
 };
 
-const EMPTY_APPROVALS: ToolCallWithStatus[] = [];
+/** Master-style tool approval selector (maps bridge permissions to PendingApproval shape) */
+export const usePendingToolApprovals = (): PermissionRequest[] => {
+	return usePendingPermissions();
+};
 
-export const usePendingToolApprovals = (): ToolCallWithStatus[] => {
-	const approvals = useAgentStore((state) => state.pendingToolApprovals);
-	if (approvals.size === 0) return EMPTY_APPROVALS;
-	return Array.from(approvals.values());
+export const useSelectedModel = (): string => {
+	return useAgentStore((state) => state.selectedModel);
 };

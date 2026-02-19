@@ -11,7 +11,7 @@ use std::process::Command;
 use std::sync::Arc;
 use tauri::State;
 use tokio::sync::RwLock;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 // =============================================================================
 // Configuration

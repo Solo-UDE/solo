@@ -20,7 +20,7 @@ tauri-build.workspace = true
 solo-core = { path = "../../../crates/solo-core" }
 solo-protocol = { path = "../../../crates/solo-protocol" }
 solo-fs = { path = "../../../crates/solo-fs" }
-solo-agent = { path = "../../../crates/solo-agent" }
+solo-auth = { path = "../../../crates/solo-auth" }
 solo-parse = { path = "../../../crates/solo-parse" }
 solo-embeddings = { path = "../../../crates/solo-embeddings" }
 solo-git = { path = "../../../crates/solo-git" }
@@ -57,6 +57,12 @@ futures-util.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
 security-framework = "2"
+
+# Agent bridge dependencies
+crossbeam-channel = "0.5"
+parking_lot = "0.12"
+hashbrown = { version = "0.15", features = ["serde"] }
+thiserror.workspace = true
 
 [features]
 default = ["custom-protocol"]
