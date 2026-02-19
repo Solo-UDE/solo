@@ -387,7 +387,7 @@ html[data-vibrancy] .terminal-panel .xterm-viewport {
    ============================================================================= */
 .split-divider {
   flex-shrink: 0;
-  width: 8px;
+  width: 3px;
   background-color: transparent;
   cursor: col-resize;
   position: relative;
@@ -408,7 +408,7 @@ html[data-vibrancy] .terminal-panel .xterm-viewport {
 }
 
 .split-divider:hover::before {
-  width: 3px;
+  width: 4px;
   background-color: var(--primary);
   opacity: 1;
 }

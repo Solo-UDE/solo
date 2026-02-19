@@ -210,6 +210,7 @@ pub fn run() {
             git_commands::git_stage_all,
             git_commands::git_unstage_all,
             git_commands::git_create_branch,
+            git_commands::git_clone,
             // Worktree commands
             worktree_commands::worktree_list,
             worktree_commands::worktree_create,

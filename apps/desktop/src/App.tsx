@@ -28,6 +28,7 @@ import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
 import { Toaster } from "sonner";
 import { WorkspaceSwitcher } from "./components/titlebar/WorkspaceSwitcher";
+import { WelcomeScreen } from "./components/welcome";
 
 // Register built-in panels on module load
 registerBuiltinPanels();
@@ -57,6 +58,7 @@ function AppContent() {
   const loadPersistedSessions = useAgentStore((state) => state.loadPersistedSessions);
   const signOut = useAuthStore((state) => state.signOut);
   const user = useUser();
+  const rootPath = useFileExplorerStore((s) => s.rootPath);
 
   // Get openPanel action directly from store to avoid selector subscription issues
   const openPanel = useMemo(() => usePanelTabsStore.getState().openPanel, []);
@@ -308,19 +310,21 @@ function AppContent() {
         className="absolute top-0 inset-x-0 h-[38px] flex items-center z-50 bg-background titlebar-glass"
       >
         <div className="flex-1 flex items-center" data-tauri-drag-region>
-          <button
-            onClick={toggleSidebar}
-            className={cn(
-              'p-1 rounded-lg hover:bg-foreground/[0.06] transition-[background-color,color] duration-150 ml-1.5',
-              !isCollapsed && 'glow-active',
-            )}
-            title={isCollapsed ? 'Expand Sidebar (⌘B)' : 'Collapse Sidebar (⌘B)'}
-          >
-            <SidebarSimple
-              weight={isCollapsed ? 'regular' : 'fill'}
-              className={cn('w-4 h-4', isCollapsed ? 'text-muted-foreground' : 'text-primary')}
-            />
-          </button>
+          {rootPath !== null && (
+            <button
+              onClick={toggleSidebar}
+              className={cn(
+                'p-1 rounded-lg hover:bg-foreground/[0.06] transition-[background-color,color] duration-150 ml-1.5',
+                !isCollapsed && 'glow-active',
+              )}
+              title={isCollapsed ? 'Expand Sidebar (⌘B)' : 'Collapse Sidebar (⌘B)'}
+            >
+              <SidebarSimple
+                weight={isCollapsed ? 'regular' : 'fill'}
+                className={cn('w-4 h-4', isCollapsed ? 'text-muted-foreground' : 'text-primary')}
+              />
+            </button>
+          )}
         </div>
 
         <WorkspaceSwitcher />
@@ -340,16 +344,18 @@ function AppContent() {
               {user.email}
             </span>
           )}
-          <button
-            onClick={handleToggleTerminal}
-            className={cn(
-              'p-1 rounded-lg hover:bg-foreground/[0.06] transition-[background-color,color] duration-150',
-              terminalPanelOpen && 'glow-active',
-            )}
-            title="Toggle Terminal (⌘`)"
-          >
-            <Terminal className={cn('w-4 h-4', terminalPanelOpen ? 'text-primary' : 'text-muted-foreground')} />
-          </button>
+          {rootPath !== null && (
+            <button
+              onClick={handleToggleTerminal}
+              className={cn(
+                'p-1 rounded-lg hover:bg-foreground/[0.06] transition-[background-color,color] duration-150',
+                terminalPanelOpen && 'glow-active',
+              )}
+              title="Toggle Terminal (⌘`)"
+            >
+              <Terminal className={cn('w-4 h-4', terminalPanelOpen ? 'text-primary' : 'text-muted-foreground')} />
+            </button>
+          )}
           <button
             onClick={() => openSettings()}
             className="p-1 rounded-lg hover:bg-foreground/[0.06] transition-[background-color,color] duration-150"
@@ -368,7 +374,9 @@ function AppContent() {
       </div>
 
       {/* Full-height content — sidebar bg extends behind titlebar */}
-      {settingsOpen ? (
+      {rootPath === null && !settingsOpen ? (
+        <WelcomeScreen />
+      ) : settingsOpen ? (
         <div className="flex h-full pt-[38px]">
           <SettingsView />
         </div>
