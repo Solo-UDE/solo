@@ -1,8 +1,9 @@
 import { useEffect, useCallback, useMemo, useRef, useState } from 'react';
-import { Plus, Robot, Lightning, Code, GitBranch } from '@phosphor-icons/react';
+import { Plus } from '@phosphor-icons/react';
 
 import { MessageFeed, TurnProgress } from './messages';
 import { ChatInputContainer } from './input';
+import { SoloEmptyState } from './SoloDecryptAnimation';
 import { convertToMessageGroups } from './messageAdapter';
 import { useAgentSession } from '../../hooks/useAgentSession';
 import { useProviderStore } from '../../stores/provider-store';
@@ -35,47 +36,6 @@ export interface AgentWindowProps {
 	className?: string;
 }
 
-// Suggested prompts for the empty state
-const SUGGESTED_PROMPTS = [
-	{ icon: Code, label: 'Write code', prompt: 'Help me write a function that...' },
-	{ icon: Lightning, label: 'Fix a bug', prompt: 'I have a bug in my code where...' },
-	{ icon: GitBranch, label: 'Git help', prompt: 'Help me with my git workflow...' },
-];
-
-const EmptyState: FC<{
-	onPromptClick: (prompt: string) => void;
-}> = ({ onPromptClick }) => {
-	return (
-		<div className="flex flex-col items-center gap-6 max-w-sm animate-fade-in-scale">
-			{/* Avatar */}
-			<div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center">
-				<Robot className="w-7 h-7 text-primary" />
-			</div>
-
-			{/* Text */}
-			<div className="text-center space-y-1.5">
-				<h3 className="text-sm font-medium text-foreground">Solo Agent</h3>
-				<p className="text-xs text-muted-foreground leading-relaxed">
-					I can help you write code, debug issues, search your codebase, and more.
-				</p>
-			</div>
-
-			{/* Suggested prompts */}
-			<div className="flex flex-wrap justify-center gap-2">
-				{SUGGESTED_PROMPTS.map(({ icon: Icon, label, prompt }) => (
-					<button
-						key={label}
-						onClick={() => onPromptClick(prompt)}
-						className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-muted/40 hover:bg-muted/70 text-xs text-muted-foreground hover:text-foreground hover:scale-[1.03] active:scale-[0.97] transition-[transform,background-color,color] duration-150"
-					>
-						<Icon className="w-3.5 h-3.5" />
-						<span>{label}</span>
-					</button>
-				))}
-			</div>
-		</div>
-	);
-};
 
 export const AgentWindow: FC<AgentWindowProps> = ({
 	instanceId,
@@ -237,9 +197,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 				</button>
 
 				<div className="flex-1 flex items-center justify-center px-6">
-					<EmptyState
-						onPromptClick={handleSuggestedPrompt}
-					/>
+					<SoloEmptyState onPromptClick={handleSuggestedPrompt} />
 				</div>
 
 				{error && (

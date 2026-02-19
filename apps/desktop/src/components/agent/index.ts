@@ -1,6 +1,7 @@
 // Main components
 export { AgentWindow, type AgentWindowProps, type AgentWindowCallbacks, type AgentWindowUIOptions } from './AgentWindow';
 export { AgentWindowHeader, type AgentWindowHeaderProps } from './AgentWindowHeader';
+export { SoloEmptyState } from './SoloDecryptAnimation';
 export { SessionList, type SessionListProps } from './SessionList';
 
 // Message components

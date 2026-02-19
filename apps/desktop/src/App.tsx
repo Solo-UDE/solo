@@ -305,7 +305,7 @@ function AppContent() {
       <div
         data-tauri-drag-region
         style={titlebarStyle}
-        className="absolute top-0 inset-x-0 h-[38px] flex items-center z-50 backdrop-blur-md bg-background/70 titlebar-glass"
+        className="absolute top-0 inset-x-0 h-[38px] flex items-center z-50 bg-background titlebar-glass"
       >
         <div className="flex-1 flex items-center" data-tauri-drag-region>
           <button
