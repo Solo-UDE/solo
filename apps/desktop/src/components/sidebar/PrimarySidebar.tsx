@@ -74,7 +74,7 @@ export const PrimarySidebar = forwardRef<HTMLElement, PrimarySidebarProps>(({ wi
   return (
     <aside
       ref={ref}
-      className="h-full flex flex-row border-r border-white/[0.06] bg-sidebar overflow-hidden pt-[38px]"
+      className="h-full flex flex-row border-r border-sidebar-border bg-sidebar overflow-hidden pt-[38px]"
       style={{
         width,
         transition: `width ${TRANSITIONS.sidebar}`,

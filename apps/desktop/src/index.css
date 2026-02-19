@@ -187,9 +187,9 @@
   --file-image: oklch(0.65 0.18 300);
 
   /* Sidebar */
-  --sidebar: oklch(0.95 0.008 70);
+  --sidebar: oklch(0.98 0.005 75);
   --sidebar-foreground: oklch(0.25 0.02 60);
-  --sidebar-border: oklch(0.88 0.02 70);
+  --sidebar-border: oklch(0.92 0.01 70);
 
   /* Agent-specific */
   --agent-user-bg: oklch(0.95 0.02 140 / 10%);
@@ -335,7 +335,7 @@ html.dark {
    transparent so the NSVisualEffectView shows through. The data-vibrancy
    attribute is set from the Rust setup closure on macOS. */
 html[data-vibrancy] {
-  --sidebar: transparent;
+  --sidebar: oklch(0.98 0.005 75);
   --popover: oklch(1 0 0);
   --card: oklch(0.96 0.008 70 / 85%);
   background-color: transparent !important;
@@ -346,7 +346,11 @@ html[data-vibrancy] #root > div {
 }
 
 html[data-vibrancy] .titlebar-glass {
-  background: rgb(255 255 255 / 0.03);
+  background: oklch(0.98 0.005 75);
+}
+
+html[data-vibrancy] .split-divider {
+  background-color: var(--background);
 }
 
 /* Dark mode + vibrancy: semi-transparent dark backgrounds
@@ -364,6 +368,10 @@ html.dark[data-vibrancy] #root > div {
 
 html.dark[data-vibrancy] .titlebar-glass {
   background: rgb(0 0 0 / 0.25);
+}
+
+html.dark[data-vibrancy] .split-divider {
+  background-color: transparent;
 }
 
 html[data-vibrancy] .terminal-panel {
@@ -394,8 +402,8 @@ html[data-vibrancy] .terminal-panel .xterm-viewport {
   bottom: 0;
   width: 1px;
   transform: translateX(-50%);
-  background-color: var(--border);
-  opacity: 0.5;
+  background-color: var(--sidebar-border);
+  opacity: 0.4;
   transition: all 200ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
