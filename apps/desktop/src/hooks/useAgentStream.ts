@@ -33,6 +33,7 @@ export function useAgentStream(options: UseAgentStreamOptions = {}): void {
 		onMessage: useAgentStore((s) => s.handleAgentMessage),
 		onPermissionRequest: useAgentStore((s) => s.handlePermissionRequest),
 		onSessionInit: useAgentStore((s) => s.handleSessionInit),
+		onTurnStart: useAgentStore((s) => s.handleTurnStart),
 		onError: useAgentStore((s) => s.handleError),
 		onPlanModeChanged: (_sessionId: string, enabled: boolean) => {
 			console.log('[AgentStream] Plan mode changed:', enabled);
@@ -56,6 +57,8 @@ export function useAgentStream(options: UseAgentStreamOptions = {}): void {
 				handlersRef.current.onPermissionRequest?.(request),
 			onSessionInit: (sessionId, sdkSessionId, isResumed, isForked) =>
 				handlersRef.current.onSessionInit?.(sessionId, sdkSessionId, isResumed, isForked),
+			onTurnStart: (sessionId, turnNumber) =>
+				handlersRef.current.onTurnStart?.(sessionId, turnNumber),
 			onError: (message, stack) =>
 				handlersRef.current.onError?.(message, stack),
 			onPlanModeChanged: (sessionId, enabled) =>

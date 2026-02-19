@@ -1,16 +1,16 @@
-import { User, File as FileIcon, Image as ImageIcon } from '@phosphor-icons/react';
+import { User, File as FileIcon, Image as ImageIcon, At } from '@phosphor-icons/react';
 import { convertFileSrc } from '@tauri-apps/api/core';
 
 import type { FC } from 'react';
-import type { FileAttachment, ImageAttachment } from '@/stores/agentStore';
+import type { Attachment, FileMention } from '@/stores/agentStore';
 
 export interface UserMessageProps {
   content: string;
   timestamp: Date;
   avatarUrl?: string;
   userName?: string;
-  attachedFiles?: FileAttachment[];
-  attachedImages?: ImageAttachment[];
+  attachments?: Attachment[];
+  mentions?: FileMention[];
   className?: string;
 }
 
@@ -19,8 +19,8 @@ export const UserMessage: FC<UserMessageProps> = ({
   timestamp,
   avatarUrl,
   userName = 'You',
-  attachedFiles,
-  attachedImages,
+  attachments,
+  mentions,
   className = '',
 }) => {
   const formatTime = (date: Date): string => {
@@ -30,6 +30,9 @@ export const UserMessage: FC<UserMessageProps> = ({
       hour12: true,
     }).format(date);
   };
+
+  const imageAttachments = attachments?.filter((a) => a.type === 'image');
+  const fileAttachments = attachments?.filter((a) => a.type === 'file');
 
   return (
     <div className={`flex gap-3 px-4 ${className}`}>
@@ -53,16 +56,16 @@ export const UserMessage: FC<UserMessageProps> = ({
         </div>
 
         {/* Attached images */}
-        {attachedImages && attachedImages.length > 0 && (
+        {imageAttachments && imageAttachments.length > 0 && (
           <div className="flex flex-wrap gap-2 mt-2">
-            {attachedImages.map((img) => (
+            {imageAttachments.map((img) => (
               <div
-                key={img.path}
+                key={img.id}
                 className="relative rounded-lg overflow-hidden bg-muted/40 border border-border/30"
                 style={{ maxWidth: 200, maxHeight: 150 }}
               >
                 <img
-                  src={img.previewUrl || convertFileSrc(img.path)}
+                  src={img.thumbnailUrl || convertFileSrc(img.path)}
                   alt={img.name}
                   className="w-full h-full object-cover"
                 />
@@ -75,11 +78,11 @@ export const UserMessage: FC<UserMessageProps> = ({
         )}
 
         {/* Attached files */}
-        {attachedFiles && attachedFiles.length > 0 && (
+        {fileAttachments && fileAttachments.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mt-2">
-            {attachedFiles.map((file) => (
+            {fileAttachments.map((file) => (
               <div
-                key={file.path}
+                key={file.id}
                 className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-muted/40 text-xs text-muted-foreground"
                 title={file.path}
               >
@@ -89,6 +92,22 @@ export const UserMessage: FC<UserMessageProps> = ({
                   <FileIcon className="w-3.5 h-3.5 flex-shrink-0" />
                 )}
                 <span className="truncate max-w-[150px]">{file.name}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Mentions */}
+        {mentions && mentions.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            {mentions.map((mention) => (
+              <div
+                key={mention.path}
+                className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-primary/10 text-xs text-primary"
+                title={mention.path}
+              >
+                <At className="w-3 h-3 flex-shrink-0" />
+                <span className="truncate max-w-[200px]">{mention.relativePath || mention.name}</span>
               </div>
             ))}
           </div>

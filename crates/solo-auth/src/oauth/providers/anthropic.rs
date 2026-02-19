@@ -33,7 +33,7 @@ impl AnthropicOAuthConfig {
         let redirect_uri = get_callback_url();
 
         let mut url = Url::parse(Self::AUTHORIZATION_URL)
-            .map_err(|e| ProviderError::OAuthError(format!("Invalid auth URL: {}", e)))?;
+            .map_err(|e| ProviderError::AuthError(format!("Invalid auth URL: {}", e)))?;
 
         {
             let mut params = url.query_pairs_mut();
@@ -80,12 +80,12 @@ impl AnthropicOAuthConfig {
             ])
             .send()
             .await
-            .map_err(|e| ProviderError::OAuthError(format!("Token exchange request failed: {}", e)))?;
+            .map_err(|e| ProviderError::AuthError(format!("Token exchange request failed: {}", e)))?;
 
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            return Err(ProviderError::OAuthError(format!(
+            return Err(ProviderError::AuthError(format!(
                 "Token exchange failed ({}): {}",
                 status, body
             )));
@@ -94,7 +94,7 @@ impl AnthropicOAuthConfig {
         let token_response: TokenResponse = response
             .json()
             .await
-            .map_err(|e| ProviderError::OAuthError(format!("Failed to parse token response: {}", e)))?;
+            .map_err(|e| ProviderError::AuthError(format!("Failed to parse token response: {}", e)))?;
 
         Ok(OAuthToken::from(token_response))
     }
@@ -112,12 +112,12 @@ impl AnthropicOAuthConfig {
             ])
             .send()
             .await
-            .map_err(|e| ProviderError::OAuthError(format!("Token refresh request failed: {}", e)))?;
+            .map_err(|e| ProviderError::AuthError(format!("Token refresh request failed: {}", e)))?;
 
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            return Err(ProviderError::OAuthError(format!(
+            return Err(ProviderError::AuthError(format!(
                 "Token refresh failed ({}): {}",
                 status, body
             )));
@@ -126,7 +126,7 @@ impl AnthropicOAuthConfig {
         let token_response: TokenResponse = response
             .json()
             .await
-            .map_err(|e| ProviderError::OAuthError(format!("Failed to parse refresh token response: {}", e)))?;
+            .map_err(|e| ProviderError::AuthError(format!("Failed to parse refresh token response: {}", e)))?;
 
         Ok(OAuthToken::from(token_response))
     }

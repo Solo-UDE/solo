@@ -351,6 +351,12 @@ pub enum BridgeEvent {
         session_id: String,
         enabled: bool,
     },
+    TurnStart {
+        #[serde(rename = "sessionId")]
+        session_id: String,
+        #[serde(rename = "turnNumber")]
+        turn_number: u32,
+    },
     ErrorEvent {
         error: SerializableError,
     },

@@ -11,3 +11,4 @@ export { NotifyUserCard, type NotifyUserCardProps, type NotificationAction } fro
 export { ProceedIndicator, type ProceedIndicatorProps } from './proceed-indicator';
 export { MessageFeedback, type MessageFeedbackProps } from './message-feedback';
 export { FilesEditedList, type FilesEditedListProps, type FileEditInfo } from './files-edited-list';
+export { TurnProgress, type TurnProgressProps } from './turn-progress';

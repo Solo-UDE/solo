@@ -10,7 +10,6 @@ import type {
 	OAuthMethod,
 	OAuthFlowResult,
 	AuthMethodInfo,
-	AuthType,
 	ClaudeSetupStatus,
 	SessionConfig,
 	AttachmentContentBlock,
@@ -38,7 +37,7 @@ export interface ModelInfo {
 }
 
 // Re-export for convenience
-export type { ProviderType };
+export type { ProviderType, AuthMethodInfo, ClaudeSetupStatus };
 
 // =============================================================================
 // Provider Commands

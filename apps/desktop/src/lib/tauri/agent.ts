@@ -11,6 +11,7 @@ import type {
 	AgentPermissionRequestEvent,
 	AgentSessionInitEvent,
 	AgentModeChangedEvent,
+	AgentTurnStartEvent,
 	AgentErrorEvent,
 	BridgeAgentMessage,
 	PermissionRequest,
@@ -24,6 +25,7 @@ export interface AgentEventHandlers {
 	onMessage?: (sessionId: string, message: BridgeAgentMessage) => void;
 	onPermissionRequest?: (request: PermissionRequest) => void;
 	onSessionInit?: (sessionId: string, sdkSessionId: string, isResumed: boolean, isForked: boolean) => void;
+	onTurnStart?: (sessionId: string, turnNumber: number) => void;
 	onPlanModeChanged?: (sessionId: string, enabled: boolean) => void;
 	onAcceptModeChanged?: (sessionId: string, enabled: boolean) => void;
 	onError?: (message: string, stack?: string) => void;
@@ -76,6 +78,15 @@ export async function listenToAgentEvents(
 					event.payload.isResumed,
 					event.payload.isForked,
 				);
+			})
+		);
+	}
+
+	if (handlers.onTurnStart) {
+		const h = handlers.onTurnStart;
+		unlistens.push(
+			await listen<AgentTurnStartEvent>('agent:turn_start', (event) => {
+				h(event.payload.sessionId, event.payload.turnNumber);
 			})
 		);
 	}

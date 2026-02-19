@@ -411,8 +411,8 @@ pub async fn check_claude_auth_status(
 pub async fn check_claude_cli_installed() -> Result<bool, String> {
     debug!("Checking if Claude CLI is installed");
 
-    let output = std::process::Command::new("which")
-        .arg("claude")
+    let output = std::process::Command::new("/bin/zsh")
+        .args(["-lc", "which claude"])
         .output()
         .map_err(|e| e.to_string())?;
 
@@ -476,7 +476,7 @@ pub async fn verify_claude_setup(
     };
 
     // 1. Check CLI installation
-    match std::process::Command::new("which").arg("claude").output() {
+    match std::process::Command::new("/bin/zsh").args(["-lc", "which claude"]).output() {
         Ok(output) if output.status.success() => {
             let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
             status.cli_installed = true;

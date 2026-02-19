@@ -213,6 +213,7 @@ pub fn setup_event_callbacks(app: &AppHandle, session_manager: &Arc<SessionManag
             session_id,
             message,
         } => {
+            tracing::debug!("[agent:emit] message session={} type={:?}", session_id, message.message_type);
             drop(app_handle.emit(
                 "agent:message",
                 serde_json::json!({
@@ -222,6 +223,7 @@ pub fn setup_event_callbacks(app: &AppHandle, session_manager: &Arc<SessionManag
             ));
         }
         BridgeEvent::PermissionRequest { request } => {
+            tracing::debug!("[agent:emit] permission session={} tool={}", request.session_id, request.tool_name);
             drop(app_handle.emit(
                 "agent:permission_request",
                 serde_json::json!({
@@ -233,6 +235,7 @@ pub fn setup_event_callbacks(app: &AppHandle, session_manager: &Arc<SessionManag
             ));
         }
         BridgeEvent::SessionInit { event: init_event } => {
+            tracing::debug!("[agent:emit] session_init session={} sdk_session={:?}", init_event.session_id, init_event.sdk_session_id);
             drop(app_handle.emit(
                 "agent:session_init",
                 serde_json::json!({
@@ -247,6 +250,7 @@ pub fn setup_event_callbacks(app: &AppHandle, session_manager: &Arc<SessionManag
             session_id,
             enabled,
         } => {
+            tracing::debug!("[agent:emit] plan_mode_changed session={} enabled={}", session_id, enabled);
             drop(app_handle.emit(
                 "agent:plan_mode_changed",
                 serde_json::json!({
@@ -259,6 +263,7 @@ pub fn setup_event_callbacks(app: &AppHandle, session_manager: &Arc<SessionManag
             session_id,
             enabled,
         } => {
+            tracing::debug!("[agent:emit] accept_mode_changed session={} enabled={}", session_id, enabled);
             drop(app_handle.emit(
                 "agent:accept_mode_changed",
                 serde_json::json!({
@@ -267,7 +272,21 @@ pub fn setup_event_callbacks(app: &AppHandle, session_manager: &Arc<SessionManag
                 }),
             ));
         }
+        BridgeEvent::TurnStart {
+            session_id,
+            turn_number,
+        } => {
+            tracing::debug!("[agent:emit] turn_start session={} turn={}", session_id, turn_number);
+            drop(app_handle.emit(
+                "agent:turn_start",
+                serde_json::json!({
+                    "sessionId": session_id,
+                    "turnNumber": turn_number,
+                }),
+            ));
+        }
         BridgeEvent::ErrorEvent { error } => {
+            tracing::debug!("[agent:emit] error message={}", error.message);
             drop(app_handle.emit(
                 "agent:error",
                 serde_json::json!({
@@ -277,6 +296,7 @@ pub fn setup_event_callbacks(app: &AppHandle, session_manager: &Arc<SessionManag
             ));
         }
         BridgeEvent::Ready => {
+            tracing::debug!("[agent:emit] ready");
             drop(app_handle.emit("agent:ready", ()));
         }
     }));

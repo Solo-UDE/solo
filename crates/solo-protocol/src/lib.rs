@@ -610,6 +610,28 @@ pub struct ParseErrorInfo {
     pub range: SymbolRange,
 }
 
+// =============================================================================
+// Claude CLI Setup
+// =============================================================================
+
+/// Status of the Claude Code CLI setup
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClaudeSetupStatus {
+    pub cli_installed: bool,
+    pub cli_path: Option<String>,
+    pub credentials_found: bool,
+    pub credential_source: Option<String>,
+    pub token_expired: bool,
+    pub token_expires_at: Option<i64>,
+    pub token_expires_in_seconds: Option<i64>,
+    pub scopes: Option<Vec<String>>,
+    pub api_verified: Option<bool>,
+    pub error: Option<String>,
+    pub cli_mode_available: bool,
+    pub requires_cli_mode: bool,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

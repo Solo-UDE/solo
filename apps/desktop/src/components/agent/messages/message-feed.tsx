@@ -15,6 +15,7 @@ export interface MessageFeedProps {
   messageGroups: MessageGroup[];
   autoScroll?: boolean;
   isStreaming?: boolean;
+  onToolApproval?: (toolCallId: string, approved: boolean) => void;
   className?: string;
 }
 
@@ -22,6 +23,7 @@ export const MessageFeed: FC<MessageFeedProps> = ({
   messageGroups,
   autoScroll = true,
   isStreaming = false,
+  onToolApproval,
   className = '',
 }) => {
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
@@ -119,6 +121,7 @@ export const MessageFeed: FC<MessageFeedProps> = ({
               <MessageSection
                 sectionIndex={virtualItem.index}
                 messages={messageGroup.messages}
+                onToolApproval={onToolApproval}
               />
             </div>
           );

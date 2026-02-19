@@ -9,6 +9,7 @@ import { ProceedIndicator } from './proceed-indicator';
 import { TaskPhaseCard } from './task-phase-card';
 import { ThinkingBox } from './thinking-box';
 import { ToolCallBlock } from './tool-call-block';
+import { TurnProgress } from './turn-progress';
 import {
   BashToolWidget,
   EditToolWidget,
@@ -71,6 +72,7 @@ export interface AgentMessageContent {
   isStreaming?: boolean;
   isInterrupted?: boolean;
   isLastAssistantMessage?: boolean;
+  turnNumber?: number;
 }
 
 export interface AgentMessageProps {
@@ -273,6 +275,9 @@ export const AgentMessage: FC<AgentMessageProps> = ({
             ) : null}
           </>
         )}
+
+        {/* Turn progress indicator */}
+        {content.turnNumber ? <TurnProgress turnNumber={content.turnNumber} /> : null}
 
         {/* Message Actions (shown after message completes, not during streaming) */}
         {!content.isStreaming && !content.isInterrupted && content.isLastAssistantMessage !== undefined ? (

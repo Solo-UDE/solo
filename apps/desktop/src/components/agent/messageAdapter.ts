@@ -52,8 +52,8 @@ export function convertToMessageGroups(storeMessages: StoreMessage[]): MessageGr
           type: 'user',
           content: msg.content,
           timestamp: msg.timestamp,
-          attachedFiles: msg.attachedFiles,
-          attachedImages: msg.attachedImages,
+          attachments: msg.attachments,
+          mentions: msg.mentions,
         }
       : {
           id: msg.id,
@@ -135,6 +135,11 @@ function convertToAgentContent(msg: StoreMessage, isLastAssistant: boolean = fal
   // If we have ordered blocks, use them for interleaved rendering
   if (msg.blocks && msg.blocks.length > 0) {
     content.blocks = convertBlocksToRenderBlocks(msg.blocks, msg);
+  }
+
+  // Pass turn number if available
+  if (msg.turnNumber !== undefined) {
+    content.turnNumber = msg.turnNumber;
   }
 
   // Also keep flat arrays as fallback for backward compat

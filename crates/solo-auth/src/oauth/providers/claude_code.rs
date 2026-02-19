@@ -77,7 +77,7 @@ impl ClaudeCodeOAuthConfig {
         let code_challenge = generate_code_challenge(&code_verifier);
 
         let mut url = Url::parse(Self::AUTHORIZATION_URL)
-            .map_err(|e| ProviderError::OAuthError(format!("Invalid auth URL: {}", e)))?;
+            .map_err(|e| ProviderError::AuthError(format!("Invalid auth URL: {}", e)))?;
 
         {
             let mut params = url.query_pairs_mut();
@@ -107,7 +107,7 @@ impl ClaudeCodeOAuthConfig {
         let client = reqwest::Client::builder()
             .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
             .build()
-            .map_err(|e| ProviderError::OAuthError(format!("Failed to build HTTP client: {}", e)))?;
+            .map_err(|e| ProviderError::AuthError(format!("Failed to build HTTP client: {}", e)))?;
 
         let response = client
             .post(Self::TOKEN_URL)
@@ -124,12 +124,12 @@ impl ClaudeCodeOAuthConfig {
             ])
             .send()
             .await
-            .map_err(|e| ProviderError::OAuthError(format!("Token exchange request failed: {}", e)))?;
+            .map_err(|e| ProviderError::AuthError(format!("Token exchange request failed: {}", e)))?;
 
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            return Err(ProviderError::OAuthError(format!(
+            return Err(ProviderError::AuthError(format!(
                 "Token exchange failed ({}): {}",
                 status, body
             )));
@@ -138,7 +138,7 @@ impl ClaudeCodeOAuthConfig {
         let token_response: ClaudeTokenResponse = response
             .json()
             .await
-            .map_err(|e| ProviderError::OAuthError(format!("Failed to parse token response: {}", e)))?;
+            .map_err(|e| ProviderError::AuthError(format!("Failed to parse token response: {}", e)))?;
 
         // Calculate expiry timestamp (milliseconds since epoch)
         let expires_at = std::time::SystemTime::now()
@@ -169,7 +169,7 @@ impl ClaudeCodeOAuthConfig {
         };
 
         let json = serde_json::to_string(&credentials)
-            .map_err(|e| ProviderError::OAuthError(format!("Failed to serialize credentials: {}", e)))?;
+            .map_err(|e| ProviderError::AuthError(format!("Failed to serialize credentials: {}", e)))?;
 
         // Get current username for the account field
         let username = std::env::var("USER").unwrap_or_else(|_| "user".to_string());

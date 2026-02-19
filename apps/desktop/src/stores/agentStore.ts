@@ -8,7 +8,7 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import { enableMapSet } from 'immer';
-import type { BridgeAgentMessage, PermissionRequest, TokenUsage } from '../bindings';
+import type { BridgeAgentMessage, PermissionRequest, TokenUsage, AttachmentContentBlock } from '../bindings';
 import * as backend from '../lib/backend';
 import {
 	loadSessions,
@@ -108,6 +108,7 @@ export interface AgentSession {
 	createdAt: Date;
 	model: string;
 	name?: string;
+	currentTurn?: number;
 }
 
 export interface SessionStreamState {
@@ -133,6 +134,36 @@ function toAgentModel(modelId: string): 'haiku' | 'sonnet' | 'opus' {
 	if (modelId.includes('haiku')) return 'haiku';
 	if (modelId.includes('sonnet')) return 'sonnet';
 	return 'opus';
+}
+
+/** Convert unified Attachment + FileMention arrays into AttachmentContentBlock[] for the bridge */
+function toContentBlocks(
+	attachments?: Attachment[],
+	mentions?: FileMention[],
+): AttachmentContentBlock[] | undefined {
+	const blocks: AttachmentContentBlock[] = [];
+
+	if (attachments) {
+		for (const att of attachments) {
+			blocks.push({
+				type: att.type === 'image' ? 'image' : 'document',
+				name: att.name,
+				filePath: att.path,
+			});
+		}
+	}
+
+	if (mentions) {
+		for (const mention of mentions) {
+			blocks.push({
+				type: 'text',
+				name: mention.name,
+				filePath: mention.path,
+			});
+		}
+	}
+
+	return blocks.length > 0 ? blocks : undefined;
 }
 
 function createDefaultStreamState(): SessionStreamState {
@@ -209,6 +240,7 @@ interface AgentActions {
 	handleAgentMessage: (sessionId: string, message: BridgeAgentMessage) => void;
 	handlePermissionRequest: (request: PermissionRequest) => void;
 	handleSessionInit: (sessionId: string, sdkSessionId: string, isResumed: boolean, isForked: boolean) => void;
+	handleTurnStart: (sessionId: string, turnNumber: number) => void;
 	handleError: (message: string, stack?: string) => void;
 	respondPermission: (requestId: string, decision: 'approve' | 'deny', always?: boolean) => Promise<void>;
 
@@ -433,7 +465,7 @@ export const useAgentStore = create<AgentStore>()(
 			});
 
 			try {
-				await backend.agentSendMessage(sessionId, content);
+				await backend.agentSendMessage(sessionId, content, toContentBlocks(attachments, mentions));
 			} catch (error) {
 				const errorMsg = error instanceof Error ? error.message : String(error);
 				console.error('[Agent] sendMessage failed:', errorMsg);
@@ -639,10 +671,25 @@ export const useAgentStore = create<AgentStore>()(
 								if (message.durationMs !== undefined) {
 									msg.durationMs = message.durationMs;
 								}
+								// Set turn number from session's current turn (emitted by bridge via TurnStart)
+								const session = state.sessions.get(sessionId);
+								if (session?.currentTurn !== undefined) {
+									msg.turnNumber = session.currentTurn;
+								} else {
+									// Derive from completed assistant message count
+									const completedAssistant = messages.filter(
+										(m) => m.role === 'assistant' && !m.isStreaming
+									).length;
+									msg.turnNumber = completedAssistant;
+								}
 							}
 						}
 
-						// Reset streaming state
+						// Reset streaming state + turn counter
+						const session = state.sessions.get(sessionId);
+						if (session) {
+							session.currentTurn = undefined;
+						}
 						streamState.streamingMessageId = null;
 						streamState.streamingContent = '';
 						streamState.streamingThinking = '';
@@ -716,6 +763,15 @@ export const useAgentStore = create<AgentStore>()(
 				const session = state.sessions.get(sessionId);
 				if (session) {
 					session.sdkSessionId = sdkSessionId;
+				}
+			});
+		},
+
+		handleTurnStart: (sessionId: string, turnNumber: number) => {
+			set((state) => {
+				const session = state.sessions.get(sessionId);
+				if (session) {
+					session.currentTurn = turnNumber;
 				}
 			});
 		},
@@ -814,7 +870,7 @@ export const useAgentStore = create<AgentStore>()(
 			await get().interrupt(sessionId);
 		},
 
-		resolveToolApproval: async (sessionId: string, toolCallId: string, approved: boolean) => {
+		resolveToolApproval: async (_sessionId: string, toolCallId: string, approved: boolean) => {
 			// Map master's resolveToolApproval to bridge's respondPermission
 			// The toolCallId here is the requestId in the bridge permission model
 			await get().respondPermission(toolCallId, approved ? 'approve' : 'deny');

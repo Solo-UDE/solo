@@ -653,7 +653,7 @@ impl CredentialManager {
 
         // Serialize token to JSON
         let token_json = serde_json::to_string(&token)
-            .map_err(|e| ProviderError::OAuthError(format!("Failed to serialize token: {}", e)))?;
+            .map_err(|e| ProviderError::AuthError(format!("Failed to serialize token: {}", e)))?;
 
         // Delete existing entry if it exists
         let _ = Command::new("security")
@@ -764,11 +764,11 @@ impl CredentialManager {
         let current_token = self
             .get_oauth_token(provider)
             .await?
-            .ok_or_else(|| ProviderError::OAuthError("No OAuth token to refresh".to_string()))?;
+            .ok_or_else(|| ProviderError::AuthError("No OAuth token to refresh".to_string()))?;
 
         let refresh_token = current_token
             .refresh_token
-            .ok_or_else(|| ProviderError::OAuthError("No refresh token available".to_string()))?;
+            .ok_or_else(|| ProviderError::AuthError("No refresh token available".to_string()))?;
 
         let new_token = match provider {
             ProviderType::Anthropic => AnthropicOAuthConfig::refresh_token(&refresh_token).await?,
@@ -793,7 +793,7 @@ impl CredentialManager {
 
         // Serialize token to JSON
         let token_json = serde_json::to_string(&token)
-            .map_err(|e| ProviderError::OAuthError(format!("Failed to serialize OpenAI token: {}", e)))?;
+            .map_err(|e| ProviderError::AuthError(format!("Failed to serialize OpenAI token: {}", e)))?;
 
         // Delete existing entry if it exists
         let _ = Command::new("security")
@@ -892,11 +892,11 @@ impl CredentialManager {
         let current_token = self
             .get_openai_oauth_token()
             .await?
-            .ok_or_else(|| ProviderError::OAuthError("No OpenAI OAuth token to refresh".to_string()))?;
+            .ok_or_else(|| ProviderError::AuthError("No OpenAI OAuth token to refresh".to_string()))?;
 
         let refresh_token = current_token
             .refresh_token
-            .ok_or_else(|| ProviderError::OAuthError("No refresh token available".to_string()))?;
+            .ok_or_else(|| ProviderError::AuthError("No refresh token available".to_string()))?;
 
         let mut new_token = OpenAIOAuthConfig::refresh_token(&refresh_token).await?;
 

@@ -1,13 +1,12 @@
 import { useEffect, useCallback, useMemo, useRef, useState } from 'react';
 import { Plus, Robot, Lightning, Code, GitBranch } from '@phosphor-icons/react';
 
-import { MessageFeed } from './messages';
+import { MessageFeed, TurnProgress } from './messages';
 import { ChatInputContainer } from './input';
-import { ToolApprovalDialog } from './dialogs';
 import { convertToMessageGroups } from './messageAdapter';
 import { useAgentSession } from '../../hooks/useAgentSession';
 import { useProviderStore } from '../../stores/provider-store';
-import { useAgentStore, usePendingToolApprovals } from '../../stores/agentStore';
+import { useAgentStore } from '../../stores/agentStore';
 import { usePanelTabsStore } from '../../stores/panelTabsStore';
 import { BUILTIN_PANEL_TYPES } from '../../lib/panels/constants';
 
@@ -110,6 +109,12 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 
 	const selectedModel = useProviderStore((state) => state.selectedModel);
 
+	// Turn progress tracking
+	const currentTurn = useAgentStore((state) => {
+		if (!sessionId) return undefined;
+		return state.sessions.get(sessionId)?.currentTurn;
+	});
+
 	// Panel system for opening new tabs
 	const openPanel = usePanelTabsStore((state) => state.openPanel);
 
@@ -154,15 +159,6 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 		[sendMessage]
 	);
 
-	// Handle tool approval/rejection (bridge permission model)
-	const respondPermission = useAgentStore((state) => state.respondPermission);
-	const handleToolApproval = useCallback(
-		(requestId: string, approved: boolean) => {
-			respondPermission(requestId, approved ? 'approve' : 'deny');
-		},
-		[respondPermission]
-	);
-
 	// Abort session
 	const abortSession = useAgentStore((state) => state.abortSession);
 	const handleAbort = useCallback(() => {
@@ -171,14 +167,13 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 		}
 	}, [sessionId, abortSession]);
 
-	// Tool approval (for ToolApprovalDialog)
-	const pendingApprovals = usePendingToolApprovals();
-	const resolveToolApproval = useAgentStore((state) => state.resolveToolApproval);
-	const handleResolveApproval = useCallback(
-		(sid: string, toolCallId: string, approved: boolean) => {
-			resolveToolApproval(sid, toolCallId, approved);
+	// Tool approval — wire inline approval buttons to bridge permission system
+	const respondPermission = useAgentStore((state) => state.respondPermission);
+	const handleToolApproval = useCallback(
+		(toolCallId: string, approved: boolean) => {
+			respondPermission(toolCallId, approved ? 'approve' : 'deny');
 		},
-		[resolveToolApproval]
+		[respondPermission]
 	);
 
 	// Handle mode selector changes — sync to bridge
@@ -290,8 +285,13 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 				messageGroups={messageGroups}
 				autoScroll={true}
 				isStreaming={isRunning}
+				onToolApproval={handleToolApproval}
 				className="flex-1"
 			/>
+
+			{currentTurn != null && currentTurn > 0 && (
+				<TurnProgress turnNumber={currentTurn} />
+			)}
 
 			{error && (
 				<div className="px-4 py-2 bg-destructive/10 border-t border-destructive/20">
@@ -303,12 +303,6 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 					</div>
 				</div>
 			)}
-
-			<ToolApprovalDialog
-				approvals={pendingApprovals}
-				sessionId={sessionId}
-				onResolve={handleResolveApproval}
-			/>
 
 			<ChatInputContainer
 				onSubmit={handleSubmit}

@@ -295,16 +295,19 @@ impl SessionManager {
     }
 
     /// Check if a session exists
+    #[allow(dead_code)]
     pub fn has_session(&self, session_id: &str) -> bool {
         self.active_sessions.lock().contains(session_id)
     }
 
     /// Get all active session IDs
+    #[allow(dead_code)]
     pub fn get_active_sessions(&self) -> Vec<String> {
         self.active_sessions.lock().iter().cloned().collect()
     }
 
     /// Shutdown the session manager
+    #[allow(dead_code)]
     pub fn shutdown(&self) -> Result<()> {
         let mut bridge = self.bridge.lock();
         bridge.shutdown()?;

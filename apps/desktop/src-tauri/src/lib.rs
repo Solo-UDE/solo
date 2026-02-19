@@ -31,25 +31,21 @@
 
 mod agent;
 mod agent_commands;
-mod commands;
-mod fs_commands;
-mod provider_commands;
-mod parse_commands;
 mod auth_commands;
 mod commands;
 mod embedding_commands;
 mod fs_commands;
 mod git_commands;
 mod parse_commands;
+mod provider_commands;
 mod terminal_commands;
 mod worktree_commands;
 
-use fs_commands::FsState;
-use provider_commands::ProviderAuthState;
 use auth_commands::AuthState;
 use embedding_commands::EmbeddingState;
 use fs_commands::FsState;
 use git_commands::GitState;
+use provider_commands::ProviderAuthState;
 use tauri::Emitter;
 #[cfg(target_os = "macos")]
 use tauri_plugin_decorum::WebviewWindowExt;
@@ -67,7 +63,7 @@ pub fn run() {
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "solo_desktop=debug,solo_agent=debug,tauri=info".into()),
+                .unwrap_or_else(|_| "solo_desktop=debug,tauri=info".into()),
         )
         .with(tracing_subscriber::fmt::layer())
         .init();

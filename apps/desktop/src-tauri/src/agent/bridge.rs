@@ -6,6 +6,7 @@ use std::fmt;
 use std::io::{BufRead as _, BufReader, Write as _};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::result;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
@@ -13,7 +14,9 @@ use std::time::Duration;
 use crossbeam_channel::{bounded, Receiver, Sender};
 use parking_lot::Mutex;
 
-use super::protocol::{BridgeEvent, BridgeRequest, BridgeResponse, CommandResponse};
+use super::protocol::{
+    BridgeEvent, BridgeRequest, BridgeResponse, CommandResponse, SerializableError,
+};
 
 /// Error type for bridge operations
 #[derive(Debug, thiserror::Error)]
@@ -57,8 +60,8 @@ pub struct AgentBridge {
     response_rx: Option<Receiver<BridgeResponse>>,
     /// Event callback
     event_callback: Option<EventCallback>,
-    /// Whether the bridge is ready
-    ready: bool,
+    /// Whether the bridge is ready (shared with reader thread for crash detection)
+    ready: Arc<AtomicBool>,
 }
 
 impl AgentBridge {
@@ -70,7 +73,7 @@ impl AgentBridge {
             stdin: None,
             response_rx: None,
             event_callback: None,
-            ready: false,
+            ready: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -81,8 +84,17 @@ impl AgentBridge {
 
     /// Spawn the sidecar process
     pub fn spawn(&mut self, node_script_path: &str) -> Result<()> {
-        if self.child.is_some() {
+        if self.child.is_some() && self.ready.load(Ordering::SeqCst) {
             return Ok(()); // Already running
+        }
+
+        // Clean up stale child if sidecar crashed (ready=false but child still exists)
+        if let Some(mut child) = self.child.take() {
+            tracing::info!("Cleaning up stale sidecar process before respawn");
+            drop(child.kill());
+            drop(child.wait());
+            self.stdin = None;
+            self.response_rx = None;
         }
 
         tracing::info!("Spawning agent bridge sidecar: {node_script_path}");
@@ -112,10 +124,11 @@ impl AgentBridge {
         let (tx, rx) = bounded(1000);
         self.response_rx = Some(rx);
 
-        // Spawn reader thread
+        // Spawn reader thread (share ready flag for crash detection)
         let event_callback = self.event_callback.clone();
+        let ready_flag = self.ready.clone();
         drop(thread::spawn(move || {
-            Self::reader_thread(stdout, &tx, event_callback.as_ref());
+            Self::reader_thread(stdout, &tx, event_callback.as_ref(), &ready_flag);
         }));
 
         self.child = Some(child);
@@ -131,7 +144,7 @@ impl AgentBridge {
             }
             self.stdin = None;
             self.response_rx = None;
-            self.ready = false;
+            self.ready.store(false, Ordering::SeqCst);
             return Err(e);
         }
 
@@ -144,6 +157,7 @@ impl AgentBridge {
         stdout: ChildStdout,
         tx: &Sender<BridgeResponse>,
         event_callback: Option<&EventCallback>,
+        ready_flag: &AtomicBool,
     ) {
         let reader = BufReader::new(stdout);
 
@@ -154,10 +168,14 @@ impl AgentBridge {
                         continue;
                     }
 
+                    // Log raw JSON from bridge for debugging
+                    tracing::debug!("[bridge:raw] {}", line);
+
                     match serde_json::from_str::<BridgeResponse>(&line) {
                         Ok(response) => {
                             // Check if it's an event or command response
                             if let Some(event) = response.as_event() {
+                                tracing::debug!("[bridge:event] {:?}", event);
                                 // Fire event callback if set
                                 if let Some(callback) = event_callback {
                                     callback(event.clone());
@@ -182,6 +200,22 @@ impl AgentBridge {
             }
         }
 
+        // Sidecar pipe closed — mark bridge as not ready so it can be re-spawned
+        let was_ready = ready_flag.swap(false, Ordering::SeqCst);
+
+        if was_ready {
+            // Unexpected exit — the bridge was running and the pipe closed
+            tracing::error!("Agent bridge sidecar exited unexpectedly");
+            if let Some(callback) = event_callback {
+                callback(BridgeEvent::ErrorEvent {
+                    error: SerializableError {
+                        message: "Agent sidecar process exited unexpectedly".to_owned(),
+                        stack: None,
+                    },
+                });
+            }
+        }
+
         tracing::debug!("Reader thread exiting");
     }
 
@@ -196,7 +230,7 @@ impl AgentBridge {
             match rx.recv_timeout(timeout) {
                 Ok(response) => {
                     if response.is_ready() {
-                        self.ready = true;
+                        self.ready.store(true, Ordering::SeqCst);
                         return Ok(());
                     }
                     // Ignore other events during startup
@@ -213,7 +247,7 @@ impl AgentBridge {
 
     /// Send a request and wait for response
     pub fn send_request(&self, request: &BridgeRequest) -> Result<CommandResponse> {
-        if !self.ready {
+        if !self.ready.load(Ordering::SeqCst) {
             return Err(BridgeError::NotRunning);
         }
 
@@ -253,8 +287,9 @@ impl AgentBridge {
     }
 
     /// Send a request without waiting for response (fire and forget)
+    #[allow(dead_code)]
     pub fn send_request_async(&self, request: &BridgeRequest) -> Result<()> {
-        if !self.ready {
+        if !self.ready.load(Ordering::SeqCst) {
             return Err(BridgeError::NotRunning);
         }
 
@@ -273,7 +308,7 @@ impl AgentBridge {
     /// Check if the bridge is running
     #[must_use]
     pub fn is_running(&self) -> bool {
-        self.ready && self.child.is_some()
+        self.ready.load(Ordering::SeqCst) && self.child.is_some()
     }
 
     /// Shutdown the bridge
@@ -298,7 +333,7 @@ impl AgentBridge {
 
         self.stdin = None;
         self.response_rx = None;
-        self.ready = false;
+        self.ready.store(false, Ordering::SeqCst);
 
         tracing::info!("Agent bridge shutdown complete");
         Ok(())
@@ -320,7 +355,7 @@ impl Default for AgentBridge {
 impl fmt::Debug for AgentBridge {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AgentBridge")
-            .field("ready", &self.ready)
+            .field("ready", &self.ready.load(Ordering::Relaxed))
             .field("running", &self.child.is_some())
             .finish_non_exhaustive()
     }
