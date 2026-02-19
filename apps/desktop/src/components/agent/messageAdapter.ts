@@ -14,13 +14,13 @@ import type {
  */
 export type RenderBlock =
   | { type: 'narrative'; content: string }
-  | { type: 'thinking'; content: string }
+  | { type: 'thinking'; content: string; durationMs?: number; isStreaming?: boolean }
   | {
       type: 'toolCall';
       id: string;
-      command: string;
-      cwd: string;
-      exitCode?: number;
+      toolName: string;
+      toolInput: Record<string, unknown>;
+      status: 'running' | 'success' | 'error';
       output?: string;
     }
   | {
@@ -35,18 +35,30 @@ export type RenderBlock =
  * Each message becomes its own group for simplicity
  */
 export function convertToMessageGroups(storeMessages: StoreMessage[]): MessageGroup[] {
+  // Find the last assistant message index for MessageActions rendering
+  let lastAssistantIdx = -1;
+  for (let i = storeMessages.length - 1; i >= 0; i--) {
+    if (storeMessages[i].role === 'assistant') {
+      lastAssistantIdx = i;
+      break;
+    }
+  }
+
   return storeMessages.map((msg, index) => {
+    const isLastAssistant = index === lastAssistantIdx;
     const orbitMessage: OrbitMessage = msg.role === 'user'
       ? {
           id: msg.id,
           type: 'user',
           content: msg.content,
           timestamp: msg.timestamp,
+          attachedFiles: msg.attachedFiles,
+          attachedImages: msg.attachedImages,
         }
       : {
           id: msg.id,
           type: 'agent',
-          content: convertToAgentContent(msg),
+          content: convertToAgentContent(msg, isLastAssistant),
           timestamp: msg.timestamp,
         };
 
@@ -60,7 +72,10 @@ export function convertToMessageGroups(storeMessages: StoreMessage[]): MessageGr
 /**
  * Convert ordered ContentBlock[] to RenderBlock[] for the component.
  */
-function convertBlocksToRenderBlocks(blocks: ContentBlock[]): RenderBlock[] {
+function convertBlocksToRenderBlocks(
+  blocks: ContentBlock[],
+  msg: StoreMessage
+): RenderBlock[] {
   const result: RenderBlock[] = [];
 
   for (const block of blocks) {
@@ -69,7 +84,12 @@ function convertBlocksToRenderBlocks(blocks: ContentBlock[]): RenderBlock[] {
         result.push({ type: 'narrative', content: block.text });
         break;
       case 'thinking':
-        result.push({ type: 'thinking', content: block.text });
+        result.push({
+          type: 'thinking',
+          content: block.text,
+          durationMs: msg.thinkingDurationMs,
+          isStreaming: msg.isStreaming,
+        });
         break;
       case 'tool_use': {
         const tc = block.toolCall;
@@ -81,12 +101,15 @@ function convertBlocksToRenderBlocks(blocks: ContentBlock[]): RenderBlock[] {
             toolInput: tc.input,
           });
         } else {
+          const toolInput = (typeof tc.input === 'object' && tc.input !== null)
+            ? tc.input as Record<string, unknown>
+            : {};
           result.push({
             type: 'toolCall',
             id: tc.id,
-            command: tc.name,
-            cwd: '.',
-            exitCode: tc.status === 'success' ? 0 : tc.status === 'error' ? 1 : undefined,
+            toolName: tc.name,
+            toolInput,
+            status: tc.status as 'running' | 'success' | 'error',
             output: tc.output,
           });
         }
@@ -101,15 +124,17 @@ function convertBlocksToRenderBlocks(blocks: ContentBlock[]): RenderBlock[] {
 /**
  * Convert store message to AgentMessageContent
  */
-function convertToAgentContent(msg: StoreMessage): AgentMessageContent {
+function convertToAgentContent(msg: StoreMessage, isLastAssistant: boolean = false): AgentMessageContent {
   const content: AgentMessageContent = {
     narrative: msg.content,
     isStreaming: msg.isStreaming,
+    isInterrupted: msg.isInterrupted,
+    isLastAssistantMessage: isLastAssistant,
   };
 
   // If we have ordered blocks, use them for interleaved rendering
   if (msg.blocks && msg.blocks.length > 0) {
-    content.blocks = convertBlocksToRenderBlocks(msg.blocks);
+    content.blocks = convertBlocksToRenderBlocks(msg.blocks, msg);
   }
 
   // Also keep flat arrays as fallback for backward compat
@@ -120,9 +145,11 @@ function convertToAgentContent(msg: StoreMessage): AgentMessageContent {
     if (regularCalls.length > 0) {
       content.toolCalls = regularCalls.map((tc) => ({
         id: tc.id,
-        command: tc.name,
-        cwd: '.',
-        exitCode: tc.status === 'success' ? 0 : tc.status === 'error' ? 1 : undefined,
+        toolName: tc.name,
+        toolInput: (typeof tc.input === 'object' && tc.input !== null)
+          ? tc.input as Record<string, unknown>
+          : {},
+        status: tc.status as 'running' | 'success' | 'error',
         output: tc.output,
       }));
     }

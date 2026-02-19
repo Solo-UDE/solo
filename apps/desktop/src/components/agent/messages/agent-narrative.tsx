@@ -6,6 +6,7 @@ import { MermaidBlock } from '@/components/shared/MermaidBlock';
 import { markdownTableComponents } from '@/components/shared/MarkdownTable';
 import { sharedRemarkPlugins, sharedRehypePlugins } from '@/lib/markdown/plugins';
 import { parseCalloutType, renderCallout } from '@/lib/markdown/callouts';
+import { useStreamingText } from './use-streaming-text';
 
 export interface AgentNarrativeProps {
   content: string;
@@ -58,9 +59,12 @@ export const AgentNarrative: FC<AgentNarrativeProps> = ({
   isStreaming = false,
   className = '',
 }) => {
+  // Progressive reveal during streaming (typewriter effect)
+  const displayedContent = useStreamingText(content, isStreaming ?? false);
+
   const processedContent = useMemo(
-    () => (isStreaming ? fixUnterminatedFences(content) : content),
-    [content, isStreaming],
+    () => (isStreaming ? fixUnterminatedFences(displayedContent) : displayedContent),
+    [displayedContent, isStreaming],
   );
 
   return (

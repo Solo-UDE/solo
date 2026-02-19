@@ -1,80 +1,117 @@
-import { Terminal, CaretRight } from '@phosphor-icons/react';
+import { Terminal, CaretRight, CircleNotch, CheckCircle, XCircle } from '@phosphor-icons/react';
 import { useState } from 'react';
 
 import type { FC } from 'react';
 
 export interface ToolCallBlockProps {
-  command: string;
-  cwd: string;
-  exitCode?: number;
+  toolName: string;
+  toolInput: Record<string, unknown>;
+  status: 'running' | 'success' | 'error';
   output?: string;
   className?: string;
 }
 
+const formatToolName = (name: string): string => {
+  return name
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+};
+
+const getStatusIcon = (status: string) => {
+  switch (status) {
+    case 'running':
+      return <CircleNotch className="w-3.5 h-3.5 text-muted-foreground animate-spin" />;
+    case 'success':
+      return <CheckCircle className="w-3.5 h-3.5 text-success" weight="fill" />;
+    case 'error':
+      return <XCircle className="w-3.5 h-3.5 text-destructive" weight="fill" />;
+    default:
+      return null;
+  }
+};
+
+const getHeaderLabel = (toolName: string, status: string): string => {
+  const name = formatToolName(toolName);
+  return status === 'running' ? `Running ${name}` : `Ran ${name}`;
+};
+
+/** Get the primary display value for a tool (command, file path, pattern, etc.) */
+const getPrimaryDisplay = (toolName: string, toolInput: Record<string, unknown>): string | null => {
+  const name = toolName.toLowerCase();
+  if (name === 'bash') return typeof toolInput['command'] === 'string' ? toolInput['command'] : null;
+  if (name === 'read' || name === 'write' || name === 'edit') return typeof toolInput['file_path'] === 'string' ? toolInput['file_path'] : null;
+  if (name === 'glob') return typeof toolInput['pattern'] === 'string' ? toolInput['pattern'] : null;
+  if (name === 'grep') return typeof toolInput['pattern'] === 'string' ? toolInput['pattern'] : null;
+  if (name === 'websearch') return typeof toolInput['query'] === 'string' ? toolInput['query'] : null;
+  if (name === 'webfetch') return typeof toolInput['url'] === 'string' ? toolInput['url'] : null;
+  if (name === 'task') return typeof toolInput['description'] === 'string' ? toolInput['description'] : null;
+  // Fallback: show first string value
+  for (const val of Object.values(toolInput)) {
+    if (typeof val === 'string' && val.length > 0) return val;
+  }
+  return null;
+};
+
 export const ToolCallBlock: FC<ToolCallBlockProps> = ({
-  command,
-  cwd,
-  exitCode,
+  toolName,
+  toolInput,
+  status,
   output,
   className = '',
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const hasOutput = output !== undefined && output.trim().length > 0;
-
-  const getExitCodeColor = (code?: number): string => {
-    if (code === undefined) return 'text-muted-foreground';
-    return code === 0 ? 'text-success' : 'text-destructive';
-  };
+  const primaryDisplay = getPrimaryDisplay(toolName, toolInput);
 
   return (
-    <div className={`border border-border rounded-lg bg-muted/50 overflow-hidden ${className}`}>
+    <div className={`border border-border rounded-lg bg-card overflow-hidden ${className}`}>
       {/* Header */}
-      <div className="p-3 space-y-2">
-        {/* Command */}
-        <div className="flex items-start gap-2">
-          <Terminal className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-0.5" />
-          <div className="flex-1 min-w-0 space-y-1">
-            <code className="text-xs font-mono text-foreground break-all">
-              {command}
-            </code>
-            <div className="text-xs text-muted-foreground">
-              <span className="font-medium">cwd:</span>{' '}
-              <span className="font-mono">{cwd}</span>
-            </div>
-          </div>
+      <button
+        onClick={() => { setIsExpanded(!isExpanded); }}
+        className={`w-full flex items-center justify-between bg-muted px-3 py-1.5 hover:bg-accent/50 transition-colors ${
+          isExpanded ? 'border-b border-border' : ''
+        }`}
+      >
+        <div className="flex items-center gap-2">
+          <Terminal className="h-3.5 w-3.5 text-muted-foreground" />
+          <span className="text-sm font-medium text-foreground">
+            {getHeaderLabel(toolName, status)}
+          </span>
+          {getStatusIcon(status)}
         </div>
+        <CaretRight className={`h-4 w-4 text-muted-foreground transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+      </button>
 
-        {/* Status */}
-        {exitCode !== undefined && (
-          <div className={`text-xs font-medium ${getExitCodeColor(exitCode)}`}>
-            Exit Code: {exitCode}
-          </div>
-        )}
-      </div>
-
-      {/* Output Section */}
-      {hasOutput ? (
+      {/* Collapsible content */}
+      {isExpanded ? (
         <>
-          <div className="border-t border-border">
-            <button
-              onClick={() => {
-                setIsExpanded(!isExpanded);
-              }}
-              className="w-full px-3 py-2 flex items-center gap-2 text-xs font-medium text-muted-foreground hover:bg-muted/50 transition-colors"
-            >
-              <CaretRight className={`w-3 h-3 transition-transform duration-150 ${isExpanded ? 'rotate-90' : ''}`} />
-              <span>Output</span>
-            </button>
-          </div>
+          {/* Primary display (command, file path, etc.) */}
+          {primaryDisplay ? (
+            <div className="border-b border-border px-3 py-2">
+              <code className="text-xs font-mono text-foreground break-all">
+                {primaryDisplay}
+              </code>
+            </div>
+          ) : null}
 
-          <div className={`grid transition-[grid-template-rows] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] ${isExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
-            <div className="overflow-hidden">
-              <div className="border-t border-border bg-background p-3 max-h-[400px] overflow-auto">
-                <pre className="text-xs font-mono text-foreground whitespace-pre-wrap break-words">
+          {/* Output */}
+          <div className="p-3">
+            {status === 'running' && !output ? (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <CircleNotch className="h-3 w-3 animate-spin" />
+                <span>Running...</span>
+              </div>
+            ) : hasOutput ? (
+              <div className="overflow-x-auto rounded-md bg-muted p-2 font-mono text-xs">
+                <pre className="break-words whitespace-pre-wrap text-foreground">
                   {output}
                 </pre>
               </div>
-            </div>
+            ) : (
+              <div className="text-xs text-muted-foreground italic">
+                No output
+              </div>
+            )}
           </div>
         </>
       ) : null}

@@ -1,5 +1,5 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 
 import { MessageSection } from './message-section';
 
@@ -26,21 +26,21 @@ export const MessageFeed: FC<MessageFeedProps> = ({
   onToolApproval,
   className = '',
 }) => {
-  const parentRef = useRef<HTMLDivElement>(null);
+  const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
   const shouldAutoScroll = useRef(autoScroll);
 
   const virtualizer = useVirtualizer({
     count: messageGroups.length,
-    getScrollElement: () => parentRef.current,
+    getScrollElement: () => scrollElement,
     estimateSize: () => 200,
     overscan: 5,
   });
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
-    if (shouldAutoScroll.current && parentRef.current) {
-      const { scrollHeight, clientHeight } = parentRef.current;
-      const isNearBottom = scrollHeight - clientHeight - parentRef.current.scrollTop < 100;
+    if (shouldAutoScroll.current && scrollElement) {
+      const { scrollHeight, clientHeight } = scrollElement;
+      const isNearBottom = scrollHeight - clientHeight - scrollElement.scrollTop < 100;
 
       if (isNearBottom || messageGroups.length === 1) {
         virtualizer.scrollToIndex(messageGroups.length - 1, {
@@ -49,43 +49,41 @@ export const MessageFeed: FC<MessageFeedProps> = ({
         });
       }
     }
-  }, [messageGroups.length, virtualizer]);
+  }, [messageGroups.length, virtualizer, scrollElement]);
 
   // Track if user is manually scrolling
   useEffect(() => {
-    const element = parentRef.current;
-    if (!element) return;
+    if (!scrollElement) return;
 
     const handleScroll = (): void => {
-      const { scrollHeight, clientHeight, scrollTop } = element;
+      const { scrollHeight, clientHeight, scrollTop } = scrollElement;
       const isAtBottom = scrollHeight - clientHeight - scrollTop < 50;
       shouldAutoScroll.current = isAtBottom;
     };
 
-    element.addEventListener('scroll', handleScroll);
+    scrollElement.addEventListener('scroll', handleScroll);
     return () => {
-      element.removeEventListener('scroll', handleScroll);
+      scrollElement.removeEventListener('scroll', handleScroll);
     };
-  }, []);
+  }, [scrollElement]);
 
   // Auto-scroll during streaming via interval
   useEffect(() => {
     if (!isStreaming || !shouldAutoScroll.current) return;
 
     const interval = setInterval(() => {
-      if (!shouldAutoScroll.current || !parentRef.current) return;
-      const el = parentRef.current;
-      el.scrollTop = el.scrollHeight;
+      if (!shouldAutoScroll.current || !scrollElement) return;
+      scrollElement.scrollTop = scrollElement.scrollHeight;
     }, 100);
 
     return () => clearInterval(interval);
-  }, [isStreaming]);
+  }, [isStreaming, scrollElement]);
 
   return (
     <div
-      ref={parentRef}
+      ref={setScrollElement}
       className={`flex-1 overflow-y-auto overflow-x-hidden ${className}`}
-      style={{ contain: 'strict' }}
+      style={{ contain: 'layout style' }}
     >
       <div
         style={{

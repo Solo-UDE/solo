@@ -185,7 +185,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 
 				{/* Empty state */}
 				<div className="flex-1 flex items-center justify-center">
-					<div className="text-center text-muted-foreground">
+					<div className="max-w-4xl mx-auto text-center text-muted-foreground">
 						<p className="text-sm">No messages yet</p>
 						<p className="text-xs mt-1">Start a conversation by typing below</p>
 					</div>

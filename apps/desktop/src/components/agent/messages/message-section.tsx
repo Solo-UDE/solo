@@ -2,6 +2,7 @@ import { AgentMessage } from './agent-message';
 import { UserMessage } from './user-message';
 
 import type { AgentMessageContent } from './agent-message';
+import type { FileAttachment, ImageAttachment } from '@/stores/agentStore';
 import type { FC } from 'react';
 
 export interface UserMessageData {
@@ -9,6 +10,8 @@ export interface UserMessageData {
   type: 'user';
   content: string;
   timestamp: Date;
+  attachedFiles?: FileAttachment[];
+  attachedImages?: ImageAttachment[];
 }
 
 export interface AgentMessageData {
@@ -36,7 +39,7 @@ export const MessageSection: FC<MessageSectionProps> = ({
   return (
     <section
       data-section-index={sectionIndex}
-      className={`py-4 space-y-4 ${className}`}
+      className={`py-4 space-y-4 max-w-4xl mx-auto ${className}`}
     >
       {messages.map((message) => {
         if (message.type === 'user') {
@@ -45,6 +48,8 @@ export const MessageSection: FC<MessageSectionProps> = ({
               key={message.id}
               content={message.content}
               timestamp={message.timestamp}
+              attachedFiles={message.attachedFiles}
+              attachedImages={message.attachedImages}
             />
           );
         }

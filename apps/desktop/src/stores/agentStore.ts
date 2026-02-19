@@ -46,6 +46,21 @@ export type ContentBlock =
 	| { type: 'thinking'; text: string }
 	| { type: 'tool_use'; toolCall: ToolCallState };
 
+export interface FileAttachment {
+	name: string;
+	path: string;
+	mimeType?: string;
+	size?: number;
+}
+
+export interface ImageAttachment {
+	name: string;
+	path: string;
+	previewUrl?: string;
+	width?: number;
+	height?: number;
+}
+
 export interface Message {
 	id: string;
 	role: 'user' | 'assistant';
@@ -55,7 +70,11 @@ export interface Message {
 	mode?: MessageMode;
 	toolCalls?: ToolCallState[];
 	isStreaming?: boolean;
+	isInterrupted?: boolean;
 	thinkingContent?: string;
+	thinkingDurationMs?: number;
+	attachedFiles?: FileAttachment[];
+	attachedImages?: ImageAttachment[];
 	usage?: TokenUsage;
 	costUsd?: number;
 	durationMs?: number;
@@ -73,6 +92,7 @@ export interface SessionStreamState {
 	streamingMessageId: string | null;
 	streamingContent: string;
 	streamingThinking: string;
+	thinkingStartTime: number | null;
 	activeToolCalls: Map<string, ToolCallState>;
 	isStreaming: boolean;
 	error: string | null;
@@ -98,6 +118,7 @@ function createDefaultStreamState(): SessionStreamState {
 		streamingMessageId: null,
 		streamingContent: '',
 		streamingThinking: '',
+		thinkingStartTime: null,
 		activeToolCalls: new Map(),
 		isStreaming: false,
 		error: null,
@@ -273,6 +294,35 @@ export const useAgentStore = create<AgentStore>()(
 			} catch (error) {
 				console.error('Failed to interrupt session:', error);
 			}
+
+			set((state) => {
+				const streamState = state.sessionStreaming.get(sessionId);
+				if (streamState && streamState.streamingMessageId) {
+					const messages = state.messages.get(sessionId);
+					if (messages) {
+						const msg = messages.find((m) => m.id === streamState.streamingMessageId);
+						if (msg) {
+							msg.isStreaming = false;
+							msg.isInterrupted = true;
+						}
+					}
+
+					// Clear pending permissions
+					for (const [id, perm] of state.pendingPermissions) {
+						if (perm.sessionId === sessionId) {
+							state.pendingPermissions.delete(id);
+						}
+					}
+
+					// Reset streaming state
+					streamState.streamingMessageId = null;
+					streamState.streamingContent = '';
+					streamState.streamingThinking = '';
+					streamState.thinkingStartTime = null;
+					streamState.activeToolCalls = new Map();
+					streamState.isStreaming = false;
+				}
+			});
 		},
 
 		setActiveSession: (sessionId: string) => {
@@ -429,13 +479,20 @@ export const useAgentStore = create<AgentStore>()(
 					}
 
 					case 'thinking': {
+						// Record start time on first thinking chunk
+						if (streamState.thinkingStartTime === null) {
+							streamState.thinkingStartTime = Date.now();
+						}
+
 						// Accumulate thinking content
 						streamState.streamingThinking += message.content;
+						const currentDuration = Date.now() - streamState.thinkingStartTime;
 
 						if (messages && streamState.streamingMessageId) {
 							const msg = messages.find((m) => m.id === streamState.streamingMessageId);
 							if (msg) {
 								msg.thinkingContent = streamState.streamingThinking;
+								msg.thinkingDurationMs = currentDuration;
 
 								// Ordered blocks: thinking is always at the front
 								const firstBlock = msg.blocks[0];
@@ -528,6 +585,10 @@ export const useAgentStore = create<AgentStore>()(
 							const msg = messages.find((m) => m.id === streamState.streamingMessageId);
 							if (msg) {
 								msg.isStreaming = false;
+								// Finalize thinking duration
+								if (streamState.thinkingStartTime !== null && msg.thinkingContent) {
+									msg.thinkingDurationMs = Date.now() - streamState.thinkingStartTime;
+								}
 								if (message.usage) {
 									msg.usage = message.usage;
 								}
@@ -544,6 +605,7 @@ export const useAgentStore = create<AgentStore>()(
 						streamState.streamingMessageId = null;
 						streamState.streamingContent = '';
 						streamState.streamingThinking = '';
+						streamState.thinkingStartTime = null;
 						streamState.activeToolCalls = new Map();
 						streamState.isStreaming = false;
 						break;
@@ -566,6 +628,7 @@ export const useAgentStore = create<AgentStore>()(
 						streamState.streamingMessageId = null;
 						streamState.streamingContent = '';
 						streamState.streamingThinking = '';
+						streamState.thinkingStartTime = null;
 						streamState.activeToolCalls = new Map();
 						break;
 					}
@@ -630,9 +693,23 @@ export const useAgentStore = create<AgentStore>()(
 				console.error('Failed to respond to permission:', error);
 			}
 
+			// On deny: also interrupt the agent and clear all pending permissions
+			if (decision === 'deny') {
+				const request = get().pendingPermissions.get(requestId);
+				if (request) {
+					backend.agentInterrupt(request.sessionId).catch(console.error);
+				}
+			}
+
 			set((state) => {
 				const request = state.pendingPermissions.get(requestId);
-				state.pendingPermissions.delete(requestId);
+
+				if (decision === 'deny') {
+					// Clear ALL pending permissions on deny (agent is being stopped)
+					state.pendingPermissions.clear();
+				} else {
+					state.pendingPermissions.delete(requestId);
+				}
 
 				const newStatus = decision === 'approve' ? 'running' as const : 'error' as const;
 				const denyOutput = decision === 'deny' ? 'Denied by user' : undefined;
@@ -664,7 +741,23 @@ export const useAgentStore = create<AgentStore>()(
 									block.toolCall.status = newStatus;
 									if (denyOutput) block.toolCall.output = denyOutput;
 								}
+
+								// On deny: mark message as interrupted
+								if (decision === 'deny') {
+									msg.isStreaming = false;
+									msg.isInterrupted = true;
+								}
 							}
+						}
+
+						// Reset streaming state on deny
+						if (decision === 'deny') {
+							streamState.streamingMessageId = null;
+							streamState.streamingContent = '';
+							streamState.streamingThinking = '';
+							streamState.thinkingStartTime = null;
+							streamState.activeToolCalls = new Map();
+							streamState.isStreaming = false;
 						}
 					}
 				}
