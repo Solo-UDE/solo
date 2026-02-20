@@ -8,6 +8,7 @@ import * as readline from 'readline';
 
 import { createLogger, configureFileLogging, setDebugCallback, shutdownFileLogging } from './logger.js';
 import { SessionManager } from './session-manager.js';
+import { generateCommitMessage } from './commit-message.js';
 
 import type { BridgeEvent, BridgeRequest, BridgeResponse, CommandResponse } from './protocol.js';
 import type { LogEntry } from './logger.js';
@@ -257,6 +258,12 @@ async function handleRequest(
     case 'get_sdk_session_id': {
       const sdkSessionId = sessionManager.getSDKSessionId(request.sessionId);
       sendResponse({ type: 'string', requestType: request.type, value: sdkSessionId ?? null });
+      break;
+    }
+
+    case 'generate_commit_message': {
+      const message = await generateCommitMessage(request.diff);
+      sendResponse({ type: 'string', requestType: request.type, value: message });
       break;
     }
 

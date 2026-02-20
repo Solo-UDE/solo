@@ -138,6 +138,14 @@ export interface GetSDKSessionIdRequest {
 }
 
 /**
+ * Generate a commit message from a diff
+ */
+export interface GenerateCommitMessageRequest {
+  type: 'generate_commit_message';
+  diff: string;
+}
+
+/**
  * Shutdown the bridge
  */
 export interface ShutdownRequest {
@@ -162,6 +170,7 @@ export type BridgeRequest =
   | GetAcceptModeRequest
   | IsSessionReadyRequest
   | GetSDKSessionIdRequest
+  | GenerateCommitMessageRequest
   | ShutdownRequest;
 
 // ============================================================================

@@ -294,6 +294,20 @@ impl SessionManager {
         Self::check_response_string(response)
     }
 
+    /// Generate a commit message from a diff using the AI bridge
+    pub fn generate_commit_message(&self, diff: &str) -> Result<String> {
+        self.ensure_running()?;
+        let request = BridgeRequest::GenerateCommitMessage {
+            diff: diff.to_owned(),
+        };
+        let bridge = self.bridge.lock();
+        let response = bridge.send_request(&request)?;
+        let value = Self::check_response_string(response)?;
+        value.ok_or_else(|| {
+            BridgeError::ReceiveError("Bridge returned null commit message".to_owned())
+        })
+    }
+
     /// Check if a session exists
     #[allow(dead_code)]
     pub fn has_session(&self, session_id: &str) -> bool {

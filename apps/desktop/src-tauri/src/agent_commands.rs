@@ -14,6 +14,8 @@ use crate::agent::{
     AttachmentContentBlock, Model, PermissionDecision, PermissionResponse, SessionConfig,
     SessionManager,
 };
+use crate::fs_commands::FsState;
+use git2::{DiffOptions, Repository};
 
 /// Result type for agent commands
 type Result<T> = result::Result<T, String>;
@@ -196,6 +198,64 @@ pub async fn agent_get_accept_mode(
     state: State<'_, Arc<SessionManager>>,
 ) -> Result<bool> {
     state.get_accept_mode(&session_id).map_err(to_error)
+}
+
+// ============================================================================
+// Commit Message Generation
+// ============================================================================
+
+/// Generate an AI commit message from staged changes
+#[tauri::command]
+pub async fn agent_generate_commit_message(
+    fs_state: State<'_, FsState>,
+    session_manager: State<'_, Arc<SessionManager>>,
+) -> Result<String> {
+    let workspace = fs_state
+        .workspace_root
+        .read()
+        .await
+        .clone()
+        .ok_or("No workspace open")?;
+
+    // Gather staged diff via git2 (spawn_blocking because Repository is !Send)
+    let diff_text = tokio::task::spawn_blocking(move || -> result::Result<String, String> {
+        let repo = Repository::open(&workspace).map_err(|e| e.to_string())?;
+        let head_tree = repo.head().ok().and_then(|r| r.peel_to_tree().ok());
+        let mut opts = DiffOptions::new();
+        let diff = repo
+            .diff_tree_to_index(head_tree.as_ref(), None, Some(&mut opts))
+            .map_err(|e| e.to_string())?;
+
+        let mut text = String::new();
+        diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
+            // Cap at 50 KB to avoid huge payloads
+            if text.len() < 50_000 {
+                if let Ok(content) = std::str::from_utf8(line.content()) {
+                    let prefix = match line.origin() {
+                        '+' => "+",
+                        '-' => "-",
+                        ' ' => " ",
+                        _ => "",
+                    };
+                    text.push_str(prefix);
+                    text.push_str(content);
+                }
+            }
+            true
+        })
+        .map_err(|e| e.to_string())?;
+
+        if text.is_empty() {
+            return Err("No staged changes to generate a commit message from".to_owned());
+        }
+        Ok(text)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    session_manager
+        .generate_commit_message(&diff_text)
+        .map_err(to_error)
 }
 
 // ============================================================================

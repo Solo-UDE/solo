@@ -294,6 +294,9 @@ pub enum BridgeRequest {
         #[serde(rename = "sessionId")]
         session_id: String,
     },
+    GenerateCommitMessage {
+        diff: String,
+    },
     Shutdown,
 }
 

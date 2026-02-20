@@ -319,6 +319,42 @@ pub struct GitPushResponse {
     pub commits_count: u32,
 }
 
+/// Information about a local branch
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct BranchInfo {
+    pub name: String,
+    pub is_head: bool,
+    pub upstream: Option<String>,
+    pub ahead: u32,
+    pub behind: u32,
+}
+
+/// Result of a git merge operation
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct GitMergeResult {
+    pub fast_forward: bool,
+    pub conflicts: Vec<String>,
+    pub committed: bool,
+}
+
+/// A stash entry
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct StashEntry {
+    pub index: u32,
+    pub message: String,
+}
+
+/// Result of popping a stash
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct GitStashPopResult {
+    pub had_conflicts: bool,
+    pub conflict_files: Vec<String>,
+}
+
 /// Request to pull from GitHub
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../apps/desktop/src/bindings/")]

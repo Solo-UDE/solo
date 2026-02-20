@@ -497,11 +497,18 @@ export const useAgentStore = create<AgentStore>()(
 			const agentModel = toAgentModel(model || 'opus');
 
 			try {
-				await backend.agentCreateSession(sessionId, { model: agentModel });
+				// If a worktree is active, use its path as the session cwd
+				const { useWorktreeStore } = await import('@/stores/worktreeStore');
+				const worktreeState = useWorktreeStore.getState();
+				const activeWt = worktreeState.activeWorktreeId
+					? worktreeState.worktrees.get(worktreeState.activeWorktreeId)
+					: null;
 
-				// Capture workspace path for session filtering
 				const { useFileExplorerStore } = await import('@/stores/fileExplorerStore');
 				const workspacePath = useFileExplorerStore.getState().rootPath ?? undefined;
+				const cwd = activeWt?.path ?? workspacePath;
+
+				await backend.agentCreateSession(sessionId, { model: agentModel, cwd });
 
 				set((state) => {
 					state.sessions.set(sessionId, {
