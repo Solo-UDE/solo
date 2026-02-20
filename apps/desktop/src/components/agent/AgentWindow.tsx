@@ -13,7 +13,7 @@ import { usePanelTabsStore } from '../../stores/panelTabsStore';
 import { BUILTIN_PANEL_TYPES } from '../../lib/panels/constants';
 
 import type { FC } from 'react';
-import type { MessageMode, Attachment, FileMention } from '../../stores/agentStore';
+import type { MessageMode, Attachment, FileMention, SessionConnectionState } from '../../stores/agentStore';
 
 export interface AgentWindowCallbacks {
 	onFileOpen?: (path: string) => void;
@@ -74,6 +74,12 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 	const currentTurn = useAgentStore((state) => {
 		if (!sessionId) return undefined;
 		return state.sessions.get(sessionId)?.currentTurn;
+	});
+
+	// Connection state for resume indicators
+	const connectionState: SessionConnectionState | undefined = useAgentStore((state) => {
+		if (!sessionId) return undefined;
+		return state.sessions.get(sessionId)?.connectionState;
 	});
 
 	// Panel system for opening new tabs
@@ -258,6 +264,19 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 
 			{currentTurn != null && currentTurn > 0 && (
 				<TurnProgress turnNumber={currentTurn} />
+			)}
+
+			{connectionState === 'resuming' && (
+				<div className="px-4 py-2 flex items-center gap-2 text-sm text-muted-foreground bg-muted/20">
+					<span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+					Reconnecting session...
+				</div>
+			)}
+
+			{connectionState === 'stale' && (
+				<div className="px-4 py-2 text-sm text-amber-500 bg-amber-500/5">
+					Session expired. Your next message will start a fresh context.
+				</div>
 			)}
 
 			{error && (

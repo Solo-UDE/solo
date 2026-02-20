@@ -160,6 +160,7 @@ function deserializeSessionV3(file: PersistedSessionFileV3): {
       turnCount: meta.turnCount,
       tags: meta.tags,
       summary: meta.summary,
+      connectionState: 'archived', // Always archived on load from disk
     },
     messages: file.messages.map((m) => ({
       id: m.id,
@@ -294,6 +295,7 @@ export async function migrateFromLocalStorage(): Promise<{
         name: legacy.name,
         turnCount: 0,
         resumable: false,
+        connectionState: 'archived',
       };
 
       const msgs: Message[] = legacy.messages.map((m) => ({
