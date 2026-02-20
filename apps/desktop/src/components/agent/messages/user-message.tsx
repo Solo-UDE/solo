@@ -1,18 +1,17 @@
-import { User, Paperclip } from '@phosphor-icons/react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import { User, File as FileIcon, Image as ImageIcon, At } from '@phosphor-icons/react';
+import { convertFileSrc } from '@tauri-apps/api/core';
 
 import type { FC } from 'react';
-import type { Attachment, FileMention } from '../../../stores/agentStore';
+import type { Attachment, FileMention } from '@/stores/agentStore';
 
 export interface UserMessageProps {
   content: string;
   timestamp: Date;
   avatarUrl?: string;
   userName?: string;
-  className?: string;
   attachments?: Attachment[];
   mentions?: FileMention[];
+  className?: string;
 }
 
 export const UserMessage: FC<UserMessageProps> = ({
@@ -20,9 +19,9 @@ export const UserMessage: FC<UserMessageProps> = ({
   timestamp,
   avatarUrl,
   userName = 'You',
-  className = '',
   attachments,
   mentions,
+  className = '',
 }) => {
   const formatTime = (date: Date): string => {
     return new Intl.DateTimeFormat('en-US', {
@@ -32,8 +31,8 @@ export const UserMessage: FC<UserMessageProps> = ({
     }).format(date);
   };
 
-  const imageAttachments = attachments?.filter((a) => a.type === 'image') ?? [];
-  const fileAttachments = attachments?.filter((a) => a.type === 'file') ?? [];
+  const imageAttachments = attachments?.filter((a) => a.type === 'image');
+  const fileAttachments = attachments?.filter((a) => a.type === 'file');
 
   return (
     <div className={`flex gap-3 px-4 ${className}`}>
@@ -52,67 +51,47 @@ export const UserMessage: FC<UserMessageProps> = ({
           <span className="text-sm font-medium text-foreground">{userName}</span>
           <span className="text-xs text-muted-foreground">{formatTime(timestamp)}</span>
         </div>
-        <div className="prose prose-sm dark:prose-invert max-w-none">
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            components={{
-              p: ({ children }) => (
-                <p className="text-sm text-foreground leading-relaxed mb-1 last:mb-0">
-                  {children}
-                </p>
-              ),
-              code: ({ children, className }) => {
-                const isInline = !className?.includes('language-');
-                if (isInline) {
-                  return (
-                    <code className="px-1 py-0.5 rounded bg-muted text-xs font-mono text-foreground">
-                      {children}
-                    </code>
-                  );
-                }
-                return (
-                  <code className={`block p-2 rounded-md bg-muted text-xs font-mono overflow-x-auto ${className ?? ''}`}>
-                    {children}
-                  </code>
-                );
-              },
-              pre: ({ children }) => (
-                <pre className="my-1 overflow-x-auto">{children}</pre>
-              ),
-            }}
-          >
-            {content}
-          </ReactMarkdown>
+        <div className="text-sm text-foreground whitespace-pre-wrap break-words">
+          {content}
         </div>
 
-        {/* Image attachments */}
-        {imageAttachments.length > 0 && (
-          <div className="flex gap-2 flex-wrap pt-1">
+        {/* Attached images */}
+        {imageAttachments && imageAttachments.length > 0 && (
+          <div className="flex flex-wrap gap-2 mt-2">
             {imageAttachments.map((img) => (
               <div
                 key={img.id}
-                className="w-20 h-20 rounded-md overflow-hidden border border-border/50 bg-muted"
+                className="relative rounded-lg overflow-hidden bg-muted/40 border border-border/30"
+                style={{ maxWidth: 200, maxHeight: 150 }}
               >
                 <img
-                  src={img.thumbnailUrl}
+                  src={img.thumbnailUrl || convertFileSrc(img.path)}
                   alt={img.name}
                   className="w-full h-full object-cover"
                 />
+                <div className="absolute bottom-0 inset-x-0 bg-black/50 px-2 py-0.5">
+                  <span className="text-[10px] text-white truncate block">{img.name}</span>
+                </div>
               </div>
             ))}
           </div>
         )}
 
-        {/* File attachments */}
-        {fileAttachments.length > 0 && (
-          <div className="flex gap-1.5 flex-wrap pt-1">
+        {/* Attached files */}
+        {fileAttachments && fileAttachments.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mt-2">
             {fileAttachments.map((file) => (
               <div
                 key={file.id}
-                className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-muted/60 text-xs"
+                className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-muted/40 text-xs text-muted-foreground"
+                title={file.path}
               >
-                <Paperclip className="w-3 h-3 text-muted-foreground shrink-0" />
-                <span className="truncate max-w-[140px] text-foreground">{file.name}</span>
+                {file.mimeType?.startsWith('image/') ? (
+                  <ImageIcon className="w-3.5 h-3.5 flex-shrink-0" />
+                ) : (
+                  <FileIcon className="w-3.5 h-3.5 flex-shrink-0" />
+                )}
+                <span className="truncate max-w-[150px]">{file.name}</span>
               </div>
             ))}
           </div>
@@ -120,14 +99,16 @@ export const UserMessage: FC<UserMessageProps> = ({
 
         {/* Mentions */}
         {mentions && mentions.length > 0 && (
-          <div className="flex gap-1.5 flex-wrap pt-1">
-            {mentions.map((mention, i) => (
-              <span
-                key={`${mention.path}-${i}`}
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-xs text-primary"
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            {mentions.map((mention) => (
+              <div
+                key={mention.path}
+                className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-primary/10 text-xs text-primary"
+                title={mention.path}
               >
-                @{mention.name}
-              </span>
+                <At className="w-3 h-3 flex-shrink-0" />
+                <span className="truncate max-w-[200px]">{mention.relativePath || mention.name}</span>
+              </div>
             ))}
           </div>
         )}

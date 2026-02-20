@@ -1,14 +1,13 @@
 import { useEffect, useCallback, useMemo, useRef, useState } from 'react';
 import { Plus } from '@phosphor-icons/react';
 
-import { MessageFeed } from './messages';
+import { MessageFeed, TurnProgress } from './messages';
 import { ChatInputContainer } from './input';
-import { ToolApprovalDialog } from './dialogs';
 import { SoloEmptyState } from './SoloDecryptAnimation';
 import { convertToMessageGroups } from './messageAdapter';
 import { useAgentSession } from '../../hooks/useAgentSession';
 import { useProviderStore } from '../../stores/provider-store';
-import { useAgentStore, usePendingToolApprovals } from '../../stores/agentStore';
+import { useAgentStore } from '../../stores/agentStore';
 import { usePanelTabsStore } from '../../stores/panelTabsStore';
 import { BUILTIN_PANEL_TYPES } from '../../lib/panels/constants';
 
@@ -48,6 +47,9 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 }) => {
 	const [worktreeId, setWorktreeId] = useState<string | null>(initialWorktreeId ?? null);
 
+	// Track mode states for bridge sync
+	const [thinkingEnabled, setThinkingEnabled] = useState(false);
+
 	const {
 		sessionId,
 		messages,
@@ -55,6 +57,9 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 		error,
 		createSession,
 		sendMessage,
+		setModel,
+		setPlanMode,
+		setThinkingMode,
 		clearError,
 	} = useAgentSession({
 		sessionId: initialSessionId ?? null,
@@ -63,7 +68,14 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 	});
 
 	const selectedModel = useProviderStore((state) => state.selectedModel);
-	const updateSessionModel = useAgentStore((state) => state.updateSessionModel);
+
+	// Turn progress tracking
+	const currentTurn = useAgentStore((state) => {
+		if (!sessionId) return undefined;
+		return state.sessions.get(sessionId)?.currentTurn;
+	});
+
+	// Panel system for opening new tabs
 	const openPanel = usePanelTabsStore((state) => state.openPanel);
 
 	useEffect(() => {
@@ -85,9 +97,9 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 	useEffect(() => {
 		if (sessionId && selectedModel && selectedModel !== prevModelRef.current) {
 			prevModelRef.current = selectedModel;
-			updateSessionModel(sessionId, selectedModel);
+			setModel(selectedModel);
 		}
-	}, [sessionId, selectedModel, updateSessionModel]);
+	}, [sessionId, selectedModel, setModel]);
 
 	const messageGroups = useMemo(
 		() => convertToMessageGroups(messages),
@@ -107,6 +119,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 		[sendMessage]
 	);
 
+	// Abort session
 	const abortSession = useAgentStore((state) => state.abortSession);
 	const handleAbort = useCallback(() => {
 		if (sessionId) {
@@ -114,14 +127,31 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 		}
 	}, [sessionId, abortSession]);
 
-	// Tool approval
-	const pendingApprovals = usePendingToolApprovals();
-	const resolveToolApproval = useAgentStore((state) => state.resolveToolApproval);
-	const handleResolveApproval = useCallback(
-		(sid: string, toolCallId: string, approved: boolean) => {
-			resolveToolApproval(sid, toolCallId, approved);
+	// Tool approval — wire inline approval buttons to bridge permission system
+	const respondPermission = useAgentStore((state) => state.respondPermission);
+	const handleToolApproval = useCallback(
+		(toolCallId: string, approved: boolean) => {
+			respondPermission(toolCallId, approved ? 'approve' : 'deny');
 		},
-		[resolveToolApproval]
+		[respondPermission]
+	);
+
+	// Handle mode selector changes — sync to bridge
+	const handleModeChange = useCallback(
+		(mode: 'planning' | 'fast') => {
+			const enabled = mode === 'planning';
+			setPlanMode(enabled);
+		},
+		[setPlanMode]
+	);
+
+	// Handle thinking toggle — sync to bridge
+	const handleThinkingChange = useCallback(
+		(enabled: boolean) => {
+			setThinkingEnabled(enabled);
+			setThinkingMode(enabled);
+		},
+		[setThinkingMode]
 	);
 
 
@@ -188,6 +218,9 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 					isAgentRunning={isRunning}
 					worktreeId={worktreeId}
 					onWorktreeChange={handleWorktreeChange}
+					onModeChange={handleModeChange}
+					thinkingEnabled={thinkingEnabled}
+					onThinkingChange={handleThinkingChange}
 				/>
 			</div>
 		);
@@ -210,8 +243,13 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 				messageGroups={messageGroups}
 				autoScroll={true}
 				isStreaming={isRunning}
+				onToolApproval={handleToolApproval}
 				className="flex-1"
 			/>
+
+			{currentTurn != null && currentTurn > 0 && (
+				<TurnProgress turnNumber={currentTurn} />
+			)}
 
 			{error && (
 				<div className="px-4 py-2 bg-destructive/10 border-t border-destructive/20">
@@ -224,12 +262,6 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 				</div>
 			)}
 
-			<ToolApprovalDialog
-				approvals={pendingApprovals}
-				sessionId={sessionId}
-				onResolve={handleResolveApproval}
-			/>
-
 			<ChatInputContainer
 				onSubmit={handleSubmit}
 				onLocalCommand={handleLocalCommand}
@@ -237,6 +269,9 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 				isAgentRunning={isRunning}
 				worktreeId={worktreeId}
 				onWorktreeChange={handleWorktreeChange}
+				onModeChange={handleModeChange}
+				thinkingEnabled={thinkingEnabled}
+				onThinkingChange={handleThinkingChange}
 			/>
 		</div>
 	);

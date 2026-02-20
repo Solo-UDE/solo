@@ -5,10 +5,10 @@
  * Future: Could be extended to save to ~/.solo/sessions.json via Tauri fs
  */
 
-import type { AgentSession, Message, ToolCallState } from '@/stores/agentStore';
+import type { AgentSession, Message, ToolCallState, FileAttachment, ImageAttachment } from '@/stores/agentStore';
 
 const STORAGE_KEY = 'solo-agent-sessions';
-const VERSION = 1;
+const VERSION = 2;
 
 /** Serialized message format for persistence */
 interface PersistedMessage {
@@ -18,6 +18,11 @@ interface PersistedMessage {
   timestamp: string; // ISO string
   mode?: 'planning' | 'fast';
   toolCalls?: ToolCallState[];
+  isInterrupted?: boolean;
+  thinkingContent?: string;
+  thinkingDurationMs?: number;
+  attachedFiles?: FileAttachment[];
+  attachedImages?: ImageAttachment[];
 }
 
 /** Serialized session format for persistence */
@@ -69,6 +74,11 @@ function serializeSession(
       timestamp: m.timestamp.toISOString(),
       mode: m.mode,
       toolCalls: m.toolCalls,
+      isInterrupted: m.isInterrupted,
+      thinkingContent: m.thinkingContent,
+      thinkingDurationMs: m.thinkingDurationMs,
+      attachedFiles: m.attachedFiles,
+      attachedImages: m.attachedImages,
     })),
   };
 }
@@ -91,10 +101,16 @@ function deserializeSession(persisted: PersistedSession): {
       id: m.id,
       role: m.role,
       content: m.content,
+      blocks: [],
       timestamp: new Date(m.timestamp),
       mode: m.mode,
       toolCalls: m.toolCalls,
       isStreaming: false,
+      isInterrupted: m.isInterrupted,
+      thinkingContent: m.thinkingContent,
+      thinkingDurationMs: m.thinkingDurationMs,
+      attachedFiles: m.attachedFiles,
+      attachedImages: m.attachedImages,
     })),
   };
 }

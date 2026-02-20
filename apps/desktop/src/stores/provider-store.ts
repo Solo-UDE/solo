@@ -8,11 +8,15 @@ import {
 	setCredentials as setCredentialsBackend,
 	clearCredentials as clearCredentialsBackend,
 	getModels,
+	getAuthMethod,
+	startOAuthFlow as startOAuthFlowBackend,
+	disconnectOAuth as disconnectOAuthBackend,
 } from "../lib/backend";
 import type {
 	ProviderType,
 	ProviderStatus,
 	ModelInfo,
+	AuthMethodInfo,
 } from "../lib/backend";
 
 interface ProviderState {
@@ -22,6 +26,8 @@ interface ProviderState {
 	activeProvider: string | null;
 	// Provider status map
 	providerStatus: Record<string, ProviderStatus>;
+	// Auth method info per provider
+	authMethodInfo: Record<string, AuthMethodInfo>;
 	// Available models
 	models: ModelInfo[];
 	// Selected model for the active provider
@@ -32,16 +38,21 @@ interface ProviderState {
 	error: string | null;
 	// Initialization state
 	isInitialized: boolean;
+	// OAuth pending state per provider
+	oauthPending: Record<string, boolean>;
 }
 
 interface ProviderActions {
 	initialize: () => Promise<void>;
 	setActiveProvider: (provider: string) => Promise<void>;
 	refreshProviderStatus: (provider: string) => Promise<void>;
+	refreshAuthMethod: (provider: string) => Promise<void>;
 	setCredentials: (provider: ProviderType, apiKey: string) => Promise<void>;
 	setSelectedModel: (modelId: string) => void;
 	clearError: () => void;
 	clearCredentials: (provider: string) => Promise<void>;
+	startOAuthFlow: (provider: string, method: string) => Promise<void>;
+	disconnectOAuth: (provider: string) => Promise<void>;
 }
 
 type ProviderStore = ProviderState & ProviderActions;
@@ -50,11 +61,13 @@ export const useProviderStore = create<ProviderStore>()((set, get) => ({
 	providers: [],
 	activeProvider: null,
 	providerStatus: {},
+	authMethodInfo: {},
 	models: [],
 	selectedModel: null,
 	isLoading: false,
 	error: null,
 	isInitialized: false,
+	oauthPending: {},
 
 	initialize: async () => {
 		if (get().isInitialized) return;
@@ -180,6 +193,51 @@ export const useProviderStore = create<ProviderStore>()((set, get) => ({
 			throw error;
 		}
 	},
+
+	refreshAuthMethod: async (provider: string) => {
+		try {
+			const info = await getAuthMethod(provider);
+			set((state) => ({
+				authMethodInfo: {
+					...state.authMethodInfo,
+					[provider]: info,
+				},
+			}));
+		} catch (error) {
+			console.error(`Failed to refresh auth method for ${provider}:`, error);
+		}
+	},
+
+	startOAuthFlow: async (provider: string, method: string) => {
+		set((state) => ({
+			oauthPending: { ...state.oauthPending, [provider]: true },
+		}));
+		try {
+			await startOAuthFlowBackend(provider, method as 'browser' | 'paste_code');
+			await get().refreshProviderStatus(provider);
+			await get().refreshAuthMethod(provider);
+		} catch (error) {
+			set({
+				error: error instanceof Error ? error.message : String(error),
+			});
+		} finally {
+			set((state) => ({
+				oauthPending: { ...state.oauthPending, [provider]: false },
+			}));
+		}
+	},
+
+	disconnectOAuth: async (provider: string) => {
+		try {
+			await disconnectOAuthBackend(provider);
+			await get().refreshProviderStatus(provider);
+			await get().refreshAuthMethod(provider);
+		} catch (error) {
+			set({
+				error: error instanceof Error ? error.message : String(error),
+			});
+		}
+	},
 }));
 
 // Selector hooks
@@ -228,5 +286,11 @@ export const useProviderInitialized = (): boolean => {
 export const useHasCredentials = (provider: string): boolean => {
 	return useProviderStore(
 		(state) => state.providerStatus[provider]?.has_credentials ?? false
+	);
+};
+
+export const useOAuthPending = (provider: string): boolean => {
+	return useProviderStore(
+		(state) => state.oauthPending[provider] ?? false
 	);
 };

@@ -6,7 +6,7 @@ import { MermaidBlock } from '@/components/shared/MermaidBlock';
 import { markdownTableComponents } from '@/components/shared/MarkdownTable';
 import { sharedRemarkPlugins, sharedRehypePlugins } from '@/lib/markdown/plugins';
 import { parseCalloutType, renderCallout } from '@/lib/markdown/callouts';
-import { StreamingIndicator } from './streaming-indicator';
+import { useStreamingText } from './use-streaming-text';
 
 export interface AgentNarrativeProps {
   content: string;
@@ -59,15 +59,13 @@ export const AgentNarrative: FC<AgentNarrativeProps> = ({
   isStreaming = false,
   className = '',
 }) => {
-  const processedContent = useMemo(
-    () => (isStreaming ? fixUnterminatedFences(content) : content),
-    [content, isStreaming],
-  );
+  // Progressive reveal during streaming (typewriter effect)
+  const displayedContent = useStreamingText(content, isStreaming ?? false);
 
-  // Show indicator when streaming with no content yet
-  if (isStreaming && !content.trim()) {
-    return <StreamingIndicator className={className} />;
-  }
+  const processedContent = useMemo(
+    () => (isStreaming ? fixUnterminatedFences(displayedContent) : displayedContent),
+    [displayedContent, isStreaming],
+  );
 
   return (
     <div
@@ -173,10 +171,6 @@ export const AgentNarrative: FC<AgentNarrativeProps> = ({
       >
         {processedContent}
       </ReactMarkdown>
-      {/* Blinking cursor when streaming with content */}
-      {isStreaming && content.trim() ? (
-        <span className="inline-block w-[2px] h-4 bg-foreground/70 animate-pulse ml-0.5 align-text-bottom" />
-      ) : null}
     </div>
   );
 };

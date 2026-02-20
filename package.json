@@ -12,7 +12,7 @@
     "check": "cargo check && bun run --filter '*' typecheck",
     "test": "cargo test && bun run --filter '*' test",
     "clean": "cargo clean && rm -rf node_modules apps/*/node_modules packages/*/node_modules",
-    "gen:bindings": "cargo test -p solo-protocol -p solo-agent && rm -rf apps/desktop/src/bindings && mkdir -p apps/desktop/src/bindings && cp -r crates/solo-protocol/apps/desktop/src/bindings/* apps/desktop/src/bindings/ && cp -r crates/solo-agent/apps/desktop/src/bindings/* apps/desktop/src/bindings/ && cd apps/desktop/src/bindings && echo '// Auto-generated barrel file' > index.ts && for f in *.ts; do [ \"$f\" != 'index.ts' ] && echo \"export type { ${f%.ts} } from './${f%.ts}';\" >> index.ts; done"
+    "gen:bindings": "cargo test -p solo-protocol && mkdir -p apps/desktop/src/bindings && cp -r crates/solo-protocol/apps/desktop/src/bindings/* apps/desktop/src/bindings/"
   },
   "devDependencies": {
     "@types/bun": "^1.1.14",

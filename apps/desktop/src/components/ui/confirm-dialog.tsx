@@ -46,7 +46,7 @@ export function ConfirmDialog({
   }, [isOpen]);
 
   return (
-    <AlertDialog open={isOpen} onOpenChange={(open) => { if (!open) onCancel(); }}>
+    <AlertDialog open={isOpen} onOpenChange={(open: boolean) => { if (!open) onCancel(); }}>
       <AlertDialogContent className="w-80 p-4 gap-0">
         <AlertDialogHeader className="mb-3">
           <AlertDialogTitle className="flex items-center gap-2 text-sm font-medium">

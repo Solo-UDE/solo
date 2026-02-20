@@ -1,9 +1,8 @@
 import { AgentMessage } from './agent-message';
-import { TurnProgress } from './turn-progress';
 import { UserMessage } from './user-message';
 
 import type { AgentMessageContent } from './agent-message';
-import type { Attachment, FileMention } from '../../../stores/agentStore';
+import type { Attachment, FileMention } from '@/stores/agentStore';
 import type { FC } from 'react';
 
 export interface UserMessageData {
@@ -20,7 +19,6 @@ export interface AgentMessageData {
   type: 'agent';
   content: AgentMessageContent;
   timestamp: Date;
-  turnNumber?: number;
 }
 
 export type Message = UserMessageData | AgentMessageData;
@@ -28,18 +26,20 @@ export type Message = UserMessageData | AgentMessageData;
 export interface MessageSectionProps {
   sectionIndex: number;
   messages: Message[];
+  onToolApproval?: (toolCallId: string, approved: boolean) => void;
   className?: string;
 }
 
 export const MessageSection: FC<MessageSectionProps> = ({
   sectionIndex,
   messages,
+  onToolApproval,
   className = '',
 }) => {
   return (
     <section
       data-section-index={sectionIndex}
-      className={`py-4 space-y-4 ${className}`}
+      className={`py-4 space-y-4 max-w-4xl mx-auto ${className}`}
     >
       {messages.map((message) => {
         if (message.type === 'user') {
@@ -56,16 +56,12 @@ export const MessageSection: FC<MessageSectionProps> = ({
 
         // message.type === 'agent'
         return (
-          <div key={message.id}>
-            {message.turnNumber && message.turnNumber > 1 && (
-              <TurnProgress turnNumber={message.turnNumber} />
-            )}
-            <AgentMessage
-              content={message.content}
-              timestamp={message.timestamp}
-
-            />
-          </div>
+          <AgentMessage
+            key={message.id}
+            content={message.content}
+            timestamp={message.timestamp}
+            onToolApproval={onToolApproval}
+          />
         );
       })}
     </section>

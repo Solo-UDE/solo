@@ -38,6 +38,14 @@ export interface UseAgentSessionReturn {
 	createSession: (model?: string) => Promise<string>;
 	/** Send a message */
 	sendMessage: (content: string, mode?: MessageMode, attachments?: import('../stores/agentStore').Attachment[], mentions?: import('../stores/agentStore').FileMention[]) => Promise<void>;
+	/** Interrupt the running agent */
+	interrupt: () => Promise<void>;
+	/** Change the model */
+	setModel: (model: string) => Promise<void>;
+	/** Set plan mode on the bridge */
+	setPlanMode: (enabled: boolean) => Promise<void>;
+	/** Set thinking mode on the bridge */
+	setThinkingMode: (enabled: boolean, maxTokens?: number) => Promise<void>;
 	/** Clear any error */
 	clearError: () => void;
 }
@@ -65,7 +73,11 @@ export function useAgentSession(
 
 	const storeCreateSession = useAgentStore((state) => state.createSession);
 	const storeSendMessage = useAgentStore((state) => state.sendMessage);
+	const storeSetModel = useAgentStore((state) => state.setModel);
+	const storeInterrupt = useAgentStore((state) => state.interrupt);
 	const storeClearError = useAgentStore((state) => state.clearError);
+	const storeSetPlanMode = useAgentStore((state) => state.setPlanMode);
+	const storeSetThinkingMode = useAgentStore((state) => state.setThinkingMode);
 
 	// Track if we've attempted auto-creation
 	const autoCreated = useRef(false);
@@ -102,12 +114,36 @@ export function useAgentSession(
 	);
 
 	const sendMessage = useCallback(
-		async (content: string, mode: MessageMode = 'planning', attachments?: import('../stores/agentStore').Attachment[], mentions?: import('../stores/agentStore').FileMention[]) => {
-			if (!content.trim() && (!attachments || attachments.length === 0)) return;
-			await storeSendMessage(effectiveSessionId!, content, mode, attachments, mentions);
+		async (content: string, mode?: MessageMode, attachments?: import('../stores/agentStore').Attachment[], mentions?: import('../stores/agentStore').FileMention[]) => {
+			if ((!content.trim() && (!attachments || attachments.length === 0)) || !effectiveSessionId) return;
+			await storeSendMessage(effectiveSessionId, content, mode, attachments, mentions);
 		},
 		[storeSendMessage, effectiveSessionId]
 	);
+
+	const interrupt = useCallback(async () => {
+		if (effectiveSessionId) {
+			await storeInterrupt(effectiveSessionId);
+		}
+	}, [storeInterrupt, effectiveSessionId]);
+
+	const setModel = useCallback(async (model: string) => {
+		if (effectiveSessionId) {
+			await storeSetModel(effectiveSessionId, model);
+		}
+	}, [storeSetModel, effectiveSessionId]);
+
+	const setPlanMode = useCallback(async (enabled: boolean) => {
+		if (effectiveSessionId) {
+			await storeSetPlanMode(effectiveSessionId, enabled);
+		}
+	}, [storeSetPlanMode, effectiveSessionId]);
+
+	const setThinkingMode = useCallback(async (enabled: boolean, maxTokens?: number) => {
+		if (effectiveSessionId) {
+			await storeSetThinkingMode(effectiveSessionId, enabled, maxTokens);
+		}
+	}, [storeSetThinkingMode, effectiveSessionId]);
 
 	const clearError = useCallback(() => {
 		if (effectiveSessionId) {
@@ -123,6 +159,10 @@ export function useAgentSession(
 		error,
 		createSession,
 		sendMessage,
+		interrupt,
+		setModel,
+		setPlanMode,
+		setThinkingMode,
 		clearError,
 	};
 }

@@ -1,0 +1,2108 @@
+#!/usr/bin/env node
+
+// src/index.ts
+import * as readline from "readline";
+
+// src/logger.ts
+function createLogger(prefix) {
+  const formatMessage = (level, context, message) => {
+    const timestamp = (/* @__PURE__ */ new Date()).toISOString();
+    const contextStr = typeof context === "string" ? "" : ` ${JSON.stringify(context)}`;
+    const msg = typeof context === "string" ? context : message ?? "";
+    return `[${timestamp}] [${prefix}] [${level.toUpperCase()}]${contextStr} ${msg}`;
+  };
+  const writeToStderr = (message) => {
+    process.stderr.write(message + "\n");
+  };
+  return {
+    debug(contextOrMessage, message) {
+      if (process.env.DEBUG) {
+        writeToStderr(formatMessage("debug", contextOrMessage, message));
+      }
+    },
+    info(contextOrMessage, message) {
+      writeToStderr(formatMessage("info", contextOrMessage, message));
+    },
+    warn(contextOrMessage, message) {
+      writeToStderr(formatMessage("warn", contextOrMessage, message));
+    },
+    error(contextOrMessage, message) {
+      writeToStderr(formatMessage("error", contextOrMessage, message));
+    }
+  };
+}
+
+// src/session-manager.ts
+import { randomUUID } from "crypto";
+
+// src/agent.ts
+import { query } from "@anthropic-ai/claude-agent-sdk";
+
+// src/credentials.ts
+import { execSync } from "child_process";
+var logger = createLogger("ClaudeCredentials");
+function isKeychainCredentials(value) {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const obj = value;
+  if (obj.claudeAiOauth === void 0) {
+    return true;
+  }
+  if (typeof obj.claudeAiOauth !== "object" || obj.claudeAiOauth === null) {
+    return false;
+  }
+  return true;
+}
+function getOAuthTokenFromKeychain() {
+  try {
+    const output = execSync('security find-generic-password -s "Claude Code-credentials" -w', {
+      encoding: "utf-8"
+    }).trim();
+    const parsed = JSON.parse(output);
+    if (!isKeychainCredentials(parsed)) {
+      logger.debug("Invalid credentials structure in Keychain");
+      return null;
+    }
+    const claudeAuth = parsed.claudeAiOauth;
+    if (claudeAuth === void 0) {
+      logger.debug("No Claude OAuth credentials found in Keychain");
+      return null;
+    }
+    const accessToken = claudeAuth.accessToken;
+    const expiresAt = claudeAuth.expiresAt;
+    if (accessToken === void 0 || accessToken === "") {
+      logger.debug("OAuth token missing in Keychain credentials");
+      return null;
+    }
+    if (expiresAt !== void 0 && expiresAt !== "") {
+      const expiryMs = parseInt(expiresAt, 10);
+      const expiryDate = new Date(expiryMs);
+      const now = /* @__PURE__ */ new Date();
+      if (now >= expiryDate) {
+        logger.warn({ expiryDate: expiryDate.toISOString() }, "Claude Code OAuth token expired");
+        return null;
+      }
+      logger.debug({ expiryDate: expiryDate.toISOString() }, "OAuth token valid");
+    }
+    return accessToken;
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("could not be found")) {
+      logger.debug("Claude Code credentials not found in Keychain");
+    } else {
+      logger.error({ error }, "Error reading OAuth token from Keychain");
+    }
+    return null;
+  }
+}
+function getApiKeyFromEnv() {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (apiKey === void 0 || apiKey === "") {
+    logger.debug("ANTHROPIC_API_KEY not found in environment");
+    return null;
+  }
+  return apiKey;
+}
+function getCredentials() {
+  const oauthToken = getOAuthTokenFromKeychain();
+  if (oauthToken !== null) {
+    logger.info("OAuth token available from Claude Code Keychain");
+    return { type: "oauth", hasCredentials: true };
+  }
+  const apiKey = getApiKeyFromEnv();
+  if (apiKey !== null) {
+    logger.info("API key available from environment");
+    return { type: "apikey", hasCredentials: true };
+  }
+  logger.error("No credentials found (checked Keychain and .env)");
+  return { type: "apikey", hasCredentials: false };
+}
+var ClaudeCredentials = {
+  getOAuthTokenFromKeychain,
+  getApiKeyFromEnv,
+  getCredentials
+};
+
+// src/nls.ts
+function localize(_key, message) {
+  return message;
+}
+
+// src/permissions.ts
+var logger2 = createLogger("PermissionManager");
+var PermissionManager = class {
+  requestCallback;
+  snapshotCallback;
+  alwaysAllowedTools = /* @__PURE__ */ new Set();
+  acceptModeGetter;
+  constructor(requestCallback, snapshotCallback, acceptModeGetter) {
+    if (requestCallback !== void 0) {
+      this.requestCallback = requestCallback;
+    }
+    if (snapshotCallback !== void 0) {
+      this.snapshotCallback = snapshotCallback;
+    }
+    if (acceptModeGetter !== void 0) {
+      this.acceptModeGetter = acceptModeGetter;
+    }
+  }
+  /**
+   * Reset the always-allowed tools set.
+   */
+  resetAlwaysAllowed() {
+    this.alwaysAllowedTools.clear();
+  }
+  /**
+   * Add a tool to the always-allowed list.
+   */
+  addAlwaysAllowed(toolName) {
+    this.alwaysAllowedTools.add(toolName);
+  }
+  /**
+   * Check if a tool is always allowed.
+   */
+  isAlwaysAllowed(toolName) {
+    return this.alwaysAllowedTools.has(toolName);
+  }
+  /**
+   * Create permission callback for the SDK.
+   * This uses the SDK's canUseTool API.
+   */
+  createCallback() {
+    return async (toolName, toolInput, options) => {
+      logger2.debug({ toolName, toolInput }, "Permission callback invoked");
+      try {
+        const acceptModeActive = this.acceptModeGetter?.() ?? false;
+        logger2.debug({ toolName, acceptModeActive }, "Permission check");
+        if (acceptModeActive) {
+          logger2.debug({ toolName }, "Accept mode active - auto-approving tool");
+          return {
+            behavior: "allow",
+            updatedInput: toolInput
+          };
+        }
+        if ((toolName === "Write" || toolName === "Edit") && this.snapshotCallback) {
+          try {
+            await this.snapshotCallback(toolName, toolInput, null);
+          } catch (error) {
+            logger2.warn({ toolName, error }, "Failed to capture snapshot");
+          }
+        }
+        if (this.isAlwaysAllowed(toolName)) {
+          return {
+            behavior: "allow",
+            updatedInput: toolInput
+          };
+        }
+        if (this.requestCallback) {
+          try {
+            const result = await this.requestCallback(toolName, toolInput, options);
+            if (result.always && toolName !== "AskUserQuestion") {
+              this.addAlwaysAllowed(toolName);
+            }
+            if (result.decision === "approve") {
+              const updatedPermissions = toolName === "ExitPlanMode" ? [{ type: "setMode", mode: "default", destination: "session" }] : void 0;
+              let updatedInput = toolInput;
+              if (toolName === "AskUserQuestion" && result.answers) {
+                updatedInput = {
+                  ...toolInput,
+                  answers: result.answers
+                };
+                logger2.debug({ answers: result.answers }, "AskUserQuestion answers received");
+              }
+              return {
+                behavior: "allow",
+                updatedInput,
+                updatedPermissions
+              };
+            }
+            return {
+              behavior: "deny",
+              message: localize("orbit.permissionDenied", "User denied permission"),
+              interrupt: false
+            };
+          } catch (error) {
+            logger2.error({ toolName, error }, "Permission request failed - DENYING");
+            return {
+              behavior: "deny",
+              message: localize(
+                "orbit.permissionFailed",
+                "Permission request failed. Please try again."
+              ),
+              interrupt: false
+            };
+          }
+        }
+        return {
+          behavior: "allow",
+          updatedInput: toolInput
+        };
+      } catch (error) {
+        logger2.error(
+          { error },
+          "CRITICAL: Permission callback crashed - DENYING to prevent silent approval"
+        );
+        return {
+          behavior: "deny",
+          message: localize(
+            "orbit.permissionSystemError",
+            "Permission system error. Please try again."
+          ),
+          interrupt: false
+        };
+      }
+    };
+  }
+};
+
+// src/session-mode.ts
+var MODE_TOOLS = {
+  chat: ["Read", "Glob", "Grep", "WebSearch", "WebFetch", "TodoWrite"],
+  agent: [
+    "Read",
+    "Write",
+    "Edit",
+    "Glob",
+    "Grep",
+    "NotebookEdit",
+    "Bash",
+    "BashOutput",
+    "KillShell",
+    "WebSearch",
+    "WebFetch",
+    "Task",
+    "TodoWrite",
+    "ExitPlanMode"
+  ]
+};
+function getAllowedToolsForMode(mode) {
+  return MODE_TOOLS[mode];
+}
+
+// src/utils/content.ts
+function buildContentBlocks(message, attachments) {
+  if (!attachments || attachments.length === 0) {
+    return message;
+  }
+  const contentBlocks = [];
+  for (const attachment of attachments) {
+    if (attachment.type === "document" && attachment.source) {
+      contentBlocks.push({
+        type: "document",
+        source: {
+          type: "base64",
+          media_type: attachment.source.media_type,
+          data: attachment.source.data
+        }
+      });
+    } else if (attachment.type === "image" && attachment.source) {
+      contentBlocks.push({
+        type: "image",
+        source: {
+          type: "base64",
+          media_type: attachment.source.media_type,
+          data: attachment.source.data
+        }
+      });
+    } else if (attachment.type === "text") {
+      let textContent = "";
+      if (attachment.filePath !== void 0 && attachment.lineStart !== void 0 && attachment.lineEnd !== void 0) {
+        const lineRange = attachment.lineStart === attachment.lineEnd ? `line ${String(attachment.lineStart)}` : `lines ${String(attachment.lineStart)}-${String(attachment.lineEnd)}`;
+        textContent = `From: ${attachment.filePath} (${lineRange})
+\`\`\`
+${attachment.text ?? ""}
+\`\`\``;
+      } else if (attachment.terminalName !== void 0 && attachment.timestamp !== void 0) {
+        textContent = `From: ${attachment.terminalName} (captured at ${attachment.timestamp})
+\`\`\`
+${attachment.text ?? ""}
+\`\`\``;
+      } else if (attachment.name !== void 0 && attachment.text !== void 0) {
+        const languageHint = getLanguageHint(attachment.name);
+        textContent = `File: ${attachment.name}
+\`\`\`${languageHint}
+${attachment.text}
+\`\`\``;
+      } else {
+        textContent = attachment.text ?? "";
+      }
+      contentBlocks.push({
+        type: "text",
+        text: textContent
+      });
+    }
+  }
+  contentBlocks.push({
+    type: "text",
+    text: message
+  });
+  return contentBlocks;
+}
+function getLanguageHint(filename) {
+  const ext = filename.split(".").pop()?.toLowerCase();
+  const languageMap = {
+    ts: "typescript",
+    tsx: "typescript",
+    js: "javascript",
+    jsx: "javascript",
+    py: "python",
+    rb: "ruby",
+    go: "go",
+    rs: "rust",
+    java: "java",
+    cpp: "cpp",
+    c: "c",
+    cs: "csharp",
+    php: "php",
+    swift: "swift",
+    kt: "kotlin",
+    scala: "scala",
+    sh: "bash",
+    bash: "bash",
+    zsh: "bash",
+    yaml: "yaml",
+    yml: "yaml",
+    json: "json",
+    md: "markdown",
+    html: "html",
+    css: "css",
+    scss: "scss",
+    sql: "sql"
+  };
+  return languageMap[ext ?? ""] ?? "";
+}
+
+// src/utils/formatter.ts
+function contentToString(content) {
+  if (content === null || content === void 0) {
+    return "";
+  }
+  if (typeof content === "string") {
+    return content;
+  }
+  if (typeof content === "number" || typeof content === "boolean" || typeof content === "bigint") {
+    return String(content);
+  }
+  if (typeof content === "object") {
+    try {
+      return JSON.stringify(content);
+    } catch {
+      return "[Object]";
+    }
+  }
+  return "[Unknown]";
+}
+function formatToolResult(toolName, toolInput, resultContent, isError = false) {
+  if (isError) {
+    return formatError(resultContent);
+  }
+  switch (toolName) {
+    case "Read":
+      return formatRead(resultContent);
+    case "Write":
+      return formatWrite(resultContent);
+    case "Edit":
+      return formatEdit(toolInput, resultContent);
+    case "Bash":
+      return formatBash(resultContent);
+    case "Grep":
+      return formatGrep(resultContent);
+    case "Glob":
+      return formatGlob(resultContent);
+    case "TodoWrite":
+      return formatTodoWrite(toolInput);
+    case "WebFetch":
+    case "WebSearch":
+      return formatWebTool(resultContent);
+    default:
+      return formatGeneric(resultContent);
+  }
+}
+function formatRead(resultContent) {
+  if (resultContent === null || resultContent === void 0) {
+    return "Completed";
+  }
+  const contentStr = contentToString(resultContent);
+  const lineCount = contentStr.split("\n").length;
+  return `Read ${String(lineCount)} lines`;
+}
+function formatWrite(resultContent) {
+  if (resultContent === null || resultContent === void 0) {
+    return "Completed";
+  }
+  const contentStr = contentToString(resultContent).toLowerCase();
+  if (contentStr.includes("created")) {
+    return "Created new file";
+  }
+  return "File written successfully";
+}
+function formatEdit(toolInput, resultContent) {
+  if (resultContent === null || resultContent === void 0) {
+    return "Completed";
+  }
+  const oldStringValue = toolInput.old_string;
+  const newStringValue = toolInput.new_string;
+  const oldString = typeof oldStringValue === "string" ? oldStringValue : "";
+  const newString = typeof newStringValue === "string" ? newStringValue : "";
+  const oldLines = oldString.length > 0 ? oldString.split("\n").length : 0;
+  const newLines = newString.length > 0 ? newString.split("\n").length : 0;
+  return `Updated with ${String(newLines)} addition${newLines !== 1 ? "s" : ""} and ${String(oldLines)} removal${oldLines !== 1 ? "s" : ""}`;
+}
+function formatBash(resultContent) {
+  if (resultContent === null || resultContent === void 0) {
+    return "Completed";
+  }
+  const contentStr = contentToString(resultContent);
+  const lines = contentStr.split("\n");
+  const MAX_LINES = 50;
+  if (lines.length <= MAX_LINES) {
+    return lines.join("\n");
+  }
+  const displayLines = lines.slice(0, MAX_LINES).join("\n");
+  return `${displayLines}
+... (${String(lines.length - MAX_LINES)} more lines)`;
+}
+function formatGrep(resultContent) {
+  if (resultContent === null || resultContent === void 0) {
+    return "Completed";
+  }
+  const contentStr = contentToString(resultContent);
+  const matches = contentStr.split("\n").filter((line) => line.trim().length > 0);
+  const MAX_MATCHES = 10;
+  const lines = [`Found ${String(matches.length)} matches`];
+  const displayMatches = matches.slice(0, MAX_MATCHES);
+  for (const match of displayMatches) {
+    lines.push(match);
+  }
+  if (matches.length > MAX_MATCHES) {
+    lines.push(`... (${String(matches.length - MAX_MATCHES)} more matches)`);
+  }
+  return lines.join("\n");
+}
+function formatGlob(resultContent) {
+  if (resultContent === null || resultContent === void 0) {
+    return "Completed";
+  }
+  const contentStr = contentToString(resultContent);
+  const files = contentStr.split("\n").filter((line) => line.trim().length > 0);
+  const MAX_FILES = 15;
+  const lines = [`Found ${String(files.length)} files`];
+  const displayFiles = files.slice(0, MAX_FILES);
+  for (const file of displayFiles) {
+    lines.push(file);
+  }
+  if (files.length > MAX_FILES) {
+    lines.push(`... (${String(files.length - MAX_FILES)} more files)`);
+  }
+  return lines.join("\n");
+}
+function formatTodoWrite(toolInput) {
+  const todos = toolInput.todos;
+  if (Array.isArray(todos)) {
+    return `Updated ${String(todos.length)} todo items`;
+  }
+  return "Completed";
+}
+function formatWebTool(resultContent) {
+  if (resultContent === null || resultContent === void 0) {
+    return "Completed";
+  }
+  return contentToString(resultContent);
+}
+function formatError(resultContent) {
+  if (resultContent === null || resultContent === void 0) {
+    return "Error occurred";
+  }
+  const contentStr = contentToString(resultContent);
+  const lines = contentStr.split("\n");
+  const MAX_LINES = 10;
+  if (lines.length <= MAX_LINES) {
+    return lines.join("\n");
+  }
+  const displayLines = lines.slice(0, MAX_LINES).join("\n");
+  return `${displayLines}
+... (${String(lines.length - MAX_LINES)} more lines)`;
+}
+function formatGeneric(resultContent) {
+  if (resultContent === null || resultContent === void 0) {
+    return "Completed";
+  }
+  const contentStr = contentToString(resultContent);
+  const lines = contentStr.split("\n");
+  const MAX_LINES = 10;
+  if (lines.length <= MAX_LINES) {
+    return lines.join("\n");
+  }
+  const displayLines = lines.slice(0, MAX_LINES).join("\n");
+  return `${displayLines}
+... (${String(lines.length - MAX_LINES)} more lines)`;
+}
+
+// src/agent.ts
+var logger3 = createLogger("OrbitAgent");
+function isToolResultBlock(block) {
+  if (typeof block !== "object" || block === null) {
+    return false;
+  }
+  const obj = block;
+  return obj.type === "tool_result" && typeof obj.tool_use_id === "string" && typeof obj.content === "string";
+}
+function isToolUseBlock(block) {
+  if (typeof block !== "object" || block === null) {
+    return false;
+  }
+  const obj = block;
+  return obj.type === "tool_use" && typeof obj.id === "string" && typeof obj.name === "string" && typeof obj.input === "object" && obj.input !== null;
+}
+function getMessageContentArray(message) {
+  if (message.type !== "assistant" && message.type !== "user") {
+    return null;
+  }
+  const msg = message;
+  const content = msg.message?.content;
+  if (!Array.isArray(content)) {
+    return null;
+  }
+  return content;
+}
+var MessageQueue = class {
+  queue = [];
+  resolvers = [];
+  stopped = false;
+  /**
+   * Add a message to the queue.
+   * If a consumer is waiting, resolve immediately.
+   * Otherwise, add to queue for later consumption.
+   */
+  add(message, attachments) {
+    if (this.stopped) {
+      throw new Error("Message queue has been stopped");
+    }
+    const content = buildContentBlocks(message, attachments);
+    const sdkMessage = {
+      type: "user",
+      message: {
+        role: "user",
+        content
+        // Can be string or array of content blocks
+      },
+      parent_tool_use_id: null,
+      session_id: ""
+      // SDK will assign the real session_id
+    };
+    if (this.resolvers.length > 0) {
+      const resolve = this.resolvers.shift();
+      if (resolve) {
+        resolve({ value: sdkMessage, done: false });
+      }
+    } else {
+      this.queue.push(sdkMessage);
+    }
+  }
+  /**
+   * Stop the queue (marks as complete).
+   * Resolves any waiting consumers with done: true.
+   */
+  stop() {
+    this.stopped = true;
+    for (const resolve of this.resolvers) {
+      resolve({ value: void 0, done: true });
+    }
+    this.resolvers = [];
+  }
+  /**
+   * Async iterator implementation.
+   * Yields messages from queue or waits for new messages.
+   */
+  async *[Symbol.asyncIterator]() {
+    while (!this.stopped) {
+      if (this.queue.length > 0) {
+        const message = this.queue.shift();
+        if (message) {
+          yield message;
+        }
+      } else {
+        const result = await new Promise((resolve) => {
+          this.resolvers.push(resolve);
+        });
+        if (result.done) {
+          break;
+        }
+        yield result.value;
+      }
+    }
+  }
+};
+var OrbitAgent = class {
+  currentQuery = null;
+  permissionManager;
+  cwd;
+  _thinkingMode;
+  _thinkingBudget;
+  // 0=off, 4096=think, 10240=hard, 32768=ultra
+  _planMode;
+  _acceptMode;
+  _critiqueMode;
+  model;
+  _fallbackModel;
+  _sessionMode;
+  // Session resume/fork fields
+  _resumeSessionId;
+  _forkSession;
+  _currentSessionId;
+  // Streaming input mode fields
+  messageQueue = null;
+  sessionActive = false;
+  // MCP servers (DevTools, custom tools, etc.)
+  _mcpServers;
+  // Structured output format (JSON Schema)
+  _outputFormat;
+  // Custom subagents for Task tool
+  _agents;
+  constructor(config = {}) {
+    this.permissionManager = new PermissionManager(
+      config.permissionRequestCallback,
+      config.snapshotCallback,
+      () => this._acceptMode
+      // Pass Accept mode getter for dynamic checking
+    );
+    this.cwd = config.cwd ?? process.cwd();
+    this._thinkingMode = config.thinkingEnabled ?? false;
+    this._thinkingBudget = config.maxThinkingTokens ?? 0;
+    this._planMode = config.planEnabled ?? false;
+    this._acceptMode = config.acceptEnabled ?? false;
+    this._critiqueMode = config.critiqueEnabled ?? false;
+    this._sessionMode = config.sessionMode ?? "agent";
+    this._resumeSessionId = config.resumeSessionId;
+    this._forkSession = config.forkSession ?? false;
+    if (config.model !== void 0) {
+      this.model = config.model;
+    }
+    if (config.fallbackModel !== void 0) {
+      this._fallbackModel = config.fallbackModel;
+    }
+    this._mcpServers = config.mcpServers ?? {};
+    this._outputFormat = config.outputFormat;
+    this._agents = config.agents;
+    logger3.info(
+      {
+        sessionMode: this._sessionMode,
+        mcpServerCount: Object.keys(this._mcpServers).length,
+        hasOutputFormat: !!this._outputFormat,
+        agentCount: this._agents ? Object.keys(this._agents).length : 0
+      },
+      "OrbitAgent created with session mode"
+    );
+  }
+  /**
+   * Register an MCP server dynamically (before session start)
+   */
+  registerMcpServer(name, server) {
+    if (this.sessionActive) {
+      logger3.warn("Cannot register MCP server after session has started");
+      return;
+    }
+    this._mcpServers[name] = server;
+    logger3.info({ name }, "MCP server registered");
+  }
+  /**
+   * Unregister an MCP server
+   */
+  unregisterMcpServer(name) {
+    const { [name]: _removed, ...rest } = this._mcpServers;
+    void _removed;
+    this._mcpServers = rest;
+    logger3.info({ name }, "MCP server unregistered");
+  }
+  /**
+   * Set or remove the browser MCP server.
+   * Call with server when browser panel is opened and session is active.
+   * Call with null when browser panel is closed.
+   */
+  setBrowserMcpServer(server) {
+    if (server) {
+      this.registerMcpServer("browser", server);
+    } else {
+      this.unregisterMcpServer("browser");
+    }
+  }
+  /**
+   * Check if browser MCP server is registered
+   */
+  hasBrowserMcpServer() {
+    return Object.hasOwn(this._mcpServers, "browser");
+  }
+  /**
+   * Get the permission manager instance
+   */
+  getPermissionManager() {
+    return this.permissionManager;
+  }
+  _createOptions() {
+    const options = {
+      // Use Claude Code's official system prompt with browser automation docs
+      systemPrompt: {
+        type: "preset",
+        preset: "claude_code",
+        append: `
+## Browser Automation
+
+You have access to browser automation tools via MCP. Use mcp__browser__open_browser to start a browser session.
+
+### Panel Control
+- **mcp__browser__open_browser**: Open the browser panel and navigate to URL. Use this first if browser is not open.
+- **mcp__browser__close_browser**: Close the browser panel when done with automation.
+
+### Navigation
+- **mcp__browser__navigate**: Go to URL (returns accessibility snapshot with element refs)
+- **mcp__browser__go_back / mcp__browser__go_forward / mcp__browser__reload**: History navigation
+- **mcp__browser__url**: Get current URL
+
+### Interaction
+- **mcp__browser__click**: Click by CSS selector
+- **mcp__browser__click_ref**: Click by accessibility ref (preferred - more reliable)
+- **mcp__browser__type**: Type text character by character
+- **mcp__browser__fill**: Fill form field (clears first, more reliable for inputs)
+- **mcp__browser__select**: Select dropdown option
+- **mcp__browser__hover**: Hover over element
+- **mcp__browser__press_key**: Press keyboard key (Enter, Tab, Escape, ArrowDown, etc.)
+- **mcp__browser__scroll**: Scroll page or element
+
+### Observation
+- **mcp__browser__snapshot**: Get accessibility tree showing all interactive elements with refs
+- **mcp__browser__screenshot**: Capture visual screenshot
+- **mcp__browser__wait**: Wait for element to appear
+
+### JavaScript
+- **mcp__browser__evaluate**: Execute JavaScript in page context
+
+### Console/Network
+- **mcp__browser__console_logs**: Get console messages (errors, warnings, logs)
+- **mcp__browser__network_requests**: Get network requests (useful for debugging API calls)
+
+### Recommended Workflow
+1. Use mcp__browser__open_browser to start a browser session (or mcp__browser__navigate if already open)
+2. Read the snapshot to find elements and their refs (e.g., ref="ref-5")
+3. Use mcp__browser__click_ref with refs for reliable clicking (not CSS selectors)
+4. After interactions, call mcp__browser__snapshot to see updated page state
+5. Use mcp__browser__console_logs to check for JavaScript errors
+6. Use mcp__browser__close_browser when done
+
+### Tips
+- **Use open_browser first** - it opens the panel and navigates in one step
+- **Prefer refs over CSS selectors** - accessibility refs from snapshots are more reliable
+- **Always check snapshot after navigation** to understand page structure
+- **For forms**: use mcp__browser__fill for inputs, mcp__browser__select for dropdowns
+- **Check console for errors** after page loads or after interactions fail
+
+## Chrome DevTools (Advanced)
+
+When browser is open, you also have access to Chrome DevTools Protocol tools via mcp__orbit-devtools__*:
+
+### Console
+- **devtools_console_get**: Get console logs with filtering by type (log/warn/error/info/debug)
+- **devtools_console_clear**: Clear console messages
+- **devtools_console_eval**: Execute JavaScript in console context
+
+### Network (Detailed)
+- **devtools_network_get**: Get network requests with filtering (url pattern, method, status)
+- **devtools_network_detail**: Get full request/response details including headers and body
+- **devtools_network_clear**: Clear network logs
+
+### DOM Inspection
+- **devtools_dom_query**: Query DOM with CSS selectors, get element structure
+- **devtools_dom_html**: Get outer HTML of elements
+- **devtools_dom_styles**: Get computed CSS styles for elements
+- **devtools_dom_attributes**: Get all attributes of an element
+
+### Performance
+- **devtools_perf_metrics**: Get performance metrics (memory, DOM stats, rendering times)
+- **devtools_perf_trace_start**: Start recording performance trace
+- **devtools_perf_trace_stop**: Stop trace and get timeline events
+
+### Storage
+- **devtools_storage_local / devtools_storage_session**: Get localStorage/sessionStorage
+- **devtools_storage_cookies**: Get cookies (optionally filter by domain)
+- **devtools_storage_set_local / devtools_storage_set_session**: Set storage items
+- **devtools_storage_set_cookie**: Set a cookie with full options
+- **devtools_storage_clear**: Clear storage (local/session/cookies/all)
+
+### General
+- **devtools_eval**: Execute JavaScript with full page access, can await promises
+- **devtools_page_info**: Get current page title and URL
+
+### When to Use DevTools vs Browser Tools
+- **Browser tools (mcp__browser__)**: Page interaction, navigation, clicking, typing
+- **DevTools tools (mcp__orbit-devtools__)**: Deep inspection, debugging, storage, performance analysis
+`
+      },
+      // Working directory
+      cwd: this.cwd,
+      // Load CLAUDE.md from project directory for project-specific instructions
+      settingSources: ["project"]
+    };
+    if (this._thinkingMode && this._thinkingBudget > 0) {
+      options.maxThinkingTokens = this._thinkingBudget;
+      const modeName = this._thinkingBudget <= 4096 ? "think" : this._thinkingBudget <= 10240 ? "hard" : "ultra";
+      logger3.info(
+        { thinkingMode: modeName, thinkingBudget: this._thinkingBudget },
+        "Extended thinking ENABLED"
+      );
+    } else {
+      logger3.info({ thinkingMode: "off" }, "Extended thinking DISABLED");
+    }
+    if (this._sessionMode === "chat") {
+      const chatTools = getAllowedToolsForMode("chat");
+      options.allowedTools = chatTools;
+      logger3.info({ mode: "chat", tools: chatTools }, "Chat mode - read-only tools auto-approved");
+    } else {
+      const permissionCallback = this.permissionManager.createCallback();
+      logger3.debug("Using SDK permission flow with canUseTool callback");
+      options.canUseTool = async (toolName, toolInput, canUseToolOptions) => {
+        logger3.debug({ toolName }, "canUseTool callback invoked");
+        try {
+          const result = await permissionCallback(toolName, toolInput, {
+            signal: canUseToolOptions.signal,
+            suggestions: canUseToolOptions.suggestions ?? []
+          });
+          return result;
+        } catch (error) {
+          logger3.error({ toolName, error }, "canUseTool callback error");
+          return {
+            behavior: "deny",
+            message: "Permission request failed"
+          };
+        }
+      };
+      options.hooks = {
+        // PreToolUse hook - auto-approve safe tools, let SDK handle others
+        PreToolUse: [
+          {
+            // No matcher means match ALL tools
+            timeout: 86400,
+            // 24 hours for indefinite waiting
+            hooks: [
+              (input) => {
+                const preToolInput = input;
+                const toolName = preToolInput.tool_name;
+                const toolInput = preToolInput.tool_input;
+                if (toolName === "TodoWrite") {
+                  return Promise.resolve({
+                    hookSpecificOutput: {
+                      hookEventName: "PreToolUse",
+                      permissionDecision: "allow",
+                      updatedInput: toolInput
+                    }
+                  });
+                }
+                return Promise.resolve({});
+              }
+            ]
+          }
+        ],
+        // PostToolUse hook - track tool completion
+        PostToolUse: [
+          {
+            timeout: 30,
+            hooks: [
+              (input, toolUseId) => {
+                const postInput = input;
+                logger3.debug(
+                  {
+                    toolName: postInput.tool_name,
+                    toolUseId,
+                    hasResponse: postInput.tool_response !== void 0
+                  },
+                  "Tool execution completed"
+                );
+                return Promise.resolve({});
+              }
+            ]
+          }
+        ],
+        // PostToolUseFailure hook - track tool failures
+        PostToolUseFailure: [
+          {
+            timeout: 30,
+            hooks: [
+              (input, toolUseId) => {
+                const failureInput = input;
+                logger3.warn(
+                  {
+                    toolName: failureInput.tool_name,
+                    toolUseId,
+                    error: failureInput.error,
+                    isInterrupt: failureInput.is_interrupt
+                  },
+                  "Tool execution failed"
+                );
+                return Promise.resolve({});
+              }
+            ]
+          }
+        ],
+        // Notification hook - track agent status updates
+        Notification: [
+          {
+            timeout: 30,
+            hooks: [
+              (input) => {
+                const notifInput = input;
+                logger3.info(
+                  {
+                    message: notifInput.message,
+                    title: notifInput.title
+                  },
+                  "Agent notification"
+                );
+                return Promise.resolve({});
+              }
+            ]
+          }
+        ],
+        // PreCompact hook - notify before context compaction
+        PreCompact: [
+          {
+            timeout: 30,
+            hooks: [
+              (input) => {
+                const compactInput = input;
+                logger3.info(
+                  {
+                    trigger: compactInput.trigger,
+                    customInstructions: compactInput.custom_instructions
+                  },
+                  "Context compaction starting"
+                );
+                return Promise.resolve({});
+              }
+            ]
+          }
+        ],
+        // SubagentStart hook - track subagent spawning
+        SubagentStart: [
+          {
+            timeout: 30,
+            hooks: [
+              (input) => {
+                const startInput = input;
+                logger3.info(
+                  {
+                    agentId: startInput.agent_id,
+                    agentType: startInput.agent_type
+                  },
+                  "Subagent started"
+                );
+                return Promise.resolve({});
+              }
+            ]
+          }
+        ],
+        // SubagentStop hook - track subagent completion
+        SubagentStop: [
+          {
+            timeout: 30,
+            hooks: [
+              (input) => {
+                const stopInput = input;
+                logger3.info(
+                  {
+                    stopHookActive: stopInput.stop_hook_active
+                  },
+                  "Subagent stopped"
+                );
+                return Promise.resolve({});
+              }
+            ]
+          }
+        ],
+        // SessionStart hook - track session lifecycle
+        SessionStart: [
+          {
+            timeout: 30,
+            hooks: [
+              (input) => {
+                const sessionInput = input;
+                logger3.info(
+                  {
+                    source: sessionInput.source
+                  },
+                  "Session started"
+                );
+                return Promise.resolve({});
+              }
+            ]
+          }
+        ],
+        // SessionEnd hook - track session lifecycle
+        SessionEnd: [
+          {
+            timeout: 30,
+            hooks: [
+              (input) => {
+                const sessionInput = input;
+                logger3.info(
+                  {
+                    reason: sessionInput.reason
+                  },
+                  "Session ended"
+                );
+                return Promise.resolve({});
+              }
+            ]
+          }
+        ]
+      };
+    }
+    if (this.model) {
+      options.model = this.model;
+      logger3.info({ model: this.model }, "Using model");
+    }
+    if (this._fallbackModel) {
+      options.fallbackModel = this._fallbackModel;
+      logger3.info({ fallbackModel: this._fallbackModel }, "Fallback model configured");
+    }
+    const permissionMode = this._acceptMode ? "acceptEdits" : this._planMode ? "plan" : "default";
+    options.permissionMode = permissionMode;
+    logger3.info({ permissionMode }, "Permission mode set");
+    if (this._planMode) {
+      logger3.info("Plan mode ENABLED - SDK will restrict to read-only tools");
+    }
+    options.includePartialMessages = true;
+    if (this._resumeSessionId) {
+      options.resume = this._resumeSessionId;
+      if (this._forkSession) {
+        options.forkSession = true;
+      }
+      logger3.info(
+        { resumeFrom: this._resumeSessionId, fork: this._forkSession },
+        "Session resume/fork configured"
+      );
+    }
+    if (Object.keys(this._mcpServers).length > 0) {
+      options.mcpServers = this._mcpServers;
+      logger3.info({ servers: Object.keys(this._mcpServers) }, "MCP servers configured");
+    }
+    if (this._outputFormat) {
+      options.outputFormat = this._outputFormat;
+      logger3.info({ type: this._outputFormat.type }, "Structured output format configured");
+    }
+    if (this._agents && Object.keys(this._agents).length > 0) {
+      options.agents = this._agents;
+      logger3.info({ agents: Object.keys(this._agents) }, "Custom subagents configured");
+    }
+    return options;
+  }
+  startSession() {
+    if (this.sessionActive) {
+      logger3.warn("Session already active");
+      return;
+    }
+    const currentPath = process.env.PATH ?? "";
+    const homeDir = process.env.HOME ?? "";
+    const additionalPaths = [
+      "/opt/homebrew/bin",
+      // Homebrew on Apple Silicon
+      "/usr/local/bin",
+      // Homebrew on Intel Macs
+      "/usr/bin",
+      // System binaries
+      `${homeDir}/.nvm/versions/node/v22.11.0/bin`,
+      // Common nvm path
+      `${homeDir}/.nvm/versions/node/v20.18.0/bin`,
+      // Another common nvm path
+      `${homeDir}/.fnm/node-versions/v22.11.0/installation/bin`
+      // fnm path
+    ].filter((p) => !currentPath.includes(p));
+    if (additionalPaths.length > 0) {
+      process.env.PATH = [...additionalPaths, currentPath].join(":");
+      logger3.debug({ addedPaths: additionalPaths }, "Fixed PATH for Electron app");
+    }
+    const credentials = ClaudeCredentials.getCredentials();
+    if (!credentials.hasCredentials) {
+      throw new Error(
+        "No credentials found. Please either:\n1. Log in to Claude Code CLI (OAuth token will be stored in macOS Keychain), OR\n2. Set ANTHROPIC_API_KEY in .env file"
+      );
+    }
+    if (credentials.type === "oauth") {
+      delete process.env.ANTHROPIC_API_KEY;
+      delete process.env.ANTHROPIC_AUTH_TOKEN;
+      logger3.info("Using Claude Code OAuth (CLI will read from Keychain)");
+      logger3.info("Note: Using your Claude subscription quota, not API credits");
+    } else {
+      const apiKey = process.env.ANTHROPIC_API_KEY;
+      if (!apiKey) {
+        throw new Error("API key was detected but is no longer available");
+      }
+      logger3.info("Using API key from .env (will consume API credits)");
+    }
+    process.env.CLAUDE_CODE_STREAM_CLOSE_TIMEOUT = "86400000";
+    logger3.debug(
+      { thinkingMode: this._thinkingMode, thinkingBudget: this._thinkingBudget },
+      "Starting session"
+    );
+    this.messageQueue = new MessageQueue();
+    this.sessionActive = true;
+    this.currentQuery = query({
+      prompt: this.messageQueue[Symbol.asyncIterator](),
+      options: this._createOptions()
+    });
+    logger3.info("Session started successfully");
+  }
+  /**
+   * Check if the session is ready to receive messages
+   */
+  isSessionReady() {
+    return this.sessionActive && this.messageQueue !== null;
+  }
+  queueMessage(message, attachments) {
+    if (!this.sessionActive || !this.messageQueue) {
+      throw new Error("Session not started. Call startSession() first.");
+    }
+    const thinkingModeName = this._thinkingMode && this._thinkingBudget > 0 ? this._thinkingBudget <= 4096 ? "think" : this._thinkingBudget <= 10240 ? "hard" : "ultra" : "off";
+    logger3.info(
+      {
+        model: this.model ?? "sonnet",
+        thinkingMode: thinkingModeName,
+        thinkingBudget: this._thinkingBudget,
+        thinkingEnabled: this._thinkingMode,
+        planMode: this._planMode,
+        acceptMode: this._acceptMode,
+        critiqueMode: this._critiqueMode,
+        sessionMode: this._sessionMode,
+        messagePreview: message.substring(0, 80) + (message.length > 80 ? "..." : ""),
+        attachmentCount: attachments?.length ?? 0
+      },
+      // allow-any-unicode-next-line
+      "\u{1F4E4} Sending message to Claude"
+    );
+    this.messageQueue.add(message, attachments);
+  }
+  async *receiveResponse() {
+    if (!this.currentQuery) {
+      throw new Error("No active query. Call startSession() first.");
+    }
+    const toolUseMap = /* @__PURE__ */ new Map();
+    for await (const message of this.currentQuery) {
+      if (message.type === "system" && message.subtype === "init") {
+        const initMessage = message;
+        if (initMessage.session_id) {
+          this._currentSessionId = initMessage.session_id;
+        }
+      }
+      if (message.type === "assistant") {
+        const contentArray = getMessageContentArray(message);
+        if (contentArray !== null) {
+          for (const block of contentArray) {
+            if (isToolUseBlock(block)) {
+              toolUseMap.set(block.id, {
+                name: block.name,
+                input: block.input
+              });
+            }
+          }
+        }
+      }
+      if (message.type === "user") {
+        const contentArray = getMessageContentArray(message);
+        if (contentArray !== null) {
+          const msg = message;
+          const formattedContent = contentArray.map((block) => {
+            if (isToolResultBlock(block)) {
+              const toolInfo = toolUseMap.get(block.tool_use_id);
+              if (toolInfo !== void 0) {
+                const formatted = formatToolResult(
+                  toolInfo.name,
+                  toolInfo.input,
+                  block.content,
+                  block.is_error === true
+                );
+                return { ...block, content: formatted };
+              }
+            }
+            return block;
+          });
+          const formattedMessage = {
+            ...message,
+            message: { ...msg.message, content: formattedContent }
+          };
+          yield formattedMessage;
+        } else {
+          yield message;
+        }
+      } else {
+        yield message;
+      }
+    }
+    logger3.debug("Query session completed");
+    this.sessionActive = false;
+    this.currentQuery = null;
+  }
+  async stopSession() {
+    if (!this.sessionActive) {
+      logger3.debug("Session not active");
+      return;
+    }
+    logger3.debug("Stopping session");
+    if (this.messageQueue) {
+      this.messageQueue.stop();
+      this.messageQueue = null;
+    }
+    if (this.currentQuery) {
+      try {
+        await this.currentQuery.interrupt();
+      } catch (error) {
+        logger3.error({ error }, "Error interrupting query");
+      }
+      this.currentQuery = null;
+    }
+    this.sessionActive = false;
+    logger3.info("Session stopped");
+  }
+  async interrupt() {
+    if (!this.currentQuery) {
+      throw new Error("No active query to interrupt.");
+    }
+    logger3.info("Interrupting current query");
+    await this.currentQuery.interrupt();
+  }
+  async setPermissionMode(mode) {
+    if (!this.currentQuery) {
+      throw new Error("No active query.");
+    }
+    await this.currentQuery.setPermissionMode(mode);
+  }
+  isConnected() {
+    return this.currentQuery !== null;
+  }
+  async setThinkingMode(enabled, maxTokens) {
+    this._thinkingMode = enabled;
+    if (maxTokens !== void 0) {
+      this._thinkingBudget = maxTokens;
+    }
+    if (this.currentQuery) {
+      const budget = enabled && this._thinkingBudget > 0 ? this._thinkingBudget : null;
+      await this.currentQuery.setMaxThinkingTokens(budget);
+      const modeName = budget === null ? "off" : budget <= 4096 ? "think" : budget <= 10240 ? "hard" : "ultra";
+      logger3.info({ thinkingMode: modeName, budget }, "Thinking mode updated mid-session");
+    }
+  }
+  getThinkingMode() {
+    return this._thinkingMode;
+  }
+  setPlanMode(enabled) {
+    this._planMode = enabled;
+    if (enabled) {
+      this._acceptMode = false;
+    }
+    logger3.info({ enabled }, "Plan mode changed - will apply to next session");
+  }
+  getPlanMode() {
+    return this._planMode;
+  }
+  setAcceptMode(enabled) {
+    this._acceptMode = enabled;
+    if (enabled) {
+      this._planMode = false;
+    }
+    logger3.info({ enabled }, "Accept mode changed - will take effect on next tool use");
+  }
+  getAcceptMode() {
+    return this._acceptMode;
+  }
+  setCritiqueMode(enabled) {
+    this._critiqueMode = enabled;
+  }
+  getCritiqueMode() {
+    return this._critiqueMode;
+  }
+  async setModel(model) {
+    this.model = model;
+    if (this.currentQuery) {
+      await this.currentQuery.setModel(model);
+      logger3.info({ model }, "Model updated mid-session via Query.setModel()");
+    }
+  }
+  getModel() {
+    return this.model ?? "sonnet";
+  }
+  /**
+   * Get the current SDK session ID
+   * This is captured from the system:init message when the session starts
+   */
+  getCurrentSessionId() {
+    return this._currentSessionId;
+  }
+};
+
+// src/events.ts
+var Disposable = class {
+  _isDisposed = false;
+  _disposables = [];
+  get isDisposed() {
+    return this._isDisposed;
+  }
+  /**
+   * Register a disposable to be cleaned up when this object is disposed
+   */
+  _register(disposable) {
+    this._disposables.push(disposable);
+    return disposable;
+  }
+  /**
+   * Dispose all registered disposables
+   */
+  dispose() {
+    if (this._isDisposed) {
+      return;
+    }
+    this._isDisposed = true;
+    for (const d of this._disposables) {
+      d.dispose();
+    }
+    this._disposables = [];
+  }
+};
+var Emitter = class {
+  _listeners = /* @__PURE__ */ new Set();
+  _disposed = false;
+  /**
+   * The event that can be subscribed to
+   */
+  event = (listener) => {
+    if (this._disposed) {
+      return {
+        dispose: () => {
+        }
+      };
+    }
+    this._listeners.add(listener);
+    return {
+      dispose: () => {
+        this._listeners.delete(listener);
+      }
+    };
+  };
+  /**
+   * Fire the event with a value
+   */
+  fire(event) {
+    if (this._disposed) {
+      return;
+    }
+    for (const listener of this._listeners) {
+      try {
+        listener(event);
+      } catch (error) {
+        console.error("[Emitter] Error in event listener:", error);
+      }
+    }
+  }
+  /**
+   * Dispose the emitter and clear all listeners
+   */
+  dispose() {
+    this._disposed = true;
+    this._listeners.clear();
+  }
+};
+
+// src/session-manager.ts
+var logger4 = createLogger("SessionManager");
+function isToolResultBlock2(block) {
+  if (typeof block !== "object" || block === null) {
+    return false;
+  }
+  const obj = block;
+  return obj.type === "tool_result" && typeof obj.tool_use_id === "string";
+}
+function getString(value, fallback = "") {
+  return typeof value === "string" ? value : fallback;
+}
+function generateToolId() {
+  return `tool_${String(Date.now())}_${Math.random().toString(36).substring(2, 11)}`;
+}
+var SessionManager = class extends Disposable {
+  // Event emitters
+  _onError = this._register(new Emitter());
+  onError = this._onError.event;
+  _onPermissionRequest = this._register(new Emitter());
+  onPermissionRequest = this._onPermissionRequest.event;
+  _onAgentMessage = this._register(
+    new Emitter()
+  );
+  onAgentMessage = this._onAgentMessage.event;
+  _onPlanModeChanged = this._register(
+    new Emitter()
+  );
+  onPlanModeChanged = this._onPlanModeChanged.event;
+  _onAcceptModeChanged = this._register(
+    new Emitter()
+  );
+  onAcceptModeChanged = this._onAcceptModeChanged.event;
+  _onSessionInit = this._register(new Emitter());
+  onSessionInit = this._onSessionInit.event;
+  // Session tracking
+  activeSessions = /* @__PURE__ */ new Map();
+  sessionConsumers = /* @__PURE__ */ new Map();
+  permissionResolvers = /* @__PURE__ */ new Map();
+  modePreferences = /* @__PURE__ */ new Map();
+  pendingTools = /* @__PURE__ */ new Map();
+  approvedToolNames = /* @__PURE__ */ new Map();
+  sessionResumeState = /* @__PURE__ */ new Map();
+  sessionInitFired = /* @__PURE__ */ new Set();
+  /**
+   * Create a new agent session
+   */
+  createSession(sessionId, config) {
+    if (this.activeSessions.has(sessionId)) {
+      return;
+    }
+    this.pendingTools.set(sessionId, /* @__PURE__ */ new Map());
+    this.approvedToolNames.set(sessionId, /* @__PURE__ */ new Set());
+    const permissionCallback = async (toolName, toolInput, context) => {
+      const requestId = randomUUID();
+      this._onPermissionRequest.fire({
+        sessionId,
+        toolName,
+        toolInput,
+        requestId
+      });
+      const result = await new Promise((resolve) => {
+        this.permissionResolvers.set(requestId, resolve);
+      });
+      if (result.decision === "approve") {
+        if (toolName === "ExitPlanMode") {
+          agent.setPlanMode(false);
+          const prefs = this.modePreferences.get(sessionId) ?? {};
+          prefs.planEnabled = false;
+          this.modePreferences.set(sessionId, prefs);
+        }
+        const approvedTools = this.approvedToolNames.get(sessionId);
+        if (approvedTools !== void 0) {
+          approvedTools.add(toolName);
+        }
+        const sessionPendingTools = this.pendingTools.get(sessionId);
+        if (sessionPendingTools !== void 0) {
+          for (const tool of sessionPendingTools.values()) {
+            if (tool.toolName === toolName) {
+              this._onAgentMessage.fire({
+                sessionId,
+                message: {
+                  type: "tool_use",
+                  content: `Tool ${toolName} running`,
+                  metadata: {
+                    toolName: tool.toolName,
+                    toolId: tool.toolId,
+                    toolInput: tool.toolInput,
+                    status: "running"
+                  }
+                }
+              });
+              break;
+            }
+          }
+        }
+      }
+      return result;
+    };
+    const storedPrefs = this.modePreferences.get(sessionId);
+    const finalConfig = {
+      thinkingEnabled: storedPrefs?.thinkingEnabled ?? config?.thinkingEnabled ?? false,
+      maxThinkingTokens: storedPrefs?.maxThinkingTokens ?? config?.maxThinkingTokens,
+      planEnabled: storedPrefs?.planEnabled ?? config?.planEnabled ?? false,
+      acceptEnabled: storedPrefs?.acceptEnabled ?? config?.acceptEnabled ?? false,
+      critiqueEnabled: storedPrefs?.critiqueEnabled ?? config?.critiqueEnabled ?? false,
+      model: storedPrefs?.model ?? config?.model,
+      cwd: config?.cwd,
+      sessionMode: config?.sessionMode ?? "agent",
+      permissionRequestCallback: permissionCallback,
+      resumeSessionId: config?.resumeSessionId,
+      forkSession: config?.forkSession
+    };
+    logger4.info({ sessionId, sessionMode: finalConfig.sessionMode }, "Creating session");
+    const agent = new OrbitAgent(finalConfig);
+    this.sessionResumeState.set(sessionId, {
+      isResumed: !!config?.resumeSessionId,
+      isForked: !!config?.forkSession
+    });
+    this.activeSessions.set(sessionId, agent);
+    try {
+      agent.startSession();
+      logger4.info({ sessionId }, "Session started successfully");
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger4.error({ sessionId, error: errorMessage }, "Failed to start session");
+      throw error;
+    }
+    this._startBackgroundConsumer(sessionId, agent);
+  }
+  /**
+   * Start a background consumer for streaming messages
+   */
+  _startBackgroundConsumer(sessionId, agent) {
+    const state = { cancelled: false };
+    const cancel = () => {
+      state.cancelled = true;
+    };
+    this.sessionConsumers.set(sessionId, { cancel });
+    void (async () => {
+      try {
+        const toolUseMap = /* @__PURE__ */ new Map();
+        for await (const rawMessage of agent.receiveResponse()) {
+          if (state.cancelled) {
+            break;
+          }
+          const sdkMessage = rawMessage;
+          if (sdkMessage.type === "system") {
+            if (sdkMessage.subtype === "init" && sdkMessage.session_id !== void 0) {
+              if (this.sessionInitFired.has(sessionId)) {
+                continue;
+              }
+              this.sessionInitFired.add(sessionId);
+              const resumeState = this.sessionResumeState.get(sessionId) ?? {
+                isResumed: false,
+                isForked: false
+              };
+              this._onSessionInit.fire({
+                sessionId,
+                sdkSessionId: sdkMessage.session_id,
+                isResumed: resumeState.isResumed,
+                isForked: resumeState.isForked
+              });
+            }
+            continue;
+          }
+          if (sdkMessage.type === "stream_event") {
+            const event = sdkMessage.event;
+            if (event === void 0) continue;
+            if (event.type === "content_block_delta" && event.delta?.type === "text_delta") {
+              const textDelta = event.delta.text;
+              if (textDelta !== void 0) {
+                this._onAgentMessage.fire({
+                  sessionId,
+                  message: { type: "text", content: textDelta }
+                });
+              }
+            } else if (event.type === "content_block_delta" && event.delta?.type === "thinking_delta") {
+              const thinkingDelta = event.delta.thinking;
+              if (thinkingDelta !== void 0) {
+                this._onAgentMessage.fire({
+                  sessionId,
+                  message: { type: "thinking", content: thinkingDelta }
+                });
+              }
+            }
+            continue;
+          }
+          if (sdkMessage.type === "assistant") {
+            const content = sdkMessage.message?.content;
+            if (content === void 0) continue;
+            for (const block of content) {
+              if (block.type === "text") {
+                continue;
+              }
+              if (block.type === "thinking") {
+                this._onAgentMessage.fire({
+                  sessionId,
+                  message: {
+                    type: "thinking",
+                    content: block.thinking ?? ""
+                  }
+                });
+                continue;
+              }
+              const toolName = getString(block.name, "unknown");
+              const toolId = getString(block.id) || generateToolId();
+              const toolInput = block.input ?? {};
+              const approvedTools = this.approvedToolNames.get(sessionId);
+              const wasAlreadyApproved = approvedTools?.has(toolName) ?? false;
+              if (wasAlreadyApproved && approvedTools !== void 0) {
+                approvedTools.delete(toolName);
+              }
+              const initialStatus = wasAlreadyApproved ? "running" : "awaiting-permission";
+              const toolMessage = {
+                type: "tool_use",
+                content: `Using tool: ${toolName}`,
+                metadata: {
+                  toolName,
+                  toolId,
+                  toolInput,
+                  status: initialStatus
+                }
+              };
+              toolUseMap.set(toolId, {
+                name: toolName,
+                input: toolInput,
+                pendingMessages: [toolMessage]
+              });
+              if (!wasAlreadyApproved) {
+                const sessionPendingTools = this.pendingTools.get(sessionId);
+                if (sessionPendingTools !== void 0) {
+                  sessionPendingTools.set(toolId, {
+                    toolName,
+                    toolId,
+                    toolInput
+                  });
+                }
+              }
+              this._onAgentMessage.fire({ sessionId, message: toolMessage });
+            }
+          } else if (sdkMessage.type === "user") {
+            const content = sdkMessage.message?.content;
+            if (!Array.isArray(content)) continue;
+            for (const block of content) {
+              if (isToolResultBlock2(block)) {
+                const toolUseId = block.tool_use_id;
+                const toolInfo = toolUseMap.get(toolUseId);
+                if (toolInfo !== void 0) {
+                  const originalMessage = toolInfo.pendingMessages[0];
+                  if (originalMessage.type === "tool_use" && originalMessage.metadata !== void 0) {
+                    const toolOutput = typeof block.content === "string" ? block.content : JSON.stringify(block.content);
+                    const isError = block.is_error === true;
+                    const storedToolId = originalMessage.metadata.toolId;
+                    const completedMessage = {
+                      type: "tool_use",
+                      content: isError ? `Tool ${toolInfo.name} failed` : `Tool ${toolInfo.name} completed`,
+                      metadata: {
+                        toolName: toolInfo.name,
+                        toolId: storedToolId,
+                        toolInput: toolInfo.input,
+                        toolOutput,
+                        status: isError ? "error" : "success"
+                      }
+                    };
+                    this._onAgentMessage.fire({ sessionId, message: completedMessage });
+                    const sessionPendingTools = this.pendingTools.get(sessionId);
+                    if (sessionPendingTools !== void 0 && storedToolId !== void 0) {
+                      sessionPendingTools.delete(storedToolId);
+                    }
+                  }
+                  toolUseMap.delete(toolUseId);
+                }
+              }
+            }
+          } else {
+            const resultMsg = sdkMessage;
+            this._onAgentMessage.fire({
+              sessionId,
+              message: {
+                type: "result",
+                content: resultMsg.subtype === "error_max_structured_output_retries" ? "Failed to produce valid structured output" : "Turn complete",
+                usage: resultMsg.usage !== void 0 ? {
+                  inputTokens: resultMsg.usage.input_tokens ?? 0,
+                  outputTokens: resultMsg.usage.output_tokens ?? 0,
+                  cacheReadInputTokens: resultMsg.usage.cache_read_input_tokens,
+                  cacheCreationInputTokens: resultMsg.usage.cache_creation_input_tokens
+                } : void 0,
+                totalCostUsd: resultMsg.total_cost_usd,
+                durationMs: resultMsg.duration_ms,
+                structuredOutput: resultMsg.structured_output,
+                resultSubtype: resultMsg.subtype
+              }
+            });
+          }
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorStack = error instanceof Error ? error.stack : "no stack";
+        logger4.error({ sessionId, error: errorMessage }, "Background consumer error");
+        this._onError.fire({ message: `[SDK Error] ${errorMessage}`, stack: errorStack });
+      }
+    })();
+  }
+  /**
+   * Delete a session
+   */
+  async deleteSession(sessionId) {
+    const consumer = this.sessionConsumers.get(sessionId);
+    if (consumer) {
+      consumer.cancel();
+      this.sessionConsumers.delete(sessionId);
+    }
+    const agent = this.activeSessions.get(sessionId);
+    if (agent) {
+      await agent.stopSession();
+      this.activeSessions.delete(sessionId);
+    }
+    this.pendingTools.delete(sessionId);
+    this.approvedToolNames.delete(sessionId);
+    this.sessionResumeState.delete(sessionId);
+    this.sessionInitFired.delete(sessionId);
+  }
+  /**
+   * Check if a session is ready
+   */
+  isSessionReady(sessionId) {
+    const agent = this.activeSessions.get(sessionId);
+    return agent?.isSessionReady() ?? false;
+  }
+  /**
+   * Interrupt a session
+   */
+  async interrupt(sessionId) {
+    const agent = this.activeSessions.get(sessionId);
+    if (!agent) {
+      throw new Error(`Session ${sessionId} not found`);
+    }
+    await agent.interrupt();
+  }
+  /**
+   * Get the SDK session ID for a session
+   */
+  getSDKSessionId(sessionId) {
+    const agent = this.activeSessions.get(sessionId);
+    return agent?.getCurrentSessionId();
+  }
+  /**
+   * Send a message to a session
+   */
+  sendMessage(message, sessionId, attachments) {
+    const agent = this.activeSessions.get(sessionId);
+    if (agent === void 0) {
+      throw new Error(`Session ${sessionId} not found. Call createSession() first.`);
+    }
+    if (!agent.isSessionReady()) {
+      throw new Error(`Session ${sessionId} is not ready.`);
+    }
+    agent.queueMessage(message, attachments);
+  }
+  /**
+   * Respond to a permission request
+   */
+  respondToPermission(response) {
+    const resolver = this.permissionResolvers.get(response.requestId);
+    if (resolver) {
+      resolver({
+        decision: response.decision,
+        always: response.always,
+        answers: response.answers
+      });
+      this.permissionResolvers.delete(response.requestId);
+    }
+  }
+  /**
+   * Set thinking mode for a session
+   */
+  async setThinkingMode(sessionId, enabled, maxTokens) {
+    const agent = this.activeSessions.get(sessionId);
+    if (!agent) {
+      const prefs2 = this.modePreferences.get(sessionId) ?? {};
+      prefs2.thinkingEnabled = enabled;
+      prefs2.maxThinkingTokens = maxTokens;
+      this.modePreferences.set(sessionId, prefs2);
+      return;
+    }
+    await agent.setThinkingMode(enabled, maxTokens);
+    const prefs = this.modePreferences.get(sessionId) ?? {};
+    prefs.thinkingEnabled = enabled;
+    prefs.maxThinkingTokens = maxTokens;
+    this.modePreferences.set(sessionId, prefs);
+  }
+  /**
+   * Get thinking mode for a session
+   */
+  getThinkingMode(sessionId) {
+    const agent = this.activeSessions.get(sessionId);
+    if (agent === void 0) {
+      const prefs = this.modePreferences.get(sessionId);
+      return prefs?.thinkingEnabled ?? false;
+    }
+    return agent.getThinkingMode();
+  }
+  /**
+   * Set model for a session
+   */
+  async setModel(sessionId, model) {
+    const agent = this.activeSessions.get(sessionId);
+    if (!agent) {
+      const prefs2 = this.modePreferences.get(sessionId) ?? {};
+      prefs2.model = model;
+      this.modePreferences.set(sessionId, prefs2);
+      return;
+    }
+    await agent.setModel(model);
+    const prefs = this.modePreferences.get(sessionId) ?? {};
+    prefs.model = model;
+    this.modePreferences.set(sessionId, prefs);
+  }
+  /**
+   * Set plan mode for a session
+   */
+  setPlanMode(sessionId, enabled) {
+    const agent = this.activeSessions.get(sessionId);
+    if (agent === void 0) {
+      const prefs2 = this.modePreferences.get(sessionId) ?? {};
+      prefs2.planEnabled = enabled;
+      this.modePreferences.set(sessionId, prefs2);
+      this._onPlanModeChanged.fire({ sessionId, enabled });
+      return;
+    }
+    agent.setPlanMode(enabled);
+    const prefs = this.modePreferences.get(sessionId) ?? {};
+    prefs.planEnabled = enabled;
+    this.modePreferences.set(sessionId, prefs);
+    this._onPlanModeChanged.fire({ sessionId, enabled });
+  }
+  /**
+   * Get plan mode for a session
+   */
+  getPlanMode(sessionId) {
+    const agent = this.activeSessions.get(sessionId);
+    if (agent === void 0) {
+      const prefs = this.modePreferences.get(sessionId);
+      return prefs?.planEnabled ?? false;
+    }
+    return agent.getPlanMode();
+  }
+  /**
+   * Set accept mode for a session
+   */
+  setAcceptMode(sessionId, enabled) {
+    const agent = this.activeSessions.get(sessionId);
+    if (!agent) {
+      const prefs2 = this.modePreferences.get(sessionId) ?? {};
+      prefs2.acceptEnabled = enabled;
+      this.modePreferences.set(sessionId, prefs2);
+      this._onAcceptModeChanged.fire({ sessionId, enabled });
+      return;
+    }
+    agent.setAcceptMode(enabled);
+    const prefs = this.modePreferences.get(sessionId) ?? {};
+    prefs.acceptEnabled = enabled;
+    this.modePreferences.set(sessionId, prefs);
+    this._onAcceptModeChanged.fire({ sessionId, enabled });
+  }
+  /**
+   * Get accept mode for a session
+   */
+  getAcceptMode(sessionId) {
+    const agent = this.activeSessions.get(sessionId);
+    if (agent === void 0) {
+      const prefs = this.modePreferences.get(sessionId);
+      return prefs?.acceptEnabled ?? false;
+    }
+    return agent.getAcceptMode();
+  }
+  /**
+   * Dispose the session manager
+   */
+  dispose() {
+    for (const [, resolver] of this.permissionResolvers.entries()) {
+      resolver({ decision: "deny", always: false });
+    }
+    this.permissionResolvers.clear();
+    for (const [, consumer] of this.sessionConsumers.entries()) {
+      consumer.cancel();
+    }
+    this.sessionConsumers.clear();
+    for (const [sessionId, agent] of this.activeSessions.entries()) {
+      void agent.stopSession().catch((err) => {
+        logger4.error({ sessionId, error: err }, "Error stopping session");
+      });
+    }
+    this.activeSessions.clear();
+    super.dispose();
+  }
+};
+
+// src/index.ts
+var logger5 = createLogger("AgentBridge");
+function sendMessage(message) {
+  const json = JSON.stringify(message);
+  process.stdout.write(json + "\n");
+}
+function sendResponse(response) {
+  sendMessage(response);
+}
+function sendEvent(event) {
+  sendMessage(event);
+}
+function main() {
+  logger5.info("Agent Bridge starting...");
+  const sessionManager = new SessionManager();
+  sessionManager.onAgentMessage((data) => {
+    sendEvent({
+      type: "agent_message",
+      sessionId: data.sessionId,
+      message: data.message
+    });
+  });
+  sessionManager.onPermissionRequest((request) => {
+    sendEvent({
+      type: "permission_request",
+      request
+    });
+  });
+  sessionManager.onSessionInit((event) => {
+    sendEvent({
+      type: "session_init",
+      event
+    });
+  });
+  sessionManager.onPlanModeChanged((data) => {
+    sendEvent({
+      type: "plan_mode_changed",
+      sessionId: data.sessionId,
+      enabled: data.enabled
+    });
+  });
+  sessionManager.onAcceptModeChanged((data) => {
+    sendEvent({
+      type: "accept_mode_changed",
+      sessionId: data.sessionId,
+      enabled: data.enabled
+    });
+  });
+  sessionManager.onError((error) => {
+    sendEvent({
+      type: "error_event",
+      error
+    });
+  });
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+    terminal: false
+  });
+  rl.on("line", (line) => {
+    if (!line.trim()) {
+      return;
+    }
+    let request;
+    try {
+      request = JSON.parse(line);
+    } catch (error) {
+      logger5.error({ error, line }, "Failed to parse request");
+      sendResponse({
+        type: "error",
+        requestType: "unknown",
+        error: `Failed to parse request: ${error instanceof Error ? error.message : String(error)}`
+      });
+      return;
+    }
+    logger5.info({ requestType: request.type }, "Received request");
+    handleRequest(request, sessionManager).catch((error) => {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger5.error({ requestType: request.type, error: errorMessage }, "Error handling request");
+      sendResponse({
+        type: "error",
+        requestType: request.type,
+        error: errorMessage
+      });
+    });
+  });
+  rl.on("close", () => {
+    logger5.info("stdin closed, shutting down...");
+    sessionManager.dispose();
+    process.exit(0);
+  });
+  process.on("SIGTERM", () => {
+    logger5.info("SIGTERM received, shutting down...");
+    sessionManager.dispose();
+    process.exit(0);
+  });
+  process.on("SIGINT", () => {
+    logger5.info("SIGINT received, shutting down...");
+    sessionManager.dispose();
+    process.exit(0);
+  });
+  sendEvent({ type: "ready" });
+  logger5.info("Agent Bridge ready");
+}
+async function handleRequest(request, sessionManager) {
+  switch (request.type) {
+    case "create_session": {
+      sessionManager.createSession(request.sessionId, request.config);
+      sendResponse({ type: "success", requestType: request.type });
+      break;
+    }
+    case "delete_session": {
+      await sessionManager.deleteSession(request.sessionId);
+      sendResponse({ type: "success", requestType: request.type });
+      break;
+    }
+    case "send_message": {
+      sessionManager.sendMessage(request.message, request.sessionId, request.attachments);
+      sendResponse({ type: "success", requestType: request.type });
+      break;
+    }
+    case "interrupt": {
+      await sessionManager.interrupt(request.sessionId);
+      sendResponse({ type: "success", requestType: request.type });
+      break;
+    }
+    case "permission_response": {
+      sessionManager.respondToPermission(request.response);
+      sendResponse({ type: "success", requestType: request.type });
+      break;
+    }
+    case "set_thinking_mode": {
+      await sessionManager.setThinkingMode(request.sessionId, request.enabled, request.maxTokens);
+      sendResponse({ type: "success", requestType: request.type });
+      break;
+    }
+    case "get_thinking_mode": {
+      const enabled = sessionManager.getThinkingMode(request.sessionId);
+      sendResponse({ type: "boolean", requestType: request.type, value: enabled });
+      break;
+    }
+    case "set_model": {
+      await sessionManager.setModel(request.sessionId, request.model);
+      sendResponse({ type: "success", requestType: request.type });
+      break;
+    }
+    case "set_plan_mode": {
+      sessionManager.setPlanMode(request.sessionId, request.enabled);
+      sendResponse({ type: "success", requestType: request.type });
+      break;
+    }
+    case "get_plan_mode": {
+      const enabled = sessionManager.getPlanMode(request.sessionId);
+      sendResponse({ type: "boolean", requestType: request.type, value: enabled });
+      break;
+    }
+    case "set_accept_mode": {
+      sessionManager.setAcceptMode(request.sessionId, request.enabled);
+      sendResponse({ type: "success", requestType: request.type });
+      break;
+    }
+    case "get_accept_mode": {
+      const enabled = sessionManager.getAcceptMode(request.sessionId);
+      sendResponse({ type: "boolean", requestType: request.type, value: enabled });
+      break;
+    }
+    case "is_session_ready": {
+      const ready = sessionManager.isSessionReady(request.sessionId);
+      sendResponse({ type: "boolean", requestType: request.type, value: ready });
+      break;
+    }
+    case "get_sdk_session_id": {
+      const sdkSessionId = sessionManager.getSDKSessionId(request.sessionId);
+      sendResponse({ type: "string", requestType: request.type, value: sdkSessionId ?? null });
+      break;
+    }
+    case "shutdown": {
+      logger5.info("Shutdown requested");
+      sendResponse({ type: "success", requestType: request.type });
+      sessionManager.dispose();
+      process.exit(0);
+      break;
+    }
+    default: {
+      const exhaustiveCheck = request;
+      sendResponse({
+        type: "error",
+        requestType: exhaustiveCheck.type,
+        error: `Unknown request type: ${exhaustiveCheck.type}`
+      });
+    }
+  }
+}
+try {
+  main();
+} catch (error) {
+  logger5.error({ error }, "Fatal error");
+  process.exit(1);
+}
+//# sourceMappingURL=index.js.map
