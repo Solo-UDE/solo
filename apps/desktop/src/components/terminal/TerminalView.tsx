@@ -203,10 +203,11 @@ export function TerminalView({ terminalId, isActive, onExit }: TerminalViewProps
 		termRef.current = term;
 		fitRef.current = fitAddon;
 
-		// Fit after open (needs a frame for layout)
+		// Fit after open (needs a frame for layout), then auto-focus
 		requestAnimationFrame(() => {
 			if (DEV) performance.mark('terminal:fit-start');
 			fitAddon.fit();
+			term.focus();
 			if (DEV) {
 				performance.mark('terminal:fit-end');
 				performance.measure('terminal:addon-create', 'terminal:addon-create-start', 'terminal:addon-create-end');
@@ -316,11 +317,12 @@ export function TerminalView({ terminalId, isActive, onExit }: TerminalViewProps
 		};
 	}, [terminalId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-	// Re-fit when the tab becomes visible
+	// Re-fit and focus when the tab becomes visible
 	useEffect(() => {
 		if (isActive && fitRef.current) {
 			requestAnimationFrame(() => {
 				fitRef.current?.fit();
+				termRef.current?.focus();
 			});
 		}
 	}, [isActive]);
