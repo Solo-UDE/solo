@@ -130,7 +130,7 @@ export const SidebarTerminal: FC = () => {
                 <input
                   {...rename.getInputProps()}
                   type="text"
-                  className="w-full bg-transparent outline-none border-b border-primary text-[11px] text-foreground px-0"
+                  className="w-full min-w-[60px] bg-muted/50 outline-none ring-1 ring-primary/40 rounded-[4px] text-[11px] text-foreground px-1.5 py-0.5 -my-0.5 selection:bg-primary/20"
                 />
               ) : (
                 <span className="truncate">{t.title}</span>
@@ -156,7 +156,7 @@ export const SidebarTerminal: FC = () => {
           <button
             onClick={handleNewTerminal}
             className="p-1 rounded-lg cursor-pointer text-muted-foreground hover:text-foreground hover:bg-muted/60 hover:scale-105 active:scale-95 transition-[transform,background-color,color] duration-150"
-            title="New Terminal"
+            title="New Terminal (⌃⇧`)"
           >
             <Plus className="w-3.5 h-3.5" />
           </button>

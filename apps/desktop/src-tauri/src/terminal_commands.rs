@@ -299,56 +299,88 @@ fn flush_batch(batch: &mut String, id: &str, app: &AppHandle, last_flush: &mut I
 }
 
 /// Blocking read loop that forwards PTY output to the frontend.
-/// Batches output and flushes at most once per ~16ms to avoid IPC flooding.
-/// On exit, waits for the child process to get the exit code and removes
-/// the terminal entry from the shared map to prevent resource leaks.
+/// Uses a channel-based architecture: a dedicated reader thread sends raw
+/// byte chunks through an mpsc channel, while this loop receives them with
+/// a 16ms timeout. When the timeout fires (no new PTY data), any pending
+/// batch is flushed — ensuring prompts appear immediately even when
+/// `reader.read()` is blocked waiting for user input.
 fn read_loop(
-    mut reader: Box<dyn Read + Send>,
+    reader: Box<dyn Read + Send>,
     id: &str,
     app: &AppHandle,
     child: &Arc<Mutex<Box<dyn Child + Send + Sync>>>,
     terminals: &TerminalsMap,
 ) {
-    let mut buf = [0u8; 4096];
+    let (tx, rx) = std::sync::mpsc::sync_channel::<Vec<u8>>(64);
+
+    // Reader thread: reads from PTY, sends raw bytes into channel.
+    // When PTY closes, tx drops → recv_timeout returns Disconnected.
+    std::thread::Builder::new()
+        .name(format!("pty-reader-{}", &id[..8.min(id.len())]))
+        .spawn({
+            let mut reader = reader;
+            move || {
+                let mut buf = [0u8; 4096];
+                loop {
+                    match reader.read(&mut buf) {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => {
+                            if tx.send(buf[..n].to_vec()).is_err() {
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        })
+        .expect("Failed to spawn PTY reader thread");
+
+    // Batch/flush loop with idle-timeout flush
     let mut carry: Vec<u8> = Vec::new();
     let mut batch = String::with_capacity(16384);
     let mut last_flush = Instant::now();
 
     loop {
-        match reader.read(&mut buf) {
-            Ok(0) => {
-                debug!(id = %id, "PTY reader got EOF");
-                break;
-            }
-            Ok(n) => {
-                let chunk = if carry.is_empty() {
-                    &buf[..n]
+        match rx.recv_timeout(BATCH_FLUSH_INTERVAL) {
+            Ok(data) => {
+                // Combine carry + new data
+                let chunk: Vec<u8> = if carry.is_empty() {
+                    data
                 } else {
-                    carry.extend_from_slice(&buf[..n]);
-                    carry.as_slice()
+                    let mut combined = std::mem::take(&mut carry);
+                    combined.extend_from_slice(&data);
+                    combined
                 };
 
-                let (valid, remainder) = split_utf8(chunk);
-
+                let (valid, remainder) = split_utf8(&chunk);
                 if !valid.is_empty() {
                     batch.push_str(&String::from_utf8_lossy(valid));
                 }
-
                 carry = remainder.to_vec();
 
-                // Flush if enough time has elapsed or the batch is large
+                // Size or time based flush
                 if last_flush.elapsed() >= BATCH_FLUSH_INTERVAL || batch.len() >= 65536 {
                     flush_batch(&mut batch, id, app, &mut last_flush);
                 }
             }
-            Err(e) => {
-                warn!(id = %id, error = %e, "PTY read error");
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                // No new data for 16ms → flush pending batch (prompt fix)
+                if !carry.is_empty() {
+                    batch.push_str(&String::from_utf8_lossy(&carry));
+                    carry.clear();
+                }
+                if !batch.is_empty() {
+                    flush_batch(&mut batch, id, app, &mut last_flush);
+                }
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                debug!(id = %id, "PTY reader disconnected");
                 break;
             }
         }
     }
 
-    // Flush remaining batch + carry bytes
+    // Final flush of any remaining data
     if !carry.is_empty() {
         batch.push_str(&String::from_utf8_lossy(&carry));
     }
