@@ -38,6 +38,7 @@ mod fs_commands;
 mod git_commands;
 mod parse_commands;
 mod provider_commands;
+mod session_commands;
 mod terminal_commands;
 mod worktree_commands;
 
@@ -256,6 +257,12 @@ pub fn run() {
             git_commands::git_unstage_all,
             git_commands::git_create_branch,
             git_commands::git_clone,
+            // Session persistence commands
+            session_commands::session_get_dir,
+            session_commands::session_list_files,
+            session_commands::session_read_file,
+            session_commands::session_write_file,
+            session_commands::session_delete_file,
             // Worktree commands
             worktree_commands::worktree_list,
             worktree_commands::worktree_create,

@@ -127,9 +127,12 @@ export function WelcomeScreen() {
               </div>
               <div className="space-y-0.5">
                 {recentDirectories.slice(0, 5).map((path, i) => (
-                  <button
+                  <div
                     key={path}
+                    role="button"
+                    tabIndex={0}
                     onClick={() => handleSwitchTo(path)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSwitchTo(path); } }}
                     className="group w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs hover:bg-muted/40 active:scale-[0.99] transition-all duration-150 cursor-pointer"
                     style={{
                       opacity: showContent ? 1 : 0,
@@ -158,7 +161,7 @@ export function WelcomeScreen() {
                     >
                       <X className="w-3 h-3 text-muted-foreground" />
                     </button>
-                  </button>
+                  </div>
                 ))}
               </div>
             </div>
