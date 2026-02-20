@@ -1,4 +1,4 @@
-import { User, File as FileIcon, Image as ImageIcon, At } from '@phosphor-icons/react';
+import { File as FileIcon, Image as ImageIcon, At } from '@phosphor-icons/react';
 import { convertFileSrc } from '@tauri-apps/api/core';
 
 import type { FC } from 'react';
@@ -7,7 +7,6 @@ import type { Attachment, FileMention } from '@/stores/agentStore';
 export interface UserMessageProps {
   content: string;
   timestamp: Date;
-  avatarUrl?: string;
   userName?: string;
   attachments?: Attachment[];
   mentions?: FileMention[];
@@ -17,7 +16,6 @@ export interface UserMessageProps {
 export const UserMessage: FC<UserMessageProps> = ({
   content,
   timestamp,
-  avatarUrl,
   userName = 'You',
   attachments,
   mentions,
@@ -36,15 +34,6 @@ export const UserMessage: FC<UserMessageProps> = ({
 
   return (
     <div className={`flex gap-3 px-4 ${className}`}>
-      {/* Avatar */}
-      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden">
-        {avatarUrl ? (
-          <img src={avatarUrl} alt={userName} className="w-full h-full object-cover" />
-        ) : (
-          <User className="w-4 h-4 text-primary" />
-        )}
-      </div>
-
       {/* Content */}
       <div className="flex-1 min-w-0 space-y-1">
         <div className="flex items-center gap-2">

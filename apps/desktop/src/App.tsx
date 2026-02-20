@@ -119,9 +119,11 @@ function AppContent() {
   useGitStream();
   useWorktreeStream();
 
-  // Load persisted agent sessions on startup
+  // Load persisted agent sessions on startup (async — filesystem IPC)
   useEffect(() => {
-    loadPersistedSessions();
+    loadPersistedSessions().catch((err) => {
+      console.error('Failed to load persisted sessions:', err);
+    });
   }, [loadPersistedSessions]);
 
   // Toggle terminal panel, auto-creating a terminal if none exist
