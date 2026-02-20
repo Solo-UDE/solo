@@ -80,6 +80,9 @@ pub struct OpenAIOAuthCredentialInfo {
     pub source: CredentialSource,
 }
 
+/// Keychain service name for GitHub OAuth tokens (git operations)
+const GITHUB_OAUTH_KEYCHAIN_SERVICE: &str = "solo.github.oauth";
+
 /// Credential manager for storing and retrieving API keys and OAuth tokens
 pub struct CredentialManager {
     /// Cache for API key credentials (to avoid repeated keychain access)
@@ -88,6 +91,8 @@ pub struct CredentialManager {
     oauth_cache: tokio::sync::RwLock<std::collections::HashMap<ProviderType, OAuthCredentialInfo>>,
     /// Cache for OpenAI OAuth tokens (with account_id)
     openai_oauth_cache: tokio::sync::RwLock<Option<OpenAIOAuthCredentialInfo>>,
+    /// Cache for GitHub OAuth token (for git operations, separate from AI provider tokens)
+    github_oauth_cache: tokio::sync::RwLock<Option<OAuthToken>>,
 }
 
 impl CredentialManager {
@@ -97,6 +102,7 @@ impl CredentialManager {
             cache: tokio::sync::RwLock::new(std::collections::HashMap::new()),
             oauth_cache: tokio::sync::RwLock::new(std::collections::HashMap::new()),
             openai_oauth_cache: tokio::sync::RwLock::new(None),
+            github_oauth_cache: tokio::sync::RwLock::new(None),
         }
     }
 
@@ -637,6 +643,7 @@ impl CredentialManager {
         self.cache.write().await.clear();
         self.oauth_cache.write().await.clear();
         *self.openai_oauth_cache.write().await = None;
+        *self.github_oauth_cache.write().await = None;
     }
 
     // =========================================================================
@@ -949,6 +956,108 @@ impl CredentialManager {
         tracing::info!("Disconnected OAuth for {}", provider.as_str());
 
         Ok(())
+    }
+
+    // =========================================================================
+    // GitHub OAuth Token Management (for git operations)
+    // =========================================================================
+
+    /// Store a GitHub OAuth token in cache + keychain
+    pub async fn set_github_oauth_token(&self, token: OAuthToken) -> ProviderResult<()> {
+        let token_json = serde_json::to_string(&token)
+            .map_err(|e| ProviderError::AuthError(format!("Failed to serialize GitHub token: {}", e)))?;
+
+        // Delete existing entry
+        let _ = Command::new("security")
+            .args(["delete-generic-password", "-s", GITHUB_OAUTH_KEYCHAIN_SERVICE])
+            .output();
+
+        let output = Command::new("security")
+            .args([
+                "add-generic-password",
+                "-s",
+                GITHUB_OAUTH_KEYCHAIN_SERVICE,
+                "-a",
+                "oauth-token",
+                "-w",
+                &token_json,
+                "-U",
+            ])
+            .output()
+            .map_err(|e| ProviderError::KeychainError(e.to_string()))?;
+
+        if !output.status.success() {
+            let error = String::from_utf8_lossy(&output.stderr);
+            return Err(ProviderError::KeychainError(error.to_string()));
+        }
+
+        *self.github_oauth_cache.write().await = Some(token);
+        tracing::info!("Stored GitHub OAuth token");
+        Ok(())
+    }
+
+    /// Get the GitHub OAuth token (cache -> keychain)
+    pub async fn get_github_oauth_token(&self) -> ProviderResult<Option<OAuthToken>> {
+        // Check cache
+        if let Some(token) = self.github_oauth_cache.read().await.as_ref() {
+            return Ok(Some(token.clone()));
+        }
+
+        // Try keychain
+        let output = Command::new("security")
+            .args(["find-generic-password", "-s", GITHUB_OAUTH_KEYCHAIN_SERVICE, "-w"])
+            .output();
+
+        match output {
+            Ok(output) if output.status.success() => {
+                let token_json = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if token_json.is_empty() {
+                    return Ok(None);
+                }
+                match serde_json::from_str::<OAuthToken>(&token_json) {
+                    Ok(token) => {
+                        *self.github_oauth_cache.write().await = Some(token.clone());
+                        Ok(Some(token))
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to parse GitHub OAuth token from keychain: {}", e);
+                        Ok(None)
+                    }
+                }
+            }
+            Ok(_) => Ok(None),
+            Err(e) => {
+                tracing::warn!("Failed to read GitHub OAuth token from keychain: {}", e);
+                Ok(None)
+            }
+        }
+    }
+
+    /// Clear the GitHub OAuth token from cache + keychain
+    pub async fn clear_github_oauth_token(&self) -> ProviderResult<()> {
+        let output = Command::new("security")
+            .args(["delete-generic-password", "-s", GITHUB_OAUTH_KEYCHAIN_SERVICE])
+            .output()
+            .map_err(|e| ProviderError::KeychainError(e.to_string()))?;
+
+        if !output.status.success() {
+            let error = String::from_utf8_lossy(&output.stderr);
+            if !error.contains("could not be found") {
+                return Err(ProviderError::KeychainError(error.to_string()));
+            }
+        }
+
+        *self.github_oauth_cache.write().await = None;
+        tracing::info!("Cleared GitHub OAuth token");
+        Ok(())
+    }
+
+    /// Convenience: get just the access token string (or None)
+    pub async fn get_github_access_token(&self) -> ProviderResult<Option<String>> {
+        Ok(self
+            .get_github_oauth_token()
+            .await?
+            .map(|t| t.access_token))
     }
 
     /// Get authentication method info for a provider

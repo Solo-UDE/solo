@@ -257,6 +257,10 @@ pub fn run() {
             git_commands::git_unstage_all,
             git_commands::git_create_branch,
             git_commands::git_clone,
+            git_commands::github_start_auth,
+            git_commands::github_complete_auth,
+            git_commands::github_get_token,
+            git_commands::github_disconnect,
             // Session persistence commands
             session_commands::session_get_dir,
             session_commands::session_list_files,

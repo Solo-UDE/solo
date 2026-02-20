@@ -20,7 +20,6 @@ import {
 import { useUIStore } from '@/stores/uiStore';
 import { useGitStore } from '@/stores/gitStore';
 import { useFileExplorerStore, getParentPath } from '@/stores/fileExplorerStore';
-import { getAccessToken } from '@/lib/auth';
 import { WorktreeSwitcher } from './WorktreeSwitcher';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -84,13 +83,8 @@ export const ContextHeader: FC<ContextHeaderProps> = ({ onNewSession }) => {
 
   // Source control actions
   const handlePull = useCallback(async () => {
-    const token = await getAccessToken();
-    if (!token) {
-      toast.error('Not signed in', { description: 'Sign in with GitHub to pull changes' });
-      return;
-    }
     try {
-      await pull(token);
+      await pull();
       toast.success('Pulled from remote');
     } catch (err) {
       toast.error('Pull failed', { description: String(err) });
@@ -98,13 +92,8 @@ export const ContextHeader: FC<ContextHeaderProps> = ({ onNewSession }) => {
   }, [pull]);
 
   const handlePush = useCallback(async () => {
-    const token = await getAccessToken();
-    if (!token) {
-      toast.error('Not signed in', { description: 'Sign in with GitHub to push changes' });
-      return;
-    }
     try {
-      await push(token);
+      await push();
       toast.success('Pushed to remote');
     } catch (err) {
       toast.error('Push failed', { description: String(err) });
