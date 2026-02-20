@@ -30,6 +30,8 @@ export const MessageFeed: FC<MessageFeedProps> = ({
   const shouldAutoScroll = useRef(autoScroll);
   // Track which groups have already been mounted (to avoid re-animation)
   const mountedGroupsRef = useRef(new Set<string>());
+  // Track the batch of newly mounted groups for staggered animation
+  const mountBatchRef = useRef(0);
 
   const virtualizer = useVirtualizer({
     count: messageGroups.length,
@@ -81,6 +83,11 @@ export const MessageFeed: FC<MessageFeedProps> = ({
     return () => clearInterval(interval);
   }, [isStreaming, scrollElement]);
 
+  // Increment batch counter when new groups appear (for staggered delay)
+  useEffect(() => {
+    mountBatchRef.current += 1;
+  }, [messageGroups.length]);
+
   return (
     <div
       ref={setScrollElement}
@@ -104,18 +111,23 @@ export const MessageFeed: FC<MessageFeedProps> = ({
             mountedGroupsRef.current.add(messageGroup.id);
           }
 
+          // Stagger delay: each new group in a batch gets 40ms more delay
+          // Only apply to newly mounted groups
+          const staggerIndex = isNew ? virtualItem.index : 0;
+
           return (
             <div
               key={virtualItem.key}
               data-index={virtualItem.index}
               ref={virtualizer.measureElement}
-              className={isNew ? 'animate-slide-up' : undefined}
+              className={isNew ? 'animate-in fade-in-0 slide-in-from-bottom-2 duration-200 fill-mode-backwards' : undefined}
               style={{
                 position: 'absolute',
                 top: 0,
                 left: 0,
                 width: '100%',
                 transform: `translateY(${String(virtualItem.start)}px)`,
+                ...(isNew ? { animationDelay: `${staggerIndex * 40}ms` } : {}),
               }}
             >
               <MessageSection

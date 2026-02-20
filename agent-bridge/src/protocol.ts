@@ -271,6 +271,22 @@ export interface ReadyEvent {
 }
 
 /**
+ * Debug event — carries structured observability data to the frontend debug panel
+ */
+export interface DebugEventMessage {
+  type: 'debug_event';
+  sessionId: string;
+  event: {
+    category: 'streaming' | 'tool' | 'token' | 'sdk_state' | 'permission' | 'compaction' | 'subagent' | 'hook' | 'session';
+    name: string;
+    data: unknown;
+    correlationId?: string;
+    timestamp: string;
+    durationMs?: number;
+  };
+}
+
+/**
  * All possible events from Node.js
  */
 export type BridgeEvent =
@@ -280,7 +296,8 @@ export type BridgeEvent =
   | PlanModeChangedEvent
   | AcceptModeChangedEvent
   | ErrorEvent
-  | ReadyEvent;
+  | ReadyEvent
+  | DebugEventMessage;
 
 /**
  * All possible messages from Node.js to Rust

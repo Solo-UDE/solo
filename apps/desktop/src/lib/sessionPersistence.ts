@@ -1,14 +1,31 @@
 /**
- * Session Persistence
- * Saves and loads agent sessions from localStorage
+ * Session Persistence — Filesystem-backed (v3)
  *
- * Future: Could be extended to save to ~/.solo/sessions.json via Tauri fs
+ * Saves and loads agent sessions from `~/.solo/sessions/{session-id}.json`
+ * via Tauri IPC commands (session_commands.rs).
+ *
+ * Migration: on first startup, migrates any v2 localStorage data to filesystem.
  */
 
-import type { AgentSession, Message, ToolCallState, FileAttachment, ImageAttachment } from '@/stores/agentStore';
+import type { AgentSession, Message, ToolCallState, FileAttachment, ImageAttachment, Attachment, FileMention } from '@/stores/agentStore';
+import {
+  sessionListFiles,
+  sessionReadFile,
+  sessionWriteFile,
+  sessionDeleteFile,
+} from '@/lib/tauri/sessions';
 
-const STORAGE_KEY = 'solo-agent-sessions';
-const VERSION = 2;
+// =============================================================================
+// Constants
+// =============================================================================
+
+const LOCALSTORAGE_KEY = 'solo-agent-sessions';
+const LOCALSTORAGE_VERSION = 2;
+const FILE_VERSION = 3;
+
+// =============================================================================
+// Persisted File Format (v3)
+// =============================================================================
 
 /** Serialized message format for persistence */
 interface PersistedMessage {
@@ -23,50 +40,87 @@ interface PersistedMessage {
   thinkingDurationMs?: number;
   attachedFiles?: FileAttachment[];
   attachedImages?: ImageAttachment[];
+  attachments?: Attachment[];
+  mentions?: FileMention[];
 }
 
-/** Serialized session format for persistence */
-interface PersistedSession {
-  id: string;
-  createdAt: string; // ISO string
-  model: string;
-  name?: string; // User-assigned custom name
-  title: string; // First message preview for tab titles
+/** Per-session file format written to `~/.solo/sessions/{id}.json` */
+interface PersistedSessionFileV3 {
+  version: 3;
+  metadata: {
+    id: string;
+    createdAt: string;           // ISO 8601
+    lastActiveAt: string;        // Updated on every save
+    model: string;
+    name?: string;               // User-assigned name
+    title: string;               // Auto from first message (30 chars)
+    summary?: string;            // Future: AI summary
+    sdkSessionId?: string;       // Claude SDK session ID for resume
+    resumable: boolean;          // Whether bridge resume is possible
+    workspacePath?: string;      // Project path for filtering
+    totalTokens?: number;        // Accumulated usage
+    totalCost?: number;          // Accumulated cost (USD)
+    turnCount: number;           // Completed assistant turns
+    tags?: string[];             // Future categorization
+  };
   messages: PersistedMessage[];
 }
 
-/** Root persistence format */
-interface PersistedSessionData {
-  version: number;
-  timestamp: number;
-  sessions: PersistedSession[];
+// =============================================================================
+// Legacy localStorage format (v2) — for migration only
+// =============================================================================
+
+interface LegacyPersistedSession {
+  id: string;
+  createdAt: string;
+  model: string;
+  name?: string;
+  title: string;
+  messages: PersistedMessage[];
 }
 
-/**
- * Generate a title from the first user message
- */
+interface LegacyPersistedSessionData {
+  version: number;
+  timestamp: number;
+  sessions: LegacyPersistedSession[];
+}
+
+// =============================================================================
+// Helpers
+// =============================================================================
+
+/** Generate a title from the first user message */
 function generateTitle(messages: Message[]): string {
   const firstUserMessage = messages.find((m) => m.role === 'user');
   if (!firstUserMessage) return 'New Session';
-
   const content = firstUserMessage.content;
   if (content.length <= 30) return content;
   return content.slice(0, 30) + '...';
 }
 
-/**
- * Serialize a session for storage
- */
-function serializeSession(
+/** Serialize a session + messages into the v3 file format */
+function serializeSessionV3(
   session: AgentSession,
-  messages: Message[]
-): PersistedSession {
+  messages: Message[],
+): PersistedSessionFileV3 {
   return {
-    id: session.id,
-    createdAt: session.createdAt.toISOString(),
-    model: session.model,
-    name: session.name,
-    title: generateTitle(messages),
+    version: FILE_VERSION,
+    metadata: {
+      id: session.id,
+      createdAt: session.createdAt.toISOString(),
+      lastActiveAt: new Date().toISOString(),
+      model: session.model,
+      name: session.name,
+      title: generateTitle(messages),
+      sdkSessionId: session.sdkSessionId,
+      resumable: !!(session.sdkSessionId && session.resumable),
+      workspacePath: session.workspacePath,
+      totalTokens: session.totalTokens,
+      totalCost: session.totalCost,
+      turnCount: session.turnCount ?? 0,
+      tags: session.tags,
+      summary: session.summary,
+    },
     messages: messages.map((m) => ({
       id: m.id,
       role: m.role,
@@ -79,25 +133,36 @@ function serializeSession(
       thinkingDurationMs: m.thinkingDurationMs,
       attachedFiles: m.attachedFiles,
       attachedImages: m.attachedImages,
+      attachments: m.attachments,
+      mentions: m.mentions,
     })),
   };
 }
 
-/**
- * Deserialize a session from storage
- */
-function deserializeSession(persisted: PersistedSession): {
+/** Deserialize a v3 file into session + messages */
+function deserializeSessionV3(file: PersistedSessionFileV3): {
   session: AgentSession;
   messages: Message[];
 } {
+  const meta = file.metadata;
   return {
     session: {
-      id: persisted.id,
-      createdAt: new Date(persisted.createdAt),
-      model: persisted.model,
-      name: persisted.name,
+      id: meta.id,
+      createdAt: new Date(meta.createdAt),
+      model: meta.model,
+      name: meta.name,
+      sdkSessionId: meta.sdkSessionId,
+      resumable: meta.resumable,
+      workspacePath: meta.workspacePath,
+      lastActiveAt: meta.lastActiveAt,
+      totalTokens: meta.totalTokens,
+      totalCost: meta.totalCost,
+      turnCount: meta.turnCount,
+      tags: meta.tags,
+      summary: meta.summary,
+      connectionState: 'archived', // Always archived on load from disk
     },
-    messages: persisted.messages.map((m) => ({
+    messages: file.messages.map((m) => ({
       id: m.id,
       role: m.role,
       content: m.content,
@@ -111,149 +176,226 @@ function deserializeSession(persisted: PersistedSession): {
       thinkingDurationMs: m.thinkingDurationMs,
       attachedFiles: m.attachedFiles,
       attachedImages: m.attachedImages,
+      attachments: m.attachments,
+      mentions: m.mentions,
     })),
   };
 }
 
+// =============================================================================
+// Public API — Async filesystem operations
+// =============================================================================
+
 /**
- * Save all sessions to localStorage
+ * Save a single session to disk.
  */
-export function saveSessions(
-  sessions: Map<string, AgentSession>,
-  messagesMap: Map<string, Message[]>
-): void {
+export async function saveSession(
+  session: AgentSession,
+  messages: Message[],
+): Promise<void> {
   try {
-    const persistedSessions: PersistedSession[] = [];
-
-    sessions.forEach((session, sessionId) => {
-      const messages = messagesMap.get(sessionId) || [];
-      persistedSessions.push(serializeSession(session, messages));
-    });
-
-    const data: PersistedSessionData = {
-      version: VERSION,
-      timestamp: Date.now(),
-      sessions: persistedSessions,
-    };
-
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    const file = serializeSessionV3(session, messages);
+    const json = JSON.stringify(file, null, 2);
+    await sessionWriteFile(session.id, json);
   } catch (error) {
-    console.error('Failed to save sessions:', error);
+    console.error(`Failed to save session ${session.id}:`, error);
   }
 }
 
 /**
- * Load all sessions from localStorage
+ * Load all sessions from `~/.solo/sessions/`.
+ * Reads files in parallel using `Promise.allSettled`.
  */
-export function loadSessions(): {
+export async function loadAllSessions(): Promise<{
   sessions: Map<string, AgentSession>;
   messages: Map<string, Message[]>;
-} | null {
+} | null> {
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const ids = await sessionListFiles();
+    if (ids.length === 0) return null;
+
+    const results = await Promise.allSettled(
+      ids.map(async (id) => {
+        const raw = await sessionReadFile(id);
+        const file: PersistedSessionFileV3 = JSON.parse(raw);
+        if (file.version !== FILE_VERSION) {
+          console.warn(`Skipping session ${id}: version ${file.version} !== ${FILE_VERSION}`);
+          return null;
+        }
+        return deserializeSessionV3(file);
+      }),
+    );
+
+    const sessions = new Map<string, AgentSession>();
+    const messages = new Map<string, Message[]>();
+
+    for (const result of results) {
+      if (result.status === 'fulfilled' && result.value) {
+        const { session, messages: msgs } = result.value;
+        sessions.set(session.id, session);
+        messages.set(session.id, msgs);
+      } else if (result.status === 'rejected') {
+        console.error('Failed to load session file:', result.reason);
+      }
+    }
+
+    return sessions.size > 0 ? { sessions, messages } : null;
+  } catch (error) {
+    console.error('Failed to load sessions from filesystem:', error);
+    return null;
+  }
+}
+
+/**
+ * Delete a session from disk.
+ */
+export async function deleteSessionFile(sessionId: string): Promise<void> {
+  try {
+    await sessionDeleteFile(sessionId);
+  } catch (error) {
+    console.error(`Failed to delete session file ${sessionId}:`, error);
+  }
+}
+
+// =============================================================================
+// Migration: localStorage v2 → filesystem v3
+// =============================================================================
+
+/**
+ * Attempt to migrate sessions from localStorage (v2) to filesystem (v3).
+ * Returns the migrated data if successful, null otherwise.
+ * Removes the localStorage entry after successful migration.
+ */
+export async function migrateFromLocalStorage(): Promise<{
+  sessions: Map<string, AgentSession>;
+  messages: Map<string, Message[]>;
+} | null> {
+  try {
+    const stored = localStorage.getItem(LOCALSTORAGE_KEY);
     if (!stored) return null;
 
-    const data: PersistedSessionData = JSON.parse(stored);
-
-    // Version check
-    if (data.version !== VERSION) {
-      console.warn(`Session data version mismatch: expected ${VERSION}, got ${data.version}`);
+    const data: LegacyPersistedSessionData = JSON.parse(stored);
+    if (data.version !== LOCALSTORAGE_VERSION) {
+      console.warn(`Skipping localStorage migration: version ${data.version} !== ${LOCALSTORAGE_VERSION}`);
+      localStorage.removeItem(LOCALSTORAGE_KEY);
       return null;
     }
 
     const sessions = new Map<string, AgentSession>();
     const messages = new Map<string, Message[]>();
 
-    for (const persisted of data.sessions) {
-      const { session, messages: sessionMessages } = deserializeSession(persisted);
+    // Convert each v2 session → v3 file and write to disk
+    const writes: Promise<void>[] = [];
+
+    for (const legacy of data.sessions) {
+      const session: AgentSession = {
+        id: legacy.id,
+        createdAt: new Date(legacy.createdAt),
+        model: legacy.model,
+        name: legacy.name,
+        turnCount: 0,
+        resumable: false,
+        connectionState: 'archived',
+      };
+
+      const msgs: Message[] = legacy.messages.map((m) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        blocks: [],
+        timestamp: new Date(m.timestamp),
+        mode: m.mode,
+        toolCalls: m.toolCalls,
+        isStreaming: false,
+        isInterrupted: m.isInterrupted,
+        thinkingContent: m.thinkingContent,
+        thinkingDurationMs: m.thinkingDurationMs,
+        attachedFiles: m.attachedFiles,
+        attachedImages: m.attachedImages,
+      }));
+
       sessions.set(session.id, session);
-      messages.set(session.id, sessionMessages);
+      messages.set(session.id, msgs);
+      writes.push(saveSession(session, msgs));
     }
 
-    return { sessions, messages };
+    await Promise.allSettled(writes);
+    localStorage.removeItem(LOCALSTORAGE_KEY);
+
+    console.log(`Migrated ${sessions.size} sessions from localStorage to filesystem`);
+    return sessions.size > 0 ? { sessions, messages } : null;
   } catch (error) {
-    console.error('Failed to load sessions:', error);
+    console.error('Failed to migrate from localStorage:', error);
     return null;
   }
 }
 
-/**
- * Delete a session from persistence
- */
-export function deleteSession(sessionId: string): void {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (!stored) return;
-
-    const data: PersistedSessionData = JSON.parse(stored);
-    data.sessions = data.sessions.filter((s) => s.id !== sessionId);
-    data.timestamp = Date.now();
-
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  } catch (error) {
-    console.error('Failed to delete session:', error);
-  }
-}
+// =============================================================================
+// Debounced Per-Session Save
+// =============================================================================
 
 /**
- * Clear all persisted sessions
- */
-export function clearSessions(): void {
-  try {
-    localStorage.removeItem(STORAGE_KEY);
-  } catch (error) {
-    console.error('Failed to clear sessions:', error);
-  }
-}
-
-/**
- * Create a debounced save function
+ * Create a per-session debounced save function.
+ * Each session ID gets its own debounce timer so saving session A
+ * doesn't delay/cancel a pending save for session B.
  */
 export function createDebouncedSessionSave(delay: number = 1000): {
-  save: (sessions: Map<string, AgentSession>, messages: Map<string, Message[]>) => void;
-  cancel: () => void;
-  flush: () => void;
+  save: (session: AgentSession, messages: Message[]) => void;
+  cancel: (sessionId?: string) => void;
+  flush: (sessionId?: string) => void;
 } {
-  let timeoutId: ReturnType<typeof setTimeout> | null = null;
-  let pendingSessions: Map<string, AgentSession> | null = null;
-  let pendingMessages: Map<string, Message[]> | null = null;
+  const timers = new Map<string, ReturnType<typeof setTimeout>>();
+  const pending = new Map<string, { session: AgentSession; messages: Message[] }>();
 
   return {
-    save: (sessions, messages) => {
-      pendingSessions = sessions;
-      pendingMessages = messages;
+    save: (session, messages) => {
+      pending.set(session.id, { session, messages });
 
-      if (timeoutId) {
-        clearTimeout(timeoutId);
+      const existing = timers.get(session.id);
+      if (existing) clearTimeout(existing);
+
+      timers.set(
+        session.id,
+        setTimeout(() => {
+          const data = pending.get(session.id);
+          if (data) {
+            saveSession(data.session, data.messages).catch(console.error);
+          }
+          timers.delete(session.id);
+          pending.delete(session.id);
+        }, delay),
+      );
+    },
+    cancel: (sessionId) => {
+      if (sessionId) {
+        const timer = timers.get(sessionId);
+        if (timer) clearTimeout(timer);
+        timers.delete(sessionId);
+        pending.delete(sessionId);
+      } else {
+        for (const timer of timers.values()) clearTimeout(timer);
+        timers.clear();
+        pending.clear();
       }
-
-      timeoutId = setTimeout(() => {
-        if (pendingSessions && pendingMessages) {
-          saveSessions(pendingSessions, pendingMessages);
+    },
+    flush: (sessionId) => {
+      if (sessionId) {
+        const timer = timers.get(sessionId);
+        if (timer) clearTimeout(timer);
+        timers.delete(sessionId);
+        const data = pending.get(sessionId);
+        if (data) {
+          saveSession(data.session, data.messages);
+          pending.delete(sessionId);
         }
-        timeoutId = null;
-        pendingSessions = null;
-        pendingMessages = null;
-      }, delay);
-    },
-    cancel: () => {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-        timeoutId = null;
+      } else {
+        for (const timer of timers.values()) clearTimeout(timer);
+        timers.clear();
+        for (const data of pending.values()) {
+          saveSession(data.session, data.messages);
+        }
+        pending.clear();
       }
-      pendingSessions = null;
-      pendingMessages = null;
-    },
-    flush: () => {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-        timeoutId = null;
-      }
-      if (pendingSessions && pendingMessages) {
-        saveSessions(pendingSessions, pendingMessages);
-      }
-      pendingSessions = null;
-      pendingMessages = null;
     },
   };
 }

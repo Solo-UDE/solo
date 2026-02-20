@@ -1,0 +1,100 @@
+/**
+ * SearchToolCard — Specialized tool card for Glob/Grep search operations.
+ *
+ * Shows magnifying glass icon, search pattern display,
+ * match/file count badge, and results list.
+ */
+
+import { MagnifyingGlass } from '@phosphor-icons/react';
+
+import { ToolCard } from './ToolCard';
+
+import type { FC } from 'react';
+import type { ToolStatus } from './ToolCard';
+
+export interface SearchToolCardProps {
+	readonly toolName: 'Glob' | 'Grep' | string;
+	readonly pattern: string;
+	readonly path?: string;
+	readonly output?: string;
+	readonly status: ToolStatus;
+	/** Extra qualifiers like outputMode, glob filter, fileType */
+	readonly outputMode?: string;
+	readonly glob?: string;
+	readonly fileType?: string;
+}
+
+export const SearchToolCard: FC<SearchToolCardProps> = ({
+	toolName,
+	pattern,
+	path,
+	output,
+	status,
+	outputMode,
+	glob,
+	fileType,
+}) => {
+	const results = output?.split('\n').filter(Boolean) ?? [];
+	const resultCount = results.length;
+	const isGlob = toolName.toLowerCase() === 'glob';
+
+	// Build qualifier badges
+	const badges: string[] = [];
+	if (path) badges.push(path);
+	if (glob) badges.push(`glob:${glob}`);
+	if (fileType) badges.push(`type:${fileType}`);
+	if (outputMode) badges.push(outputMode);
+
+	return (
+		<ToolCard
+			toolName={toolName}
+			status={status}
+			icon={<MagnifyingGlass className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+			label={status === 'running' ? 'Searching...' : (isGlob ? 'Glob' : 'Grep')}
+			primaryDisplay={pattern}
+			collapsible={resultCount > 0}
+			defaultExpanded={false}
+		>
+			<div className="space-y-2">
+				{/* Qualifier badges */}
+				{badges.length > 0 ? (
+					<div className="flex flex-wrap gap-1">
+						{badges.map((badge) => (
+							<span
+								key={badge}
+								className="text-[10px] px-1.5 py-0.5 rounded-md bg-muted/50 text-muted-foreground font-mono"
+							>
+								{badge}
+							</span>
+						))}
+					</div>
+				) : null}
+
+				{/* Result count */}
+				{resultCount > 0 ? (
+					<div className="flex items-center gap-1.5">
+						<span className="rounded-full bg-muted/50 px-2 py-0.5 text-[10px] tabular-nums text-muted-foreground">
+							{resultCount} {isGlob ? 'files' : 'matches'}
+						</span>
+					</div>
+				) : null}
+
+				{/* Results preview (first 8 files) */}
+				{resultCount > 0 ? (
+					<div className="max-h-[160px] overflow-y-auto rounded-lg bg-muted/20 p-2">
+						{results.slice(0, 8).map((result, i) => (
+							<div key={`r-${String(i)}`} className="text-xs font-mono text-foreground/80 py-0.5 px-1 truncate">
+								{result}
+							</div>
+						))}
+						{resultCount > 8 ? (
+							<div className="text-xs text-muted-foreground pt-1 px-1">
+								...and {resultCount - 8} more
+							</div>
+						) : null}
+					</div>
+				) : null}
+			</div>
+		</ToolCard>
+	);
+};

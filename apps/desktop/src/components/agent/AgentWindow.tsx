@@ -1,5 +1,6 @@
 import { useEffect, useCallback, useMemo, useRef, useState } from 'react';
 import { Plus } from '@phosphor-icons/react';
+import { DebugPanel, DebugToggleButton } from './debug/DebugPanel';
 
 import { MessageFeed, TurnProgress } from './messages';
 import { ChatInputContainer } from './input';
@@ -12,7 +13,7 @@ import { usePanelTabsStore } from '../../stores/panelTabsStore';
 import { BUILTIN_PANEL_TYPES } from '../../lib/panels/constants';
 
 import type { FC } from 'react';
-import type { MessageMode, Attachment, FileMention } from '../../stores/agentStore';
+import type { MessageMode, Attachment, FileMention, SessionConnectionState } from '../../stores/agentStore';
 
 export interface AgentWindowCallbacks {
 	onFileOpen?: (path: string) => void;
@@ -73,6 +74,12 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 	const currentTurn = useAgentStore((state) => {
 		if (!sessionId) return undefined;
 		return state.sessions.get(sessionId)?.currentTurn;
+	});
+
+	// Connection state for resume indicators
+	const connectionState: SessionConnectionState | undefined = useAgentStore((state) => {
+		if (!sessionId) return undefined;
+		return state.sessions.get(sessionId)?.connectionState;
 	});
 
 	// Panel system for opening new tabs
@@ -188,13 +195,16 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 				className={`relative flex flex-col h-full bg-background ${className}`}
 				data-instance-id={instanceId}
 			>
-				<button
-					onClick={handleNewSession}
-					className="absolute top-2 right-2 z-10 p-1.5 rounded-lg hover:bg-muted/60 transition-colors duration-150"
-					title="New session"
-				>
-					<Plus className="w-4 h-4 text-muted-foreground" />
-				</button>
+				<div className="absolute top-2 right-2 z-10 flex items-center gap-1">
+					<DebugToggleButton />
+					<button
+						onClick={handleNewSession}
+						className="p-1.5 rounded-lg hover:bg-muted/60 transition-colors duration-150"
+						title="New session"
+					>
+						<Plus className="w-4 h-4 text-muted-foreground" />
+					</button>
+				</div>
 
 				<div className="flex-1 flex items-center justify-center px-6">
 					<SoloEmptyState onPromptClick={handleSuggestedPrompt} />
@@ -210,6 +220,8 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 						</div>
 					</div>
 				)}
+
+				<DebugPanel />
 
 				<ChatInputContainer
 					onSubmit={handleSubmit}
@@ -231,13 +243,16 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 			className={`relative flex flex-col h-full bg-background ${className}`}
 			data-instance-id={instanceId}
 		>
-			<button
-				onClick={handleNewSession}
-				className="absolute top-2 right-2 z-10 p-1.5 rounded-lg hover:bg-muted/60 transition-colors duration-150"
-				title="New session"
-			>
-				<Plus className="w-4 h-4 text-muted-foreground" />
-			</button>
+			<div className="absolute top-2 right-2 z-10 flex items-center gap-1">
+				<DebugToggleButton />
+				<button
+					onClick={handleNewSession}
+					className="p-1.5 rounded-lg hover:bg-muted/60 transition-colors duration-150"
+					title="New session"
+				>
+					<Plus className="w-4 h-4 text-muted-foreground" />
+				</button>
+			</div>
 
 			<MessageFeed
 				messageGroups={messageGroups}
@@ -251,6 +266,19 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 				<TurnProgress turnNumber={currentTurn} />
 			)}
 
+			{connectionState === 'resuming' && (
+				<div className="px-4 py-2 flex items-center gap-2 text-sm text-muted-foreground bg-muted/20">
+					<span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+					Reconnecting session...
+				</div>
+			)}
+
+			{connectionState === 'stale' && (
+				<div className="px-4 py-2 text-sm text-amber-500 bg-amber-500/5">
+					Session expired. Your next message will start a fresh context.
+				</div>
+			)}
+
 			{error && (
 				<div className="px-4 py-2 bg-destructive/10 border-t border-destructive/20">
 					<div className="flex items-center justify-between">
@@ -261,6 +289,8 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 					</div>
 				</div>
 			)}
+
+			<DebugPanel />
 
 			<ChatInputContainer
 				onSubmit={handleSubmit}

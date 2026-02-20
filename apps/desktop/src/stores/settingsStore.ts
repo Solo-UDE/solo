@@ -106,6 +106,8 @@ interface AISettings {
   autoApproveTools: boolean;
   maxTokens: number;
   customApiUrl: string;
+  /** Days to keep old sessions (0 = infinite). Default 30. */
+  sessionRetentionDays: number;
 }
 
 interface SettingsState {
@@ -159,6 +161,7 @@ const DEFAULT_SETTINGS: SettingsState = {
     autoApproveTools: false,
     maxTokens: 4096,
     customApiUrl: '',
+    sessionRetentionDays: 30,
   },
 };
 

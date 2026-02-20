@@ -9,6 +9,7 @@ import { useUIStore, useIsLeftSidebarCollapsed } from "./stores/uiStore";
 import { usePanelTabsStore } from "./stores/panelTabsStore";
 import { useProviderStore } from "./stores/provider-store";
 import { useAgentStore } from "./stores/agentStore";
+import { useSettingsStore } from "./stores/settingsStore";
 import { useAuthStore, useUser } from "./stores/authStore";
 import { registerBuiltinPanels, BUILTIN_PANEL_TYPES } from "./lib/panels";
 import { SettingsView } from "./components/settings";
@@ -119,9 +120,16 @@ function AppContent() {
   useGitStream();
   useWorktreeStream();
 
-  // Load persisted agent sessions on startup
+  // Load persisted agent sessions on startup, then prune expired ones
   useEffect(() => {
-    loadPersistedSessions();
+    loadPersistedSessions()
+      .then(() => {
+        const days = useSettingsStore.getState().ai.sessionRetentionDays;
+        return useAgentStore.getState().pruneExpiredSessions(days);
+      })
+      .catch((err) => {
+        console.error('Failed to load persisted sessions:', err);
+      });
   }, [loadPersistedSessions]);
 
   // Toggle terminal panel, auto-creating a terminal if none exist

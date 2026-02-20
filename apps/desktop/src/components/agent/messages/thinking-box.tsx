@@ -1,5 +1,9 @@
-import { CaretDown, CaretRight } from '@phosphor-icons/react';
+import { Brain, CaretDown } from '@phosphor-icons/react';
 import { useEffect, useRef, useState } from 'react';
+
+import { StreamdownNarrative } from './StreamdownNarrative';
+import { ThinkingDots } from '../streaming/ThinkingDots';
+import { TextShimmer } from '../streaming/TextShimmer';
 
 import type { FC } from 'react';
 
@@ -50,33 +54,61 @@ export const ThinkingBox: FC<ThinkingBoxProps> = ({
   const durationText = formatDuration(thinkingDurationMs);
 
   return (
-    <div className="rounded-md border border-border/50 bg-muted/30 overflow-hidden mb-3 transition-all duration-200">
+    <div className="rounded-xl border-l-2 border-primary/20 bg-muted/20 overflow-hidden mb-3 transition-all duration-200">
       {/* Header */}
       <button
         onClick={toggleExpanded}
-        className="w-full flex items-center justify-between gap-2 px-3 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         aria-expanded={isExpanded}
         aria-label={`Thought for ${durationText}, ${isExpanded ? 'expanded' : 'collapsed'}`}
       >
-        <span className="text-xs font-medium">
-          {isStreaming ? 'Thinking...' : `Thought for ${durationText}`}
-        </span>
-        {isExpanded ? (
-          <CaretDown className="h-4 w-4 shrink-0" />
+        {/* During streaming: ThinkingDots grid + shimmer label */}
+        {isStreaming ? (
+          <>
+            <ThinkingDots size={18} speed={1.2} />
+            <TextShimmer className="text-xs font-medium" duration={3}>
+              Deep reasoning in progress
+            </TextShimmer>
+          </>
         ) : (
-          <CaretRight className="h-4 w-4 shrink-0" />
+          <>
+            {/* After streaming: Brain icon + static label */}
+            <Brain className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <span className="text-xs font-medium">
+              Thought for {durationText}
+            </span>
+            {/* Duration badge */}
+            {thinkingDurationMs > 0 ? (
+              <span className="rounded-full bg-muted/40 text-[10px] px-2 py-0.5 tabular-nums text-muted-foreground">
+                {durationText}
+              </span>
+            ) : null}
+          </>
         )}
+
+        {/* Spacer */}
+        <div className="flex-1" />
+
+        {/* Expand/collapse caret */}
+        <CaretDown
+          className={`h-3.5 w-3.5 shrink-0 transition-transform duration-200 ${
+            isExpanded ? 'rotate-0' : '-rotate-90'
+          }`}
+        />
       </button>
 
-      {/* Collapsible Content */}
+      {/* Collapsible Content — CSS grid-rows transition */}
       <div
-        className={`overflow-hidden transition-all duration-200 ease-out ${
-          isExpanded ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0'
-        }`}
+        className="grid transition-[grid-template-rows] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]"
+        style={{ gridTemplateRows: isExpanded ? '1fr' : '0fr' }}
       >
-        <div className="px-3 pb-3 pt-1">
-          <div className="text-sm text-muted-foreground/80 leading-relaxed whitespace-pre-wrap">
-            {thinking}
+        <div className="overflow-hidden min-h-0">
+          <div className="px-3 pb-3 pt-1">
+            <StreamdownNarrative
+              content={thinking}
+              isStreaming={isStreaming}
+              className="text-muted-foreground/80 text-sm leading-relaxed"
+            />
           </div>
         </div>
       </div>

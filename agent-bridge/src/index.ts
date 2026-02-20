@@ -6,10 +6,11 @@
 
 import * as readline from 'readline';
 
-import { createLogger } from './logger.js';
+import { createLogger, configureFileLogging, setDebugCallback, shutdownFileLogging } from './logger.js';
 import { SessionManager } from './session-manager.js';
 
 import type { BridgeEvent, BridgeRequest, BridgeResponse, CommandResponse } from './protocol.js';
+import type { LogEntry } from './logger.js';
 
 const logger = createLogger('AgentBridge');
 
@@ -40,6 +41,8 @@ function sendEvent(event: BridgeEvent): void {
  * Main entry point
  */
 function main(): void {
+  // Initialize file logging early
+  configureFileLogging();
   logger.info('Agent Bridge starting...');
 
   // Create session manager
@@ -91,6 +94,15 @@ function main(): void {
     });
   });
 
+  // Wire debug events to IPC
+  sessionManager.onDebugEvent((data) => {
+    sendEvent({
+      type: 'debug_event',
+      sessionId: data.sessionId,
+      event: data.event,
+    });
+  });
+
   // Handle incoming requests from stdin
   const rl = readline.createInterface({
     input: process.stdin,
@@ -132,6 +144,7 @@ function main(): void {
   rl.on('close', () => {
     logger.info('stdin closed, shutting down...');
     sessionManager.dispose();
+    shutdownFileLogging();
     process.exit(0);
   });
 
@@ -139,12 +152,14 @@ function main(): void {
   process.on('SIGTERM', () => {
     logger.info('SIGTERM received, shutting down...');
     sessionManager.dispose();
+    shutdownFileLogging();
     process.exit(0);
   });
 
   process.on('SIGINT', () => {
     logger.info('SIGINT received, shutting down...');
     sessionManager.dispose();
+    shutdownFileLogging();
     process.exit(0);
   });
 

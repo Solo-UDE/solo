@@ -11,7 +11,10 @@ import { enableMapSet } from 'immer';
 import type { BridgeAgentMessage, PermissionRequest, TokenUsage, AttachmentContentBlock } from '../bindings';
 import * as backend from '../lib/backend';
 import {
-	loadSessions,
+	loadAllSessions,
+	migrateFromLocalStorage,
+	saveSession,
+	deleteSessionFile,
 	createDebouncedSessionSave,
 } from '../lib/sessionPersistence';
 import { DEFAULT_MODEL_ID } from '../lib/constants';
@@ -32,6 +35,12 @@ const EMPTY_PERMISSIONS: PermissionRequest[] = [];
 // =============================================================================
 
 export type MessageMode = 'planning' | 'fast';
+
+/** Connection lifecycle state for bridge sessions */
+export type SessionConnectionState = 'archived' | 'resuming' | 'active' | 'stale';
+
+/** Max concurrent active bridge sessions (evicts LRU when exceeded) */
+const MAX_ACTIVE_SESSIONS = 3;
 
 export interface ToolCallState {
 	id: string;
@@ -109,6 +118,18 @@ export interface AgentSession {
 	model: string;
 	name?: string;
 	currentTurn?: number;
+	// v3 persistence fields
+	resumable?: boolean;
+	workspacePath?: string;
+	lastActiveAt?: string;
+	totalTokens?: number;
+	totalCost?: number;
+	turnCount?: number;
+	tags?: string[];
+	summary?: string;
+	// Connection lifecycle (transient — never persisted, always 'archived' on load)
+	connectionState: SessionConnectionState;
+	resumeError?: string;
 }
 
 export interface SessionStreamState {
@@ -248,9 +269,13 @@ interface AgentActions {
 	abortSession: (sessionId: string) => Promise<void>;
 	resolveToolApproval: (sessionId: string, toolCallId: string, approved: boolean) => Promise<void>;
 
+	// Session lifecycle
+	ensureActive: (sessionId: string) => Promise<void>;
+	pruneExpiredSessions: (retentionDays: number) => Promise<void>;
+
 	// Persistence
-	loadPersistedSessions: () => void;
-	persistSessions: () => void;
+	loadPersistedSessions: () => Promise<void>;
+	persistSessions: (sessionId?: string) => void;
 
 	// Utilities
 	clearError: (sessionId: string) => void;
@@ -274,8 +299,26 @@ const initialState: AgentState = {
 	error: null,
 };
 
-// Create debounced save function (saves 1 second after last change)
+// Create per-session debounced save function (saves 1 second after last change)
 const debouncedSave = createDebouncedSessionSave(1000);
+
+/** Helper: persist a specific session or all sessions */
+function doPersist(sessionId?: string): void {
+	const state = useAgentStore.getState();
+	if (sessionId) {
+		const session = state.sessions.get(sessionId);
+		const messages = state.messages.get(sessionId) || [];
+		if (session) {
+			debouncedSave.save(session, messages);
+		}
+	} else {
+		// Save all sessions
+		for (const [id, session] of state.sessions) {
+			const messages = state.messages.get(id) || [];
+			debouncedSave.save(session, messages);
+		}
+	}
+}
 
 // =============================================================================
 // Store
@@ -289,11 +332,22 @@ export const useAgentStore = create<AgentStore>()(
 		// Persistence
 		// =================================================================
 
-		loadPersistedSessions: () => {
-			const persisted = loadSessions();
+		loadPersistedSessions: async () => {
+			// 1. Try filesystem first
+			let persisted = await loadAllSessions();
+
+			// 2. If empty, try migrating from localStorage (one-time v2→v3)
+			if (!persisted) {
+				persisted = await migrateFromLocalStorage();
+			}
+
 			if (persisted) {
 				set((state) => {
 					state.sessions = persisted.sessions;
+					// Mark ALL loaded sessions as archived (no bridge connection yet)
+					for (const session of state.sessions.values()) {
+						session.connectionState = 'archived';
+					}
 					state.messages = persisted.messages;
 					for (const sessionId of persisted.sessions.keys()) {
 						if (!state.sessionStreaming.has(sessionId)) {
@@ -304,9 +358,134 @@ export const useAgentStore = create<AgentStore>()(
 			}
 		},
 
-		persistSessions: () => {
-			const state = get();
-			debouncedSave.save(state.sessions, state.messages);
+		persistSessions: (sessionId?: string) => {
+			doPersist(sessionId);
+		},
+
+		// =================================================================
+		// Session Lifecycle (lazy resume)
+		// =================================================================
+
+		ensureActive: async (sessionId: string) => {
+			const session = get().sessions.get(sessionId);
+			if (!session) throw new Error(`Session ${sessionId} not found`);
+			if (session.connectionState === 'active') return;
+
+			// If already resuming, wait for completion (poll up to 15s)
+			if (session.connectionState === 'resuming') {
+				const maxWait = 15000;
+				const start = Date.now();
+				while (Date.now() - start < maxWait) {
+					await new Promise((r) => setTimeout(r, 200));
+					const current = get().sessions.get(sessionId);
+					if (!current || current.connectionState === 'active') return;
+					if (current.connectionState !== 'resuming') break;
+				}
+				const current = get().sessions.get(sessionId);
+				if (current?.connectionState === 'active') return;
+				throw new Error('Session resume timed out');
+			}
+
+			// Mark as resuming
+			set((s) => {
+				const sess = s.sessions.get(sessionId);
+				if (sess) {
+					sess.connectionState = 'resuming';
+					sess.resumeError = undefined;
+				}
+			});
+
+			// Evict oldest active session if at max capacity
+			const activeSessions = [...get().sessions.values()]
+				.filter((s) => s.connectionState === 'active')
+				.sort((a, b) => {
+					const aTime = new Date(a.lastActiveAt || a.createdAt).getTime();
+					const bTime = new Date(b.lastActiveAt || b.createdAt).getTime();
+					return aTime - bTime; // oldest first
+				});
+
+			if (activeSessions.length >= MAX_ACTIVE_SESSIONS) {
+				const oldest = activeSessions[0];
+				backend.agentDeleteSession(oldest.id).catch(console.error);
+				set((s) => {
+					const sess = s.sessions.get(oldest.id);
+					if (sess) sess.connectionState = 'archived';
+				});
+			}
+
+			const agentModel = toAgentModel(session.model || 'opus');
+
+			try {
+				// Attempt resume with persisted SDK session ID
+				if (session.sdkSessionId && session.resumable) {
+					await backend.agentCreateSession(sessionId, {
+						model: agentModel,
+						resumeSessionId: session.sdkSessionId,
+					});
+				} else {
+					// No SDK session to resume — create fresh bridge session
+					await backend.agentCreateSession(sessionId, { model: agentModel });
+				}
+
+				set((s) => {
+					const sess = s.sessions.get(sessionId);
+					if (sess) {
+						sess.connectionState = 'active';
+						sess.resumeError = undefined;
+					}
+				});
+			} catch (error) {
+				const errorMsg = error instanceof Error ? error.message : String(error);
+				console.error(`[Agent] Resume failed for ${sessionId}: ${errorMsg}`);
+
+				// Auto-fork: create fresh bridge session, preserving message history
+				try {
+					await backend.agentCreateSession(sessionId, { model: agentModel });
+					set((s) => {
+						const sess = s.sessions.get(sessionId);
+						if (sess) {
+							sess.connectionState = 'active';
+							sess.resumable = false;
+							sess.sdkSessionId = undefined;
+							sess.resumeError = undefined;
+						}
+					});
+				} catch (forkError) {
+					const forkMsg = forkError instanceof Error ? forkError.message : String(forkError);
+					console.error(`[Agent] Fork also failed for ${sessionId}: ${forkMsg}`);
+					set((s) => {
+						const sess = s.sessions.get(sessionId);
+						if (sess) {
+							sess.connectionState = 'archived';
+							sess.resumeError = forkMsg;
+						}
+					});
+					throw forkError;
+				}
+			}
+		},
+
+		pruneExpiredSessions: async (retentionDays: number) => {
+			if (retentionDays <= 0) return; // 0 = infinite retention
+			const cutoff = Date.now() - retentionDays * 86_400_000;
+			const toDelete: string[] = [];
+
+			for (const [id, session] of get().sessions) {
+				const lastActive = session.lastActiveAt
+					? new Date(session.lastActiveAt).getTime()
+					: session.createdAt.getTime();
+				if (lastActive < cutoff && session.connectionState !== 'active') {
+					toDelete.push(id);
+				}
+			}
+
+			for (const id of toDelete) {
+				get().deleteSession(id);
+			}
+
+			if (toDelete.length > 0) {
+				console.log(`[Agent] Pruned ${toDelete.length} expired sessions (retention: ${retentionDays}d)`);
+			}
 		},
 
 		// =================================================================
@@ -320,17 +499,25 @@ export const useAgentStore = create<AgentStore>()(
 			try {
 				await backend.agentCreateSession(sessionId, { model: agentModel });
 
+				// Capture workspace path for session filtering
+				const { useFileExplorerStore } = await import('@/stores/fileExplorerStore');
+				const workspacePath = useFileExplorerStore.getState().rootPath ?? undefined;
+
 				set((state) => {
 					state.sessions.set(sessionId, {
 						id: sessionId,
 						createdAt: new Date(),
 						model: model || 'opus',
+						workspacePath,
+						turnCount: 0,
+						resumable: false,
+						connectionState: 'active',
 					});
 					state.messages.set(sessionId, []);
 					state.sessionStreaming.set(sessionId, createDefaultStreamState());
 				});
 
-				get().persistSessions();
+				get().persistSessions(sessionId);
 				return sessionId;
 			} catch (error) {
 				const errorMsg = error instanceof Error ? error.message : String(error);
@@ -401,6 +588,8 @@ export const useAgentStore = create<AgentStore>()(
 		deleteSession: (sessionId: string) => {
 			// Delete from bridge (fire-and-forget)
 			backend.agentDeleteSession(sessionId).catch(console.error);
+			// Delete session file from disk (fire-and-forget)
+			deleteSessionFile(sessionId).catch(console.error);
 
 			set((state) => {
 				state.sessions.delete(sessionId);
@@ -411,7 +600,6 @@ export const useAgentStore = create<AgentStore>()(
 					state.activeSessionId = remaining.length > 0 ? remaining[0] : null;
 				}
 			});
-			get().persistSessions();
 		},
 
 		renameSession: (sessionId: string, name: string) => {
@@ -422,7 +610,7 @@ export const useAgentStore = create<AgentStore>()(
 					session.name = trimmed || undefined;
 				}
 			});
-			get().persistSessions();
+			get().persistSessions(sessionId);
 		},
 
 		setSelectedModel: (model: string) => {
@@ -437,6 +625,9 @@ export const useAgentStore = create<AgentStore>()(
 
 		sendMessage: async (sessionId: string, content: string, mode?: MessageMode, attachments?: Attachment[], mentions?: FileMention[]) => {
 			if (!sessionId) return;
+
+			// Lazy resume: ensure bridge connection before sending
+			await get().ensureActive(sessionId);
 
 			// Add user message
 			get().addUserMessage(sessionId, content, mode, attachments, mentions);
@@ -496,7 +687,7 @@ export const useAgentStore = create<AgentStore>()(
 				state.messages.set(sessionId, sessionMessages);
 			});
 
-			get().persistSessions();
+			get().persistSessions(sessionId);
 			return messageId;
 		},
 
@@ -685,10 +876,20 @@ export const useAgentStore = create<AgentStore>()(
 							}
 						}
 
-						// Reset streaming state + turn counter
+						// Reset streaming state + turn counter, accumulate usage on session
 						const session = state.sessions.get(sessionId);
 						if (session) {
 							session.currentTurn = undefined;
+							// Accumulate usage stats
+							if (message.usage) {
+								const totalIn = (message.usage.inputTokens ?? 0) + (message.usage.cacheReadInputTokens ?? 0);
+								const totalOut = message.usage.outputTokens ?? 0;
+								session.totalTokens = (session.totalTokens ?? 0) + totalIn + totalOut;
+							}
+							if (message.totalCostUsd !== undefined) {
+								session.totalCost = (session.totalCost ?? 0) + message.totalCostUsd;
+							}
+							session.turnCount = (session.turnCount ?? 0) + 1;
 						}
 						streamState.streamingMessageId = null;
 						streamState.streamingContent = '';
@@ -725,7 +926,7 @@ export const useAgentStore = create<AgentStore>()(
 
 			// Persist on result/error
 			if (message.type === 'result' || message.type === 'error') {
-				get().persistSessions();
+				get().persistSessions(sessionId);
 			}
 		},
 
@@ -759,12 +960,25 @@ export const useAgentStore = create<AgentStore>()(
 		},
 
 		handleSessionInit: (sessionId: string, sdkSessionId: string, _isResumed: boolean, _isForked: boolean) => {
+			// Snapshot session + messages inside Immer for immediate persistence
+			let sessionSnapshot: AgentSession | undefined;
+			let messagesSnapshot: Message[] = [];
+
 			set((state) => {
 				const session = state.sessions.get(sessionId);
 				if (session) {
 					session.sdkSessionId = sdkSessionId;
+					session.resumable = true;
+					// Snapshot current state for persistence outside Immer
+					sessionSnapshot = { ...session, createdAt: new Date(session.createdAt) };
+					messagesSnapshot = [...(state.messages.get(sessionId) || [])];
 				}
 			});
+
+			// Persist immediately (no debounce) — sdkSessionId is critical for resume
+			if (sessionSnapshot) {
+				saveSession(sessionSnapshot, messagesSnapshot);
+			}
 		},
 
 		handleTurnStart: (sessionId: string, turnNumber: number) => {

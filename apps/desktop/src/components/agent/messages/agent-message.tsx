@@ -1,5 +1,3 @@
-import { Robot } from '@phosphor-icons/react';
-
 import { AgentNarrative } from './agent-narrative';
 import { InterruptIndicator } from './interrupt-indicator';
 import { MessageActions } from './message-actions';
@@ -8,21 +6,11 @@ import { NotifyUserCard } from './notify-user-card';
 import { ProceedIndicator } from './proceed-indicator';
 import { TaskPhaseCard } from './task-phase-card';
 import { ThinkingBox } from './thinking-box';
-import { ToolCallBlock } from './tool-call-block';
 import { TurnProgress } from './turn-progress';
-import {
-  BashToolWidget,
-  EditToolWidget,
-  WriteToolWidget,
-  ReadToolWidget,
-  GlobToolWidget,
-  GrepToolWidget,
-  WebSearchToolWidget,
-  WebFetchToolWidget,
-  TaskToolWidget,
-  TodoToolWidget,
-} from './tools';
-import { ToolApprovalInline } from '../dialogs/ToolApprovalDialog';
+import { TodoToolWidget } from './tools';
+import { renderToolCard } from '../streaming/tool-registry';
+import { StreamingSkeleton } from '../streaming/StreamingSkeleton';
+import { ToolApprovalCard } from '../streaming/ToolApprovalCard';
 import type { RenderBlock } from '../messageAdapter';
 
 import type { FC, ReactNode } from 'react';
@@ -78,19 +66,12 @@ export interface AgentMessageContent {
 export interface AgentMessageProps {
   content: AgentMessageContent;
   timestamp: Date;
-  avatarUrl?: string;
   agentName?: string;
   onFeedback?: (messageId: string, feedback: 'good' | 'bad') => void;
   onToolApproval?: (toolCallId: string, approved: boolean) => void;
   messageId?: string;
   className?: string;
 }
-
-/** Helper to extract string from tool input */
-const getStr = (input: Record<string, unknown>, key: string, fallback: string = ''): string => {
-  const value = input[key];
-  return typeof value === 'string' ? value : fallback;
-};
 
 /** Render the appropriate specialized tool widget based on toolName */
 const renderToolWidget = (
@@ -100,49 +81,19 @@ const renderToolWidget = (
   status: 'running' | 'success' | 'error',
   output?: string,
 ): ReactNode => {
-  const isRunning = status === 'running';
-  const name = toolName.toLowerCase();
-
-  if (name === 'bash') {
-    return <BashToolWidget key={key} command={getStr(toolInput, 'command')} description={getStr(toolInput, 'description') || undefined} output={output} isRunning={isRunning} />;
-  }
-  if (name === 'edit') {
-    return <EditToolWidget key={key} filePath={getStr(toolInput, 'file_path', 'unknown')} oldString={getStr(toolInput, 'old_string')} newString={getStr(toolInput, 'new_string')} isRunning={isRunning} />;
-  }
-  if (name === 'write') {
-    return <WriteToolWidget key={key} filePath={getStr(toolInput, 'file_path', 'unknown')} content={getStr(toolInput, 'content')} isRunning={isRunning} />;
-  }
-  if (name === 'read') {
-    return <ReadToolWidget key={key} filePath={getStr(toolInput, 'file_path', 'unknown')} isRunning={isRunning} content={output} />;
-  }
-  if (name === 'glob') {
-    return <GlobToolWidget key={key} pattern={getStr(toolInput, 'pattern', '*')} path={getStr(toolInput, 'path') || undefined} output={output} isRunning={isRunning} />;
-  }
-  if (name === 'grep') {
-    return <GrepToolWidget key={key} pattern={getStr(toolInput, 'pattern')} path={getStr(toolInput, 'path') || undefined} outputMode={getStr(toolInput, 'output_mode') || undefined} glob={getStr(toolInput, 'glob') || undefined} fileType={getStr(toolInput, 'type') || undefined} output={output} isRunning={isRunning} />;
-  }
-  if (name === 'websearch') {
-    return <WebSearchToolWidget key={key} query={getStr(toolInput, 'query')} output={output} isRunning={isRunning} />;
-  }
-  if (name === 'webfetch') {
-    return <WebFetchToolWidget key={key} url={getStr(toolInput, 'url')} prompt={getStr(toolInput, 'prompt')} output={output} isRunning={isRunning} />;
-  }
-  if (name === 'task') {
-    return <TaskToolWidget key={key} description={getStr(toolInput, 'description')} prompt={getStr(toolInput, 'prompt')} subagentType={getStr(toolInput, 'subagent_type', 'general-purpose')} model={getStr(toolInput, 'model') || undefined} output={output} isRunning={isRunning} />;
-  }
-  if (name === 'todowrite') {
+  // TodoWrite has unique props — handle separately
+  if (toolName.toLowerCase() === 'todowrite') {
     const todosInput = toolInput['todos'];
-    return <TodoToolWidget key={key} todos={Array.isArray(todosInput) ? todosInput : undefined} isRunning={isRunning} />;
+    return <TodoToolWidget key={key} todos={Array.isArray(todosInput) ? todosInput : undefined} isRunning={status === 'running'} />;
   }
 
-  // Fallback: generic tool block
-  return <ToolCallBlock key={key} toolName={toolName} toolInput={toolInput} status={status} output={output} />;
+  // Use the registry for all other tools
+  return renderToolCard(key, toolName, toolInput, status, output);
 };
 
 export const AgentMessage: FC<AgentMessageProps> = ({
   content,
   timestamp,
-  avatarUrl,
   agentName = 'Agent',
   onFeedback,
   onToolApproval,
@@ -168,15 +119,6 @@ export const AgentMessage: FC<AgentMessageProps> = ({
 
   return (
     <div className={`flex gap-3 px-4 animate-in fade-in-0 slide-in-from-bottom-2 duration-200 ${className}`}>
-      {/* Avatar */}
-      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-secondary flex items-center justify-center overflow-hidden">
-        {avatarUrl ? (
-          <img src={avatarUrl} alt={agentName} className="w-full h-full object-cover" />
-        ) : (
-          <Robot className="w-4 h-4 text-secondary-foreground" />
-        )}
-      </div>
-
       {/* Content */}
       <div className="flex-1 min-w-0 space-y-3">
         {/* Header */}
@@ -189,6 +131,12 @@ export const AgentMessage: FC<AgentMessageProps> = ({
         {/* === Ordered Blocks Rendering === */}
         {hasBlocks ? (
           <div className="space-y-3">
+            {/* Skeleton when streaming started but no blocks have content yet */}
+            {content.isStreaming && content.blocks!.every((b) =>
+              b.type === 'toolCall' || b.type === 'approval' ? false : !('content' in b && b.content)
+            ) ? (
+              <StreamingSkeleton />
+            ) : null}
             {content.blocks!.map((block, i) => {
               switch (block.type) {
                 case 'narrative':
@@ -214,13 +162,11 @@ export const AgentMessage: FC<AgentMessageProps> = ({
                   );
                 case 'approval':
                   return (
-                    <ToolApprovalInline
+                    <ToolApprovalCard
                       key={`block-${i}`}
-                      approval={{
-                        requestId: block.requestId,
-                        toolName: block.toolName,
-                        toolInput: block.toolInput,
-                      }}
+                      requestId={block.requestId}
+                      toolName={block.toolName}
+                      toolInput={block.toolInput}
                       onApproved={(requestId) => onToolApproval?.(requestId, true)}
                       onRejected={(requestId) => onToolApproval?.(requestId, false)}
                     />
@@ -229,10 +175,28 @@ export const AgentMessage: FC<AgentMessageProps> = ({
                   return null;
               }
             })}
+
+            {/* Trailing loader: shown when streaming and the last block is a completed tool call
+                (gap between tool finishing and next narrative/tool arriving) */}
+            {content.isStreaming && (() => {
+              const blocks = content.blocks!;
+              const last = blocks[blocks.length - 1];
+              // Show dots if last block is a finished tool call or if last narrative isn't actively streaming
+              if (last?.type === 'toolCall' && last.status !== 'running') return true;
+              if (last?.type === 'thinking' && !last.isStreaming) return true;
+              return false;
+            })() ? (
+              <StreamingSkeleton label="Thinking..." />
+            ) : null}
           </div>
         ) : (
           /* === Legacy (non-block) Rendering === */
           <>
+            {/* Streaming skeleton — shown before first token arrives */}
+            {content.isStreaming && !content.narrative && !content.toolCalls?.length ? (
+              <StreamingSkeleton />
+            ) : null}
+
             {/* Narrative */}
             {content.narrative ? <AgentNarrative content={content.narrative} isStreaming={content.isStreaming} /> : null}
 
@@ -260,13 +224,23 @@ export const AgentMessage: FC<AgentMessageProps> = ({
               </div>
             ) : null}
 
+            {/* Trailing loader: shown when streaming and all tools are done
+                (gap between tool completion and next output) */}
+            {content.isStreaming && content.toolCalls && content.toolCalls.length > 0
+              && content.toolCalls.every((tc) => tc.status !== 'running')
+              && !content.pendingApprovals?.length ? (
+              <StreamingSkeleton label="Thinking..." />
+            ) : null}
+
             {/* Pending Tool Approvals */}
             {content.pendingApprovals && content.pendingApprovals.length > 0 ? (
               <div className="space-y-2">
                 {content.pendingApprovals.map((approval) => (
-                  <ToolApprovalInline
+                  <ToolApprovalCard
                     key={approval.requestId}
-                    approval={approval}
+                    requestId={approval.requestId}
+                    toolName={approval.toolName}
+                    toolInput={approval.toolInput}
                     onApproved={(requestId) => onToolApproval?.(requestId, true)}
                     onRejected={(requestId) => onToolApproval?.(requestId, false)}
                   />
