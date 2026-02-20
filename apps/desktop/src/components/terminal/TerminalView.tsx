@@ -193,9 +193,12 @@ export function TerminalView({ terminalId, isActive, onExit }: TerminalViewProps
 		if (DEV) performance.mark('terminal:dom-open-end');
 
 		// Defer WebLinksAddon — not needed at mount time
+		let disposed = false;
 		const scheduleIdle = globalThis.requestIdleCallback ?? ((cb: () => void) => setTimeout(cb, 150));
 		scheduleIdle(() => {
+			if (disposed) return;
 			import('@xterm/addon-web-links').then(({ WebLinksAddon }) => {
+				if (disposed) return;
 				term.loadAddon(new WebLinksAddon());
 			});
 		});
@@ -303,6 +306,7 @@ export function TerminalView({ terminalId, isActive, onExit }: TerminalViewProps
 		});
 
 		return () => {
+			disposed = true;
 			if (resizeTimer) clearTimeout(resizeTimer);
 			observer.disconnect();
 			themeObserver.disconnect();
