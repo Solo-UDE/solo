@@ -1,5 +1,3 @@
-import { Robot } from '@phosphor-icons/react';
-
 import { AgentNarrative } from './agent-narrative';
 import { InterruptIndicator } from './interrupt-indicator';
 import { MessageActions } from './message-actions';
@@ -78,7 +76,6 @@ export interface AgentMessageContent {
 export interface AgentMessageProps {
   content: AgentMessageContent;
   timestamp: Date;
-  avatarUrl?: string;
   agentName?: string;
   onFeedback?: (messageId: string, feedback: 'good' | 'bad') => void;
   onToolApproval?: (toolCallId: string, approved: boolean) => void;
@@ -142,7 +139,6 @@ const renderToolWidget = (
 export const AgentMessage: FC<AgentMessageProps> = ({
   content,
   timestamp,
-  avatarUrl,
   agentName = 'Agent',
   onFeedback,
   onToolApproval,
@@ -168,15 +164,6 @@ export const AgentMessage: FC<AgentMessageProps> = ({
 
   return (
     <div className={`flex gap-3 px-4 animate-in fade-in-0 slide-in-from-bottom-2 duration-200 ${className}`}>
-      {/* Avatar */}
-      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-secondary flex items-center justify-center overflow-hidden">
-        {avatarUrl ? (
-          <img src={avatarUrl} alt={agentName} className="w-full h-full object-cover" />
-        ) : (
-          <Robot className="w-4 h-4 text-secondary-foreground" />
-        )}
-      </div>
-
       {/* Content */}
       <div className="flex-1 min-w-0 space-y-3">
         {/* Header */}
