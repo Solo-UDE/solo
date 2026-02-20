@@ -1524,18 +1524,28 @@ pub async fn git_unstage_all(
     .map_err(|e| format!("Task join error: {}", e))?
 }
 
-/// Clone a git repository to a target path using system git
+/// Clone a git repository to a target path using system git.
+/// If access_token is provided, it is injected into HTTPS URLs for private repo access.
 #[tauri::command]
 pub async fn git_clone(
     app: AppHandle,
     repository_url: String,
     target_path: String,
+    access_token: Option<String>,
 ) -> Result<String, String> {
     tokio::task::spawn_blocking(move || {
         emit_git_progress(&app, "clone", "Cloning repository...");
 
+        // Inject token into HTTPS URL for authenticated clones
+        let clone_url = match &access_token {
+            Some(token) if repository_url.starts_with("https://") => {
+                repository_url.replace("https://", &format!("https://x-access-token:{}@", token))
+            }
+            _ => repository_url,
+        };
+
         let output = std::process::Command::new("git")
-            .args(["clone", "--progress", &repository_url, &target_path])
+            .args(["clone", "--progress", &clone_url, &target_path])
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .output()
@@ -1613,4 +1623,86 @@ pub async fn git_create_branch(
     })
     .await
     .map_err(|e| format!("Task join error: {}", e))?
+}
+
+// =============================================================================
+// GitHub OAuth Commands (direct GitHub token for git operations)
+// =============================================================================
+
+/// Start GitHub OAuth flow — returns auth URL to open in browser
+#[tauri::command]
+pub async fn github_start_auth(
+    state: State<'_, crate::provider_commands::ProviderAuthState>,
+) -> Result<solo_auth::OAuthFlowResult, String> {
+    info!("Starting GitHub OAuth flow");
+
+    let (result, oauth_state) =
+        solo_auth::GitHubOAuthConfig::build_auth_url().map_err(|e| e.to_string())?;
+
+    state
+        .oauth_pending
+        .write()
+        .await
+        .insert(oauth_state.state.clone(), oauth_state);
+
+    Ok(result)
+}
+
+/// Complete GitHub OAuth — exchange code for token and store it
+#[tauri::command]
+pub async fn github_complete_auth(
+    code: String,
+    oauth_state: String,
+    state: State<'_, crate::provider_commands::ProviderAuthState>,
+) -> Result<(), String> {
+    info!("Completing GitHub OAuth flow");
+
+    let pending_state = state
+        .oauth_pending
+        .write()
+        .await
+        .remove(&oauth_state)
+        .ok_or_else(|| "GitHub OAuth state not found or expired".to_string())?;
+
+    if pending_state.is_expired() {
+        return Err("GitHub OAuth state has expired".to_string());
+    }
+
+    let token = solo_auth::GitHubOAuthConfig::exchange_code(&code)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    state
+        .credentials
+        .set_github_oauth_token(token)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    info!("GitHub OAuth token stored successfully");
+    Ok(())
+}
+
+/// Get the stored GitHub access token (or null if not connected)
+#[tauri::command]
+pub async fn github_get_token(
+    state: State<'_, crate::provider_commands::ProviderAuthState>,
+) -> Result<Option<String>, String> {
+    state
+        .credentials
+        .get_github_access_token()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Disconnect GitHub — clear stored token
+#[tauri::command]
+pub async fn github_disconnect(
+    state: State<'_, crate::provider_commands::ProviderAuthState>,
+) -> Result<(), String> {
+    info!("Disconnecting GitHub OAuth");
+    state
+        .credentials
+        .clear_github_oauth_token()
+        .await
+        .map_err(|e| e.to_string())
 }

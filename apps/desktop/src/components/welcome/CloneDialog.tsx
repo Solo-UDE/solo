@@ -1,8 +1,9 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { X, FolderOpen, GitBranch, SpinnerGap, Warning } from '@phosphor-icons/react';
+import { X, FolderOpen, GitBranch, GithubLogo, SpinnerGap, Warning } from '@phosphor-icons/react';
 import { openFolderDialog } from '@/lib/tauri/fs';
 import { gitClone } from '@/lib/tauri/git';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
+import { useGitHubAccountsStore } from '@/stores/githubAccountsStore';
 
 /** Extract the repo name from a GitHub URL for use as subfolder name */
 const repoNameFromUrl = (url: string): string => {
@@ -20,13 +21,19 @@ export function CloneDialog({ onClose }: CloneDialogProps) {
   const [destFolder, setDestFolder] = useState('');
   const [cloning, setCloning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [needsAuth, setNeedsAuth] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const switchWorkspace = useWorkspaceStore((s) => s.switchWorkspace);
+  const ghToken = useGitHubAccountsStore((s) => s.token);
+  const connectGitHub = useGitHubAccountsStore((s) => s.connectGitHub);
+  const isConnecting = useGitHubAccountsStore((s) => s.isConnecting);
+  const loadToken = useGitHubAccountsStore((s) => s.loadToken);
 
-  // Focus URL input on mount
+  // Focus URL input on mount + load GitHub token
   useEffect(() => {
     inputRef.current?.focus();
-  }, []);
+    loadToken();
+  }, [loadToken]);
 
   // Close on Escape
   useEffect(() => {
@@ -46,23 +53,44 @@ export function CloneDialog({ onClose }: CloneDialogProps) {
     if (!repoUrl.trim() || !destFolder.trim()) return;
 
     setError(null);
+    setNeedsAuth(false);
     setCloning(true);
 
     try {
-      // Build the full target path: destFolder / repoName
       const repoName = repoNameFromUrl(repoUrl.trim());
       const targetPath = repoName
         ? `${destFolder.replace(/\/$/, '')}/${repoName}`
         : destFolder;
 
-      const clonedPath = await gitClone(repoUrl.trim(), targetPath);
+      // Pass GitHub token for HTTPS URLs (enables private repo cloning)
+      const token = repoUrl.trim().startsWith('https://') ? ghToken ?? undefined : undefined;
+      const clonedPath = await gitClone(repoUrl.trim(), targetPath, token);
       await switchWorkspace(clonedPath);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(msg);
+      // Detect authentication failure — offer to connect GitHub
+      if (
+        !ghToken &&
+        (msg.includes('Authentication') || msg.includes('authentication') ||
+         msg.includes('fatal: could not read') || msg.includes('403') || msg.includes('401'))
+      ) {
+        setNeedsAuth(true);
+      }
       setCloning(false);
     }
-  }, [repoUrl, destFolder, switchWorkspace, onClose]);
+  }, [repoUrl, destFolder, ghToken, switchWorkspace, onClose]);
+
+  const handleConnectAndRetry = useCallback(async () => {
+    try {
+      await connectGitHub();
+      // After connecting, retry the clone automatically
+      handleClone();
+    } catch {
+      // connectGitHub sets its own error state
+    }
+  }, [connectGitHub, handleClone]);
 
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
@@ -141,9 +169,22 @@ export function CloneDialog({ onClose }: CloneDialogProps) {
 
           {/* Error message */}
           {error && (
-            <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-destructive/10 text-destructive text-xs">
-              <Warning className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-              <span>{error}</span>
+            <div className="space-y-2">
+              <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-destructive/10 text-destructive text-xs">
+                <Warning className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                <span>{error}</span>
+              </div>
+              {needsAuth && (
+                <button
+                  type="button"
+                  onClick={handleConnectAndRetry}
+                  disabled={isConnecting}
+                  className="w-full h-8 rounded-lg bg-muted/40 text-xs font-medium text-foreground/80 hover:bg-muted/60 active:scale-[0.97] transition-all duration-150 flex items-center justify-center gap-1.5"
+                >
+                  <GithubLogo className="w-3.5 h-3.5" weight="bold" />
+                  {isConnecting ? 'Connecting...' : 'Sign in with GitHub to clone private repos'}
+                </button>
+              )}
             </div>
           )}
 

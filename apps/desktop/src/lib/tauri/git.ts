@@ -90,6 +90,31 @@ export const gitUnstageAll = () =>
 export const gitCreateBranch = (branchName: string) =>
   invoke<void>('git_create_branch', { branchName });
 
-/** Clone a git repository to a target path */
-export const gitClone = (repositoryUrl: string, targetPath: string) =>
-  invoke<string>('git_clone', { repositoryUrl, targetPath });
+/** Clone a git repository to a target path (pass accessToken for private repos) */
+export const gitClone = (repositoryUrl: string, targetPath: string, accessToken?: string) =>
+  invoke<string>('git_clone', { repositoryUrl, targetPath, accessToken: accessToken ?? null });
+
+// =============================================================================
+// GitHub OAuth (direct GitHub token for git operations)
+// =============================================================================
+
+export interface GitHubOAuthFlowResult {
+  auth_url: string;
+  state: string;
+}
+
+/** Start GitHub OAuth flow — returns auth URL to open in browser */
+export const githubStartAuth = () =>
+  invoke<GitHubOAuthFlowResult>('github_start_auth');
+
+/** Complete GitHub OAuth — exchange code for token */
+export const githubCompleteAuth = (code: string, oauthState: string) =>
+  invoke<void>('github_complete_auth', { code, oauthState });
+
+/** Get stored GitHub access token (null if not connected) */
+export const githubGetToken = () =>
+  invoke<string | null>('github_get_token');
+
+/** Disconnect GitHub — clear stored token */
+export const githubDisconnect = () =>
+  invoke<void>('github_disconnect');

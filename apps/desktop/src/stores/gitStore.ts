@@ -17,6 +17,7 @@ import {
   gitStageAll,
   gitUnstageAll,
   gitCreateBranch,
+  githubGetToken,
 } from '@/lib/tauri/git';
 import { useFileExplorerStore } from '@/stores/fileExplorerStore';
 import type { GitRepoStatus } from '@/bindings/GitRepoStatus';
@@ -51,8 +52,8 @@ interface GitActions {
   fetchRepoStatus: () => Promise<void>;
   fetchChanges: () => Promise<void>;
   commit: (commitMessage: string) => Promise<void>;
-  push: (accessToken: string) => Promise<void>;
-  pull: (accessToken: string, forceReset?: boolean) => Promise<void>;
+  push: () => Promise<void>;
+  pull: (forceReset?: boolean) => Promise<void>;
   discardFile: (filePath: string) => Promise<void>;
   discardAll: () => Promise<void>;
   stageFile: (filePath: string) => Promise<void>;
@@ -142,15 +143,17 @@ export const useGitStore = create<GitState & GitActions>()(
       }
     },
 
-    push: async (accessToken: string) => {
+    push: async () => {
       const { currentBranch, githubRepoUrl } = get();
       if (!githubRepoUrl) return;
+
+      const accessToken = await githubGetToken();
+      if (!accessToken) throw new Error('Not connected to GitHub. Please connect first.');
 
       set((state) => { state.isPushing = true; });
       try {
         await gitPush(accessToken, githubRepoUrl, currentBranch);
         set((state) => { state.isPushing = false; });
-        // Refresh after push
         await get().fetchChanges();
         await get().fetchRepoStatus();
       } catch (err) {
@@ -159,15 +162,17 @@ export const useGitStore = create<GitState & GitActions>()(
       }
     },
 
-    pull: async (accessToken: string, forceReset?: boolean) => {
+    pull: async (forceReset?: boolean) => {
       const { currentBranch, githubRepoUrl } = get();
       if (!githubRepoUrl) return;
+
+      const accessToken = await githubGetToken();
+      if (!accessToken) throw new Error('Not connected to GitHub. Please connect first.');
 
       set((state) => { state.isPulling = true; });
       try {
         await gitPull(accessToken, githubRepoUrl, currentBranch, forceReset ?? false);
         set((state) => { state.isPulling = false; });
-        // Refresh after pull
         await get().fetchChanges();
         await get().fetchRepoStatus();
       } catch (err) {

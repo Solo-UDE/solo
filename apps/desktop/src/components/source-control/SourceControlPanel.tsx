@@ -5,16 +5,20 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import type { FC } from 'react';
 import {
+  ArrowDown,
   ArrowsClockwise,
   ArrowCounterClockwise,
+  ArrowUp,
   CaretDown,
   CaretRight,
   Check,
   GitBranch,
+  GithubLogo,
   Minus,
   Plus,
 } from '@phosphor-icons/react';
 import { useGitStore } from '@/stores/gitStore';
+import { useGitHubAccountsStore } from '@/stores/githubAccountsStore';
 import { usePanelTabsStore } from '@/stores/panelTabsStore';
 import { BUILTIN_PANEL_TYPES } from '@/lib/panels';
 import { FileChangeItem } from './FileChangeItem';
@@ -43,6 +47,9 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
   const changesSummary = useGitStore((s) => s.changesSummary);
   const commitMessage = useGitStore((s) => s.commitMessage);
   const isCommitting = useGitStore((s) => s.isCommitting);
+  const isPushing = useGitStore((s) => s.isPushing);
+  const isPulling = useGitStore((s) => s.isPulling);
+  const commitsAhead = useGitStore((s) => s.commitsAhead);
   const setCommitMessage = useGitStore((s) => s.setCommitMessage);
   const startPolling = useGitStore((s) => s.startPolling);
   const stopPolling = useGitStore((s) => s.stopPolling);
@@ -51,8 +58,12 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
   const stageFile = useGitStore((s) => s.stageFile);
   const unstageFile = useGitStore((s) => s.unstageFile);
   const commit = useGitStore((s) => s.commit);
+  const push = useGitStore((s) => s.push);
+  const pull = useGitStore((s) => s.pull);
   const stageAllFiles = useGitStore((s) => s.stageAllFiles);
   const unstageAllFiles = useGitStore((s) => s.unstageAllFiles);
+  const ghToken = useGitHubAccountsStore((s) => s.token);
+  const connectGitHub = useGitHubAccountsStore((s) => s.connectGitHub);
 
   const openPanel = useMemo(() => usePanelTabsStore.getState().openPanel, []);
 
@@ -90,6 +101,32 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
       toast.error('Commit failed', { description: String(err) });
     }
   }, [commitMessage, stagedFiles.length, commit]);
+
+  // Push
+  const handlePush = useCallback(async () => {
+    if (!ghToken) {
+      try { await connectGitHub(); } catch { return; }
+    }
+    try {
+      await push();
+      toast.success('Pushed to GitHub');
+    } catch (err) {
+      toast.error('Push failed', { description: String(err) });
+    }
+  }, [ghToken, connectGitHub, push]);
+
+  // Pull
+  const handlePull = useCallback(async () => {
+    if (!ghToken) {
+      try { await connectGitHub(); } catch { return; }
+    }
+    try {
+      await pull();
+      toast.success('Pulled from GitHub');
+    } catch (err) {
+      toast.error('Pull failed', { description: String(err) });
+    }
+  }, [ghToken, connectGitHub, pull]);
 
   // Handle Cmd+Enter in commit textarea — triggers commit (not push)
   const handleKeyDown = useCallback(
@@ -241,6 +278,76 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
               {isCommitting ? 'Committing...' : 'Commit'}
             </button>
           </div>
+
+          {/* Push / Pull buttons (shown when remote exists) */}
+          {repoStatus.has_remote && (
+            <div className="flex gap-1.5 px-3 pb-2">
+              <button
+                onClick={handlePull}
+                disabled={isPulling || isPushing}
+                className={cn(
+                  'flex-1 h-[30px] rounded-[10px] text-xs font-medium',
+                  'flex items-center justify-center gap-1.5',
+                  'bg-muted/40 text-foreground',
+                  'hover:bg-muted/60 active:scale-[0.97]',
+                  'disabled:opacity-40 disabled:pointer-events-none',
+                  'transition-[transform,background-color] duration-200',
+                )}
+                title="Pull from remote"
+              >
+                {isPulling ? (
+                  <ArrowsClockwise className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <ArrowDown className="w-3.5 h-3.5" weight="bold" />
+                )}
+                Pull
+              </button>
+              <button
+                onClick={handlePush}
+                disabled={isPushing || isPulling}
+                className={cn(
+                  'flex-1 h-[30px] rounded-[10px] text-xs font-medium',
+                  'flex items-center justify-center gap-1.5',
+                  'bg-muted/40 text-foreground',
+                  'hover:bg-muted/60 active:scale-[0.97]',
+                  'disabled:opacity-40 disabled:pointer-events-none',
+                  'transition-[transform,background-color] duration-200',
+                )}
+                title="Push to remote"
+              >
+                {isPushing ? (
+                  <ArrowsClockwise className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <ArrowUp className="w-3.5 h-3.5" weight="bold" />
+                )}
+                Push
+                {commitsAhead != null && commitsAhead > 0 && (
+                  <span className="px-1 py-0.5 rounded-full text-[10px] font-semibold bg-primary/10 text-primary">
+                    {commitsAhead}
+                  </span>
+                )}
+              </button>
+            </div>
+          )}
+
+          {/* GitHub connect prompt when remote exists but no token */}
+          {repoStatus.has_remote && !ghToken && (
+            <div className="px-3 pb-2">
+              <button
+                onClick={() => connectGitHub()}
+                className={cn(
+                  'w-full h-[30px] rounded-[10px] text-xs font-medium',
+                  'flex items-center justify-center gap-1.5',
+                  'bg-muted/30 text-muted-foreground',
+                  'hover:bg-muted/50 active:scale-[0.97]',
+                  'transition-[transform,background-color] duration-200',
+                )}
+              >
+                <GithubLogo className="w-3.5 h-3.5" weight="bold" />
+                Sign in to push &amp; pull
+              </button>
+            </div>
+          )}
 
           {/* GitHub Setup when no remote */}
           {!repoStatus.has_remote && <GitHubSetup className="px-3 pb-2" />}

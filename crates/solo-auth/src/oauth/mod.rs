@@ -19,5 +19,6 @@ pub use types::{
 pub use pkce::{generate_code_challenge, generate_code_verifier, generate_state};
 pub use callback_server::{start_callback_server, get_callback_url, CallbackError, CallbackResult, CALLBACK_PORT};
 pub use providers::AnthropicOAuthConfig;
+pub use providers::GitHubOAuthConfig;
 pub use providers::OpenAIOAuthConfig;
 pub use providers::{ClaudeCodeOAuthConfig, ClaudeCodeOAuthFlow, ClaudeAiOAuth, ClaudeCodeCredentials};

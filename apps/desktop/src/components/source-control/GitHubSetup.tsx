@@ -1,15 +1,16 @@
 /**
- * GitHubSetup — UI for connecting GitHub, creating repos, and initial setup
+ * GitHubSetup — UI for connecting GitHub, creating repos, and initial setup.
+ *
+ * Uses direct GitHub OAuth (not Supabase) for git operations.
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import type { FC } from 'react';
-import { GithubLogo, Plus, Lock, Globe, CircleNotch } from '@phosphor-icons/react';
+import { GithubLogo, Plus, Lock, Globe, CircleNotch, SignOut } from '@phosphor-icons/react';
 import { useGitStore } from '@/stores/gitStore';
 import { useGitHubAccountsStore } from '@/stores/githubAccountsStore';
 import { createRepo } from '@/lib/github-api';
 import { gitSetup } from '@/lib/tauri/git';
-import { getAccessToken } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 
 interface GitHubSetupProps {
@@ -26,43 +27,48 @@ export const GitHubSetup: FC<GitHubSetupProps> = ({ className }) => {
   const [error, setError] = useState<string | null>(null);
 
   const ghUser = useGitHubAccountsStore((s) => s.user);
-  const fetchUser = useGitHubAccountsStore((s) => s.fetchUser);
+  const ghToken = useGitHubAccountsStore((s) => s.token);
+  const isConnecting = useGitHubAccountsStore((s) => s.isConnecting);
+  const connectGitHub = useGitHubAccountsStore((s) => s.connectGitHub);
+  const disconnectGitHub = useGitHubAccountsStore((s) => s.disconnectGitHub);
+  const loadToken = useGitHubAccountsStore((s) => s.loadToken);
   const setGithubRepoUrl = useGitStore((s) => s.setGithubRepoUrl);
 
-  // Handle connect (fetch user info)
+  // Load stored token on mount
+  useEffect(() => {
+    loadToken();
+  }, [loadToken]);
+
+  // Advance to create-repo step when connected
+  useEffect(() => {
+    if (ghUser && ghToken) {
+      setStep('create-repo');
+    }
+  }, [ghUser, ghToken]);
+
   const handleConnect = useCallback(async () => {
     setError(null);
     try {
-      const token = await getAccessToken();
-      if (!token) {
-        setError('No access token available. Please sign in first.');
-        return;
-      }
-      await fetchUser(token);
-      setStep('create-repo');
-    } catch {
-      setError('Failed to connect to GitHub. Please check your access token.');
+      await connectGitHub();
+    } catch (err) {
+      setError(String(err));
     }
-  }, [fetchUser]);
+  }, [connectGitHub]);
 
-  // Handle repo creation
+  const handleDisconnect = useCallback(async () => {
+    await disconnectGitHub();
+    setStep('connect');
+  }, [disconnectGitHub]);
+
   const handleCreateRepo = useCallback(async () => {
-    if (!ghUser || !repoName.trim()) return;
+    if (!ghUser || !ghToken || !repoName.trim()) return;
     setIsCreating(true);
     setError(null);
 
     try {
-      const token = await getAccessToken();
-      if (!token) {
-        setError('No access token available.');
-        setIsCreating(false);
-        return;
-      }
-
-      const repo = await createRepo(token, repoName.trim(), isPrivate);
+      const repo = await createRepo(ghToken, repoName.trim(), isPrivate);
       const cloneUrl = repo.clone_url;
 
-      // Setup git integration
       await gitSetup(cloneUrl, ghUser.login, `${ghUser.login}@users.noreply.github.com`);
       setGithubRepoUrl(cloneUrl);
 
@@ -71,9 +77,9 @@ export const GitHubSetup: FC<GitHubSetupProps> = ({ className }) => {
       setError(String(err));
       setIsCreating(false);
     }
-  }, [ghUser, repoName, isPrivate, setGithubRepoUrl]);
+  }, [ghUser, ghToken, repoName, isPrivate, setGithubRepoUrl]);
 
-  if (step === 'connect' || !ghUser) {
+  if (step === 'connect' || !ghUser || !ghToken) {
     return (
       <div className={cn('flex flex-col items-center justify-center px-6 py-8', className)}>
         <div
@@ -95,6 +101,7 @@ export const GitHubSetup: FC<GitHubSetupProps> = ({ className }) => {
 
         <button
           onClick={handleConnect}
+          disabled={isConnecting}
           className={cn(
             'h-[34px] px-4 rounded-[10px] text-xs font-medium',
             'flex items-center gap-2',
@@ -104,8 +111,12 @@ export const GitHubSetup: FC<GitHubSetupProps> = ({ className }) => {
             'transition-[transform,background-color,color] duration-200',
           )}
         >
-          <GithubLogo className="w-4 h-4" weight="bold" />
-          Connect GitHub
+          {isConnecting ? (
+            <CircleNotch className="w-4 h-4 animate-spin" />
+          ) : (
+            <GithubLogo className="w-4 h-4" weight="bold" />
+          )}
+          {isConnecting ? 'Connecting...' : 'Sign in with GitHub'}
         </button>
       </div>
     );
@@ -120,10 +131,17 @@ export const GitHubSetup: FC<GitHubSetupProps> = ({ className }) => {
           alt={ghUser.login}
           className="w-7 h-7 rounded-full"
         />
-        <div>
+        <div className="flex-1 min-w-0">
           <p className="text-xs font-medium text-foreground">{ghUser.login}</p>
           <p className="text-[10px] text-muted-foreground/50">Connected</p>
         </div>
+        <button
+          onClick={handleDisconnect}
+          className="p-1.5 rounded-md hover:bg-muted/60 transition-colors"
+          title="Disconnect GitHub"
+        >
+          <SignOut className="w-3.5 h-3.5 text-muted-foreground" />
+        </button>
       </div>
 
       {/* Create repo form */}
