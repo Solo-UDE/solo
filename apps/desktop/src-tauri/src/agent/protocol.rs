@@ -360,7 +360,26 @@ pub enum BridgeEvent {
     ErrorEvent {
         error: SerializableError,
     },
+    DebugEvent {
+        #[serde(rename = "sessionId")]
+        session_id: String,
+        event: DebugEventData,
+    },
     Ready,
+}
+
+/// Structured debug event data from the Node.js bridge
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DebugEventData {
+    pub category: String,
+    pub name: String,
+    pub data: serde_json::Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub correlation_id: Option<String>,
+    pub timestamp: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<f64>,
 }
 
 /// All possible messages from Node.js

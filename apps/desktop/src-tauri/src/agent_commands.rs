@@ -295,6 +295,19 @@ pub fn setup_event_callbacks(app: &AppHandle, session_manager: &Arc<SessionManag
                 }),
             ));
         }
+        BridgeEvent::DebugEvent {
+            session_id,
+            event,
+        } => {
+            tracing::trace!("[agent:emit] debug session={} category={} name={}", session_id, event.category, event.name);
+            drop(app_handle.emit(
+                "agent:debug",
+                serde_json::json!({
+                    "sessionId": session_id,
+                    "event": event,
+                }),
+            ));
+        }
         BridgeEvent::Ready => {
             tracing::debug!("[agent:emit] ready");
             drop(app_handle.emit("agent:ready", ()));

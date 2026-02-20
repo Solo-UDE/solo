@@ -14,7 +14,8 @@
 
 import { useEffect, useRef } from 'react';
 import { useAgentStore } from '../stores/agentStore';
-import { listenToAgentEvents, type AgentEventHandlers } from '../lib/tauri/agent';
+import { useDebugStore } from '../stores/debugStore';
+import { listenToAgentEvents, type AgentEventHandlers, type AgentDebugEvent } from '../lib/tauri/agent';
 import type { BridgeAgentMessage, PermissionRequest } from '../bindings';
 
 interface UseAgentStreamOptions {
@@ -41,6 +42,9 @@ export function useAgentStream(options: UseAgentStreamOptions = {}): void {
 		onAcceptModeChanged: (_sessionId: string, enabled: boolean) => {
 			console.log('[AgentStream] Accept mode changed:', enabled);
 		},
+		onDebugEvent: (event: AgentDebugEvent) => {
+			useDebugStore.getState().addEvent(event);
+		},
 	};
 
 	useEffect(() => {
@@ -65,6 +69,8 @@ export function useAgentStream(options: UseAgentStreamOptions = {}): void {
 				handlersRef.current.onPlanModeChanged?.(sessionId, enabled),
 			onAcceptModeChanged: (sessionId, enabled) =>
 				handlersRef.current.onAcceptModeChanged?.(sessionId, enabled),
+			onDebugEvent: (event) =>
+				handlersRef.current.onDebugEvent?.(event),
 		};
 
 		listenToAgentEvents(proxy)

@@ -1,5 +1,6 @@
 import { useEffect, useCallback, useMemo, useRef, useState } from 'react';
 import { Plus } from '@phosphor-icons/react';
+import { DebugPanel, DebugToggleButton } from './debug/DebugPanel';
 
 import { MessageFeed, TurnProgress } from './messages';
 import { ChatInputContainer } from './input';
@@ -188,13 +189,16 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 				className={`relative flex flex-col h-full bg-background ${className}`}
 				data-instance-id={instanceId}
 			>
-				<button
-					onClick={handleNewSession}
-					className="absolute top-2 right-2 z-10 p-1.5 rounded-lg hover:bg-muted/60 transition-colors duration-150"
-					title="New session"
-				>
-					<Plus className="w-4 h-4 text-muted-foreground" />
-				</button>
+				<div className="absolute top-2 right-2 z-10 flex items-center gap-1">
+					<DebugToggleButton />
+					<button
+						onClick={handleNewSession}
+						className="p-1.5 rounded-lg hover:bg-muted/60 transition-colors duration-150"
+						title="New session"
+					>
+						<Plus className="w-4 h-4 text-muted-foreground" />
+					</button>
+				</div>
 
 				<div className="flex-1 flex items-center justify-center px-6">
 					<SoloEmptyState onPromptClick={handleSuggestedPrompt} />
@@ -210,6 +214,8 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 						</div>
 					</div>
 				)}
+
+				<DebugPanel />
 
 				<ChatInputContainer
 					onSubmit={handleSubmit}
@@ -231,13 +237,16 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 			className={`relative flex flex-col h-full bg-background ${className}`}
 			data-instance-id={instanceId}
 		>
-			<button
-				onClick={handleNewSession}
-				className="absolute top-2 right-2 z-10 p-1.5 rounded-lg hover:bg-muted/60 transition-colors duration-150"
-				title="New session"
-			>
-				<Plus className="w-4 h-4 text-muted-foreground" />
-			</button>
+			<div className="absolute top-2 right-2 z-10 flex items-center gap-1">
+				<DebugToggleButton />
+				<button
+					onClick={handleNewSession}
+					className="p-1.5 rounded-lg hover:bg-muted/60 transition-colors duration-150"
+					title="New session"
+				>
+					<Plus className="w-4 h-4 text-muted-foreground" />
+				</button>
+			</div>
 
 			<MessageFeed
 				messageGroups={messageGroups}
@@ -261,6 +270,8 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 					</div>
 				</div>
 			)}
+
+			<DebugPanel />
 
 			<ChatInputContainer
 				onSubmit={handleSubmit}

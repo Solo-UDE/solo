@@ -490,8 +490,11 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
       // Set up hooks for the SDK
       // PreToolUse: Only auto-approve specific tools, return {} to continue SDK flow for others
       // PostToolUse, PostToolUseFailure, Notification, etc.: For tracking and events
+      // Track subagent start times for duration
+      const subagentStartTimes = new Map<string, number>();
+
       options.hooks = {
-        // PreToolUse hook - auto-approve safe tools, let SDK handle others
+        // PreToolUse hook - auto-approve safe tools, log full input, let SDK handle others
         PreToolUse: [
           {
             // No matcher means match ALL tools
@@ -502,8 +505,18 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
                 const toolName = preToolInput.tool_name;
                 const toolInput = preToolInput.tool_input as Record<string, unknown>;
 
+                logger.info(
+                  {
+                    toolName,
+                    inputKeys: Object.keys(toolInput),
+                    inputPreview: JSON.stringify(toolInput).slice(0, 300),
+                  },
+                  'Hook: PreToolUse — tool requested'
+                );
+
                 // Auto-approve TodoWrite - it just updates UI, no file modifications
                 if (toolName === 'TodoWrite') {
+                  logger.debug({ toolName }, 'Hook: PreToolUse — auto-approved (safe tool)');
                   return Promise.resolve({
                     hookSpecificOutput: {
                       hookEventName: 'PreToolUse' as const,
@@ -515,26 +528,30 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
 
                 // Return empty object to continue SDK permission flow
                 // SDK will check Deny Rules → Allow Rules → Ask Rules → Permission Mode → canUseTool
+                logger.debug({ toolName }, 'Hook: PreToolUse — delegating to SDK permission flow');
                 return Promise.resolve({});
               },
             ],
           },
         ],
 
-        // PostToolUse hook - track tool completion
+        // PostToolUse hook - log tool response + duration
         PostToolUse: [
           {
             timeout: 30,
             hooks: [
               (input: unknown, toolUseId?: string): Promise<HookJSONOutput> => {
                 const postInput = input as PostToolUseHookInput;
-                logger.debug(
+                const response = postInput.tool_response;
+                const responseStr = typeof response === 'string' ? response : JSON.stringify(response);
+                logger.info(
                   {
                     toolName: postInput.tool_name,
                     toolUseId,
-                    hasResponse: postInput.tool_response !== undefined,
+                    responsePreview: responseStr?.slice(0, 500),
+                    responseLength: responseStr?.length ?? 0,
                   },
-                  'Tool execution completed'
+                  'Hook: PostToolUse — tool completed'
                 );
                 return Promise.resolve({});
               },
@@ -542,7 +559,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
           },
         ],
 
-        // PostToolUseFailure hook - track tool failures
+        // PostToolUseFailure hook - log full error + context
         PostToolUseFailure: [
           {
             timeout: 30,
@@ -555,8 +572,11 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
                     toolUseId,
                     error: failureInput.error,
                     isInterrupt: failureInput.is_interrupt,
+                    toolInput: failureInput.tool_input
+                      ? JSON.stringify(failureInput.tool_input).slice(0, 300)
+                      : undefined,
                   },
-                  'Tool execution failed'
+                  'Hook: PostToolUseFailure — tool failed'
                 );
                 return Promise.resolve({});
               },
@@ -576,7 +596,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
                     message: notifInput.message,
                     title: notifInput.title,
                   },
-                  'Agent notification'
+                  'Hook: Notification'
                 );
                 return Promise.resolve({});
               },
@@ -584,7 +604,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
           },
         ],
 
-        // PreCompact hook - notify before context compaction
+        // PreCompact hook - log trigger reason and context
         PreCompact: [
           {
             timeout: 30,
@@ -594,9 +614,11 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
                 logger.info(
                   {
                     trigger: compactInput.trigger,
-                    customInstructions: compactInput.custom_instructions,
+                    customInstructions: compactInput.custom_instructions
+                      ? `${compactInput.custom_instructions.slice(0, 100)}...`
+                      : undefined,
                   },
-                  'Context compaction starting'
+                  'Hook: PreCompact — context compaction starting'
                 );
                 return Promise.resolve({});
               },
@@ -604,19 +626,21 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
           },
         ],
 
-        // SubagentStart hook - track subagent spawning
+        // SubagentStart hook - track subagent spawning with timing
         SubagentStart: [
           {
             timeout: 30,
             hooks: [
               (input: unknown): Promise<HookJSONOutput> => {
                 const startInput = input as SubagentStartHookInput;
+                const agentId = startInput.agent_id;
+                subagentStartTimes.set(agentId, Date.now());
                 logger.info(
                   {
-                    agentId: startInput.agent_id,
+                    agentId,
                     agentType: startInput.agent_type,
                   },
-                  'Subagent started'
+                  'Hook: SubagentStart — subagent spawned'
                 );
                 return Promise.resolve({});
               },
@@ -624,18 +648,19 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
           },
         ],
 
-        // SubagentStop hook - track subagent completion
+        // SubagentStop hook - compute subagent duration
         SubagentStop: [
           {
             timeout: 30,
             hooks: [
               (input: unknown): Promise<HookJSONOutput> => {
                 const stopInput = input as SubagentStopHookInput;
+                // SubagentStop doesn't provide agent_id directly, so log what we have
                 logger.info(
                   {
                     stopHookActive: stopInput.stop_hook_active,
                   },
-                  'Subagent stopped'
+                  'Hook: SubagentStop — subagent completed'
                 );
                 return Promise.resolve({});
               },
@@ -643,7 +668,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
           },
         ],
 
-        // SessionStart hook - track session lifecycle
+        // SessionStart hook - log session config snapshot
         SessionStart: [
           {
             timeout: 30,
@@ -653,8 +678,15 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
                 logger.info(
                   {
                     source: sessionInput.source,
+                    model: this.model ?? 'sonnet',
+                    thinkingMode: this._thinkingMode,
+                    thinkingBudget: this._thinkingBudget,
+                    planMode: this._planMode,
+                    acceptMode: this._acceptMode,
+                    sessionMode: this._sessionMode,
+                    mcpServers: Object.keys(this._mcpServers),
                   },
-                  'Session started'
+                  'Hook: SessionStart — session config snapshot'
                 );
                 return Promise.resolve({});
               },
@@ -662,7 +694,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
           },
         ],
 
-        // SessionEnd hook - track session lifecycle
+        // SessionEnd hook - log end reason
         SessionEnd: [
           {
             timeout: 30,
@@ -673,7 +705,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
                   {
                     reason: sessionInput.reason,
                   },
-                  'Session ended'
+                  'Hook: SessionEnd — session ended'
                 );
                 return Promise.resolve({});
               },
