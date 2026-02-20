@@ -417,10 +417,13 @@ fn read_loop(
         error!(id = %id, error = %e, "Failed to emit terminal exit");
     }
 
-    // Remove the dead terminal from the shared map to free resources
+    // Remove the dead terminal from the shared map to free resources.
+    // May already be removed by kill_pty — that's expected.
     if let Ok(mut map) = terminals.write() {
         if map.remove(id).is_some() {
             debug!(id = %id, "Cleaned up PTY from state after exit");
+        } else {
+            debug!(id = %id, "PTY already removed from state (killed externally)");
         }
     }
 }
@@ -473,6 +476,8 @@ pub fn write_pty(id: String, data: String, state: State<'_, TerminalState>) -> R
     writer
         .write_all(data.as_bytes())
         .map_err(|e| format!("Write failed: {e}"))?;
+
+    writer.flush().map_err(|e| format!("Flush failed: {e}"))?;
 
     Ok(())
 }
