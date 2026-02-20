@@ -148,10 +148,27 @@ function AppContent() {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ctrl/Cmd+` — toggle terminal
-      if (e.key === '`' && (e.ctrlKey || e.metaKey)) {
+      // Cmd+J — toggle terminal
+      if (e.key === 'j' && e.metaKey && !e.shiftKey && !e.ctrlKey) {
         e.preventDefault();
         handleToggleTerminal();
+        return;
+      }
+
+      // Ctrl+Shift+` — new terminal session
+      // Use e.code because Shift+` produces '~' as e.key
+      if (e.code === 'Backquote' && e.ctrlKey && e.shiftKey) {
+        e.preventDefault();
+        const cwd = useFileExplorerStore.getState().rootPath ?? undefined;
+        // Open terminal panel if closed, then create new terminal
+        if (!useUIStore.getState().terminalPanelOpen) {
+          useUIStore.getState().toggleTerminalPanel();
+        }
+        createTerminal(cwd)
+          .then(({ id, shell }) => {
+            useTerminalStore.getState().addTerminal(id, cwd, shell);
+          })
+          .catch((err) => console.error('Failed to create terminal:', err));
         return;
       }
       // Cmd+, — toggle settings
@@ -351,7 +368,7 @@ function AppContent() {
                 'p-1 rounded-lg hover:bg-foreground/[0.06] transition-[background-color,color] duration-150',
                 terminalPanelOpen && 'glow-active',
               )}
-              title="Toggle Terminal (⌘`)"
+              title="Toggle Terminal (⌘J)"
             >
               <Terminal className={cn('w-4 h-4', terminalPanelOpen ? 'text-primary' : 'text-muted-foreground')} />
             </button>
