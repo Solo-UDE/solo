@@ -112,52 +112,110 @@
   --color-syntax-operator: var(--syntax-operator);
   --color-syntax-bracket: var(--syntax-bracket);
 
+  /* ── Gray Scale (Radix-style 1-12) ── */
+  --color-gray-1: var(--gray-1);
+  --color-gray-2: var(--gray-2);
+  --color-gray-3: var(--gray-3);
+  --color-gray-4: var(--gray-4);
+  --color-gray-5: var(--gray-5);
+  --color-gray-6: var(--gray-6);
+  --color-gray-7: var(--gray-7);
+  --color-gray-8: var(--gray-8);
+  --color-gray-9: var(--gray-9);
+  --color-gray-10: var(--gray-10);
+  --color-gray-11: var(--gray-11);
+  --color-gray-12: var(--gray-12);
+
+  /* Gray Alpha Scale */
+  --color-gray-a1: var(--gray-a1);
+  --color-gray-a2: var(--gray-a2);
+  --color-gray-a3: var(--gray-a3);
+  --color-gray-a4: var(--gray-a4);
+  --color-gray-a5: var(--gray-a5);
+  --color-gray-a6: var(--gray-a6);
+  --color-gray-a7: var(--gray-a7);
+  --color-gray-a8: var(--gray-a8);
+  --color-gray-a9: var(--gray-a9);
+  --color-gray-a10: var(--gray-a10);
+  --color-gray-a11: var(--gray-a11);
+  --color-gray-a12: var(--gray-a12);
+
+  /* Gray Utility Tokens */
+  --color-gray-contrast: var(--gray-contrast);
+  --color-gray-surface: var(--gray-surface);
+  --color-gray-indicator: var(--gray-indicator);
+  --color-gray-track: var(--gray-track);
 }
 
 /* =============================================================================
    LIGHT MODE (default)
    ============================================================================= */
 :root {
-  /* Enable system color scheme for proper scrollbar colors */
   color-scheme: light dark;
-
   --radius: 0.625rem;
 
-  /* Base */
-  --background: oklch(0.98 0.005 75);
-  --foreground: oklch(0.25 0.02 60);
+  /* ── Warm Gray Scale (Light) ─────────────────────────── */
+  --gray-1: oklch(0.972 0.0017 67.76);   /* #f7f6f5 */
+  --gray-2: oklch(0.960 0.0023 67.76);   /* #f3f2f0 */
+  --gray-3: oklch(0.932 0.0035 67.76);   /* #eae8e6 */
+  --gray-4: oklch(0.906 0.0052 67.76);   /* #e2dfdc */
+  --gray-5: oklch(0.883 0.0059 67.76);   /* #dbd8d4 */
+  --gray-6: oklch(0.858 0.0076 67.76);   /* #d4cfcb */
+  --gray-7: oklch(0.823 0.0078 67.76);   /* #c9c4c0 */
+  --gray-8: oklch(0.762 0.0078 67.76);   /* #b5b1ad */
+  --gray-9: oklch(0.613 0.0078 67.76);   /* #87837f */
+  --gray-10: oklch(0.578 0.0078 67.76);  /* #7d7975 */
+  --gray-11: oklch(0.474 0.0078 67.76);  /* #5f5b57 */
+  --gray-12: oklch(0.243 0.0078 67.76);  /* #231f1c */
 
-  /* Card */
-  --card: oklch(0.96 0.008 70);
-  --card-foreground: oklch(0.25 0.02 60);
+  /* Alpha variants (Light) */
+  --gray-a1: #3b3ab704;
+  --gray-a2: #1b1a3708;
+  --gray-a3: #18091412;
+  --gray-a4: #1704011b;
+  --gray-a5: #1f100624;
+  --gray-a6: #230b022d;
+  --gray-a7: #1b080138;
+  --gray-a8: #1308014c;
+  --gray-a9: #0e07027c;
+  --gray-a10: #0c060086;
+  --gray-a11: #0b0500a5;
+  --gray-a12: #080300e2;
 
-  /* Popover */
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.25 0.02 60);
+  /* Utility tokens (Light) */
+  --gray-contrast: #FFFFFF;
+  --gray-surface: #ffffffcc;
+  --gray-indicator: oklch(0.613 0.0078 67.76);
+  --gray-track: oklch(0.613 0.0078 67.76);
 
-  /* Primary (Solo Green) */
+  /* ── Semantic Tokens (remapped to gray scale) ────────── */
+  --background: var(--gray-1);
+  --foreground: var(--gray-12);
+  --card: var(--gray-2);
+  --card-foreground: var(--gray-12);
+  --popover: #fff;
+  --popover-foreground: var(--gray-12);
+  --secondary: var(--gray-4);
+  --secondary-foreground: var(--gray-12);
+  --muted: var(--gray-3);
+  --muted-foreground: var(--gray-11);
+  --accent: var(--gray-4);
+  --accent-foreground: var(--gray-12);
+  --border: var(--gray-6);
+  --input: var(--gray-4);
+  --sidebar: var(--gray-1);
+  --sidebar-foreground: var(--gray-12);
+  --sidebar-border: var(--gray-3);
+  --agent-assistant-bg: var(--gray-2);
+  --agent-tool-bg: var(--gray-3);
+
+  /* ── Unchanged tokens ── */
   --primary: oklch(0.68 0.17 140);
   --primary-foreground: oklch(0.98 0.01 75);
-
-  /* Secondary */
-  --secondary: oklch(0.80 0.05 65);
-  --secondary-foreground: oklch(0.30 0.02 60);
-
-  /* Muted */
-  --muted: oklch(0.92 0.01 70);
-  --muted-foreground: oklch(0.50 0.03 60);
-
-  /* Accent */
-  --accent: oklch(0.85 0.04 65);
-  --accent-foreground: oklch(0.25 0.02 60);
-
-  /* Destructive */
   --destructive: oklch(0.55 0.22 25);
-
-  /* Borders & Input */
-  --border: oklch(0.88 0.02 70);
-  --input: oklch(0.90 0.015 70);
   --ring: oklch(0.68 0.17 140);
+  --agent-user-bg: oklch(0.95 0.02 140 / 10%);
+  --agent-streaming: oklch(0.68 0.17 140);
 
   /* Semantic status colors */
   --status-success: oklch(0.65 0.18 155);
@@ -186,17 +244,6 @@
   --file-text: oklch(0.50 0.03 60);
   --file-image: oklch(0.65 0.18 300);
 
-  /* Sidebar */
-  --sidebar: oklch(0.98 0.005 75);
-  --sidebar-foreground: oklch(0.25 0.02 60);
-  --sidebar-border: oklch(0.92 0.01 70);
-
-  /* Agent-specific */
-  --agent-user-bg: oklch(0.95 0.02 140 / 10%);
-  --agent-assistant-bg: oklch(0.96 0.008 70);
-  --agent-tool-bg: oklch(0.94 0.01 70);
-  --agent-streaming: oklch(0.68 0.17 140);
-
   /* Syntax highlighting tokens (light mode) */
   --syntax-keyword: oklch(0.5 0.15 240);
   --syntax-string: oklch(0.55 0.15 35);
@@ -208,63 +255,99 @@
   --syntax-control: oklch(0.55 0.15 320);
   --syntax-operator: oklch(0.35 0.02 60);
   --syntax-bracket: oklch(0.6 0.15 85);
+}
 
+/* P3 wide-gamut alpha upgrades (Light) */
+@supports (color: color(display-p3 1 1 1)) {
+  @media (color-gamut: p3) {
+    :root {
+      --gray-a1: color(display-p3 0.0784 0.0745 0.6667 / 0.013);
+      --gray-a2: color(display-p3 0.0353 0.0314 0.1569 / 0.029);
+      --gray-a3: color(display-p3 0.0745 0.0118 0.0588 / 0.069);
+      --gray-a4: color(display-p3 0.0549 0.0157 0.0039 / 0.106);
+      --gray-a5: color(display-p3 0.0784 0.0471 0.0078 / 0.139);
+      --gray-a6: color(display-p3 0.1098 0.0392 0.0039 / 0.175);
+      --gray-a7: color(display-p3 0.0902 0.0353 0.0039 / 0.22);
+      --gray-a8: color(display-p3 0.0588 0.0275 0.0039 / 0.297);
+      --gray-a9: color(display-p3 0.0431 0.0235 0.0039 / 0.484);
+      --gray-a10: color(display-p3 0.0392 0.0235 0 / 0.525);
+      --gray-a11: color(display-p3 0.0353 0.0196 0 / 0.647);
+      --gray-a12: color(display-p3 0.0275 0.0118 0 / 0.887);
+      --gray-surface: color(display-p3 1 1 1 / 80%);
+      --gray-indicator: oklch(0.613 0.0078 67.76);
+      --gray-track: oklch(0.613 0.0078 67.76);
+    }
+  }
 }
 
 /* =============================================================================
    DARK MODE
    ============================================================================= */
 html.dark {
-  /* Force dark color scheme for scrollbars */
   color-scheme: dark;
 
-  /* Base - warm dark, not pure black */
-  --background: oklch(0.16 0.012 60);
-  --foreground: oklch(0.93 0.01 75);
+  /* ── Warm Gray Scale (Dark) ──────────────────────────── */
+  --gray-1: oklch(0.259 0.0026 67.61);   /* #252322 */
+  --gray-2: oklch(0.287 0.0025 67.61);   /* #2b2a29 */
+  --gray-3: oklch(0.319 0.0036 67.61);   /* #343231 */
+  --gray-4: oklch(0.342 0.0041 67.61);   /* #3a3836 */
+  --gray-5: oklch(0.364 0.0051 67.61);   /* #403e3b */
+  --gray-6: oklch(0.393 0.0066 67.61);   /* #484542 */
+  --gray-7: oklch(0.438 0.0081 67.61);   /* #55514d */
+  --gray-8: oklch(0.520 0.0099 67.61);   /* #6d6863 */
+  --gray-9: oklch(0.557 0.0099 67.61);   /* #78736d */
+  --gray-10: oklch(0.596 0.0099 67.61);  /* #837e79 */
+  --gray-11: oklch(0.774 0.0099 67.61);  /* #bab4af */
+  --gray-12: oklch(0.948 0.003 67.61);   /* #efedec */
 
-  /* Syntax highlighting tokens */
-  --syntax-keyword: oklch(0.7 0.12 240);
-  --syntax-string: oklch(0.75 0.12 40);
-  --syntax-type: oklch(0.75 0.15 175);
-  --syntax-function: oklch(0.85 0.1 90);
-  --syntax-variable: oklch(0.8 0.08 220);
-  --syntax-comment: oklch(0.55 0.1 140);
-  --syntax-number: oklch(0.8 0.1 130);
-  --syntax-control: oklch(0.75 0.12 320);
-  --syntax-operator: oklch(0.85 0.02 60);
-  --syntax-bracket: oklch(0.85 0.15 85);
+  /* Alpha variants (Dark) */
+  --gray-a1: #0023a102;
+  --gray-a2: #a5d6ed0a;
+  --gray-a3: #e2edf813;
+  --gray-a4: #f2f9f819;
+  --gray-a5: #f6fbf120;
+  --gray-a6: #fffbf428;
+  --gray-a7: #fcf5ea38;
+  --gray-a8: #fef5ea54;
+  --gray-a9: #fdf5e961;
+  --gray-a10: #fdf6ed6e;
+  --gray-a11: #fff8f2ae;
+  --gray-a12: #fefdfced;
 
-  /* Card - slightly elevated */
-  --card: oklch(0.20 0.015 58);
-  --card-foreground: oklch(0.93 0.01 75);
+  /* Utility tokens (Dark) */
+  --gray-contrast: #FFFFFF;
+  --gray-surface: rgba(0, 0, 0, 0.05);
+  --gray-indicator: oklch(0.557 0.0099 67.61);
+  --gray-track: oklch(0.557 0.0099 67.61);
 
-  /* Popover */
-  --popover: oklch(0.22 0.015 58);
-  --popover-foreground: oklch(0.93 0.01 75);
+  /* ── Semantic Tokens (remapped to gray scale) ────────── */
+  --background: var(--gray-1);
+  --foreground: var(--gray-12);
+  --card: var(--gray-2);
+  --card-foreground: var(--gray-12);
+  --popover: var(--gray-3);
+  --popover-foreground: var(--gray-12);
+  --secondary: var(--gray-3);
+  --secondary-foreground: var(--gray-12);
+  --muted: var(--gray-3);
+  --muted-foreground: var(--gray-11);
+  --accent: var(--gray-4);
+  --accent-foreground: var(--gray-12);
+  --border: var(--gray-6);
+  --input: var(--gray-5);
+  --sidebar: var(--gray-2);
+  --sidebar-foreground: var(--gray-12);
+  --sidebar-border: var(--gray-4);
+  --agent-assistant-bg: var(--gray-3);
+  --agent-tool-bg: var(--gray-3);
 
-  /* Primary (Solo Mint) - soft neon green for dark */
+  /* ── Unchanged tokens ── */
   --primary: oklch(0.86 0.14 135);
   --primary-foreground: oklch(0.15 0.01 60);
-
-  /* Secondary */
-  --secondary: oklch(0.28 0.02 58);
-  --secondary-foreground: oklch(0.90 0.01 75);
-
-  /* Muted */
-  --muted: oklch(0.25 0.015 58);
-  --muted-foreground: oklch(0.65 0.03 60);
-
-  /* Accent */
-  --accent: oklch(0.30 0.02 55);
-  --accent-foreground: oklch(0.93 0.01 75);
-
-  /* Destructive */
   --destructive: oklch(0.65 0.20 25);
-
-  /* Borders & Input - subtle white overlay */
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 12%);
   --ring: oklch(0.86 0.14 135);
+  --agent-user-bg: oklch(0.86 0.14 135 / 10%);
+  --agent-streaming: oklch(0.86 0.14 135);
 
   /* Semantic status colors (dark mode) */
   --status-success: oklch(0.70 0.18 155);
@@ -293,16 +376,40 @@ html.dark {
   --file-text: oklch(0.65 0.03 60);
   --file-image: oklch(0.60 0.18 300);
 
-  /* Sidebar - warm dark */
-  --sidebar: oklch(0.18 0.012 58);
-  --sidebar-foreground: oklch(0.93 0.01 75);
-  --sidebar-border: oklch(1 0 0 / 10%);
+  /* Syntax highlighting tokens (dark mode) */
+  --syntax-keyword: oklch(0.7 0.12 240);
+  --syntax-string: oklch(0.75 0.12 40);
+  --syntax-type: oklch(0.75 0.15 175);
+  --syntax-function: oklch(0.85 0.1 90);
+  --syntax-variable: oklch(0.8 0.08 220);
+  --syntax-comment: oklch(0.55 0.1 140);
+  --syntax-number: oklch(0.8 0.1 130);
+  --syntax-control: oklch(0.75 0.12 320);
+  --syntax-operator: oklch(0.85 0.02 60);
+  --syntax-bracket: oklch(0.85 0.15 85);
+}
 
-  /* Agent-specific (dark mode) */
-  --agent-user-bg: oklch(0.86 0.14 135 / 10%);
-  --agent-assistant-bg: oklch(0.22 0.015 58);
-  --agent-tool-bg: oklch(0.25 0.015 58);
-  --agent-streaming: oklch(0.86 0.14 135);
+/* P3 wide-gamut alpha upgrades (Dark) */
+@supports (color: color(display-p3 1 1 1)) {
+  @media (color-gamut: p3) {
+    html.dark {
+      --gray-a1: color(display-p3 0.149 0.1373 0.9137 / 0.005);
+      --gray-a2: color(display-p3 0.7843 0.8824 0.9804 / 0.037);
+      --gray-a3: color(display-p3 0.9255 0.9569 1 / 0.073);
+      --gray-a4: color(display-p3 0.9608 0.9882 0.9804 / 0.098);
+      --gray-a5: color(display-p3 0.9804 0.9922 0.9608 / 0.127);
+      --gray-a6: color(display-p3 1 0.9882 0.9608 / 0.156);
+      --gray-a7: color(display-p3 0.9961 0.9725 0.9333 / 0.218);
+      --gray-a8: color(display-p3 1 0.9686 0.9294 / 0.328);
+      --gray-a9: color(display-p3 0.9961 0.9647 0.9255 / 0.379);
+      --gray-a10: color(display-p3 1 0.9725 0.9412 / 0.43);
+      --gray-a11: color(display-p3 1 0.9765 0.9529 / 0.681);
+      --gray-a12: color(display-p3 1 0.9882 0.9882 / 0.927);
+      --gray-surface: color(display-p3 0 0 0 / 5%);
+      --gray-indicator: oklch(0.557 0.0099 67.61);
+      --gray-track: oklch(0.557 0.0099 67.61);
+    }
+  }
 }
 
 /* =============================================================================
@@ -335,9 +442,9 @@ html.dark {
    transparent so the NSVisualEffectView shows through. The data-vibrancy
    attribute is set from the Rust setup closure on macOS. */
 html[data-vibrancy] {
-  --sidebar: oklch(0.98 0.005 75);
-  --popover: oklch(1 0 0);
-  --card: oklch(0.96 0.008 70 / 85%);
+  --sidebar: var(--gray-1);
+  --popover: #fff;
+  --card: color-mix(in oklch, var(--gray-2) 85%, transparent);
   background-color: transparent !important;
 }
 
@@ -346,7 +453,7 @@ html[data-vibrancy] #root > div {
 }
 
 html[data-vibrancy] .titlebar-glass {
-  background: oklch(0.98 0.005 75);
+  background: var(--gray-1);
 }
 
 html[data-vibrancy] .split-divider {
@@ -356,14 +463,14 @@ html[data-vibrancy] .split-divider {
 /* Dark mode + vibrancy: semi-transparent dark backgrounds
    prevent light system vibrancy from bleeding through */
 html.dark[data-vibrancy] {
-  --sidebar: oklch(0.18 0.012 58 / 85%);
-  --popover: oklch(0.22 0.015 58);
-  --card: oklch(0.20 0.015 58 / 70%);
-  background-color: oklch(0.16 0.012 60 / 90%) !important;
+  --sidebar: color-mix(in oklch, var(--gray-2) 85%, transparent);
+  --popover: var(--gray-3);
+  --card: color-mix(in oklch, var(--gray-2) 70%, transparent);
+  background-color: color-mix(in oklch, var(--gray-1) 90%, transparent) !important;
 }
 
 html.dark[data-vibrancy] #root > div {
-  background: oklch(0.16 0.012 60 / 85%);
+  background: color-mix(in oklch, var(--gray-1) 85%, transparent);
 }
 
 html.dark[data-vibrancy] .titlebar-glass {
@@ -447,14 +554,14 @@ button,
 }
 
 ::-webkit-scrollbar-thumb {
-  background: oklch(0.55 0.02 60 / 50%);
+  background: color-mix(in oklch, var(--gray-9) 50%, transparent);
   border-radius: 4px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: oklch(0.55 0.02 60 / 70%);
+  background: color-mix(in oklch, var(--gray-9) 70%, transparent);
   background-clip: padding-box;
 }
 
@@ -464,12 +571,12 @@ button,
 
 /* Dark mode scrollbar */
 html.dark ::-webkit-scrollbar-thumb {
-  background: oklch(0.65 0.02 60 / 40%);
+  background: color-mix(in oklch, var(--gray-9) 40%, transparent);
   background-clip: padding-box;
 }
 
 html.dark ::-webkit-scrollbar-thumb:hover {
-  background: oklch(0.65 0.02 60 / 60%);
+  background: color-mix(in oklch, var(--gray-9) 60%, transparent);
   background-clip: padding-box;
 }
 
