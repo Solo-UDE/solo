@@ -5,6 +5,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { FolderOpen, CaretDown, Plus, X, FolderSimple, Clock } from '@phosphor-icons/react';
+import { toast } from 'sonner';
 import { useFileExplorerStore } from '@/stores/fileExplorerStore';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
 import { openFolderDialog } from '@/lib/tauri/fs';
@@ -64,12 +65,14 @@ export function WorkspaceSwitcher() {
     const path = await openFolderDialog();
     if (path) {
       await switchWorkspace(path);
+      toast.success(`Opened ${dirName(path)}`);
     }
   }, [switchWorkspace]);
 
   const handleSwitchTo = useCallback(async (path: string) => {
     setOpen(false);
     await switchWorkspace(path);
+    toast.success(`Opened ${dirName(path)}`);
   }, [switchWorkspace]);
 
   const handleRemoveRecent = useCallback((e: React.MouseEvent, path: string) => {

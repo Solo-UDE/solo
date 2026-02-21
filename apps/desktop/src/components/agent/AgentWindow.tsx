@@ -248,9 +248,10 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 				<button
 					onClick={handleNewSession}
 					className="p-1.5 rounded-lg hover:bg-muted/60 transition-colors duration-150"
+					aria-label="New session"
 					title="New session"
 				>
-					<Plus className="w-4 h-4 text-muted-foreground" />
+					<Plus className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
 				</button>
 			</div>
 
@@ -267,20 +268,20 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 			)}
 
 			{connectionState === 'resuming' && (
-				<div className="px-4 py-2 flex items-center gap-2 text-sm text-muted-foreground bg-muted/20">
-					<span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+				<div className="px-4 py-2 flex items-center gap-2 text-sm text-muted-foreground bg-muted/20" role="status" aria-live="polite">
+					<span className="w-2 h-2 rounded-full bg-primary animate-pulse" aria-hidden="true" />
 					Reconnecting session...
 				</div>
 			)}
 
 			{connectionState === 'stale' && (
-				<div className="px-4 py-2 text-sm text-amber-500 bg-amber-500/5">
+				<div className="px-4 py-2 text-sm text-warning bg-warning/5" role="alert">
 					Session expired. Your next message will start a fresh context.
 				</div>
 			)}
 
 			{error && (
-				<div className="px-4 py-2 bg-destructive/10 border-t border-destructive/20">
+				<div className="px-4 py-2 bg-destructive/10 border-t border-destructive/20" role="alert">
 					<div className="flex items-center justify-between">
 						<span className="text-sm text-destructive">{error}</span>
 						<button onClick={clearError} className="text-xs text-destructive hover:underline">

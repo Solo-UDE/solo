@@ -121,13 +121,8 @@ export const useGitHubAccountsStore = create<GitHubAccountsState & GitHubAccount
           window.open(auth_url, '_blank');
         }
 
-        // 3. Wait for the callback server to receive the code
-        const [code, returnedState] = await invoke<[string, string]>('wait_for_oauth_callback');
-
-        // 4. Verify state matches (CSRF protection)
-        if (returnedState !== oauthState) {
-          throw new Error('OAuth state mismatch — possible CSRF attack');
-        }
+        // 3. Wait for the callback server to receive the code (backend validates state)
+        const [code] = await invoke<[string, string]>('wait_for_oauth_callback', { expectedState: oauthState });
 
         // 5. Exchange code for token (stored in keychain by backend)
         await githubCompleteAuth(code, oauthState);

@@ -3,18 +3,19 @@
  */
 
 import { useMemo, type FC } from 'react';
+import { Timer } from '@phosphor-icons/react';
 import { useDebugStore, type ToolTimelineEntry } from '../../../stores/debugStore';
 
 const STATUS_COLORS: Record<string, string> = {
-	running: 'bg-blue-500/60',
-	success: 'bg-emerald-500/60',
-	error: 'bg-rose-500/60',
+	running: 'bg-info/60',
+	success: 'bg-success/60',
+	error: 'bg-destructive/60',
 };
 
 const STATUS_TEXT: Record<string, string> = {
-	running: 'text-blue-400',
-	success: 'text-emerald-400',
-	error: 'text-rose-400',
+	running: 'text-info',
+	success: 'text-success',
+	error: 'text-destructive',
 };
 
 const ToolBar: FC<{ entry: ToolTimelineEntry; maxDuration: number }> = ({ entry, maxDuration }) => {
@@ -63,8 +64,9 @@ export const ToolTimeline: FC = () => {
 					<ToolBar key={`${entry.toolId}-${i}`} entry={entry} maxDuration={maxDuration} />
 				))}
 				{reversed.length === 0 && (
-					<div className="flex items-center justify-center h-20 text-xs text-muted-foreground/50">
-						No tool calls yet.
+					<div className="flex flex-col items-center justify-center h-20 gap-1">
+						<Timer className="w-4 h-4 text-muted-foreground/30" />
+						<span className="text-xs text-muted-foreground/50">No tool calls yet</span>
 					</div>
 				)}
 			</div>

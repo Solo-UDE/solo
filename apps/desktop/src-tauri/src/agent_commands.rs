@@ -15,6 +15,8 @@ use crate::agent::{
     SessionManager,
 };
 use crate::fs_commands::FsState;
+use crate::provider_commands::ProviderAuthState;
+use solo_auth::provider::ProviderType;
 use git2::{DiffOptions, Repository};
 
 /// Result type for agent commands
@@ -222,7 +224,15 @@ pub async fn agent_set_tool_policy(
 pub async fn agent_generate_commit_message(
     fs_state: State<'_, FsState>,
     session_manager: State<'_, Arc<SessionManager>>,
+    provider_state: State<'_, ProviderAuthState>,
 ) -> Result<String> {
+    // Resolve the Anthropic API key so the bridge doesn't need its own credential logic
+    let api_key = provider_state
+        .credentials
+        .get_credentials(ProviderType::Anthropic)
+        .await
+        .map_err(|e| e.to_string())?;
+
     let workspace = fs_state
         .workspace_root
         .read()
@@ -267,7 +277,7 @@ pub async fn agent_generate_commit_message(
     .map_err(|e| e.to_string())??;
 
     session_manager
-        .generate_commit_message(&diff_text)
+        .generate_commit_message(&diff_text, api_key)
         .map_err(to_error)
 }
 

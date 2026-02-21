@@ -1,4 +1,5 @@
 import { ArrowUp } from '@phosphor-icons/react';
+import { IconButton } from '@solo/ui';
 import React from 'react';
 
 export interface SubmitButtonProps {
@@ -13,23 +14,21 @@ export const SubmitButton: React.FC<SubmitButtonProps> = ({
   className = '',
 }) => {
   return (
-    <button
+    <IconButton
+      variant="ghost"
+      size="md"
       onClick={onClick}
       disabled={disabled}
       className={`
-        inline-flex items-center justify-center
         h-[30px] w-[30px] rounded-[8px]
         bg-primary text-primary-foreground
-        hover:brightness-110 hover:scale-105
-        active:scale-95
-        focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/30
-        transition-[transform,background-color,color] duration-200
+        hover:brightness-110
         disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:brightness-100
         ${className}
       `}
       aria-label="Submit message"
     >
       <ArrowUp className="h-4 w-4" />
-    </button>
+    </IconButton>
   );
 };

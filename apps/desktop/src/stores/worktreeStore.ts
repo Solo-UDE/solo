@@ -3,6 +3,7 @@
  * Manages git worktree state for parallel agent workflows
  */
 
+import { useRef } from 'react';
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import { enableMapSet } from 'immer';
@@ -213,6 +214,8 @@ export const useWorktreeStore = create<WorktreeStore>()(
 		handleWorktreeReady: (worktreeId, info) => {
 			set((state) => {
 				state.worktrees.set(worktreeId, info);
+				// Clear setup progress once the worktree is ready
+				state.setupProgress.delete(worktreeId);
 			});
 		},
 
@@ -250,12 +253,16 @@ export const useWorktreeStore = create<WorktreeStore>()(
 
 		handleSetupProgress: (worktreeId, output, isComplete) => {
 			set((state) => {
-				const lines = state.setupProgress.get(worktreeId) ?? [];
+				let lines = state.setupProgress.get(worktreeId) ?? [];
+
+				// Cap at 200 lines to prevent unbounded growth
+				if (lines.length >= 200) {
+					lines = lines.slice(-100);
+				}
 				lines.push(output);
 				state.setupProgress.set(worktreeId, lines);
 
 				if (isComplete) {
-					// Mark as complete by appending a final line
 					lines.push('Setup complete');
 					state.setupProgress.set(worktreeId, lines);
 				}
@@ -298,3 +305,36 @@ export const useWorktreeById = (id: string | null): WorktreeInfo | null => {
 	if (!id) return null;
 	return worktrees.get(id) ?? null;
 };
+
+export const useWorktreeCount = (): number => {
+	return useWorktreeStore((state) => state.worktrees.size);
+};
+
+const EMPTY_SESSION_SET = new Set<string>();
+
+/**
+ * Returns a stable Set of agent_session_id values from all non-main worktrees.
+ * Uses ref-based caching to avoid re-renders when the set contents haven't changed.
+ */
+export function useWorktreeBoundSessionIds(): Set<string> {
+	const prevRef = useRef<{ key: string; result: Set<string> }>({ key: '', result: EMPTY_SESSION_SET });
+
+	return useWorktreeStore((state) => {
+		const ids: string[] = [];
+		for (const wt of state.worktrees.values()) {
+			if (!wt.is_main && wt.agent_session_id) {
+				ids.push(wt.agent_session_id);
+			}
+		}
+		ids.sort();
+		const key = ids.join(',');
+
+		if (key === prevRef.current.key) {
+			return prevRef.current.result;
+		}
+
+		const result = new Set(ids);
+		prevRef.current = { key, result };
+		return result;
+	});
+}

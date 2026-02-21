@@ -1,5 +1,11 @@
 import { useState, useCallback } from 'react';
-import { X, Key, Eye, EyeSlash, CircleNotch } from '@phosphor-icons/react';
+import { Key, Eye, EyeSlash, CircleNotch } from '@phosphor-icons/react';
+import {
+	Dialog,
+	DialogContent,
+	DialogTitle,
+	DialogDescription,
+} from '../../ui/dialog';
 
 import { useProviderStore } from '../../../stores/provider-store';
 
@@ -38,7 +44,6 @@ export const ApiKeyDialog: FC<ApiKeyDialogProps> = ({
 		try {
 			await setCredentials(provider, apiKey);
 			setApiKey('');
-			// Call onSuccess if provided, otherwise fall back to onClose
 			if (onSuccess) {
 				onSuccess();
 			} else {
@@ -51,40 +56,28 @@ export const ApiKeyDialog: FC<ApiKeyDialogProps> = ({
 		}
 	}, [apiKey, provider, setCredentials, onClose, onSuccess]);
 
-	if (!isOpen) return null;
-
 	const providerName = provider === 'anthropic' ? 'Anthropic (Claude)' : 'OpenAI';
 	const apiKeyPlaceholder = provider === 'anthropic' ? 'sk-ant-...' : 'sk-...';
 
 	return (
-		<div className="fixed inset-0 z-50 flex items-center justify-center">
-			{/* Backdrop */}
-			<div
-				className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-				onClick={onClose}
-			/>
-
-			{/* Dialog */}
-			<div className="relative w-full max-w-md mx-4 bg-background border border-border rounded-xl shadow-2xl overflow-hidden">
+		<Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+			<DialogContent
+				showCloseButton={true}
+				className="sm:max-w-md w-full p-0 overflow-hidden"
+			>
 				{/* Header */}
-				<div className="flex items-center justify-between px-6 py-4 border-b border-border">
-					<div className="flex items-center gap-3">
-						<div className="p-2 rounded-lg bg-primary/10">
-							<Key className="w-5 h-5 text-primary" />
-						</div>
-						<div>
-							<h2 className="text-lg font-semibold text-foreground">
-								Add API Key
-							</h2>
-							<p className="text-sm text-muted-foreground">{providerName}</p>
-						</div>
+				<div className="flex items-center gap-3 px-6 py-4 border-b border-border">
+					<div className="p-2 rounded-lg bg-primary/10">
+						<Key className="w-5 h-5 text-primary" />
 					</div>
-					<button
-						onClick={onClose}
-						className="p-1.5 rounded-md hover:bg-muted/60 transition-colors"
-					>
-						<X className="w-4 h-4 text-muted-foreground" />
-					</button>
+					<div>
+						<DialogTitle className="text-lg font-semibold text-foreground">
+							Add API Key
+						</DialogTitle>
+						<DialogDescription className="text-sm text-muted-foreground">
+							{providerName}
+						</DialogDescription>
+					</div>
 				</div>
 
 				{/* Body */}
@@ -156,14 +149,14 @@ export const ApiKeyDialog: FC<ApiKeyDialogProps> = ({
 							text-sm font-medium
 							hover:brightness-110 active:scale-[0.97]
 							transition-[transform,background-color,color] duration-200
-							${isSubmitting || !apiKey.trim() ? 'opacity-50 cursor-not-allowed' : ''}
+							disabled:opacity-50 disabled:cursor-not-allowed
 						`}
 					>
 						{isSubmitting && <CircleNotch weight="bold" className="w-4 h-4 animate-spin" />}
 						{isSubmitting ? 'Saving...' : 'Save API Key'}
 					</button>
 				</div>
-			</div>
-		</div>
+			</DialogContent>
+		</Dialog>
 	);
 };

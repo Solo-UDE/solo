@@ -1,4 +1,5 @@
 import { Robot, GearSix, Plus } from '@phosphor-icons/react';
+import { IconButton } from '@solo/ui';
 
 import type { FC } from 'react';
 
@@ -39,22 +40,24 @@ export const AgentWindowHeader: FC<AgentWindowHeaderProps> = ({
 			{/* Right: Actions */}
 			<div className="flex items-center gap-1">
 				{onNewSession && (
-					<button
+					<IconButton
+						variant="ghost"
+						size="sm"
 						onClick={onNewSession}
-						className="p-1.5 rounded-md hover:bg-muted/60 transition-colors"
 						title="New session"
 					>
 						<Plus className="w-4 h-4 text-muted-foreground" />
-					</button>
+					</IconButton>
 				)}
 				{onSettings && (
-					<button
+					<IconButton
+						variant="ghost"
+						size="sm"
 						onClick={onSettings}
-						className="p-1.5 rounded-md hover:bg-muted/60 transition-colors"
 						title="Settings"
 					>
 						<GearSix className="w-4 h-4 text-muted-foreground" />
-					</button>
+					</IconButton>
 				)}
 			</div>
 		</header>

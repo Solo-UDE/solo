@@ -239,6 +239,7 @@ export const FileTreeNode = memo(function FileTreeNode({
               onToggle();
             }}
             className="w-4 h-4 flex items-center justify-center shrink-0 hover:text-foreground rounded"
+            aria-label={isExpanded ? `Collapse ${entry.name}` : `Expand ${entry.name}`}
           >
             {isLoading ? (
               <CircleNotch weight="bold" className="w-3 h-3 animate-spin text-muted-foreground" />
@@ -264,6 +265,7 @@ export const FileTreeNode = memo(function FileTreeNode({
             onKeyDown={handleRenameKeyDown}
             onBlur={handleRenameBlur}
             autoFocus
+            aria-label={`Rename ${entry.name}`}
             className="flex-1 min-w-0 px-1 py-0 text-sm bg-muted border border-primary rounded outline-none"
             onClick={(e) => e.stopPropagation()}
           />
@@ -280,8 +282,9 @@ export const FileTreeNode = memo(function FileTreeNode({
               <button
                 className="p-0.5 rounded-sm text-muted-foreground hover:text-foreground transition-colors"
                 onClick={(e) => e.stopPropagation()}
+                aria-label={`Actions for ${entry.name}`}
               >
-                <DotsThree weight="bold" className="h-4 w-4" />
+                <DotsThree weight="bold" className="h-4 w-4" aria-hidden="true" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent side="right" align="start" className="w-48">

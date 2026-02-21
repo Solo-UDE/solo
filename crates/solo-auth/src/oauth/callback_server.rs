@@ -38,6 +38,8 @@ pub enum CallbackError {
     MissingCode,
     #[error("Missing state parameter")]
     MissingState,
+    #[error("State mismatch: possible CSRF attack")]
+    StateMismatch,
     #[error("OAuth error: {0}")]
     OAuthError(String),
     #[error("Server error: {0}")]
@@ -305,16 +307,21 @@ async fn handle_request(
 /// 1. Binds to 127.0.0.1:19877
 /// 2. Waits for a single OAuth callback request
 /// 3. Extracts code and state parameters
-/// 4. Returns success/error HTML to the browser
-/// 5. Shuts down automatically
+/// 4. Validates state matches expected_state (CSRF protection)
+/// 5. Returns success/error HTML to the browser
+/// 6. Shuts down automatically
 ///
 /// # Arguments
+/// * `expected_state` - The state value to validate against (CSRF protection)
 /// * `timeout` - Maximum time to wait for callback (default 5 minutes)
 ///
 /// # Returns
 /// * `Ok(CallbackResult)` - The authorization code and state
-/// * `Err(CallbackError)` - If binding, timeout, or OAuth error occurs
-pub async fn start_callback_server(timeout: Option<Duration>) -> Result<CallbackResult, CallbackError> {
+/// * `Err(CallbackError)` - If binding, timeout, state mismatch, or OAuth error occurs
+pub async fn start_callback_server(
+    expected_state: &str,
+    timeout: Option<Duration>,
+) -> Result<CallbackResult, CallbackError> {
     let timeout = timeout.unwrap_or(Duration::from_secs(300)); // 5 minutes default
 
     let addr = SocketAddr::from(([127, 0, 0, 1], CALLBACK_PORT));
@@ -375,8 +382,20 @@ pub async fn start_callback_server(timeout: Option<Duration>) -> Result<Callback
     }
 
     // Get the result from the handler
-    rx.await
-        .map_err(|_| CallbackError::ServerError("Failed to receive callback result".to_string()))?
+    let result = rx.await
+        .map_err(|_| CallbackError::ServerError("Failed to receive callback result".to_string()))??;
+
+    // Validate state parameter matches expected (CSRF protection)
+    if result.state != expected_state {
+        tracing::warn!(
+            "OAuth state mismatch: expected '{}', got '{}'",
+            expected_state,
+            result.state
+        );
+        return Err(CallbackError::StateMismatch);
+    }
+
+    Ok(result)
 }
 
 /// Get the callback URL for OAuth redirects

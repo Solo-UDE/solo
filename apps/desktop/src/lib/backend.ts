@@ -229,8 +229,8 @@ export async function completeOAuthFlow(
 	return invoke('complete_oauth_flow', { code, oauthState });
 }
 
-export async function waitForOAuthCallback(): Promise<{ code: string; state: string }> {
-	const [code, state] = await invoke<[string, string]>('wait_for_oauth_callback');
+export async function waitForOAuthCallback(expectedState: string): Promise<{ code: string; state: string }> {
+	const [code, state] = await invoke<[string, string]>('wait_for_oauth_callback', { expectedState });
 	return { code, state };
 }
 

@@ -5,6 +5,7 @@
 
 import { Paperclip, X } from '@phosphor-icons/react';
 import { useAttachmentStore } from '../../../stores/attachmentStore';
+import { AnimatedList } from '@/components/ui/animated-list';
 
 import type { FC } from 'react';
 
@@ -21,7 +22,7 @@ export const AttachmentBar: FC = () => {
 		<div className="px-1 py-2 space-y-2">
 			{/* Image thumbnails */}
 			{images.length > 0 && (
-				<div className="flex gap-2 flex-wrap">
+				<AnimatedList className="flex gap-2 flex-wrap" stagger={0.03} slideY={4}>
 					{images.map((img) => (
 						<div
 							key={img.id}
@@ -46,12 +47,12 @@ export const AttachmentBar: FC = () => {
 							</div>
 						</div>
 					))}
-				</div>
+				</AnimatedList>
 			)}
 
 			{/* File chips */}
 			{files.length > 0 && (
-				<div className="flex gap-1.5 flex-wrap">
+				<AnimatedList className="flex gap-1.5 flex-wrap" stagger={0.025} slideY={4}>
 					{files.map((file) => (
 						<div
 							key={file.id}
@@ -70,7 +71,7 @@ export const AttachmentBar: FC = () => {
 							</button>
 						</div>
 					))}
-				</div>
+				</AnimatedList>
 			)}
 		</div>
 	);

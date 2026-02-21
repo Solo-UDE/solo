@@ -4,10 +4,12 @@
  */
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import { motion } from 'motion/react';
 import { Plus, ChatTeardrop, DotsThree, PencilSimple, Trash, MagnifyingGlass } from '@phosphor-icons/react';
 import { useAgentStore, useSessions, useActiveSessionId } from '@/stores/agentStore';
 import type { Message } from '@/stores/agentStore';
 import { usePanelTabsStore } from '@/stores/panelTabsStore';
+import { useWorktreeStore, useWorktreeBoundSessionIds } from '@/stores/worktreeStore';
 import { BUILTIN_PANEL_TYPES } from '@/lib/panels/constants';
 import { useInlineRename } from '@/hooks/useInlineRename';
 import { cn } from '@/lib/utils';
@@ -291,41 +293,74 @@ export const SessionList: FC<SessionListProps> = ({
   const renameSession = useAgentStore((state) => state.renameSession);
   const deleteSession = useAgentStore((state) => state.deleteSession);
 
+  // Worktree scoping
+  const activeWorktreeId = useWorktreeStore((s) => s.activeWorktreeId);
+  const activeWorktreeMap = useWorktreeStore((s) => s.worktrees);
+  const boundSessionIds = useWorktreeBoundSessionIds();
+
+  // Scope sessions by active worktree
+  const scopedSessions = useMemo(() => {
+    const activeWt = activeWorktreeId ? activeWorktreeMap.get(activeWorktreeId) : null;
+    return sessions.filter((session) => {
+      if (activeWt) {
+        // In a worktree: show sessions bound to this worktree + unbound sessions
+        return session.id === activeWt.agent_session_id || !boundSessionIds.has(session.id);
+      }
+      // Main workspace: show only unbound sessions
+      return !boundSessionIds.has(session.id);
+    });
+  }, [sessions, activeWorktreeId, activeWorktreeMap, boundSessionIds]);
+
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
 
   // Rename state (shared hook)
   const rename = useInlineRename((id, value) => renameSession(id, value));
 
-  // Filter sessions by search query
+  // Filter scoped sessions by search query
   const filteredSessions = useMemo(() => {
-    if (!searchQuery.trim()) return sessions;
+    if (!searchQuery.trim()) return scopedSessions;
     const q = searchQuery.toLowerCase();
-    return sessions.filter((session) => {
+    return scopedSessions.filter((session) => {
       const title = getSessionTitle(session.id, session.name, messagesMap).toLowerCase();
       return title.includes(q);
     });
-  }, [sessions, searchQuery, messagesMap]);
+  }, [scopedSessions, searchQuery, messagesMap]);
 
   const handleDeleteSession = useCallback((sessionId: string) => {
     deleteSession(sessionId);
   }, [deleteSession]);
 
   // Empty state
-  if (sessions.length === 0) {
+  if (scopedSessions.length === 0) {
+    const emptyMessage = activeWorktreeId
+      ? 'No sessions in this worktree'
+      : 'No sessions yet';
+    const emptySubtext = activeWorktreeId
+      ? 'Start a new session to work in this worktree'
+      : 'Start a conversation with Claude';
+
     return (
-      <div className={cn('flex flex-col items-center justify-center h-full gap-4 p-4', className)}>
-        <ChatTeardrop className="w-12 h-12 text-muted-foreground/50" />
-        <p className="text-sm text-muted-foreground text-center">
-          Start a new session to chat
-        </p>
+      <motion.div
+        className={cn('flex flex-col items-center justify-center h-full gap-3 p-6', className)}
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+      >
+        <div className="w-12 h-12 rounded-2xl bg-muted/50 flex items-center justify-center">
+          <ChatTeardrop className="w-6 h-6 text-muted-foreground/40" />
+        </div>
+        <div className="text-center space-y-1">
+          <p className="text-sm font-medium text-muted-foreground">{emptyMessage}</p>
+          <p className="text-xs text-muted-foreground/60">{emptySubtext}</p>
+        </div>
         <button
           onClick={onNewSession}
-          className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
+          className="mt-1 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 active:scale-95 transition-all duration-200"
         >
           New Session
         </button>
-      </div>
+      </motion.div>
     );
   }
 
@@ -359,16 +394,29 @@ export const SessionList: FC<SessionListProps> = ({
         {/* Session List */}
         <div className="flex-1 overflow-y-auto px-2 pb-2">
           {filteredSessions.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-8 text-muted-foreground/60">
-              <p className="text-sm">No sessions found</p>
-            </div>
+            <motion.div
+              className="flex flex-col items-center justify-center py-8 gap-1"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.15 }}
+            >
+              <MagnifyingGlass className="w-5 h-5 text-muted-foreground/30 mb-1" />
+              <p className="text-sm text-muted-foreground/60">No sessions found</p>
+              <p className="text-xs text-muted-foreground/40">Try a different search</p>
+            </motion.div>
           ) : (
             <div className="space-y-1">
               {filteredSessions.map((session, i) => (
-                <div
+                <motion.div
                   key={session.id}
-                  className="animate-in fade-in-0 slide-in-from-bottom-1 duration-200"
-                  style={{ animationDelay: `${Math.min(i * 30, 300)}ms`, animationFillMode: 'backwards' }}
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{
+                    type: 'spring',
+                    stiffness: 500,
+                    damping: 30,
+                    delay: Math.min(i * 0.03, 0.3),
+                  }}
                 >
                 <SessionItem
                   session={session}
@@ -386,7 +434,7 @@ export const SessionList: FC<SessionListProps> = ({
                   onRenameChange={rename.setRenameValue}
                   onRequestDelete={() => handleDeleteSession(session.id)}
                 />
-                </div>
+                </motion.div>
               ))}
             </div>
           )}

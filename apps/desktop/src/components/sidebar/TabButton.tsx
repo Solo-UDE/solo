@@ -14,9 +14,12 @@ interface TabButtonProps {
 export const TabButton: FC<TabButtonProps> = ({ label, active, onClick }) => {
   return (
     <button
+      role="tab"
+      aria-selected={active}
       className={cn(
         'relative flex items-center justify-center h-8 px-3 flex-1',
         'transition-[transform,background-color,color] duration-150 ease-[cubic-bezier(0.4,0,0.2,1)]',
+        'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/50 focus-visible:rounded-md',
         active ? 'glow-active-text' : 'text-muted-foreground hover:text-foreground'
       )}
       onClick={onClick}
