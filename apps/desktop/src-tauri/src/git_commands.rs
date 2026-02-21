@@ -5,12 +5,14 @@
 //! because `git2::Repository` is `!Send`.
 
 use git2::{
-    Cred, Delta, DiffOptions, FetchOptions, IndexAddOption, PushOptions, RemoteCallbacks,
-    Repository, ResetType, Signature, StatusOptions,
+    build::CheckoutBuilder, Cred, CredentialType, Delta, DiffOptions, FetchOptions,
+    IndexAddOption, MergeOptions, PushOptions, RemoteCallbacks, Repository, ResetType, Signature,
+    StatusOptions,
 };
 use solo_protocol::{
-    BackendEvent, GitChangedFile, GitChangesResponse, GitChangesSummary, GitFileDiffResponse,
-    GitFileStatus, GitPullResponse, GitPushResponse, GitRepoStatus,
+    BackendEvent, BranchInfo, GitChangedFile, GitChangesResponse, GitChangesSummary,
+    GitFileDiffResponse, GitFileStatus, GitMergeResult, GitPullResponse, GitPushResponse,
+    GitRepoStatus, GitStashPopResult, StashEntry,
 };
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -138,27 +140,39 @@ fn get_github_integ_info(repo: &Repository, branch: &str) -> (bool, bool) {
     (has_remote, has_branch)
 }
 
-/// Create auth callbacks with token
-fn make_fetch_options<'a>(token: &'a str) -> FetchOptions<'a> {
+/// Returns true if the URL uses SSH transport.
+fn is_ssh_url(url: &str) -> bool {
+    url.starts_with("git@") || url.starts_with("ssh://")
+}
+
+/// Build auth callbacks that handle both HTTPS (OAuth token) and SSH (agent).
+fn make_auth_callbacks(token: &str) -> RemoteCallbacks<'_> {
     let mut callbacks = RemoteCallbacks::new();
     let token_owned = token.to_string();
-    callbacks.credentials(move |_url, _username, _allowed| {
-        Cred::userpass_plaintext("x-access-token", &token_owned)
+    callbacks.credentials(move |_url, username_from_url, allowed| {
+        if allowed.contains(CredentialType::SSH_KEY) {
+            // SSH remote — use the system SSH agent (or default key)
+            let user = username_from_url.unwrap_or("git");
+            Cred::ssh_key_from_agent(user)
+        } else {
+            // HTTPS remote — use the GitHub OAuth token
+            Cred::userpass_plaintext("x-access-token", &token_owned)
+        }
     });
+    callbacks
+}
+
+/// Create fetch options with dual-transport auth
+fn make_fetch_options<'a>(token: &'a str) -> FetchOptions<'a> {
     let mut fetch_opts = FetchOptions::new();
-    fetch_opts.remote_callbacks(callbacks);
+    fetch_opts.remote_callbacks(make_auth_callbacks(token));
     fetch_opts
 }
 
-/// Create push options with token auth
+/// Create push options with dual-transport auth
 fn make_push_options<'a>(token: &'a str) -> PushOptions<'a> {
-    let mut callbacks = RemoteCallbacks::new();
-    let token_owned = token.to_string();
-    callbacks.credentials(move |_url, _username, _allowed| {
-        Cred::userpass_plaintext("x-access-token", &token_owned)
-    });
     let mut push_opts = PushOptions::new();
-    push_opts.remote_callbacks(callbacks);
+    push_opts.remote_callbacks(make_auth_callbacks(token));
     push_opts
 }
 
@@ -307,7 +321,7 @@ pub async fn git_setup(
     .map_err(|e| format!("Task join error: {}", e))?
 }
 
-/// Push changes to GitHub
+/// Push local commits to GitHub (standard push — no synthetic commits)
 #[tauri::command]
 pub async fn git_push(
     fs_state: State<'_, crate::fs_commands::FsState>,
@@ -317,6 +331,8 @@ pub async fn git_push(
     branch: String,
     commit_message: Option<String>,
 ) -> Result<GitPushResponse, String> {
+    // commit_message is kept in the signature for backward compat but unused
+    let _ = commit_message;
     let workspace_path = get_workspace_path(&fs_state).await?;
 
     tokio::task::spawn_blocking(move || {
@@ -325,243 +341,103 @@ pub async fn git_push(
 
         let repo = ensure_local_repo_scope(&workspace_path)?;
 
-        // Set authenticated remote URL for push
-        let authenticated_url =
-            github_repo_url.replace("https://", &format!("https://{}@", access_token));
-        upsert_remote(&repo, "github-integ", &authenticated_url)?;
+        // For HTTPS, embed token in URL; for SSH, the callback handles auth
+        let remote_url = if is_ssh_url(&github_repo_url) {
+            github_repo_url.clone()
+        } else {
+            github_repo_url.replace("https://", &format!("https://{}@", access_token))
+        };
+        upsert_remote(&repo, "github-integ", &remote_url)?;
 
-        // Ensure we restore the clean remote URL at the end
         let result = (|| -> Result<GitPushResponse, String> {
-            let msg = commit_message.unwrap_or_else(|| "Sync from Solo IDE".to_string());
-
-            // Check if we have any commits
-            let has_commits = repo.head().is_ok();
-
-            if !has_commits {
-                // Fresh repo — need at least one commit to push
-                // Check if there are staged changes to create initial commit from
-                let mut index = repo
-                    .index()
-                    .map_err(|e| format!("Failed to get index: {}", e))?;
-                let statuses = repo
-                    .statuses(Some(StatusOptions::new().include_untracked(false)))
-                    .map_err(|e| format!("Failed to get status: {}", e))?;
-                let has_changes = statuses.iter().any(|entry| {
-                    entry.status().intersects(
-                        git2::Status::INDEX_NEW
-                            | git2::Status::INDEX_MODIFIED
-                            | git2::Status::INDEX_DELETED
-                            | git2::Status::INDEX_RENAMED,
-                    )
-                });
-
-                emit_git_progress(&app, "push", "Creating initial commit...");
-
-                if !has_changes {
-                    return Ok(GitPushResponse { commits_count: 0 });
-                }
-
-                let sig = repo
-                    .signature()
-                    .or_else(|_| Signature::now("Solo User", "solo@local"))
-                    .map_err(|e| format!("Failed to create signature: {}", e))?;
-
-                let tree_oid = index
-                    .write_tree()
-                    .map_err(|e| format!("Failed to write tree: {}", e))?;
-                let tree = repo
-                    .find_tree(tree_oid)
-                    .map_err(|e| format!("Failed to find tree: {}", e))?;
-
-                repo.commit(Some("HEAD"), &sig, &sig, &msg, &tree, &[])
-                    .map_err(|e| format!("Failed to create initial commit: {}", e))?;
-
-                // Rename branch to target if needed
-                let head = repo
-                    .head()
-                    .map_err(|e| format!("Failed to get HEAD: {}", e))?;
-                let current_branch = head.shorthand().unwrap_or("master");
-                if current_branch != branch {
-                    let head_commit = head
-                        .peel_to_commit()
-                        .map_err(|e| format!("Failed to peel HEAD: {}", e))?;
-                    repo.branch(&branch, &head_commit, true)
-                        .map_err(|e| format!("Failed to create branch: {}", e))?;
-                    repo.set_head(&format!("refs/heads/{}", branch))
-                        .map_err(|e| format!("Failed to set HEAD: {}", e))?;
-                }
-
-                emit_git_progress(&app, "push", "Pushing to GitHub...");
-
-                let refspec = format!("refs/heads/{}:refs/heads/{}", branch, branch);
-                let mut remote = repo
-                    .find_remote("github-integ")
-                    .map_err(|e| format!("Failed to find remote: {}", e))?;
-                let mut push_opts = make_push_options(&access_token);
-                remote
-                    .push(&[&refspec], Some(&mut push_opts))
-                    .map_err(|e| format!("Failed to push: {}", e))?;
-
-                // Update local remote-tracking ref
-                if let Ok(head_ref) = repo.head() {
-                    if let Some(oid) = head_ref.target() {
-                        let _ = repo.reference(
-                            &format!("refs/remotes/github-integ/{}", branch),
-                            oid,
-                            true,
-                            "update after push",
-                        );
-                    }
-                }
-
-                emit_git_progress(&app, "push", "Push complete");
-                return Ok(GitPushResponse { commits_count: 1 });
+            // Must have at least one commit
+            if repo.head().is_err() {
+                return Err("No commits to push. Commit first.".to_string());
             }
 
-            // Fetch from GitHub
-            emit_git_progress(&app, "push", "Fetching from GitHub...");
+            // Ensure HEAD points to the target branch
+            let head = repo
+                .head()
+                .map_err(|e| format!("Failed to get HEAD: {}", e))?;
+            let current = head.shorthand().unwrap_or("main");
+            if current != branch {
+                // Switch to branch if it exists, otherwise create it
+                let refname = format!("refs/heads/{}", branch);
+                if repo.refname_to_id(&refname).is_ok() {
+                    repo.set_head(&refname)
+                        .map_err(|e| format!("Failed to switch to branch: {}", e))?;
+                } else {
+                    let commit = head
+                        .peel_to_commit()
+                        .map_err(|e| format!("Failed to peel HEAD: {}", e))?;
+                    repo.branch(&branch, &commit, false)
+                        .map_err(|e| format!("Failed to create branch: {}", e))?;
+                    repo.set_head(&refname)
+                        .map_err(|e| format!("Failed to set HEAD: {}", e))?;
+                }
+            }
+
+            // Count commits ahead of remote
+            let head_oid = repo
+                .head()
+                .map_err(|e| format!("Failed to get HEAD: {}", e))?
+                .target()
+                .ok_or("HEAD has no target")?;
+
+            let remote_ref = format!("refs/remotes/github-integ/{}", branch);
+            let commits_count = if let Ok(remote_oid) = repo.refname_to_id(&remote_ref) {
+                let mut count = 0u32;
+                if let Ok(mut revwalk) = repo.revwalk() {
+                    let _ = revwalk.push(head_oid);
+                    let _ = revwalk.hide(remote_oid);
+                    count = revwalk.count() as u32;
+                }
+                count
+            } else {
+                // No remote branch yet — all local commits
+                let mut count = 0u32;
+                if let Ok(mut revwalk) = repo.revwalk() {
+                    let _ = revwalk.push(head_oid);
+                    count = revwalk.count() as u32;
+                }
+                count
+            };
+
+            if commits_count == 0 {
+                emit_git_progress(&app, "push", "Nothing to push");
+                return Ok(GitPushResponse { commits_count: 0 });
+            }
+
+            emit_git_progress(&app, "push", &format!("Pushing {} commit(s)...", commits_count));
+
+            let refspec = format!("refs/heads/{}:refs/heads/{}", branch, branch);
+            let mut push_opts = make_push_options(&access_token);
+
             let mut remote = repo
                 .find_remote("github-integ")
                 .map_err(|e| format!("Failed to find remote: {}", e))?;
 
-            let remote_branch_exists = {
-                let mut fetch_opts = make_fetch_options(&access_token);
-                match remote.fetch(&[&branch], Some(&mut fetch_opts), None) {
-                    Ok(_) => {
-                        let ref_name = format!("refs/remotes/github-integ/{}", branch);
-                        repo.refname_to_id(&ref_name).is_ok()
+            remote
+                .push(&[&refspec], Some(&mut push_opts))
+                .map_err(|e| {
+                    let msg = e.to_string();
+                    if msg.contains("non-fast-forward") {
+                        "Push rejected (non-fast-forward). Pull first to integrate remote changes.".to_string()
+                    } else {
+                        format!("Failed to push: {}", msg)
                     }
-                    Err(_) => false,
-                }
-            };
+                })?;
 
-            if remote_branch_exists {
-                let remote_ref = format!("refs/remotes/github-integ/{}", branch);
-                let remote_oid = repo
-                    .refname_to_id(&remote_ref)
-                    .map_err(|e| format!("Failed to get remote ref: {}", e))?;
+            // Update local remote-tracking ref
+            let _ = repo.reference(
+                &format!("refs/remotes/github-integ/{}", branch),
+                head_oid,
+                true,
+                "update after push",
+            );
 
-                let head_oid = repo
-                    .head()
-                    .map_err(|e| format!("Failed to get HEAD: {}", e))?
-                    .target()
-                    .ok_or("HEAD has no target")?;
-
-                // Check if there are differences
-                let remote_commit = repo
-                    .find_commit(remote_oid)
-                    .map_err(|e| format!("Failed to find remote commit: {}", e))?;
-                let head_commit = repo
-                    .find_commit(head_oid)
-                    .map_err(|e| format!("Failed to find HEAD commit: {}", e))?;
-
-                let remote_tree = remote_commit
-                    .tree()
-                    .map_err(|e| format!("Failed to get remote tree: {}", e))?;
-                let head_tree = head_commit
-                    .tree()
-                    .map_err(|e| format!("Failed to get HEAD tree: {}", e))?;
-
-                let diff = repo
-                    .diff_tree_to_tree(Some(&remote_tree), Some(&head_tree), None)
-                    .map_err(|e| format!("Failed to diff: {}", e))?;
-
-                if diff.deltas().count() == 0 {
-                    emit_git_progress(&app, "push", "No changes to push");
-                    return Ok(GitPushResponse { commits_count: 0 });
-                }
-
-                emit_git_progress(&app, "push", "Creating synthetic commit...");
-
-                // Create a synthetic commit for GitHub
-                let tree_oid = head_commit.tree_id();
-                let tree = repo
-                    .find_tree(tree_oid)
-                    .map_err(|e| format!("Failed to find tree: {}", e))?;
-
-                let sig = repo
-                    .signature()
-                    .or_else(|_| Signature::now("Solo User", "solo@local"))
-                    .map_err(|e| format!("Failed to create signature: {}", e))?;
-
-                let commit_oid = repo
-                    .commit(None, &sig, &sig, &msg, &tree, &[&remote_commit])
-                    .map_err(|e| format!("Failed to create synthetic commit: {}", e))?;
-
-                emit_git_progress(&app, "push", "Pushing to GitHub...");
-
-                // Force push the synthetic commit
-                let refspec = format!("{}:refs/heads/{}", commit_oid, branch);
-                let mut push_opts = make_push_options(&access_token);
-
-                // Need a fresh remote handle for the push
-                drop(remote);
-                let mut remote = repo
-                    .find_remote("github-integ")
-                    .map_err(|e| format!("Failed to find remote: {}", e))?;
-
-                remote
-                    .push(&[&format!("+{}", refspec)], Some(&mut push_opts))
-                    .map_err(|e| format!("Failed to push: {}", e))?;
-
-                // Update local ref
-                let _ = repo.reference(
-                    &format!("refs/remotes/github-integ/{}", branch),
-                    commit_oid,
-                    true,
-                    "update after push",
-                );
-
-                emit_git_progress(&app, "push", "Push complete");
-                Ok(GitPushResponse { commits_count: 1 })
-            } else {
-                // Remote branch doesn't exist — create orphan push
-                emit_git_progress(&app, "push", "Creating initial push...");
-
-                let head = repo
-                    .head()
-                    .map_err(|e| format!("Failed to get HEAD: {}", e))?;
-                let head_commit = head
-                    .peel_to_commit()
-                    .map_err(|e| format!("Failed to peel HEAD: {}", e))?;
-
-                let tree = head_commit
-                    .tree()
-                    .map_err(|e| format!("Failed to get tree: {}", e))?;
-
-                let sig = repo
-                    .signature()
-                    .or_else(|_| Signature::now("Solo User", "solo@local"))
-                    .map_err(|e| format!("Failed to create signature: {}", e))?;
-
-                // Orphan commit (no parents)
-                let commit_oid = repo
-                    .commit(None, &sig, &sig, &msg, &tree, &[])
-                    .map_err(|e| format!("Failed to create orphan commit: {}", e))?;
-
-                let refspec = format!("+{}:refs/heads/{}", commit_oid, branch);
-                let mut push_opts = make_push_options(&access_token);
-
-                drop(remote);
-                let mut remote = repo
-                    .find_remote("github-integ")
-                    .map_err(|e| format!("Failed to find remote: {}", e))?;
-
-                remote
-                    .push(&[&refspec], Some(&mut push_opts))
-                    .map_err(|e| format!("Failed to push: {}", e))?;
-
-                // Update local ref
-                let _ = repo.reference(
-                    &format!("refs/remotes/github-integ/{}", branch),
-                    commit_oid,
-                    true,
-                    "update after push",
-                );
-
-                emit_git_progress(&app, "push", "Push complete");
-                Ok(GitPushResponse { commits_count: 1 })
-            }
+            emit_git_progress(&app, "push", "Push complete");
+            Ok(GitPushResponse { commits_count })
         })();
 
         // Always restore unauthenticated URL
@@ -592,9 +468,12 @@ pub async fn git_pull(
 
 		let mut repo = ensure_local_repo_scope(&workspace_path)?;
 
-		let authenticated_url =
-			github_repo_url.replace("https://", &format!("https://{}@", access_token));
-		upsert_remote(&repo, "github-integ", &authenticated_url)?;
+		let remote_url = if is_ssh_url(&github_repo_url) {
+			github_repo_url.clone()
+		} else {
+			github_repo_url.replace("https://", &format!("https://{}@", access_token))
+		};
+		upsert_remote(&repo, "github-integ", &remote_url)?;
 
 		let result = (|| -> Result<GitPullResponse, String> {
 			// Fetch from GitHub
@@ -622,7 +501,7 @@ pub async fn git_pull(
 			};
 
 			// Check last synced SHA
-			let last_synced_ref = format!("refs/orchids/last-github-integ/{}", branch);
+			let last_synced_ref = format!("refs/solo/last-github-integ/{}", branch);
 			let last_synced_oid = repo.refname_to_id(&last_synced_ref).ok();
 
 			// If already synced and not force reset, skip
@@ -1524,18 +1403,28 @@ pub async fn git_unstage_all(
     .map_err(|e| format!("Task join error: {}", e))?
 }
 
-/// Clone a git repository to a target path using system git
+/// Clone a git repository to a target path using system git.
+/// If access_token is provided, it is injected into HTTPS URLs for private repo access.
 #[tauri::command]
 pub async fn git_clone(
     app: AppHandle,
     repository_url: String,
     target_path: String,
+    access_token: Option<String>,
 ) -> Result<String, String> {
     tokio::task::spawn_blocking(move || {
         emit_git_progress(&app, "clone", "Cloning repository...");
 
+        // Inject token into HTTPS URL for authenticated clones
+        let clone_url = match &access_token {
+            Some(token) if repository_url.starts_with("https://") => {
+                repository_url.replace("https://", &format!("https://x-access-token:{}@", token))
+            }
+            _ => repository_url,
+        };
+
         let output = std::process::Command::new("git")
-            .args(["clone", "--progress", &repository_url, &target_path])
+            .args(["clone", "--progress", &clone_url, &target_path])
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .output()
@@ -1613,4 +1502,552 @@ pub async fn git_create_branch(
     })
     .await
     .map_err(|e| format!("Task join error: {}", e))?
+}
+
+// =============================================================================
+// Fetch, Branch, Merge, Stash Commands
+// =============================================================================
+
+/// Fetch from remote (update tracking refs)
+#[tauri::command]
+pub async fn git_fetch(
+    fs_state: State<'_, crate::fs_commands::FsState>,
+    app: AppHandle,
+    access_token: String,
+    github_repo_url: String,
+    branch: String,
+) -> Result<(), String> {
+    let workspace_path = get_workspace_path(&fs_state).await?;
+
+    tokio::task::spawn_blocking(move || {
+        emit_git_progress(&app, "fetch", "Fetching...");
+        cleanup_git_locks(&workspace_path);
+
+        let repo = ensure_local_repo_scope(&workspace_path)?;
+
+        let remote_url = if is_ssh_url(&github_repo_url) {
+            github_repo_url.clone()
+        } else {
+            github_repo_url.replace("https://", &format!("https://{}@", access_token))
+        };
+        upsert_remote(&repo, "github-integ", &remote_url)?;
+
+        let result = (|| -> Result<(), String> {
+            let mut remote = repo
+                .find_remote("github-integ")
+                .map_err(|e| format!("Failed to find remote: {}", e))?;
+            let mut fetch_opts = make_fetch_options(&access_token);
+            remote
+                .fetch(&[&branch], Some(&mut fetch_opts), None)
+                .map_err(|e| format!("Failed to fetch: {}", e))?;
+
+            emit_git_progress(&app, "fetch", "Fetch complete");
+            Ok(())
+        })();
+
+        let _ = upsert_remote(&repo, "github-integ", &github_repo_url);
+        result
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+/// List local branches with ahead/behind counts
+#[tauri::command]
+pub async fn git_list_branches(
+    fs_state: State<'_, crate::fs_commands::FsState>,
+) -> Result<Vec<BranchInfo>, String> {
+    let workspace_path = get_workspace_path(&fs_state).await?;
+
+    tokio::task::spawn_blocking(move || {
+        let repo =
+            Repository::open(&workspace_path).map_err(|e| format!("Failed to open repo: {}", e))?;
+
+        let head_ref = repo.head().ok();
+        let head_name = head_ref.as_ref().and_then(|h| h.shorthand().map(String::from));
+
+        let mut branches = Vec::new();
+        for branch_result in repo
+            .branches(Some(git2::BranchType::Local))
+            .map_err(|e| format!("Failed to list branches: {}", e))?
+        {
+            let (branch, _) = branch_result.map_err(|e| format!("Branch error: {}", e))?;
+            let name = branch
+                .name()
+                .map_err(|e| format!("Invalid branch name: {}", e))?
+                .unwrap_or("")
+                .to_string();
+
+            if name.is_empty() {
+                continue;
+            }
+
+            let is_head = head_name.as_deref() == Some(&name);
+
+            let upstream = branch
+                .upstream()
+                .ok()
+                .and_then(|u| u.name().ok().flatten().map(String::from));
+
+            let (ahead, behind) = if let Some(ref _ups) = upstream {
+                if let (Ok(local_oid), Ok(upstream_branch)) = (
+                    repo.refname_to_id(&format!("refs/heads/{}", name)),
+                    branch.upstream(),
+                ) {
+                    if let Some(upstream_oid) = upstream_branch.get().target() {
+                        repo.graph_ahead_behind(local_oid, upstream_oid)
+                            .map(|(a, b)| (a as u32, b as u32))
+                            .unwrap_or((0, 0))
+                    } else {
+                        (0, 0)
+                    }
+                } else {
+                    (0, 0)
+                }
+            } else {
+                // Try github-integ remote tracking
+                let remote_ref = format!("refs/remotes/github-integ/{}", name);
+                if let (Ok(local_oid), Ok(remote_oid)) = (
+                    repo.refname_to_id(&format!("refs/heads/{}", name)),
+                    repo.refname_to_id(&remote_ref),
+                ) {
+                    repo.graph_ahead_behind(local_oid, remote_oid)
+                        .map(|(a, b)| (a as u32, b as u32))
+                        .unwrap_or((0, 0))
+                } else {
+                    (0, 0)
+                }
+            };
+
+            branches.push(BranchInfo {
+                name,
+                is_head,
+                upstream,
+                ahead,
+                behind,
+            });
+        }
+
+        // Sort: current branch first, then alphabetical
+        branches.sort_by(|a, b| {
+            b.is_head.cmp(&a.is_head).then_with(|| a.name.cmp(&b.name))
+        });
+
+        Ok(branches)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+/// Switch to an existing branch
+#[tauri::command]
+pub async fn git_checkout_branch(
+    fs_state: State<'_, crate::fs_commands::FsState>,
+    app: AppHandle,
+    branch_name: String,
+) -> Result<(), String> {
+    let workspace_path = get_workspace_path(&fs_state).await?;
+
+    tokio::task::spawn_blocking(move || {
+        cleanup_git_locks(&workspace_path);
+
+        let repo =
+            Repository::open(&workspace_path).map_err(|e| format!("Failed to open repo: {}", e))?;
+
+        let refname = format!("refs/heads/{}", branch_name);
+        repo.set_head(&refname)
+            .map_err(|e| format!("Failed to set HEAD to '{}': {}", branch_name, e))?;
+
+        repo.checkout_head(Some(&mut CheckoutBuilder::new().safe()))
+            .map_err(|e| format!("Checkout failed (dirty files may conflict): {}", e))?;
+
+        emit_git_changes_updated(&app);
+        Ok(())
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+/// Delete a local branch
+#[tauri::command]
+pub async fn git_delete_branch(
+    fs_state: State<'_, crate::fs_commands::FsState>,
+    app: AppHandle,
+    branch_name: String,
+    force: bool,
+) -> Result<(), String> {
+    let workspace_path = get_workspace_path(&fs_state).await?;
+
+    tokio::task::spawn_blocking(move || {
+        let repo =
+            Repository::open(&workspace_path).map_err(|e| format!("Failed to open repo: {}", e))?;
+
+        // Cannot delete current branch
+        if let Ok(head) = repo.head() {
+            if head.shorthand() == Some(&branch_name) {
+                return Err("Cannot delete the currently checked-out branch".to_string());
+            }
+        }
+
+        let mut branch = repo
+            .find_branch(&branch_name, git2::BranchType::Local)
+            .map_err(|e| format!("Branch '{}' not found: {}", branch_name, e))?;
+
+        if !force && !branch.is_head() {
+            // Check if merged into HEAD
+            if let (Ok(branch_oid), Ok(head_ref)) =
+                (repo.refname_to_id(&format!("refs/heads/{}", branch_name)), repo.head())
+            {
+                if let Some(head_oid) = head_ref.target() {
+                    if let Ok((_, behind)) = repo.graph_ahead_behind(branch_oid, head_oid) {
+                        if behind > 0 {
+                            // branch has commits not in HEAD
+                        }
+                    }
+                }
+            }
+        }
+
+        branch
+            .delete()
+            .map_err(|e| format!("Failed to delete branch: {}", e))?;
+
+        emit_git_changes_updated(&app);
+        Ok(())
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+/// Merge a source branch into the current HEAD
+#[tauri::command]
+pub async fn git_merge(
+    fs_state: State<'_, crate::fs_commands::FsState>,
+    app: AppHandle,
+    source_branch: String,
+) -> Result<GitMergeResult, String> {
+    let workspace_path = get_workspace_path(&fs_state).await?;
+
+    tokio::task::spawn_blocking(move || {
+        cleanup_git_locks(&workspace_path);
+
+        let repo =
+            Repository::open(&workspace_path).map_err(|e| format!("Failed to open repo: {}", e))?;
+
+        let source_oid = repo
+            .refname_to_id(&format!("refs/heads/{}", source_branch))
+            .map_err(|e| format!("Branch '{}' not found: {}", source_branch, e))?;
+
+        let annotated = repo
+            .find_annotated_commit(source_oid)
+            .map_err(|e| format!("Failed to find commit: {}", e))?;
+
+        let (analysis, _preference) = repo
+            .merge_analysis(&[&annotated])
+            .map_err(|e| format!("Merge analysis failed: {}", e))?;
+
+        if analysis.is_up_to_date() {
+            return Ok(GitMergeResult {
+                fast_forward: false,
+                conflicts: vec![],
+                committed: false,
+            });
+        }
+
+        if analysis.is_fast_forward() {
+            let source_commit = repo
+                .find_commit(source_oid)
+                .map_err(|e| format!("Failed to find commit: {}", e))?;
+            let source_obj = source_commit.as_object();
+
+            repo.checkout_tree(source_obj, Some(&mut CheckoutBuilder::new().safe()))
+                .map_err(|e| format!("Fast-forward checkout failed: {}", e))?;
+
+            let head = repo
+                .head()
+                .map_err(|e| format!("Failed to get HEAD: {}", e))?;
+            let refname = head
+                .name()
+                .ok_or("HEAD is not a symbolic reference")?;
+            repo.reference(refname, source_oid, true, &format!("fast-forward merge {}", source_branch))
+                .map_err(|e| format!("Failed to update ref: {}", e))?;
+
+            emit_git_changes_updated(&app);
+            return Ok(GitMergeResult {
+                fast_forward: true,
+                conflicts: vec![],
+                committed: true,
+            });
+        }
+
+        // Normal merge
+        repo.merge(&[&annotated], Some(&mut MergeOptions::new()), Some(&mut CheckoutBuilder::new().safe()))
+            .map_err(|e| format!("Merge failed: {}", e))?;
+
+        let index = repo
+            .index()
+            .map_err(|e| format!("Failed to get index: {}", e))?;
+
+        if index.has_conflicts() {
+            let conflicts: Vec<String> = index
+                .conflicts()
+                .map_err(|e| format!("Failed to read conflicts: {}", e))?
+                .filter_map(|c| c.ok())
+                .filter_map(|c| {
+                    c.our
+                        .map(|e| String::from_utf8_lossy(&e.path).to_string())
+                })
+                .collect();
+
+            return Ok(GitMergeResult {
+                fast_forward: false,
+                conflicts,
+                committed: false,
+            });
+        }
+
+        // Auto-commit the merge
+        let mut index = repo
+            .index()
+            .map_err(|e| format!("Failed to get index: {}", e))?;
+        let tree_oid = index
+            .write_tree()
+            .map_err(|e| format!("Failed to write tree: {}", e))?;
+        let tree = repo
+            .find_tree(tree_oid)
+            .map_err(|e| format!("Failed to find tree: {}", e))?;
+
+        let sig = repo
+            .signature()
+            .or_else(|_| Signature::now("Solo User", "solo@local"))
+            .map_err(|e| format!("Failed to create signature: {}", e))?;
+
+        let head_commit = repo
+            .head()
+            .map_err(|e| format!("Failed to get HEAD: {}", e))?
+            .peel_to_commit()
+            .map_err(|e| format!("Failed to peel HEAD: {}", e))?;
+        let source_commit = repo
+            .find_commit(source_oid)
+            .map_err(|e| format!("Failed to find source commit: {}", e))?;
+
+        let msg = format!("Merge branch '{}' into HEAD", source_branch);
+        repo.commit(
+            Some("HEAD"),
+            &sig,
+            &sig,
+            &msg,
+            &tree,
+            &[&head_commit, &source_commit],
+        )
+        .map_err(|e| format!("Failed to create merge commit: {}", e))?;
+
+        // Clean up merge state
+        let _ = repo.cleanup_state();
+
+        emit_git_changes_updated(&app);
+        Ok(GitMergeResult {
+            fast_forward: false,
+            conflicts: vec![],
+            committed: true,
+        })
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+/// Stash uncommitted changes
+#[tauri::command]
+pub async fn git_stash(
+    fs_state: State<'_, crate::fs_commands::FsState>,
+    app: AppHandle,
+    message: Option<String>,
+    include_untracked: bool,
+) -> Result<(), String> {
+    let workspace_path = get_workspace_path(&fs_state).await?;
+
+    tokio::task::spawn_blocking(move || {
+        let mut repo =
+            Repository::open(&workspace_path).map_err(|e| format!("Failed to open repo: {}", e))?;
+
+        let sig = repo
+            .signature()
+            .or_else(|_| Signature::now("Solo User", "solo@local"))
+            .map_err(|e| format!("Failed to create signature: {}", e))?;
+
+        let msg = message.as_deref().unwrap_or("Stash from Solo IDE");
+        let flags = if include_untracked {
+            Some(git2::StashFlags::INCLUDE_UNTRACKED)
+        } else {
+            None
+        };
+
+        repo.stash_save(&sig, msg, flags)
+            .map_err(|e| format!("Failed to stash: {}", e))?;
+
+        emit_git_changes_updated(&app);
+        Ok(())
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+/// Pop the most recent stash
+#[tauri::command]
+pub async fn git_stash_pop(
+    fs_state: State<'_, crate::fs_commands::FsState>,
+    app: AppHandle,
+) -> Result<GitStashPopResult, String> {
+    let workspace_path = get_workspace_path(&fs_state).await?;
+
+    tokio::task::spawn_blocking(move || {
+        let mut repo =
+            Repository::open(&workspace_path).map_err(|e| format!("Failed to open repo: {}", e))?;
+
+        match repo.stash_pop(0, None) {
+            Ok(_) => {
+                emit_git_changes_updated(&app);
+                Ok(GitStashPopResult {
+                    had_conflicts: false,
+                    conflict_files: vec![],
+                })
+            }
+            Err(e) => {
+                // Check if there are conflicts in the index
+                if let Ok(index) = repo.index() {
+                    if index.has_conflicts() {
+                        let conflicts: Vec<String> = index
+                            .conflicts()
+                            .ok()
+                            .map(|iter| {
+                                iter.filter_map(|c| c.ok())
+                                    .filter_map(|c| {
+                                        c.our.map(|e| String::from_utf8_lossy(&e.path).to_string())
+                                    })
+                                    .collect()
+                            })
+                            .unwrap_or_default();
+
+                        emit_git_changes_updated(&app);
+                        return Ok(GitStashPopResult {
+                            had_conflicts: true,
+                            conflict_files: conflicts,
+                        });
+                    }
+                }
+                Err(format!("Failed to pop stash: {}", e))
+            }
+        }
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+/// List stash entries
+#[tauri::command]
+pub async fn git_stash_list(
+    fs_state: State<'_, crate::fs_commands::FsState>,
+) -> Result<Vec<StashEntry>, String> {
+    let workspace_path = get_workspace_path(&fs_state).await?;
+
+    tokio::task::spawn_blocking(move || {
+        let mut repo =
+            Repository::open(&workspace_path).map_err(|e| format!("Failed to open repo: {}", e))?;
+
+        let mut entries = Vec::new();
+        repo.stash_foreach(|index, message, _oid| {
+            entries.push(StashEntry {
+                index: index as u32,
+                message: message.to_string(),
+            });
+            true
+        })
+        .map_err(|e| format!("Failed to list stashes: {}", e))?;
+
+        Ok(entries)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+// =============================================================================
+// GitHub OAuth Commands (direct GitHub token for git operations)
+// =============================================================================
+
+/// Start GitHub OAuth flow — returns auth URL to open in browser
+#[tauri::command]
+pub async fn github_start_auth(
+    state: State<'_, crate::provider_commands::ProviderAuthState>,
+) -> Result<solo_auth::OAuthFlowResult, String> {
+    info!("Starting GitHub OAuth flow");
+
+    let (result, oauth_state) =
+        solo_auth::GitHubOAuthConfig::build_auth_url().map_err(|e| e.to_string())?;
+
+    state
+        .oauth_pending
+        .write()
+        .await
+        .insert(oauth_state.state.clone(), oauth_state);
+
+    Ok(result)
+}
+
+/// Complete GitHub OAuth — exchange code for token and store it
+#[tauri::command]
+pub async fn github_complete_auth(
+    code: String,
+    oauth_state: String,
+    state: State<'_, crate::provider_commands::ProviderAuthState>,
+) -> Result<(), String> {
+    info!("Completing GitHub OAuth flow");
+
+    let pending_state = state
+        .oauth_pending
+        .write()
+        .await
+        .remove(&oauth_state)
+        .ok_or_else(|| "GitHub OAuth state not found or expired".to_string())?;
+
+    if pending_state.is_expired() {
+        return Err("GitHub OAuth state has expired".to_string());
+    }
+
+    let token = solo_auth::GitHubOAuthConfig::exchange_code(&code)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    state
+        .credentials
+        .set_github_oauth_token(token)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    info!("GitHub OAuth token stored successfully");
+    Ok(())
+}
+
+/// Get the stored GitHub access token (or null if not connected)
+#[tauri::command]
+pub async fn github_get_token(
+    state: State<'_, crate::provider_commands::ProviderAuthState>,
+) -> Result<Option<String>, String> {
+    state
+        .credentials
+        .get_github_access_token()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Disconnect GitHub — clear stored token
+#[tauri::command]
+pub async fn github_disconnect(
+    state: State<'_, crate::provider_commands::ProviderAuthState>,
+) -> Result<(), String> {
+    info!("Disconnecting GitHub OAuth");
+    state
+        .credentials
+        .clear_github_oauth_token()
+        .await
+        .map_err(|e| e.to_string())
 }

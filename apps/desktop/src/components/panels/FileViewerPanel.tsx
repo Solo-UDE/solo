@@ -7,7 +7,8 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Editor, { OnMount, BeforeMount } from '@monaco-editor/react';
 import type * as Monaco from 'monaco-editor';
-import { CircleNotch, WarningCircle } from '@phosphor-icons/react';
+import { WarningCircle } from '@phosphor-icons/react';
+import { CodeSkeleton } from '@/components/ui/skeletons';
 import * as fs from '@/lib/tauri/fs';
 import { registerSoloTheme, SOLO_THEME_NAME, SOLO_LIGHT_THEME_NAME, registerSoloLightTheme } from '@/components/editor/theme';
 import { MarkdownEditor } from '@/components/editor/MarkdownEditor';
@@ -317,11 +318,8 @@ export function FileViewerPanel({
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full bg-background">
-        <div className="text-center space-y-4">
-          <CircleNotch weight="bold" className="w-8 h-8 text-primary animate-spin mx-auto" />
-          <p className="text-sm text-muted-foreground">Loading file...</p>
-        </div>
+      <div className="h-full bg-background">
+        <CodeSkeleton lines={16} />
       </div>
     );
   }

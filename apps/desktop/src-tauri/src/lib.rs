@@ -33,6 +33,7 @@ mod agent;
 mod agent_commands;
 mod auth_commands;
 mod commands;
+mod elevenlabs_commands;
 mod embedding_commands;
 mod fs_commands;
 mod git_commands;
@@ -43,6 +44,7 @@ mod terminal_commands;
 mod worktree_commands;
 
 use auth_commands::AuthState;
+use elevenlabs_commands::ElevenLabsState;
 use embedding_commands::EmbeddingState;
 use fs_commands::FsState;
 use git_commands::GitState;
@@ -64,7 +66,7 @@ pub fn run() {
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "solo_desktop=debug,tauri=info".into()),
+                .unwrap_or_else(|_| "solo_desktop_lib=debug,solo_elevenlabs=debug,tauri=info".into()),
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
@@ -164,6 +166,7 @@ pub fn run() {
         .manage(TerminalState::new())
         .manage(GitState::new())
         .manage(WorktreeState::new())
+        .manage(ElevenLabsState::new())
         .invoke_handler(tauri::generate_handler![
             // Core commands
             commands::ping,
@@ -195,6 +198,8 @@ pub fn run() {
             agent_commands::agent_get_plan_mode,
             agent_commands::agent_set_accept_mode,
             agent_commands::agent_get_accept_mode,
+            agent_commands::agent_set_tool_policy,
+            agent_commands::agent_generate_commit_message,
             // Provider/auth commands
             provider_commands::get_providers,
             provider_commands::get_active_provider,
@@ -257,6 +262,18 @@ pub fn run() {
             git_commands::git_unstage_all,
             git_commands::git_create_branch,
             git_commands::git_clone,
+            git_commands::git_fetch,
+            git_commands::git_list_branches,
+            git_commands::git_checkout_branch,
+            git_commands::git_delete_branch,
+            git_commands::git_merge,
+            git_commands::git_stash,
+            git_commands::git_stash_pop,
+            git_commands::git_stash_list,
+            git_commands::github_start_auth,
+            git_commands::github_complete_auth,
+            git_commands::github_get_token,
+            git_commands::github_disconnect,
             // Session persistence commands
             session_commands::session_get_dir,
             session_commands::session_list_files,
@@ -273,8 +290,22 @@ pub fn run() {
             worktree_commands::worktree_lock,
             worktree_commands::worktree_unlock,
             worktree_commands::worktree_prune,
+            worktree_commands::worktree_bind_agent,
+            worktree_commands::worktree_unbind_agent,
+            worktree_commands::worktree_find_by_agent,
+            worktree_commands::worktree_diff_from_base,
+            worktree_commands::worktree_promote,
             worktree_commands::worktree_set_setup_commands,
             worktree_commands::worktree_get_setup_commands,
+            // ElevenLabs voice commands
+            elevenlabs_commands::elevenlabs_set_api_key,
+            elevenlabs_commands::elevenlabs_has_api_key,
+            elevenlabs_commands::elevenlabs_stt_start,
+            elevenlabs_commands::elevenlabs_stt_send_audio,
+            elevenlabs_commands::elevenlabs_stt_commit,
+            elevenlabs_commands::elevenlabs_stt_stop,
+            elevenlabs_commands::elevenlabs_tts_speak,
+            elevenlabs_commands::elevenlabs_tts_stop,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

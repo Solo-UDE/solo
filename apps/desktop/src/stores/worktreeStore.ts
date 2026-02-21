@@ -3,6 +3,7 @@
  * Manages git worktree state for parallel agent workflows
  */
 
+import { useRef } from 'react';
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import { enableMapSet } from 'immer';
@@ -20,6 +21,8 @@ interface WorktreeState {
 	error: string | null;
 	/** Setup command output lines per worktree */
 	setupProgress: Map<string, string[]>;
+	/** Saved workspace root for restoration when returning to main */
+	_originalWorkspaceRoot: string | null;
 }
 
 interface WorktreeActions {
@@ -38,6 +41,9 @@ interface WorktreeActions {
 	handleWorktreeRemoved: (worktreeId: string) => void;
 	handleSetupProgress: (worktreeId: string, output: string, isComplete: boolean) => void;
 
+	/** Create worktree → activate → start agent session in one step */
+	startAgentInWorktree: (branch: string, model?: string) => Promise<string>;
+
 	clearError: () => void;
 }
 
@@ -49,6 +55,7 @@ const initialState: WorktreeState = {
 	isLoading: false,
 	error: null,
 	setupProgress: new Map(),
+	_originalWorkspaceRoot: null,
 };
 
 export const useWorktreeStore = create<WorktreeStore>()(
@@ -96,23 +103,53 @@ export const useWorktreeStore = create<WorktreeStore>()(
 		},
 
 		removeWorktree: async (id, force = false) => {
-			await worktreeApi.removeWorktree({ id, force });
+			const restoredPath = await worktreeApi.removeWorktree({ id, force });
+
+			const wasActive = _get().activeWorktreeId === id;
 
 			set((state) => {
 				state.worktrees.delete(id);
 				state.setupProgress.delete(id);
 				if (state.activeWorktreeId === id) {
 					state.activeWorktreeId = null;
+					state._originalWorkspaceRoot = null;
 				}
 			});
+
+			// If the removed worktree was active, re-scope explorer + git to main
+			if (wasActive && restoredPath) {
+				const { useFileExplorerStore } = await import('@/stores/fileExplorerStore');
+				const { useGitStore } = await import('@/stores/gitStore');
+				await useFileExplorerStore.getState().setRootPath(restoredPath);
+				useGitStore.getState().stopPolling();
+				useGitStore.getState().startPolling();
+			}
 		},
 
 		setActive: async (id) => {
-			await worktreeApi.setActiveWorktree(id);
+			// Capture current root before the backend swaps it
+			const { useFileExplorerStore } = await import('@/stores/fileExplorerStore');
+			const currentRoot = useFileExplorerStore.getState().rootPath;
+
+			const targetPath = await worktreeApi.setActiveWorktree(id);
 
 			set((state) => {
+				if (id !== null && state._originalWorkspaceRoot === null) {
+					state._originalWorkspaceRoot = currentRoot;
+				}
+				if (id === null) {
+					state._originalWorkspaceRoot = null;
+				}
 				state.activeWorktreeId = id;
 			});
+
+			// Re-scope file explorer + git to the target path
+			if (targetPath) {
+				const { useGitStore } = await import('@/stores/gitStore');
+				await useFileExplorerStore.getState().setRootPath(targetPath);
+				useGitStore.getState().stopPolling();
+				useGitStore.getState().startPolling();
+			}
 		},
 
 		lock: async (id, reason) => {
@@ -140,17 +177,32 @@ export const useWorktreeStore = create<WorktreeStore>()(
 		},
 
 		pruneWorktrees: async () => {
+			const activeId = _get().activeWorktreeId;
+			const originalRoot = _get()._originalWorkspaceRoot;
 			const pruned = await worktreeApi.pruneWorktrees();
 
+			let activeWasPruned = false;
 			set((state) => {
 				for (const id of pruned) {
 					state.worktrees.delete(id);
 					state.setupProgress.delete(id);
 					if (state.activeWorktreeId === id) {
 						state.activeWorktreeId = null;
+						state._originalWorkspaceRoot = null;
+						activeWasPruned = true;
 					}
 				}
 			});
+
+			// If the active worktree was pruned, backend already restored workspace_root;
+			// re-scope the frontend too
+			if (activeWasPruned && activeId && originalRoot) {
+				const { useFileExplorerStore } = await import('@/stores/fileExplorerStore');
+				const { useGitStore } = await import('@/stores/gitStore');
+				await useFileExplorerStore.getState().setRootPath(originalRoot);
+				useGitStore.getState().stopPolling();
+				useGitStore.getState().startPolling();
+			}
 
 			return pruned;
 		},
@@ -162,6 +214,8 @@ export const useWorktreeStore = create<WorktreeStore>()(
 		handleWorktreeReady: (worktreeId, info) => {
 			set((state) => {
 				state.worktrees.set(worktreeId, info);
+				// Clear setup progress once the worktree is ready
+				state.setupProgress.delete(worktreeId);
 			});
 		},
 
@@ -173,27 +227,54 @@ export const useWorktreeStore = create<WorktreeStore>()(
 		},
 
 		handleWorktreeRemoved: (worktreeId) => {
+			const wasActive = _get().activeWorktreeId === worktreeId;
+			const originalRoot = _get()._originalWorkspaceRoot;
+
 			set((state) => {
 				state.worktrees.delete(worktreeId);
 				state.setupProgress.delete(worktreeId);
 				if (state.activeWorktreeId === worktreeId) {
 					state.activeWorktreeId = null;
+					state._originalWorkspaceRoot = null;
 				}
 			});
+
+			// If the removed worktree was active, re-scope to main asynchronously
+			if (wasActive && originalRoot) {
+				import('@/stores/fileExplorerStore').then(({ useFileExplorerStore }) => {
+					useFileExplorerStore.getState().setRootPath(originalRoot);
+				});
+				import('@/stores/gitStore').then(({ useGitStore }) => {
+					useGitStore.getState().stopPolling();
+					useGitStore.getState().startPolling();
+				});
+			}
 		},
 
 		handleSetupProgress: (worktreeId, output, isComplete) => {
 			set((state) => {
-				const lines = state.setupProgress.get(worktreeId) ?? [];
+				let lines = state.setupProgress.get(worktreeId) ?? [];
+
+				// Cap at 200 lines to prevent unbounded growth
+				if (lines.length >= 200) {
+					lines = lines.slice(-100);
+				}
 				lines.push(output);
 				state.setupProgress.set(worktreeId, lines);
 
 				if (isComplete) {
-					// Mark as complete by appending a final line
 					lines.push('Setup complete');
 					state.setupProgress.set(worktreeId, lines);
 				}
 			});
+		},
+
+		startAgentInWorktree: async (branch, model) => {
+			const wt = await _get().createWorktree(branch, true);
+			await _get().setActive(wt.id);
+			const { useAgentStore } = await import('@/stores/agentStore');
+			const sessionId = await useAgentStore.getState().createSession(model);
+			return sessionId;
 		},
 
 		clearError: () => {
@@ -224,3 +305,36 @@ export const useWorktreeById = (id: string | null): WorktreeInfo | null => {
 	if (!id) return null;
 	return worktrees.get(id) ?? null;
 };
+
+export const useWorktreeCount = (): number => {
+	return useWorktreeStore((state) => state.worktrees.size);
+};
+
+const EMPTY_SESSION_SET = new Set<string>();
+
+/**
+ * Returns a stable Set of agent_session_id values from all non-main worktrees.
+ * Uses ref-based caching to avoid re-renders when the set contents haven't changed.
+ */
+export function useWorktreeBoundSessionIds(): Set<string> {
+	const prevRef = useRef<{ key: string; result: Set<string> }>({ key: '', result: EMPTY_SESSION_SET });
+
+	return useWorktreeStore((state) => {
+		const ids: string[] = [];
+		for (const wt of state.worktrees.values()) {
+			if (!wt.is_main && wt.agent_session_id) {
+				ids.push(wt.agent_session_id);
+			}
+		}
+		ids.sort();
+		const key = ids.join(',');
+
+		if (key === prevRef.current.key) {
+			return prevRef.current.result;
+		}
+
+		const result = new Set(ids);
+		prevRef.current = { key, result };
+		return result;
+	});
+}

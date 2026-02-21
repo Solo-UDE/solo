@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useCallback } from 'react';
 import { Stop } from '@phosphor-icons/react';
 
 import { ContextMenu } from './context-menu';
@@ -17,6 +17,7 @@ import { useProviderStore } from '../../../stores/provider-store';
 import { useAttachmentStore } from '../../../stores/attachmentStore';
 import { useWorktreeList } from '../../../stores/worktreeStore';
 import { DEFAULT_MODEL_ID } from '../../../lib/constants';
+import { VoiceButton } from './voice-button';
 
 export interface ChatInputContainerProps {
   onSubmit: (content: string, mode: 'planning' | 'fast', model: string, attachments?: Attachment[], mentions?: FileMention[]) => void;
@@ -85,6 +86,14 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
     onModeChange?.(newMode);
   };
 
+  // Voice input handler: focus editor then insert transcribed text
+  const handleVoiceTranscript = useCallback((text: string) => {
+    console.log('[ChatInput] Voice transcript received, inserting:', text);
+    editorRef.current?.focus();
+    editorRef.current?.insertText(text + ' ');
+    setContent((prev) => prev + text + ' ');
+  }, []);
+
   // Only show the selector when there are linked worktrees (more than just main)
   const showWorktreeSelector = onWorktreeChange && worktrees.length > 1;
 
@@ -142,20 +151,42 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
               )}
             </div>
 
-            {isAgentRunning ? (
-              <button
-                onClick={onAbort}
-                className="inline-flex items-center justify-center h-[30px] w-[30px] rounded-[8px] bg-destructive/10 text-destructive hover:bg-destructive/20 hover:scale-105 active:scale-95 transition-[transform,background-color,color] duration-200"
-                aria-label="Stop generation"
-              >
-                <Stop weight="fill" className="h-3.5 w-3.5" />
-              </button>
-            ) : (
-              <SubmitButton
-                onClick={handleSubmit}
-                disabled={!content.trim()}
+            <div className="flex items-center gap-1">
+              {/* Voice input (ElevenLabs STT) */}
+              <VoiceButton
+                disabled={isAgentRunning}
+                onTranscript={handleVoiceTranscript}
               />
-            )}
+
+              {/* Screen record (mock) */}
+              <button
+                type="button"
+                className="inline-flex items-center justify-center h-[30px] w-[30px] rounded-[8px] text-muted-foreground hover:bg-muted/60 hover:text-foreground active:scale-95 transition-[transform,background-color,color] duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                aria-label="Screen record"
+                title="Screen record"
+                disabled={isAgentRunning}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 256 256" className="h-4 w-4">
+                  <path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm0-160a72,72,0,1,0,72,72A72.08,72.08,0,0,0,128,56Zm0,128a56,56,0,1,1,56-56A56.06,56.06,0,0,1,128,184Z" />
+                </svg>
+              </button>
+
+              {/* Submit / Stop */}
+              {isAgentRunning ? (
+                <button
+                  onClick={onAbort}
+                  className="inline-flex items-center justify-center h-[30px] w-[30px] rounded-[8px] bg-destructive/10 text-destructive hover:bg-destructive/20 hover:scale-105 active:scale-95 transition-[transform,background-color,color] duration-200"
+                  aria-label="Stop generation"
+                >
+                  <Stop weight="fill" className="h-3.5 w-3.5" />
+                </button>
+              ) : (
+                <SubmitButton
+                  onClick={handleSubmit}
+                  disabled={!content.trim()}
+                />
+              )}
+            </div>
           </div>
         </div>
       </div>

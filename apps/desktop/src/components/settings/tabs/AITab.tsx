@@ -4,13 +4,16 @@
  */
 
 import { useCallback, useState, useEffect, useMemo } from 'react';
-import { CheckCircle, WarningCircle, CircleNotch, Clock, Terminal, Sparkle, ArrowClockwise, XCircle, ShieldCheck } from '@phosphor-icons/react';
+import { CheckCircle, WarningCircle, CircleNotch, Clock, Terminal, Sparkle, ArrowClockwise, XCircle, ShieldCheck, TreeStructure } from '@phosphor-icons/react';
+import { ListSkeleton } from '../../ui/skeletons';
 import { useSettingsStore } from '../../../stores/settingsStore';
 import { useProviderStore, useOAuthPending } from '../../../stores/provider-store';
 import { useShallow } from 'zustand/react/shallow';
 import { SettingRow, SelectDropdown, ToggleSwitch, NumberInput, PasswordInput } from '../controls';
 import { ClaudeLoginModal } from '../ClaudeLoginModal';
 import { verifyClaudeSetup } from '../../../lib/backend';
+import { getSetupCommands, setSetupCommands } from '../../../lib/tauri/worktree';
+import { toast } from 'sonner';
 import type { ProviderType, AuthMethodInfo, ClaudeSetupStatus } from '../../../lib/backend';
 
 /**
@@ -34,7 +37,7 @@ function ConnectionStatusBadge({
 }) {
   if (!authInfo || authInfo.authType === 'none') {
     return (
-      <div className="flex items-center gap-1.5 text-xs text-amber-600">
+      <div className="flex items-center gap-1.5 text-xs text-warning">
         <WarningCircle className="w-3.5 h-3.5" />
         Not configured
       </div>
@@ -45,7 +48,7 @@ function ConnectionStatusBadge({
 
   return (
     <div className="flex items-center gap-2">
-      <div className="flex items-center gap-1.5 text-xs text-green-600">
+      <div className="flex items-center gap-1.5 text-xs text-success">
         <CheckCircle className="w-3.5 h-3.5" />
         Connected
       </div>
@@ -119,7 +122,7 @@ function ProviderCard({
 
   return (
     <div
-      className={`p-4 rounded-none border bg-card/50 space-y-4 transition-all duration-200 ${
+      className={`p-4 rounded-none border bg-card/50 space-y-4 transition-all duration-200 hover-lift ${
         isActive
           ? 'border-primary/50 ring-2 ring-primary/20'
           : 'border-border hover:border-border/80'
@@ -250,7 +253,7 @@ function ProviderCard({
         <div className="flex items-center justify-between mb-2">
           <div className="text-xs text-muted-foreground">API Key</div>
           {hasCredentials && authInfo?.authType === 'api-key' && (
-            <div className="flex items-center gap-1.5 text-xs text-green-600">
+            <div className="flex items-center gap-1.5 text-xs text-success">
               <CheckCircle className="w-3.5 h-3.5" />
               Saved
             </div>
@@ -316,9 +319,9 @@ function ClaudeSetupDiagnostic() {
       return <span className="text-muted-foreground">—</span>;
     }
     return ok ? (
-      <CheckCircle className="w-3.5 h-3.5 text-green-600 inline" />
+      <CheckCircle className="w-3.5 h-3.5 text-success inline" />
     ) : (
-      <XCircle className="w-3.5 h-3.5 text-red-500 inline" />
+      <XCircle className="w-3.5 h-3.5 text-destructive inline" />
     );
   };
 
@@ -341,7 +344,7 @@ function ClaudeSetupDiagnostic() {
       </div>
 
       {error && (
-        <div className="text-xs text-red-500 bg-red-500/10 px-2 py-1 rounded-none">
+        <div className="text-xs text-destructive bg-destructive/10 px-2 py-1 rounded-none">
           {error}
         </div>
       )}
@@ -396,12 +399,12 @@ function ClaudeSetupDiagnostic() {
             </span>
           </StatusRow>
           {status.error && (
-            <div className="pt-1.5 text-[10px] text-red-500/80 break-all">
+            <div className="pt-1.5 text-[10px] text-destructive/80 break-all">
               {status.error}
             </div>
           )}
           {status.requiresCliMode && !status.cliInstalled && (
-            <div className="pt-2 text-[10px] text-amber-600 bg-amber-500/10 px-2 py-1.5 rounded-none">
+            <div className="pt-2 text-[10px] text-warning bg-warning/10 px-2 py-1.5 rounded-none">
               Subscription tokens require the Claude CLI. Install with:<br />
               <code className="text-[10px]">npm i -g @anthropic-ai/claude-code</code>
             </div>
@@ -473,13 +476,45 @@ export function AITab() {
   // Settings store (AI behavior)
   const streaming = useSettingsStore((s) => s.ai.streaming);
   const autoApproveTools = useSettingsStore((s) => s.ai.autoApproveTools);
+  const toolPermissionPolicy = useSettingsStore((s) => s.ai.toolPermissionPolicy);
   const maxTokens = useSettingsStore((s) => s.ai.maxTokens);
   const customApiUrl = useSettingsStore((s) => s.ai.customApiUrl);
 
   const setStreaming = useSettingsStore((s) => s.setStreaming);
   const setAutoApproveTools = useSettingsStore((s) => s.setAutoApproveTools);
+  const setToolPermissionPolicy = useSettingsStore((s) => s.setToolPermissionPolicy);
   const setMaxTokens = useSettingsStore((s) => s.setMaxTokens);
   const setCustomApiUrl = useSettingsStore((s) => s.setCustomApiUrl);
+
+  // Worktree setup commands state
+  const [setupCommandsText, setSetupCommandsText] = useState('');
+  const [isLoadingSetup, setIsLoadingSetup] = useState(false);
+  const [isSavingSetup, setIsSavingSetup] = useState(false);
+
+  useEffect(() => {
+    setIsLoadingSetup(true);
+    getSetupCommands()
+      .then((config) => {
+        setSetupCommandsText(config.commands.join('\n'));
+      })
+      .catch(() => {
+        // No commands configured yet
+      })
+      .finally(() => setIsLoadingSetup(false));
+  }, []);
+
+  const handleSaveSetupCommands = useCallback(async () => {
+    setIsSavingSetup(true);
+    try {
+      const commands = setupCommandsText.split('\n').filter((line) => line.trim());
+      await setSetupCommands({ commands });
+      toast.success('Setup commands saved');
+    } catch (err) {
+      toast.error('Failed to save setup commands', { description: String(err) });
+    } finally {
+      setIsSavingSetup(false);
+    }
+  }, [setupCommandsText]);
 
   // Initialize provider store on mount
   useEffect(() => {
@@ -559,8 +594,8 @@ export function AITab() {
 
   if (!isInitialized && isLoading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <CircleNotch weight="bold" className="w-6 h-6 animate-spin text-muted-foreground" />
+      <div className="py-4">
+        <ListSkeleton rows={5} />
       </div>
     );
   }
@@ -664,11 +699,55 @@ export function AITab() {
           </SettingRow>
 
           <SettingRow
-            label="Auto-approve Tools"
-            description="Let AI execute tools without confirmation"
+            label="Tool Permissions"
+            description="Control when tools need manual approval"
           >
-            <ToggleSwitch checked={autoApproveTools} onChange={setAutoApproveTools} />
+            <SelectDropdown
+              value={toolPermissionPolicy}
+              options={[
+                { label: 'Ask for all tools', value: 'ask-all' },
+                { label: 'Smart (tier-based)', value: 'smart' },
+                { label: 'Auto-approve all', value: 'approve-all' },
+              ]}
+              onChange={setToolPermissionPolicy}
+            />
           </SettingRow>
+
+          {toolPermissionPolicy !== 'approve-all' && (
+            <SettingRow
+              label="Auto-approve Tools"
+              description="Let AI execute tools without confirmation"
+            >
+              <ToggleSwitch checked={autoApproveTools} onChange={setAutoApproveTools} />
+            </SettingRow>
+          )}
+        </div>
+      </div>
+
+      {/* Worktree Setup Section */}
+      <div>
+        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4 flex items-center gap-2">
+          <TreeStructure className="w-3.5 h-3.5" />
+          Worktree Setup
+        </h3>
+        <div className="space-y-3">
+          <div className="text-xs text-muted-foreground">
+            Shell commands to run after creating a new worktree (one per line)
+          </div>
+          <textarea
+            value={setupCommandsText}
+            onChange={(e) => setSetupCommandsText(e.target.value)}
+            disabled={isLoadingSetup}
+            placeholder={'bun install\nbun run build'}
+            className="w-full h-24 px-3 py-2 bg-background border border-border rounded-none text-xs text-foreground font-mono placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/50 resize-y disabled:opacity-50"
+          />
+          <button
+            onClick={handleSaveSetupCommands}
+            disabled={isSavingSetup}
+            className="h-8 px-4 text-xs bg-primary text-primary-foreground rounded-none hover:bg-primary/90 disabled:opacity-50 transition-colors"
+          >
+            {isSavingSetup ? 'Saving...' : 'Save'}
+          </button>
         </div>
       </div>
 

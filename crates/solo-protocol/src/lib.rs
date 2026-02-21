@@ -319,6 +319,42 @@ pub struct GitPushResponse {
     pub commits_count: u32,
 }
 
+/// Information about a local branch
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct BranchInfo {
+    pub name: String,
+    pub is_head: bool,
+    pub upstream: Option<String>,
+    pub ahead: u32,
+    pub behind: u32,
+}
+
+/// Result of a git merge operation
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct GitMergeResult {
+    pub fast_forward: bool,
+    pub conflicts: Vec<String>,
+    pub committed: bool,
+}
+
+/// A stash entry
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct StashEntry {
+    pub index: u32,
+    pub message: String,
+}
+
+/// Result of popping a stash
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct GitStashPopResult {
+    pub had_conflicts: bool,
+    pub conflict_files: Vec<String>,
+}
+
 /// Request to pull from GitHub
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../apps/desktop/src/bindings/")]
@@ -431,6 +467,20 @@ pub struct RemoveWorktreeRequest {
 pub struct WorktreeSetupConfig {
     /// Shell commands to run in the new worktree directory
     pub commands: Vec<String>,
+}
+
+/// A single changed file in a worktree diff relative to its base branch.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct WorktreeDiffEntry {
+    /// File path relative to repo root
+    pub path: String,
+    /// Change status: "added", "modified", "deleted", "renamed"
+    pub status: String,
+    /// Lines added (0 if unavailable)
+    pub additions: u32,
+    /// Lines removed (0 if unavailable)
+    pub deletions: u32,
 }
 
 // =============================================================================
@@ -608,6 +658,53 @@ pub struct ParseErrorInfo {
     pub message: String,
     /// Location of the error
     pub range: SymbolRange,
+}
+
+// =============================================================================
+// ElevenLabs Voice Protocol
+// =============================================================================
+
+/// STT partial transcript event (emitted on "elevenlabs:stt_partial" channel)
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct ElevenLabsSttPartialEvent {
+    pub session_id: String,
+    pub text: String,
+}
+
+/// STT committed (final) transcript event (emitted on "elevenlabs:stt_committed" channel)
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct ElevenLabsSttCommittedEvent {
+    pub session_id: String,
+    pub text: String,
+}
+
+/// STT status event (emitted on "elevenlabs:stt_status" channel)
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct ElevenLabsSttStatusEvent {
+    pub session_id: String,
+    pub status: String,
+    pub error: Option<String>,
+}
+
+/// TTS audio chunk event (emitted on "elevenlabs:tts_audio" channel)
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct ElevenLabsTtsAudioEvent {
+    pub session_id: String,
+    pub chunk: String,
+    pub sample_rate: u32,
+}
+
+/// TTS status event (emitted on "elevenlabs:tts_status" channel)
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct ElevenLabsTtsStatusEvent {
+    pub session_id: String,
+    pub status: String,
+    pub error: Option<String>,
 }
 
 // =============================================================================

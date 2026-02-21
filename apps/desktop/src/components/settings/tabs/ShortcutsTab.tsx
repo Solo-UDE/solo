@@ -125,8 +125,10 @@ export function ShortcutsTab() {
         ))}
 
         {filteredCategories.length === 0 && (
-          <div className="text-center py-8 text-muted-foreground">
-            No shortcuts found matching "{searchQuery}"
+          <div className="flex flex-col items-center justify-center py-8 gap-1.5">
+            <MagnifyingGlass className="w-5 h-5 text-muted-foreground/30" />
+            <p className="text-sm text-muted-foreground/60">No shortcuts found</p>
+            <p className="text-xs text-muted-foreground/40">Try a different search term</p>
           </div>
         )}
       </div>

@@ -16,7 +16,7 @@ const grepParams = z.object({
 export const createGrepTool = (desktopClient: DesktopClient, mux: AgentMux, conversationId: string) =>
   tool({
     description:
-      'Search for a pattern in files using ripgrep. Returns matching file paths or content depending on output_mode. Use this to find code, function definitions, imports, or any text pattern across the codebase.',
+      'Search for exact text or regex patterns across files using ripgrep. Use output_mode "files_with_matches" (default) to find which files contain a pattern, "content" to see matching lines with context, or "count" for match counts. Filter files with the glob parameter (e.g., "*.ts" for TypeScript). This is your primary tool for searching codebases — use it to find function definitions, imports, usage patterns, or any text.',
     inputSchema: grepParams,
     execute: async (args: z.infer<typeof grepParams>) => {
       const { pattern, path, glob, output_mode, case_insensitive, head_limit } = args;

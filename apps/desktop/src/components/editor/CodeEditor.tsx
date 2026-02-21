@@ -6,7 +6,8 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Editor, { OnMount, BeforeMount } from '@monaco-editor/react';
 import type * as Monaco from 'monaco-editor';
-import { FileText, CircleNotch, WarningCircle } from '@phosphor-icons/react';
+import { FileText, WarningCircle } from '@phosphor-icons/react';
+import { CodeSkeleton } from '@/components/ui/skeletons';
 import * as fs from '../../lib/tauri/fs';
 import { useEditorStore, isMarkdownFile, useMarkdownPreview } from '../../stores/editorStore';
 import { useSettingsStore } from '../../stores/settingsStore';
@@ -330,11 +331,8 @@ export function CodeEditor({ filePath, className = '' }: CodeEditorProps) {
     return (
       <div className={`flex flex-col h-full bg-background ${className}`}>
         <EditorTabs />
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center space-y-4">
-            <CircleNotch weight="bold" className="w-8 h-8 text-primary animate-spin mx-auto" />
-            <p className="text-sm text-muted-foreground">Loading file...</p>
-          </div>
+        <div className="flex-1">
+          <CodeSkeleton lines={18} />
         </div>
       </div>
     );

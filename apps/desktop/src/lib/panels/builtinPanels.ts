@@ -9,6 +9,7 @@ import { WelcomePanel } from '@/components/panels/WelcomePanel';
 import { AgentPanel } from '@/components/panels/AgentPanel';
 import { TerminalPanel } from '@/components/panels/TerminalPanel';
 import { GitDiffPanel } from '@/components/panels/GitDiffPanel';
+import { WorktreeDiffPanel } from '@/components/panels/WorktreeDiffPanel';
 
 /**
  * Register all built-in panel types
@@ -84,6 +85,20 @@ export function registerBuiltinPanels(): void {
       const filePath = data.filePath as string | undefined;
       if (!filePath) return 'Diff';
       return `Diff: ${filePath.split('/').pop() ?? 'Diff'}`;
+    },
+    allowMultiple: true,
+    preferredRegion: 'editor',
+  });
+
+  // Worktree Diff Panel — shows changes vs base branch, no serialization
+  panelRegistry.register({
+    id: 'worktree-diff',
+    displayName: 'Worktree Diff',
+    defaultIcon: 'git-diff',
+    component: WorktreeDiffPanel,
+    getDefaultTitle: (data) => {
+      const branch = data.branch as string | undefined;
+      return branch ? `Diff: ${branch}` : 'Worktree Diff';
     },
     allowMultiple: true,
     preferredRegion: 'editor',

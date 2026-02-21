@@ -133,17 +133,14 @@ export const LexicalEditor = forwardRef<LexicalEditorHandle, LexicalEditorProps>
     insertText: (text: string) => {
       const editor = editorRef.current;
       if (editor) {
+        // Focus the editor first — Lexical requires focus for selection to work
+        editor.focus();
         editor.update(() => {
           const root = $getRoot();
-          const paragraph = root.getFirstChild();
-          if (paragraph) {
-            paragraph.selectEnd();
-          }
-        });
-        // Use the command after selection is set
-        editor.update(() => {
-          const selection = $getRoot().getFirstChild()?.selectEnd();
-          if (selection) {
+          // Move cursor to end of last paragraph, then insert
+          const lastChild = root.getLastChild();
+          if (lastChild) {
+            const selection = lastChild.selectEnd();
             selection.insertText(text);
           }
         });

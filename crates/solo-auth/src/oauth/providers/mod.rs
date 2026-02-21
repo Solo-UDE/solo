@@ -5,8 +5,10 @@
 
 pub mod anthropic;
 pub mod claude_code;
+pub mod github;
 pub mod openai;
 
 pub use anthropic::AnthropicOAuthConfig;
 pub use claude_code::{ClaudeCodeOAuthConfig, ClaudeCodeOAuthFlow, ClaudeAiOAuth, ClaudeCodeCredentials};
+pub use github::GitHubOAuthConfig;
 pub use openai::OpenAIOAuthConfig;

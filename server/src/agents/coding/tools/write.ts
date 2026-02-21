@@ -16,7 +16,7 @@ export const createWriteTool = (
 ) =>
   tool({
     description:
-      'Write content to a file. Creates the file if it does not exist, or overwrites it if it does. Use this for creating new files or completely replacing file contents.',
+      'Create a new file or overwrite an existing file with the provided content. Use this for creating brand new source files. Prefer the edit tool for targeted changes to existing files — only use write when you need to create a file from scratch or completely replace all content.',
     inputSchema: writeParams,
     execute: async (args: z.infer<typeof writeParams>) => {
       const { path, content } = args;

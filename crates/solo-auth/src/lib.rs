@@ -13,7 +13,7 @@ pub use credentials::{CredentialManager, CredentialSource};
 pub use models::{get_all_models, get_models_for_provider, AIModel};
 pub use provider::{ProviderConfig, ProviderError, ProviderResult, ProviderStatus, ProviderType};
 pub use oauth::{
-    AuthMethodInfo, AuthType, OAuthFlowResult, OAuthMethod, OAuthState, OAuthToken,
-    AnthropicOAuthConfig, OpenAIOAuthConfig,
+    AuthMethodInfo, AuthType, GitHubOAuthConfig, OAuthFlowResult, OAuthMethod, OAuthState,
+    OAuthToken, AnthropicOAuthConfig, OpenAIOAuthConfig,
     start_callback_server,
 };

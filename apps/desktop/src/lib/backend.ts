@@ -200,6 +200,17 @@ export async function agentGetAcceptMode(sessionId: string): Promise<boolean> {
 	return invoke<boolean>('agent_get_accept_mode', { sessionId });
 }
 
+/**
+ * Set tool permission policy for a session
+ */
+export async function agentSetToolPolicy(
+	sessionId: string,
+	mode: 'ask-all' | 'smart' | 'approve-all',
+	isWorktreeSession: boolean
+): Promise<void> {
+	return invoke('agent_set_tool_policy', { sessionId, mode, isWorktreeSession });
+}
+
 // =============================================================================
 // OAuth Commands
 // =============================================================================
@@ -218,8 +229,8 @@ export async function completeOAuthFlow(
 	return invoke('complete_oauth_flow', { code, oauthState });
 }
 
-export async function waitForOAuthCallback(): Promise<{ code: string; state: string }> {
-	const [code, state] = await invoke<[string, string]>('wait_for_oauth_callback');
+export async function waitForOAuthCallback(expectedState: string): Promise<{ code: string; state: string }> {
+	const [code, state] = await invoke<[string, string]>('wait_for_oauth_callback', { expectedState });
 	return { code, state };
 }
 

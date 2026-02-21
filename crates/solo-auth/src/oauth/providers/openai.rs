@@ -143,11 +143,19 @@ impl OpenAIOAuthConfig {
     }
 }
 
-/// Extract the ChatGPT account ID from an OpenAI id_token JWT
+/// Expected issuer for OpenAI id_tokens
+const OPENAI_JWT_ISSUER: &str = "https://auth.openai.com/";
+
+/// Extract the ChatGPT account ID from an OpenAI id_token JWT.
+///
+/// Validates the `iss` claim matches OpenAI's auth domain before
+/// trusting any extracted claims. This prevents accepting forged JWTs
+/// with fabricated account IDs.
 ///
 /// The JWT contains claims like:
 /// ```json
 /// {
+///   "iss": "https://auth.openai.com/",
 ///   "chatgpt_account_id": "acct_xxx",
 ///   "https://api.openai.com/auth": {
 ///     "chatgpt_account_id": "acct_xxx"
@@ -191,6 +199,23 @@ fn extract_account_id_from_jwt(id_token: &str) -> Option<String> {
             return None;
         }
     };
+
+    // Validate issuer before trusting any claims
+    match claims.get("iss").and_then(|v| v.as_str()) {
+        Some(iss) if iss == OPENAI_JWT_ISSUER => {}
+        Some(iss) => {
+            tracing::warn!(
+                "JWT issuer mismatch: expected '{}', got '{}'. Rejecting token.",
+                OPENAI_JWT_ISSUER,
+                iss
+            );
+            return None;
+        }
+        None => {
+            tracing::warn!("JWT missing 'iss' claim. Rejecting token.");
+            return None;
+        }
+    }
 
     // Try direct claim first
     if let Some(account_id) = claims.get("chatgpt_account_id").and_then(|v| v.as_str()) {
@@ -254,13 +279,10 @@ mod tests {
 
     #[test]
     fn test_extract_account_id_from_jwt() {
-        // Create a test JWT with chatgpt_account_id claim
-        // Header: {"alg":"none","typ":"JWT"}
-        // Payload: {"chatgpt_account_id":"acct_test123","sub":"user123"}
-        // Note: This is a test token, not cryptographically signed
-
         let header = URL_SAFE_NO_PAD.encode(r#"{"alg":"none","typ":"JWT"}"#);
-        let payload = URL_SAFE_NO_PAD.encode(r#"{"chatgpt_account_id":"acct_test123","sub":"user123"}"#);
+        let payload = URL_SAFE_NO_PAD.encode(
+            r#"{"iss":"https://auth.openai.com/","chatgpt_account_id":"acct_test123","sub":"user123"}"#,
+        );
         let signature = "";
 
         let test_jwt = format!("{}.{}.{}", header, payload, signature);
@@ -271,9 +293,10 @@ mod tests {
 
     #[test]
     fn test_extract_account_id_from_jwt_nested() {
-        // Test with nested claim format
         let header = URL_SAFE_NO_PAD.encode(r#"{"alg":"none","typ":"JWT"}"#);
-        let payload = URL_SAFE_NO_PAD.encode(r#"{"https://api.openai.com/auth":{"chatgpt_account_id":"acct_nested"}}"#);
+        let payload = URL_SAFE_NO_PAD.encode(
+            r#"{"iss":"https://auth.openai.com/","https://api.openai.com/auth":{"chatgpt_account_id":"acct_nested"}}"#,
+        );
         let signature = "";
 
         let test_jwt = format!("{}.{}.{}", header, payload, signature);
@@ -283,8 +306,35 @@ mod tests {
     }
 
     #[test]
+    fn test_extract_account_id_wrong_issuer() {
+        let header = URL_SAFE_NO_PAD.encode(r#"{"alg":"none","typ":"JWT"}"#);
+        let payload = URL_SAFE_NO_PAD.encode(
+            r#"{"iss":"https://evil.example.com/","chatgpt_account_id":"acct_forged"}"#,
+        );
+        let signature = "";
+
+        let test_jwt = format!("{}.{}.{}", header, payload, signature);
+
+        // Should reject due to issuer mismatch
+        assert!(extract_account_id_from_jwt(&test_jwt).is_none());
+    }
+
+    #[test]
+    fn test_extract_account_id_missing_issuer() {
+        let header = URL_SAFE_NO_PAD.encode(r#"{"alg":"none","typ":"JWT"}"#);
+        let payload = URL_SAFE_NO_PAD.encode(
+            r#"{"chatgpt_account_id":"acct_no_iss","sub":"user123"}"#,
+        );
+        let signature = "";
+
+        let test_jwt = format!("{}.{}.{}", header, payload, signature);
+
+        // Should reject due to missing issuer
+        assert!(extract_account_id_from_jwt(&test_jwt).is_none());
+    }
+
+    #[test]
     fn test_extract_account_id_invalid_jwt() {
-        // Test with invalid JWT
         let result = extract_account_id_from_jwt("not.a.valid.jwt");
         assert!(result.is_none());
 

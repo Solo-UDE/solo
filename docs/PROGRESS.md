@@ -4,11 +4,11 @@
 
 ---
 
-## Current Status: Core IDE Complete, Starting Orchids Migration
+## Current Status: Core IDE Complete, Starting Feature Migration
 
-The local IDE core is fully functional: terminal, editor, file explorer, AI agent with tool execution, auth, and settings. The next phase is git integration and then cloud features ported from the Orchids codebase.
+The local IDE core is fully functional: terminal, editor, file explorer, AI agent with tool execution, auth, and settings. The next phase is git integration and then cloud features ported from the legacy codebase.
 
-See `docs/MIGRATION.md` for the full Orchids → Solo migration plan.
+See `docs/MIGRATION.md` for the full migration plan.
 
 ---
 
@@ -136,7 +136,7 @@ See `docs/MIGRATION.md` for the full Orchids → Solo migration plan.
 
 ---
 
-## Phase 9: Orchids Migration — PLANNED 📋
+## Phase 9: Feature Migration — PLANNED 📋
 
 > See `docs/MIGRATION.md` for the complete migration plan
 
@@ -146,7 +146,7 @@ See `docs/MIGRATION.md` for the full Orchids → Solo migration plan.
 - [ ] System checker
 
 ### Priority 2 (Cloud infrastructure)
-- [ ] Solo Server (fork + rebrand orchids server)
+- [ ] Solo Server (cloud backend)
 - [ ] Project management (create, import, clone, templates)
 - [ ] Chat persistence (server-side sessions + messages)
 
@@ -183,7 +183,7 @@ See `docs/MIGRATION.md` for the full Orchids → Solo migration plan.
 - Phase 2a terminal implementation (master branch)
 - Merged dev branch into master (resolved 9 conflicts)
 - Dev branch terminal architecture adopted (UUID IDs, SidebarTerminal, TerminalView)
-- Created MIGRATION.md documenting full Orchids → Solo port plan
+- Created MIGRATION.md documenting full migration port plan
 - Updated PROGRESS.md to reflect current state
 
 ### 2026-02-12

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { useUIStore, type SettingsTabId } from '../../stores/uiStore';
 import { SettingsSidebar } from './SettingsSidebar';
 import { GeneralTab } from './tabs/GeneralTab';
@@ -7,8 +8,9 @@ import { TerminalTab } from './tabs/TerminalTab';
 import { FilesTab } from './tabs/FilesTab';
 import { ShortcutsTab } from './tabs/ShortcutsTab';
 import { AITab } from './tabs/AITab';
+import { VoiceTab } from './tabs/VoiceTab';
 
-const TAB_ORDER: SettingsTabId[] = ['general', 'editor', 'terminal', 'files', 'shortcuts', 'ai'];
+const TAB_ORDER: SettingsTabId[] = ['general', 'editor', 'terminal', 'files', 'shortcuts', 'ai', 'voice'];
 
 const TAB_LABELS: Record<SettingsTabId, string> = {
   general: 'General',
@@ -17,6 +19,7 @@ const TAB_LABELS: Record<SettingsTabId, string> = {
   files: 'Files',
   shortcuts: 'Shortcuts',
   ai: 'Providers',
+  voice: 'Voice',
 };
 
 export function SettingsView() {
@@ -39,6 +42,8 @@ export function SettingsView() {
         return <ShortcutsTab />;
       case 'ai':
         return <AITab />;
+      case 'voice':
+        return <VoiceTab />;
       default:
         return null;
     }
@@ -80,16 +85,31 @@ export function SettingsView() {
   }, []);
 
   return (
-    <div ref={containerRef} className="flex h-full w-full animate-in fade-in-0 duration-200" tabIndex={-1}>
+    <motion.div
+      ref={containerRef}
+      className="flex h-full w-full"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.2 }}
+      tabIndex={-1}
+    >
       <SettingsSidebar />
       <main className="flex-1 overflow-y-auto bg-background">
         <div className="max-w-2xl mx-auto px-8 py-8">
           <h1 className="text-2xl font-semibold mb-6">{TAB_LABELS[settingsTab]}</h1>
-          <div key={settingsTab} className="animate-in fade-in-0 duration-150">
-            {renderTabContent()}
-          </div>
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={settingsTab}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+            >
+              {renderTabContent()}
+            </motion.div>
+          </AnimatePresence>
         </div>
       </main>
-    </div>
+    </motion.div>
   );
 }

@@ -26,7 +26,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     ].join(" ");
 
     const variants = {
-      primary: "bg-primary text-primary-foreground hover:brightness-110 shadow-md",
+      primary: "bg-primary text-primary-foreground hover:brightness-110 shadow-md glow-primary",
       secondary: "bg-muted text-foreground hover:bg-muted/80",
       ghost: "bg-transparent hover:bg-muted/60",
       destructive: "bg-destructive/10 text-destructive hover:bg-destructive/20",

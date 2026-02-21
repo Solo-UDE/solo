@@ -10,7 +10,7 @@ const lsParams = z.object({
 export const createLsTool = (desktopClient: DesktopClient, mux: AgentMux, conversationId: string) =>
   tool({
     description:
-      'List the contents of a directory. Returns file and subdirectory names. Use this to explore the project structure or check what files exist in a specific directory.',
+      'List the contents of a directory. The quick tool to use for discovery, before using more targeted tools like grep or file reading. Useful to understand file structure before diving deeper into specific files. Can be used to explore the codebase and understand project layout.',
     inputSchema: lsParams,
     execute: async (args: z.infer<typeof lsParams>) => {
       const { path } = args;

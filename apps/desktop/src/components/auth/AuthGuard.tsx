@@ -4,7 +4,7 @@
  */
 
 import { useEffect } from "react";
-import { CircleNotch } from "@phosphor-icons/react";
+import { Skeleton } from "@solo/ui";
 import {
   useAuthStore,
   useIsAuthenticated,
@@ -57,13 +57,19 @@ function AuthGuardInner({ children }: AuthGuardProps) {
     };
   }, [handleAuthCallback]);
 
-  // Show loading spinner during initialization
+  // Show branded skeleton during initialization
   if (isInitializing) {
     return (
       <div className="h-screen w-screen bg-background flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <CircleNotch weight="bold" className="w-8 h-8 animate-spin text-primary" />
-          <p className="text-sm text-muted-foreground">Loading...</p>
+        <div className="flex flex-col items-center gap-4">
+          <div className="relative w-10 h-10">
+            <div className="absolute inset-0 rounded-full border-2 border-primary/20" />
+            <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-primary animate-spin" />
+          </div>
+          <div className="flex flex-col items-center gap-2">
+            <Skeleton shimmer className="h-3 w-24 rounded-full" />
+            <Skeleton shimmer className="h-2 w-16 rounded-full" />
+          </div>
         </div>
       </div>
     );

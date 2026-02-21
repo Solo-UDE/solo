@@ -25,17 +25,17 @@ const STATUS_LABELS: Record<GitFileStatus, string> = {
 };
 
 const STATUS_COLORS: Record<GitFileStatus, string> = {
-  modified: 'text-amber-400',
-  added: 'text-emerald-400',
-  deleted: 'text-red-400',
-  renamed: 'text-blue-400',
+  modified: 'text-warning',
+  added: 'text-success',
+  deleted: 'text-destructive',
+  renamed: 'text-info',
 };
 
 const STATUS_BG: Record<GitFileStatus, string> = {
-  modified: 'bg-amber-400/10',
-  added: 'bg-emerald-400/10',
-  deleted: 'bg-red-400/10',
-  renamed: 'bg-blue-400/10',
+  modified: 'bg-warning/10',
+  added: 'bg-success/10',
+  deleted: 'bg-destructive/10',
+  renamed: 'bg-info/10',
 };
 
 export const FileChangeItem: FC<FileChangeItemProps> = ({ file, onDiscard, onViewDiff, onStage, onUnstage }) => {
@@ -105,10 +105,10 @@ export const FileChangeItem: FC<FileChangeItemProps> = ({ file, onDiscard, onVie
       {(file.insertions > 0 || file.deletions > 0) && !isHovered && (
         <span className="flex items-center gap-0.5 text-[10px] shrink-0">
           {file.insertions > 0 && (
-            <span className="text-emerald-400">+{file.insertions}</span>
+            <span className="text-success">+{file.insertions}</span>
           )}
           {file.deletions > 0 && (
-            <span className="text-red-400">-{file.deletions}</span>
+            <span className="text-destructive">-{file.deletions}</span>
           )}
         </span>
       )}
