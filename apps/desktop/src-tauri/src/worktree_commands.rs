@@ -4,7 +4,8 @@
 
 use solo_git::WorktreeManager;
 use solo_protocol::{
-    BackendEvent, CreateWorktreeRequest, RemoveWorktreeRequest, WorktreeInfo, WorktreeSetupConfig,
+    BackendEvent, CreateWorktreeRequest, RemoveWorktreeRequest, WorktreeDiffEntry, WorktreeInfo,
+    WorktreeSetupConfig,
 };
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -20,6 +21,8 @@ pub struct WorktreeState {
     pub managers: RwLock<HashMap<PathBuf, WorktreeManager>>,
     /// Currently active worktree ID (None = main workspace)
     pub active_worktree_id: RwLock<Option<String>>,
+    /// Original workspace root before worktree switch (for restoration)
+    pub original_workspace_root: RwLock<Option<PathBuf>>,
 }
 
 impl WorktreeState {
@@ -27,6 +30,7 @@ impl WorktreeState {
         Self {
             managers: RwLock::new(HashMap::new()),
             active_worktree_id: RwLock::new(None),
+            original_workspace_root: RwLock::new(None),
         }
     }
 }
@@ -38,12 +42,21 @@ impl Default for WorktreeState {
 }
 
 /// Get or create a WorktreeManager for the current workspace.
+/// Uses original_workspace_root when available (i.e., when workspace_root has been
+/// swapped to a worktree path), since managers are keyed by the real repo root.
 async fn get_manager(wt_state: &WorktreeState, fs_state: &FsState) -> Result<PathBuf, String> {
-    let workspace = fs_state.workspace_root.read().await;
-    let repo_path = workspace
-        .as_ref()
-        .ok_or("No workspace root set. Open a folder first.")?
-        .clone();
+    let repo_path = {
+        let orig = wt_state.original_workspace_root.read().await;
+        if let Some(ref path) = *orig {
+            path.clone()
+        } else {
+            let workspace = fs_state.workspace_root.read().await;
+            workspace
+                .as_ref()
+                .ok_or("No workspace root set. Open a folder first.")?
+                .clone()
+        }
+    };
 
     let mut managers = wt_state.managers.write().await;
     if !managers.contains_key(&repo_path) {
@@ -209,14 +222,15 @@ pub async fn worktree_create(
     }
 }
 
-/// Remove a worktree
+/// Remove a worktree.
+/// Returns the restored workspace path if the removed worktree was active.
 #[tauri::command]
 pub async fn worktree_remove(
     request: RemoveWorktreeRequest,
     app: AppHandle,
     wt_state: State<'_, WorktreeState>,
     fs_state: State<'_, FsState>,
-) -> Result<(), String> {
+) -> Result<Option<String>, String> {
     info!(id = %request.id, force = request.force, "Removing worktree");
 
     let repo_path = get_manager(&wt_state, &fs_state).await?;
@@ -227,10 +241,23 @@ pub async fn worktree_remove(
         .remove(&request.id, request.force)
         .map_err(|e| e.to_string())?;
 
-    // If we removed the active worktree, reset to main
+    // If we removed the active worktree, restore workspace_root to original
+    let mut restored_path: Option<String> = None;
     let mut active = wt_state.active_worktree_id.write().await;
     if active.as_deref() == Some(&request.id) {
         *active = None;
+
+        let original = {
+            let mut orig = wt_state.original_workspace_root.write().await;
+            orig.take()
+        };
+
+        if let Some(original) = original {
+            let mut workspace = fs_state.workspace_root.write().await;
+            *workspace = Some(original.clone());
+            restored_path = Some(original.display().to_string());
+            info!(path = %original.display(), "Workspace root restored after worktree removal");
+        }
     }
 
     let _ = app.emit(
@@ -240,7 +267,7 @@ pub async fn worktree_remove(
         },
     );
 
-    Ok(())
+    Ok(restored_path)
 }
 
 /// Get a single worktree by ID
@@ -261,35 +288,64 @@ pub async fn worktree_get(
 
 /// Set the active worktree (switches workspace context).
 /// Pass None/null to return to the main workspace.
+/// Returns the target path so the frontend can re-scope file explorer + watcher.
 #[tauri::command]
 pub async fn worktree_set_active(
     id: Option<String>,
     wt_state: State<'_, WorktreeState>,
     fs_state: State<'_, FsState>,
-) -> Result<(), String> {
+) -> Result<Option<String>, String> {
     info!(id = ?id, "Setting active worktree");
 
-    // Determine the target path (for logging)
     let target_path = if let Some(ref wt_id) = id {
+        // Resolve worktree path *before* we touch workspace_root
         let repo_path = get_manager(&wt_state, &fs_state).await?;
         let managers = wt_state.managers.read().await;
         let manager = managers.get(&repo_path).unwrap();
         let wt_path = manager
             .worktree_path(wt_id)
             .ok_or_else(|| format!("Worktree not found: {}", wt_id))?;
-        wt_path
+
+        // Save original workspace root on first worktree activation
+        {
+            let mut orig = wt_state.original_workspace_root.write().await;
+            if orig.is_none() {
+                let workspace = fs_state.workspace_root.read().await;
+                *orig = workspace.clone();
+            }
+        }
+
+        // Swap FsState.workspace_root to the worktree path — auto-scopes all
+        // git commands and file operations that read workspace_root
+        {
+            let mut workspace = fs_state.workspace_root.write().await;
+            *workspace = Some(wt_path.clone());
+        }
+
+        info!(path = %wt_path.display(), "Workspace root swapped to worktree");
+        Some(wt_path.display().to_string())
     } else {
-        // Reset to main workspace
-        let workspace = fs_state.workspace_root.read().await;
-        workspace.as_ref().ok_or("No workspace root set")?.clone()
+        // Return to main workspace: restore original root
+        let restored = {
+            let mut orig = wt_state.original_workspace_root.write().await;
+            orig.take()
+        };
+
+        if let Some(original) = restored {
+            let mut workspace = fs_state.workspace_root.write().await;
+            *workspace = Some(original.clone());
+            info!(path = %original.display(), "Workspace root restored to main");
+            Some(original.display().to_string())
+        } else {
+            // No original saved — already on main
+            let workspace = fs_state.workspace_root.read().await;
+            workspace.as_ref().map(|p| p.display().to_string())
+        }
     };
 
-    // Update active worktree ID
     *wt_state.active_worktree_id.write().await = id;
 
-    debug!(path = %target_path.display(), "Active worktree path set");
-
-    Ok(())
+    Ok(target_path)
 }
 
 /// Get the currently active worktree (None = main workspace)
@@ -361,17 +417,126 @@ pub async fn worktree_prune(
 
     let pruned = manager.prune_stale().map_err(|e| e.to_string())?;
 
-    // Clear active worktree if it was pruned
+    // Restore context if the active worktree was pruned
     if !pruned.is_empty() {
         let mut active = wt_state.active_worktree_id.write().await;
         if let Some(ref active_id) = *active {
             if pruned.contains(active_id) {
                 *active = None;
+
+                let original = {
+                    let mut orig = wt_state.original_workspace_root.write().await;
+                    orig.take()
+                };
+                if let Some(original) = original {
+                    let mut workspace = fs_state.workspace_root.write().await;
+                    *workspace = Some(original);
+                }
             }
         }
     }
 
     Ok(pruned)
+}
+
+/// Bind an agent session to a worktree (also locks it).
+#[tauri::command]
+pub async fn worktree_bind_agent(
+    worktree_id: String,
+    session_id: String,
+    wt_state: State<'_, WorktreeState>,
+    fs_state: State<'_, FsState>,
+) -> Result<(), String> {
+    info!(worktree_id = %worktree_id, session_id = %session_id, "Binding agent to worktree");
+
+    let repo_path = get_manager(&wt_state, &fs_state).await?;
+    let managers = wt_state.managers.read().await;
+    let manager = managers.get(&repo_path).unwrap();
+
+    manager
+        .set_agent_session(&worktree_id, &session_id)
+        .map_err(|e| e.to_string())?;
+
+    // Auto-lock the worktree while an agent is working in it
+    let _ = manager.lock(&worktree_id, Some("Agent session active"));
+
+    Ok(())
+}
+
+/// Unbind an agent session from a worktree (also unlocks it).
+#[tauri::command]
+pub async fn worktree_unbind_agent(
+    worktree_id: String,
+    wt_state: State<'_, WorktreeState>,
+    fs_state: State<'_, FsState>,
+) -> Result<(), String> {
+    info!(worktree_id = %worktree_id, "Unbinding agent from worktree");
+
+    let repo_path = get_manager(&wt_state, &fs_state).await?;
+    let managers = wt_state.managers.read().await;
+    let manager = managers.get(&repo_path).unwrap();
+
+    manager
+        .clear_agent_session(&worktree_id)
+        .map_err(|e| e.to_string())?;
+
+    // Unlock the worktree
+    let _ = manager.unlock(&worktree_id);
+
+    Ok(())
+}
+
+/// Find the worktree bound to an agent session (returns worktree ID or null).
+#[tauri::command]
+pub async fn worktree_find_by_agent(
+    session_id: String,
+    wt_state: State<'_, WorktreeState>,
+    fs_state: State<'_, FsState>,
+) -> Result<Option<String>, String> {
+    let repo_path = get_manager(&wt_state, &fs_state).await?;
+    let managers = wt_state.managers.read().await;
+    let manager = managers.get(&repo_path).unwrap();
+
+    manager
+        .find_by_agent_session(&session_id)
+        .map_err(|e| e.to_string())
+}
+
+/// Diff a worktree against its merge-base with the main branch.
+#[tauri::command]
+pub async fn worktree_diff_from_base(
+    worktree_id: String,
+    wt_state: State<'_, WorktreeState>,
+    fs_state: State<'_, FsState>,
+) -> Result<Vec<WorktreeDiffEntry>, String> {
+    debug!(worktree_id = %worktree_id, "Computing diff from base");
+
+    let repo_path = get_manager(&wt_state, &fs_state).await?;
+    let managers = wt_state.managers.read().await;
+    let manager = managers.get(&repo_path).unwrap();
+
+    manager
+        .diff_from_base(&worktree_id)
+        .map_err(|e| e.to_string())
+}
+
+/// Create a named branch pointing at a worktree's current HEAD.
+#[tauri::command]
+pub async fn worktree_promote(
+    worktree_id: String,
+    branch_name: String,
+    wt_state: State<'_, WorktreeState>,
+    fs_state: State<'_, FsState>,
+) -> Result<(), String> {
+    info!(worktree_id = %worktree_id, branch = %branch_name, "Promoting worktree to branch");
+
+    let repo_path = get_manager(&wt_state, &fs_state).await?;
+    let managers = wt_state.managers.read().await;
+    let manager = managers.get(&repo_path).unwrap();
+
+    manager
+        .promote_to_branch(&worktree_id, &branch_name)
+        .map_err(|e| e.to_string())
 }
 
 /// Set setup commands for new worktrees

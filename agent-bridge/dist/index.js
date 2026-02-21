@@ -4,32 +4,133 @@
 import * as readline from "readline";
 
 // src/logger.ts
+import * as fs from "fs";
+import * as path from "path";
+import * as os from "os";
+var LOG_LEVEL_ORDER = {
+  debug: 0,
+  info: 1,
+  warn: 2,
+  error: 3
+};
+var stderrLevel = "info";
+var fileLevel = "debug";
+var logFilePath = null;
+var logFileStream = null;
+var MAX_FILE_SIZE = 10 * 1024 * 1024;
+var MAX_ROTATED_FILES = 5;
+var debugCallback = null;
+var activeCorrelationId;
+function configureFileLogging(logDir) {
+  const dir = logDir ?? path.join(os.homedir(), ".solo", "logs");
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+  } catch {
+  }
+  logFilePath = path.join(dir, "agent-bridge.log");
+  rotateIfNeeded();
+  logFileStream = fs.createWriteStream(logFilePath, { flags: "a" });
+  logFileStream.on("error", (err) => {
+    process.stderr.write(`[logger] File write error: ${err.message}
+`);
+    logFileStream = null;
+  });
+}
+function setCorrelationId(id) {
+  activeCorrelationId = id;
+}
+function rotateIfNeeded() {
+  if (!logFilePath) return;
+  let stat;
+  try {
+    stat = fs.statSync(logFilePath);
+  } catch {
+    return;
+  }
+  if (stat.size < MAX_FILE_SIZE) return;
+  if (logFileStream) {
+    logFileStream.end();
+    logFileStream = null;
+  }
+  for (let i = MAX_ROTATED_FILES; i >= 1; i--) {
+    const from = i === 1 ? logFilePath : `${logFilePath}.${i - 1}`;
+    const to = `${logFilePath}.${i}`;
+    try {
+      if (i === MAX_ROTATED_FILES) {
+        fs.unlinkSync(to);
+      }
+    } catch {
+    }
+    try {
+      fs.renameSync(from, to);
+    } catch {
+    }
+  }
+}
+function shouldLog(entryLevel, minLevel) {
+  return LOG_LEVEL_ORDER[entryLevel] >= LOG_LEVEL_ORDER[minLevel];
+}
+function writeEntry(entry) {
+  if (shouldLog(entry.level, stderrLevel)) {
+    const contextStr = entry.context ? ` ${JSON.stringify(entry.context)}` : "";
+    const correlStr = entry.correlationId ? ` [${entry.correlationId.slice(0, 8)}]` : "";
+    const durationStr = entry.durationMs !== void 0 ? ` (${entry.durationMs}ms)` : "";
+    const formatted = `[${entry.timestamp}] [${entry.prefix}] [${entry.level.toUpperCase()}]${correlStr}${contextStr} ${entry.message}${durationStr}`;
+    process.stderr.write(formatted + "\n");
+  }
+  if (logFileStream && shouldLog(entry.level, fileLevel)) {
+    const jsonLine = JSON.stringify(entry) + "\n";
+    logFileStream.write(jsonLine);
+    if (logFilePath) {
+      try {
+        const stat = fs.statSync(logFilePath);
+        if (stat.size >= MAX_FILE_SIZE) {
+          rotateIfNeeded();
+          logFileStream = fs.createWriteStream(logFilePath, { flags: "a" });
+        }
+      } catch {
+      }
+    }
+  }
+  if (debugCallback) {
+    try {
+      debugCallback(entry);
+    } catch {
+    }
+  }
+}
 function createLogger(prefix) {
-  const formatMessage = (level, context, message) => {
-    const timestamp = (/* @__PURE__ */ new Date()).toISOString();
-    const contextStr = typeof context === "string" ? "" : ` ${JSON.stringify(context)}`;
-    const msg = typeof context === "string" ? context : message ?? "";
-    return `[${timestamp}] [${prefix}] [${level.toUpperCase()}]${contextStr} ${msg}`;
-  };
-  const writeToStderr = (message) => {
-    process.stderr.write(message + "\n");
+  const buildEntry = (level, contextOrMessage, message) => {
+    const isContextOverload = typeof contextOrMessage !== "string";
+    return {
+      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+      level,
+      prefix,
+      message: isContextOverload ? message ?? "" : contextOrMessage,
+      context: isContextOverload ? contextOrMessage : void 0,
+      correlationId: activeCorrelationId
+    };
   };
   return {
     debug(contextOrMessage, message) {
-      if (process.env.DEBUG) {
-        writeToStderr(formatMessage("debug", contextOrMessage, message));
-      }
+      writeEntry(buildEntry("debug", contextOrMessage, message));
     },
     info(contextOrMessage, message) {
-      writeToStderr(formatMessage("info", contextOrMessage, message));
+      writeEntry(buildEntry("info", contextOrMessage, message));
     },
     warn(contextOrMessage, message) {
-      writeToStderr(formatMessage("warn", contextOrMessage, message));
+      writeEntry(buildEntry("warn", contextOrMessage, message));
     },
     error(contextOrMessage, message) {
-      writeToStderr(formatMessage("error", contextOrMessage, message));
+      writeEntry(buildEntry("error", contextOrMessage, message));
     }
   };
+}
+function shutdownFileLogging() {
+  if (logFileStream) {
+    logFileStream.end();
+    logFileStream = null;
+  }
 }
 
 // src/session-manager.ts
@@ -874,8 +975,9 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
           };
         }
       };
+      const subagentStartTimes = /* @__PURE__ */ new Map();
       options.hooks = {
-        // PreToolUse hook - auto-approve safe tools, let SDK handle others
+        // PreToolUse hook - auto-approve safe tools, log full input, let SDK handle others
         PreToolUse: [
           {
             // No matcher means match ALL tools
@@ -886,7 +988,16 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
                 const preToolInput = input;
                 const toolName = preToolInput.tool_name;
                 const toolInput = preToolInput.tool_input;
+                logger3.info(
+                  {
+                    toolName,
+                    inputKeys: Object.keys(toolInput),
+                    inputPreview: JSON.stringify(toolInput).slice(0, 300)
+                  },
+                  "Hook: PreToolUse \u2014 tool requested"
+                );
                 if (toolName === "TodoWrite") {
+                  logger3.debug({ toolName }, "Hook: PreToolUse \u2014 auto-approved (safe tool)");
                   return Promise.resolve({
                     hookSpecificOutput: {
                       hookEventName: "PreToolUse",
@@ -895,32 +1006,36 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
                     }
                   });
                 }
+                logger3.debug({ toolName }, "Hook: PreToolUse \u2014 delegating to SDK permission flow");
                 return Promise.resolve({});
               }
             ]
           }
         ],
-        // PostToolUse hook - track tool completion
+        // PostToolUse hook - log tool response + duration
         PostToolUse: [
           {
             timeout: 30,
             hooks: [
               (input, toolUseId) => {
                 const postInput = input;
-                logger3.debug(
+                const response = postInput.tool_response;
+                const responseStr = typeof response === "string" ? response : JSON.stringify(response);
+                logger3.info(
                   {
                     toolName: postInput.tool_name,
                     toolUseId,
-                    hasResponse: postInput.tool_response !== void 0
+                    responsePreview: responseStr?.slice(0, 500),
+                    responseLength: responseStr?.length ?? 0
                   },
-                  "Tool execution completed"
+                  "Hook: PostToolUse \u2014 tool completed"
                 );
                 return Promise.resolve({});
               }
             ]
           }
         ],
-        // PostToolUseFailure hook - track tool failures
+        // PostToolUseFailure hook - log full error + context
         PostToolUseFailure: [
           {
             timeout: 30,
@@ -932,9 +1047,10 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
                     toolName: failureInput.tool_name,
                     toolUseId,
                     error: failureInput.error,
-                    isInterrupt: failureInput.is_interrupt
+                    isInterrupt: failureInput.is_interrupt,
+                    toolInput: failureInput.tool_input ? JSON.stringify(failureInput.tool_input).slice(0, 300) : void 0
                   },
-                  "Tool execution failed"
+                  "Hook: PostToolUseFailure \u2014 tool failed"
                 );
                 return Promise.resolve({});
               }
@@ -953,14 +1069,14 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
                     message: notifInput.message,
                     title: notifInput.title
                   },
-                  "Agent notification"
+                  "Hook: Notification"
                 );
                 return Promise.resolve({});
               }
             ]
           }
         ],
-        // PreCompact hook - notify before context compaction
+        // PreCompact hook - log trigger reason and context
         PreCompact: [
           {
             timeout: 30,
@@ -970,35 +1086,37 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
                 logger3.info(
                   {
                     trigger: compactInput.trigger,
-                    customInstructions: compactInput.custom_instructions
+                    customInstructions: compactInput.custom_instructions ? `${compactInput.custom_instructions.slice(0, 100)}...` : void 0
                   },
-                  "Context compaction starting"
+                  "Hook: PreCompact \u2014 context compaction starting"
                 );
                 return Promise.resolve({});
               }
             ]
           }
         ],
-        // SubagentStart hook - track subagent spawning
+        // SubagentStart hook - track subagent spawning with timing
         SubagentStart: [
           {
             timeout: 30,
             hooks: [
               (input) => {
                 const startInput = input;
+                const agentId = startInput.agent_id;
+                subagentStartTimes.set(agentId, Date.now());
                 logger3.info(
                   {
-                    agentId: startInput.agent_id,
+                    agentId,
                     agentType: startInput.agent_type
                   },
-                  "Subagent started"
+                  "Hook: SubagentStart \u2014 subagent spawned"
                 );
                 return Promise.resolve({});
               }
             ]
           }
         ],
-        // SubagentStop hook - track subagent completion
+        // SubagentStop hook - compute subagent duration
         SubagentStop: [
           {
             timeout: 30,
@@ -1009,14 +1127,14 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
                   {
                     stopHookActive: stopInput.stop_hook_active
                   },
-                  "Subagent stopped"
+                  "Hook: SubagentStop \u2014 subagent completed"
                 );
                 return Promise.resolve({});
               }
             ]
           }
         ],
-        // SessionStart hook - track session lifecycle
+        // SessionStart hook - log session config snapshot
         SessionStart: [
           {
             timeout: 30,
@@ -1025,16 +1143,23 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
                 const sessionInput = input;
                 logger3.info(
                   {
-                    source: sessionInput.source
+                    source: sessionInput.source,
+                    model: this.model ?? "sonnet",
+                    thinkingMode: this._thinkingMode,
+                    thinkingBudget: this._thinkingBudget,
+                    planMode: this._planMode,
+                    acceptMode: this._acceptMode,
+                    sessionMode: this._sessionMode,
+                    mcpServers: Object.keys(this._mcpServers)
                   },
-                  "Session started"
+                  "Hook: SessionStart \u2014 session config snapshot"
                 );
                 return Promise.resolve({});
               }
             ]
           }
         ],
-        // SessionEnd hook - track session lifecycle
+        // SessionEnd hook - log end reason
         SessionEnd: [
           {
             timeout: 30,
@@ -1045,7 +1170,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
                   {
                     reason: sessionInput.reason
                   },
-                  "Session ended"
+                  "Hook: SessionEnd \u2014 session ended"
                 );
                 return Promise.resolve({});
               }
@@ -1442,6 +1567,11 @@ var SessionManager = class extends Disposable {
   onAcceptModeChanged = this._onAcceptModeChanged.event;
   _onSessionInit = this._register(new Emitter());
   onSessionInit = this._onSessionInit.event;
+  /** Debug event emitter — routes structured events to IPC for the debug panel */
+  _onDebugEvent = this._register(
+    new Emitter()
+  );
+  onDebugEvent = this._onDebugEvent.event;
   // Session tracking
   activeSessions = /* @__PURE__ */ new Map();
   sessionConsumers = /* @__PURE__ */ new Map();
@@ -1451,6 +1581,45 @@ var SessionManager = class extends Disposable {
   approvedToolNames = /* @__PURE__ */ new Map();
   sessionResumeState = /* @__PURE__ */ new Map();
   sessionInitFired = /* @__PURE__ */ new Set();
+  // Debug tracking
+  sessionTokenAccum = /* @__PURE__ */ new Map();
+  toolStartTimes = /* @__PURE__ */ new Map();
+  // toolUseId → Date.now()
+  sessionCorrelationIds = /* @__PURE__ */ new Map();
+  // sessionId → current correlationId
+  // ==========================================================================
+  // Debug Helpers
+  // ==========================================================================
+  emitDebug(sessionId, category, name, data, durationMs) {
+    const correlationId = this.sessionCorrelationIds.get(sessionId);
+    const event = {
+      category,
+      name,
+      data,
+      correlationId,
+      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+      durationMs
+    };
+    this._onDebugEvent.fire({ sessionId, event });
+  }
+  getOrCreateTokenAccum(sessionId) {
+    let accum = this.sessionTokenAccum.get(sessionId);
+    if (!accum) {
+      accum = {
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheReadInputTokens: 0,
+        cacheCreationInputTokens: 0,
+        turnCount: 0,
+        totalCostUsd: 0
+      };
+      this.sessionTokenAccum.set(sessionId, accum);
+    }
+    return accum;
+  }
+  // ==========================================================================
+  // Session Lifecycle
+  // ==========================================================================
   /**
    * Create a new agent session
    */
@@ -1462,6 +1631,11 @@ var SessionManager = class extends Disposable {
     this.approvedToolNames.set(sessionId, /* @__PURE__ */ new Set());
     const permissionCallback = async (toolName, toolInput, context) => {
       const requestId = randomUUID();
+      this.emitDebug(sessionId, "permission", "permission_requested", {
+        toolName,
+        toolInput: Object.keys(toolInput),
+        requestId
+      });
       this._onPermissionRequest.fire({
         sessionId,
         toolName,
@@ -1470,6 +1644,12 @@ var SessionManager = class extends Disposable {
       });
       const result = await new Promise((resolve) => {
         this.permissionResolvers.set(requestId, resolve);
+      });
+      this.emitDebug(sessionId, "permission", "permission_resolved", {
+        toolName,
+        decision: result.decision,
+        always: result.always,
+        requestId
       });
       if (result.decision === "approve") {
         if (toolName === "ExitPlanMode") {
@@ -1521,6 +1701,18 @@ var SessionManager = class extends Disposable {
       forkSession: config?.forkSession
     };
     logger4.info({ sessionId, sessionMode: finalConfig.sessionMode }, "Creating session");
+    this.emitDebug(sessionId, "session", "session_creating", {
+      model: finalConfig.model ?? "sonnet",
+      thinkingEnabled: finalConfig.thinkingEnabled,
+      maxThinkingTokens: finalConfig.maxThinkingTokens,
+      planEnabled: finalConfig.planEnabled,
+      acceptEnabled: finalConfig.acceptEnabled,
+      critiqueEnabled: finalConfig.critiqueEnabled,
+      sessionMode: finalConfig.sessionMode,
+      cwd: finalConfig.cwd,
+      hasResumeId: !!finalConfig.resumeSessionId,
+      forkSession: finalConfig.forkSession
+    });
     const agent = new OrbitAgent(finalConfig);
     this.sessionResumeState.set(sessionId, {
       isResumed: !!config?.resumeSessionId,
@@ -1530,15 +1722,18 @@ var SessionManager = class extends Disposable {
     try {
       agent.startSession();
       logger4.info({ sessionId }, "Session started successfully");
+      this.emitDebug(sessionId, "session", "session_started", { sessionId });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       logger4.error({ sessionId, error: errorMessage }, "Failed to start session");
+      this.emitDebug(sessionId, "session", "session_start_failed", { error: errorMessage });
       throw error;
     }
     this._startBackgroundConsumer(sessionId, agent);
   }
   /**
-   * Start a background consumer for streaming messages
+   * Start a background consumer for streaming messages.
+   * Logs ALL SDK event types for full observability.
    */
   _startBackgroundConsumer(sessionId, agent) {
     const state = { cancelled: false };
@@ -1549,12 +1744,19 @@ var SessionManager = class extends Disposable {
     void (async () => {
       try {
         const toolUseMap = /* @__PURE__ */ new Map();
+        let streamBlockCount = 0;
+        let streamCharCount = 0;
         for await (const rawMessage of agent.receiveResponse()) {
           if (state.cancelled) {
             break;
           }
           const sdkMessage = rawMessage;
           if (sdkMessage.type === "system") {
+            logger4.debug({ sessionId, subtype: sdkMessage.subtype }, "SDK system message");
+            this.emitDebug(sessionId, "sdk_state", "system_message", {
+              subtype: sdkMessage.subtype,
+              sessionId: sdkMessage.session_id
+            });
             if (sdkMessage.subtype === "init" && sdkMessage.session_id !== void 0) {
               if (this.sessionInitFired.has(sessionId)) {
                 continue;
@@ -1576,28 +1778,99 @@ var SessionManager = class extends Disposable {
           if (sdkMessage.type === "stream_event") {
             const event = sdkMessage.event;
             if (event === void 0) continue;
-            if (event.type === "content_block_delta" && event.delta?.type === "text_delta") {
-              const textDelta = event.delta.text;
-              if (textDelta !== void 0) {
-                this._onAgentMessage.fire({
-                  sessionId,
-                  message: { type: "text", content: textDelta }
+            switch (event.type) {
+              case "message_start":
+                logger4.debug({ sessionId }, "stream: message_start");
+                this.emitDebug(sessionId, "streaming", "message_start", {});
+                streamBlockCount = 0;
+                streamCharCount = 0;
+                break;
+              case "content_block_start":
+                streamBlockCount++;
+                logger4.debug(
+                  { sessionId, blockIndex: event.index, blockType: event.content_block?.type },
+                  "stream: content_block_start"
+                );
+                this.emitDebug(sessionId, "streaming", "content_block_start", {
+                  blockIndex: event.index,
+                  blockType: event.content_block?.type
                 });
+                break;
+              case "content_block_delta": {
+                const deltaType = event.delta?.type;
+                if (deltaType === "text_delta") {
+                  const textDelta = event.delta?.text;
+                  if (textDelta !== void 0) {
+                    streamCharCount += textDelta.length;
+                    this._onAgentMessage.fire({
+                      sessionId,
+                      message: { type: "text", content: textDelta }
+                    });
+                  }
+                } else if (deltaType === "thinking_delta") {
+                  const thinkingDelta = event.delta?.thinking;
+                  if (thinkingDelta !== void 0) {
+                    streamCharCount += thinkingDelta.length;
+                    this._onAgentMessage.fire({
+                      sessionId,
+                      message: { type: "thinking", content: thinkingDelta }
+                    });
+                  }
+                } else {
+                  logger4.debug(
+                    { sessionId, deltaType, blockIndex: event.index },
+                    "stream: unknown delta type"
+                  );
+                  this.emitDebug(sessionId, "streaming", "unknown_delta", {
+                    deltaType,
+                    blockIndex: event.index
+                  });
+                }
+                break;
               }
-            } else if (event.type === "content_block_delta" && event.delta?.type === "thinking_delta") {
-              const thinkingDelta = event.delta.thinking;
-              if (thinkingDelta !== void 0) {
-                this._onAgentMessage.fire({
-                  sessionId,
-                  message: { type: "thinking", content: thinkingDelta }
+              case "content_block_stop":
+                logger4.debug(
+                  { sessionId, blockIndex: event.index },
+                  "stream: content_block_stop"
+                );
+                this.emitDebug(sessionId, "streaming", "content_block_stop", {
+                  blockIndex: event.index
                 });
-              }
+                break;
+              case "message_delta":
+                logger4.debug({ sessionId }, "stream: message_delta");
+                this.emitDebug(sessionId, "streaming", "message_delta", {
+                  delta: event.delta
+                });
+                break;
+              case "message_stop":
+                logger4.debug(
+                  { sessionId, blockCount: streamBlockCount, charCount: streamCharCount },
+                  "stream: message_stop"
+                );
+                this.emitDebug(sessionId, "streaming", "message_stop", {
+                  totalBlocks: streamBlockCount,
+                  totalChars: streamCharCount
+                });
+                break;
+              default:
+                logger4.debug(
+                  { sessionId, eventType: event.type },
+                  "stream: unhandled event type"
+                );
+                this.emitDebug(sessionId, "streaming", `unhandled_${event.type}`, {
+                  eventType: event.type
+                });
             }
             continue;
           }
           if (sdkMessage.type === "assistant") {
             const content = sdkMessage.message?.content;
             if (content === void 0) continue;
+            logger4.debug(
+              { sessionId, blockCount: content.length },
+              "SDK assistant message"
+            );
             for (const block of content) {
               if (block.type === "text") {
                 continue;
@@ -1615,6 +1888,17 @@ var SessionManager = class extends Disposable {
               const toolName = getString(block.name, "unknown");
               const toolId = getString(block.id) || generateToolId();
               const toolInput = block.input ?? {};
+              this.toolStartTimes.set(toolId, Date.now());
+              logger4.info(
+                { sessionId, toolName, toolId },
+                "Tool use block received"
+              );
+              this.emitDebug(sessionId, "tool", "tool_use_start", {
+                toolName,
+                toolId,
+                inputKeys: Object.keys(toolInput),
+                inputPreview: JSON.stringify(toolInput).slice(0, 200)
+              });
               const approvedTools = this.approvedToolNames.get(sessionId);
               const wasAlreadyApproved = approvedTools?.has(toolName) ?? false;
               if (wasAlreadyApproved && approvedTools !== void 0) {
@@ -1655,12 +1939,34 @@ var SessionManager = class extends Disposable {
               if (isToolResultBlock2(block)) {
                 const toolUseId = block.tool_use_id;
                 const toolInfo = toolUseMap.get(toolUseId);
+                const startTime = this.toolStartTimes.get(toolUseId);
+                const durationMs = startTime !== void 0 ? Date.now() - startTime : void 0;
+                this.toolStartTimes.delete(toolUseId);
                 if (toolInfo !== void 0) {
                   const originalMessage = toolInfo.pendingMessages[0];
                   if (originalMessage.type === "tool_use" && originalMessage.metadata !== void 0) {
                     const toolOutput = typeof block.content === "string" ? block.content : JSON.stringify(block.content);
                     const isError = block.is_error === true;
                     const storedToolId = originalMessage.metadata.toolId;
+                    logger4.info(
+                      {
+                        sessionId,
+                        toolName: toolInfo.name,
+                        toolId: storedToolId,
+                        isError,
+                        durationMs,
+                        outputLength: toolOutput.length
+                      },
+                      "Tool result received"
+                    );
+                    this.emitDebug(sessionId, "tool", "tool_use_end", {
+                      toolName: toolInfo.name,
+                      toolId: storedToolId,
+                      isError,
+                      outputPreview: toolOutput.slice(0, 500),
+                      outputLength: toolOutput.length,
+                      durationMs
+                    });
                     const completedMessage = {
                       type: "tool_use",
                       content: isError ? `Tool ${toolInfo.name} failed` : `Tool ${toolInfo.name} completed`,
@@ -1684,6 +1990,43 @@ var SessionManager = class extends Disposable {
             }
           } else {
             const resultMsg = sdkMessage;
+            if (resultMsg.usage !== void 0) {
+              const accum = this.getOrCreateTokenAccum(sessionId);
+              accum.inputTokens += resultMsg.usage.input_tokens ?? 0;
+              accum.outputTokens += resultMsg.usage.output_tokens ?? 0;
+              accum.cacheReadInputTokens += resultMsg.usage.cache_read_input_tokens ?? 0;
+              accum.cacheCreationInputTokens += resultMsg.usage.cache_creation_input_tokens ?? 0;
+              accum.turnCount++;
+              accum.totalCostUsd += resultMsg.total_cost_usd ?? 0;
+              logger4.info(
+                {
+                  sessionId,
+                  turnTokens: {
+                    input: resultMsg.usage.input_tokens,
+                    output: resultMsg.usage.output_tokens,
+                    cacheRead: resultMsg.usage.cache_read_input_tokens
+                  },
+                  cumulativeTokens: {
+                    input: accum.inputTokens,
+                    output: accum.outputTokens,
+                    turns: accum.turnCount,
+                    cost: accum.totalCostUsd.toFixed(4)
+                  }
+                },
+                "Turn complete \u2014 token usage"
+              );
+              this.emitDebug(sessionId, "token", "turn_tokens", {
+                turn: {
+                  inputTokens: resultMsg.usage.input_tokens ?? 0,
+                  outputTokens: resultMsg.usage.output_tokens ?? 0,
+                  cacheReadInputTokens: resultMsg.usage.cache_read_input_tokens ?? 0,
+                  cacheCreationInputTokens: resultMsg.usage.cache_creation_input_tokens ?? 0,
+                  costUsd: resultMsg.total_cost_usd,
+                  durationMs: resultMsg.duration_ms
+                },
+                cumulative: { ...accum }
+              });
+            }
             this._onAgentMessage.fire({
               sessionId,
               message: {
@@ -1701,12 +2044,15 @@ var SessionManager = class extends Disposable {
                 resultSubtype: resultMsg.subtype
               }
             });
+            this.sessionCorrelationIds.delete(sessionId);
+            setCorrelationId(void 0);
           }
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         const errorStack = error instanceof Error ? error.stack : "no stack";
         logger4.error({ sessionId, error: errorMessage }, "Background consumer error");
+        this.emitDebug(sessionId, "sdk_state", "consumer_error", { error: errorMessage });
         this._onError.fire({ message: `[SDK Error] ${errorMessage}`, stack: errorStack });
       }
     })();
@@ -1729,6 +2075,9 @@ var SessionManager = class extends Disposable {
     this.approvedToolNames.delete(sessionId);
     this.sessionResumeState.delete(sessionId);
     this.sessionInitFired.delete(sessionId);
+    this.sessionTokenAccum.delete(sessionId);
+    this.sessionCorrelationIds.delete(sessionId);
+    this.emitDebug(sessionId, "session", "session_deleted", { sessionId });
   }
   /**
    * Check if a session is ready
@@ -1745,6 +2094,7 @@ var SessionManager = class extends Disposable {
     if (!agent) {
       throw new Error(`Session ${sessionId} not found`);
     }
+    this.emitDebug(sessionId, "sdk_state", "interrupt_requested", {});
     await agent.interrupt();
   }
   /**
@@ -1765,6 +2115,24 @@ var SessionManager = class extends Disposable {
     if (!agent.isSessionReady()) {
       throw new Error(`Session ${sessionId} is not ready.`);
     }
+    const correlationId = randomUUID();
+    this.sessionCorrelationIds.set(sessionId, correlationId);
+    setCorrelationId(correlationId);
+    logger4.info(
+      {
+        sessionId,
+        correlationId: correlationId.slice(0, 8),
+        messagePreview: message.slice(0, 100) + (message.length > 100 ? "..." : ""),
+        attachmentCount: attachments?.length ?? 0
+      },
+      "Sending message"
+    );
+    this.emitDebug(sessionId, "session", "message_sent", {
+      correlationId,
+      messageLength: message.length,
+      messagePreview: message.slice(0, 100),
+      attachmentCount: attachments?.length ?? 0
+    });
     agent.queueMessage(message, attachments);
   }
   /**
@@ -1902,12 +2270,57 @@ var SessionManager = class extends Disposable {
       });
     }
     this.activeSessions.clear();
+    this.sessionTokenAccum.clear();
+    this.toolStartTimes.clear();
+    this.sessionCorrelationIds.clear();
     super.dispose();
   }
 };
 
+// src/commit-message.ts
+import Anthropic from "@anthropic-ai/sdk";
+var logger5 = createLogger("CommitMessage");
+var SYSTEM_PROMPT = `You are a git commit message generator. Given a diff summary, generate a concise commit message following conventional commits format (type: description). Be specific about what changed. Output ONLY the commit message, no explanation.
+
+Rules:
+- Use lowercase type prefix: feat, fix, refactor, style, docs, test, chore
+- Keep the summary line under 72 characters
+- If changes span multiple areas, use the most significant type
+- Be specific: "fix: resolve null pointer in user auth flow" not "fix: bug fix"`;
+async function generateCommitMessage(diff) {
+  logger5.info("Generating commit message...");
+  const credentials = ClaudeCredentials.getCredentials();
+  if (!credentials.hasCredentials) {
+    throw new Error("No credentials found. Log in to Claude Code CLI or set ANTHROPIC_API_KEY.");
+  }
+  let client;
+  if (credentials.type === "oauth") {
+    const token = ClaudeCredentials.getOAuthTokenFromKeychain();
+    if (!token) throw new Error("OAuth token expired or unavailable");
+    client = new Anthropic({ authToken: token });
+  } else {
+    const apiKey = ClaudeCredentials.getApiKeyFromEnv();
+    if (!apiKey) throw new Error("API key was detected but is no longer available");
+    client = new Anthropic({ apiKey });
+  }
+  const response = await client.messages.create({
+    model: "claude-haiku-4-5-20251001",
+    max_tokens: 300,
+    system: SYSTEM_PROMPT,
+    messages: [{
+      role: "user",
+      content: `Generate a commit message for these changes:
+
+${diff}`
+    }]
+  });
+  const text = response.content[0]?.type === "text" ? response.content[0].text.trim() : "";
+  logger5.info({ messageLength: text.length }, "Commit message generated");
+  return text;
+}
+
 // src/index.ts
-var logger5 = createLogger("AgentBridge");
+var logger6 = createLogger("AgentBridge");
 function sendMessage(message) {
   const json = JSON.stringify(message);
   process.stdout.write(json + "\n");
@@ -1919,7 +2332,8 @@ function sendEvent(event) {
   sendMessage(event);
 }
 function main() {
-  logger5.info("Agent Bridge starting...");
+  configureFileLogging();
+  logger6.info("Agent Bridge starting...");
   const sessionManager = new SessionManager();
   sessionManager.onAgentMessage((data) => {
     sendEvent({
@@ -1960,6 +2374,13 @@ function main() {
       error
     });
   });
+  sessionManager.onDebugEvent((data) => {
+    sendEvent({
+      type: "debug_event",
+      sessionId: data.sessionId,
+      event: data.event
+    });
+  });
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
@@ -1973,7 +2394,7 @@ function main() {
     try {
       request = JSON.parse(line);
     } catch (error) {
-      logger5.error({ error, line }, "Failed to parse request");
+      logger6.error({ error, line }, "Failed to parse request");
       sendResponse({
         type: "error",
         requestType: "unknown",
@@ -1981,10 +2402,10 @@ function main() {
       });
       return;
     }
-    logger5.info({ requestType: request.type }, "Received request");
+    logger6.info({ requestType: request.type }, "Received request");
     handleRequest(request, sessionManager).catch((error) => {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      logger5.error({ requestType: request.type, error: errorMessage }, "Error handling request");
+      logger6.error({ requestType: request.type, error: errorMessage }, "Error handling request");
       sendResponse({
         type: "error",
         requestType: request.type,
@@ -1993,22 +2414,25 @@ function main() {
     });
   });
   rl.on("close", () => {
-    logger5.info("stdin closed, shutting down...");
+    logger6.info("stdin closed, shutting down...");
     sessionManager.dispose();
+    shutdownFileLogging();
     process.exit(0);
   });
   process.on("SIGTERM", () => {
-    logger5.info("SIGTERM received, shutting down...");
+    logger6.info("SIGTERM received, shutting down...");
     sessionManager.dispose();
+    shutdownFileLogging();
     process.exit(0);
   });
   process.on("SIGINT", () => {
-    logger5.info("SIGINT received, shutting down...");
+    logger6.info("SIGINT received, shutting down...");
     sessionManager.dispose();
+    shutdownFileLogging();
     process.exit(0);
   });
   sendEvent({ type: "ready" });
-  logger5.info("Agent Bridge ready");
+  logger6.info("Agent Bridge ready");
 }
 async function handleRequest(request, sessionManager) {
   switch (request.type) {
@@ -2082,8 +2506,13 @@ async function handleRequest(request, sessionManager) {
       sendResponse({ type: "string", requestType: request.type, value: sdkSessionId ?? null });
       break;
     }
+    case "generate_commit_message": {
+      const message = await generateCommitMessage(request.diff);
+      sendResponse({ type: "string", requestType: request.type, value: message });
+      break;
+    }
     case "shutdown": {
-      logger5.info("Shutdown requested");
+      logger6.info("Shutdown requested");
       sendResponse({ type: "success", requestType: request.type });
       sessionManager.dispose();
       process.exit(0);
@@ -2102,7 +2531,7 @@ async function handleRequest(request, sessionManager) {
 try {
   main();
 } catch (error) {
-  logger5.error({ error }, "Fatal error");
+  logger6.error({ error }, "Fatal error");
   process.exit(1);
 }
 //# sourceMappingURL=index.js.map

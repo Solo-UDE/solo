@@ -8,6 +8,10 @@ import type { GitChangesResponse } from '../../bindings/GitChangesResponse';
 import type { GitPushResponse } from '../../bindings/GitPushResponse';
 import type { GitPullResponse } from '../../bindings/GitPullResponse';
 import type { GitFileDiffResponse } from '../../bindings/GitFileDiffResponse';
+import type { BranchInfo } from '../../bindings/BranchInfo';
+import type { GitMergeResult } from '../../bindings/GitMergeResult';
+import type { StashEntry } from '../../bindings/StashEntry';
+import type { GitStashPopResult } from '../../bindings/GitStashPopResult';
 
 export type { GitRepoStatus } from '../../bindings/GitRepoStatus';
 export type { GitChangesResponse } from '../../bindings/GitChangesResponse';
@@ -17,6 +21,10 @@ export type { GitFileStatus } from '../../bindings/GitFileStatus';
 export type { GitPushResponse } from '../../bindings/GitPushResponse';
 export type { GitPullResponse } from '../../bindings/GitPullResponse';
 export type { GitFileDiffResponse } from '../../bindings/GitFileDiffResponse';
+export type { BranchInfo } from '../../bindings/BranchInfo';
+export type { GitMergeResult } from '../../bindings/GitMergeResult';
+export type { StashEntry } from '../../bindings/StashEntry';
+export type { GitStashPopResult } from '../../bindings/GitStashPopResult';
 
 /** Get git repository status */
 export const gitGetStatus = () =>
@@ -93,6 +101,38 @@ export const gitCreateBranch = (branchName: string) =>
 /** Clone a git repository to a target path (pass accessToken for private repos) */
 export const gitClone = (repositoryUrl: string, targetPath: string, accessToken?: string) =>
   invoke<string>('git_clone', { repositoryUrl, targetPath, accessToken: accessToken ?? null });
+
+/** Fetch from remote (update tracking refs) */
+export const gitFetch = (accessToken: string, githubRepoUrl: string, branch: string) =>
+  invoke<void>('git_fetch', { accessToken, githubRepoUrl, branch });
+
+/** List local branches with ahead/behind counts */
+export const gitListBranches = () =>
+  invoke<BranchInfo[]>('git_list_branches');
+
+/** Switch to an existing branch */
+export const gitCheckoutBranch = (branchName: string) =>
+  invoke<void>('git_checkout_branch', { branchName });
+
+/** Delete a local branch */
+export const gitDeleteBranch = (branchName: string, force: boolean = false) =>
+  invoke<void>('git_delete_branch', { branchName, force });
+
+/** Merge a source branch into the current HEAD */
+export const gitMerge = (sourceBranch: string) =>
+  invoke<GitMergeResult>('git_merge', { sourceBranch });
+
+/** Stash uncommitted changes */
+export const gitStash = (message?: string, includeUntracked: boolean = true) =>
+  invoke<void>('git_stash', { message: message ?? null, includeUntracked });
+
+/** Pop the most recent stash */
+export const gitStashPop = () =>
+  invoke<GitStashPopResult>('git_stash_pop');
+
+/** List stash entries */
+export const gitStashList = () =>
+  invoke<StashEntry[]>('git_stash_list');
 
 // =============================================================================
 // GitHub OAuth (direct GitHub token for git operations)

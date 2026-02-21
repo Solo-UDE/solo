@@ -10,14 +10,10 @@ export { UserMessage, type UserMessageProps } from './messages';
 export { AgentMessage, type AgentMessageProps, type AgentMessageContent } from './messages';
 export { AgentNarrative, type AgentNarrativeProps } from './messages';
 export { MessageSection, type MessageSectionProps, type Message, type UserMessageData, type AgentMessageData } from './messages';
-export { TaskPhaseCard, type TaskPhaseCardProps, type FileEdit, type ProgressUpdate } from './messages';
-export { ProgressUpdates, type ProgressUpdatesProps } from './messages';
-export { ProgressStep, type ProgressStepProps } from './messages';
 export { ToolCallBlock, type ToolCallBlockProps } from './messages';
 export { NotifyUserCard, type NotifyUserCardProps, type NotificationAction } from './messages';
 export { ProceedIndicator, type ProceedIndicatorProps } from './messages';
 export { MessageFeedback, type MessageFeedbackProps } from './messages';
-export { FilesEditedList, type FilesEditedListProps, type FileEditInfo } from './messages';
 
 // Input components
 export { ChatInputContainer, type ChatInputContainerProps } from './input';

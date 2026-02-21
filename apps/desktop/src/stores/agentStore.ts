@@ -496,15 +496,19 @@ export const useAgentStore = create<AgentStore>()(
 			const sessionId = generateSessionId();
 			const agentModel = toAgentModel(model || 'opus');
 
-			// Capture workspace path BEFORE creating session so the agent knows its cwd
-			const { useFileExplorerStore } = await import('@/stores/fileExplorerStore');
-			const workspacePath = useFileExplorerStore.getState().rootPath ?? undefined;
-
 			try {
-				await backend.agentCreateSession(sessionId, {
-					model: agentModel,
-					cwd: workspacePath,
-				});
+				// If a worktree is active, use its path as the session cwd
+				const { useWorktreeStore } = await import('@/stores/worktreeStore');
+				const worktreeState = useWorktreeStore.getState();
+				const activeWt = worktreeState.activeWorktreeId
+					? worktreeState.worktrees.get(worktreeState.activeWorktreeId)
+					: null;
+
+				const { useFileExplorerStore } = await import('@/stores/fileExplorerStore');
+				const workspacePath = useFileExplorerStore.getState().rootPath ?? undefined;
+				const cwd = activeWt?.path ?? workspacePath;
+
+				await backend.agentCreateSession(sessionId, { model: agentModel, cwd });
 
 				set((state) => {
 					state.sessions.set(sessionId, {
@@ -518,6 +522,19 @@ export const useAgentStore = create<AgentStore>()(
 					});
 					state.messages.set(sessionId, []);
 					state.sessionStreaming.set(sessionId, createDefaultStreamState());
+				});
+
+				// Bind agent to active worktree (auto-locks it)
+				if (activeWt) {
+					import('@/lib/tauri/worktree').then(({ bindAgent }) => {
+						bindAgent(activeWt.id, sessionId).catch(console.error);
+					});
+				}
+
+				// Apply tool permission policy from settings
+				import('@/stores/settingsStore').then(({ useSettingsStore }) => {
+					const policy = useSettingsStore.getState().ai.toolPermissionPolicy;
+					backend.agentSetToolPolicy(sessionId, policy, !!activeWt).catch(console.error);
 				});
 
 				get().persistSessions(sessionId);
@@ -593,6 +610,12 @@ export const useAgentStore = create<AgentStore>()(
 			backend.agentDeleteSession(sessionId).catch(console.error);
 			// Delete session file from disk (fire-and-forget)
 			deleteSessionFile(sessionId).catch(console.error);
+			// Unbind from any worktree (fire-and-forget)
+			import('@/lib/tauri/worktree').then(({ findByAgent, unbindAgent }) => {
+				findByAgent(sessionId).then((wtId) => {
+					if (wtId) unbindAgent(wtId).catch(console.error);
+				}).catch(console.error);
+			});
 
 			set((state) => {
 				state.sessions.delete(sessionId);

@@ -319,6 +319,42 @@ pub struct GitPushResponse {
     pub commits_count: u32,
 }
 
+/// Information about a local branch
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct BranchInfo {
+    pub name: String,
+    pub is_head: bool,
+    pub upstream: Option<String>,
+    pub ahead: u32,
+    pub behind: u32,
+}
+
+/// Result of a git merge operation
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct GitMergeResult {
+    pub fast_forward: bool,
+    pub conflicts: Vec<String>,
+    pub committed: bool,
+}
+
+/// A stash entry
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct StashEntry {
+    pub index: u32,
+    pub message: String,
+}
+
+/// Result of popping a stash
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct GitStashPopResult {
+    pub had_conflicts: bool,
+    pub conflict_files: Vec<String>,
+}
+
 /// Request to pull from GitHub
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../apps/desktop/src/bindings/")]
@@ -431,6 +467,20 @@ pub struct RemoveWorktreeRequest {
 pub struct WorktreeSetupConfig {
     /// Shell commands to run in the new worktree directory
     pub commands: Vec<String>,
+}
+
+/// A single changed file in a worktree diff relative to its base branch.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct WorktreeDiffEntry {
+    /// File path relative to repo root
+    pub path: String,
+    /// Change status: "added", "modified", "deleted", "renamed"
+    pub status: String,
+    /// Lines added (0 if unavailable)
+    pub additions: u32,
+    /// Lines removed (0 if unavailable)
+    pub deletions: u32,
 }
 
 // =============================================================================
