@@ -16,6 +16,7 @@ import {
   CloudArrowUp,
   ArrowsInSimple,
   TreeStructure,
+  CaretDown,
 } from '@phosphor-icons/react';
 import { useUIStore } from '@/stores/uiStore';
 import { useGitStore } from '@/stores/gitStore';
@@ -23,6 +24,7 @@ import { useActiveWorktree, useWorktreeCount } from '@/stores/worktreeStore';
 import { useFileExplorerStore, getParentPath } from '@/stores/fileExplorerStore';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { CreateWorktreePopover } from './CreateWorktreePopover';
+import { WorktreeSwitcher } from './WorktreeSwitcher';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -33,6 +35,7 @@ interface ContextHeaderProps {
 export const ContextHeader: FC<ContextHeaderProps> = ({ onNewSession }) => {
   const activeTab = useUIStore((s) => s.activeTab);
   const [createOpen, setCreateOpen] = useState(false);
+  const [switcherOpen, setSwitcherOpen] = useState(false);
 
   // Git state
   const currentBranch = useGitStore((s) => s.currentBranch);
@@ -120,12 +123,15 @@ export const ContextHeader: FC<ContextHeaderProps> = ({ onNewSession }) => {
 
   return (
     <div className="flex items-center justify-between h-9 px-2 shrink-0">
-      {/* Left: Branch/folder name (static display) */}
-      <div className="flex items-center gap-1.5 min-w-0 flex-1">
-        <div
+      {/* Left: Branch/folder name (clickable when git repo) */}
+      <div className="relative flex items-center gap-1.5 min-w-0 flex-1">
+        <button
+          onClick={() => isGitRepo && setSwitcherOpen((v) => !v)}
           className={cn(
             'flex items-center gap-1.5 h-7 px-2 rounded-lg min-w-0 max-w-full',
             'text-xs text-muted-foreground',
+            isGitRepo && 'hover:bg-muted/60 hover:text-foreground active:scale-[0.97] transition-[transform,background-color,color] duration-150 cursor-pointer',
+            !isGitRepo && 'cursor-default',
           )}
         >
           {DisplayIcon && (
@@ -138,7 +144,13 @@ export const ContextHeader: FC<ContextHeaderProps> = ({ onNewSession }) => {
           {activeWorktree && (
             <TreeStructure className="w-3 h-3 text-primary/60 shrink-0" weight="bold" />
           )}
-        </div>
+          {isGitRepo && (
+            <CaretDown className="w-3 h-3 text-muted-foreground/60 shrink-0" weight="bold" />
+          )}
+        </button>
+
+        {/* Branch switcher dropdown */}
+        {switcherOpen && <WorktreeSwitcher onClose={() => setSwitcherOpen(false)} />}
 
         {/* Create worktree [+] — only visible when WorktreeScopeBar is hidden */}
         {worktreeCount <= 1 && isGitRepo && (
