@@ -32,6 +32,7 @@ import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
 import { Toaster } from "sonner";
 import { WorkspaceSwitcher } from "./components/titlebar/WorkspaceSwitcher";
+import { TitlebarButton } from "./components/titlebar/TitlebarButton";
 import { WelcomeScreen } from "./components/welcome";
 import { KeyboardShortcutsOverlay } from "./components/KeyboardShortcutsOverlay";
 
@@ -377,19 +378,19 @@ function AppContent() {
         style={titlebarStyle}
         className="absolute top-0 inset-x-0 h-[38px] flex items-center z-50 bg-background titlebar-glass"
       >
-        <div className="flex-1 flex items-center" data-tauri-drag-region>
+        <div className="flex-1 flex items-center gap-1.5 ml-1.5" data-tauri-drag-region>
           {rootPath !== null && (
             <button
               onClick={toggleSidebar}
               className={cn(
-                'p-1 rounded-lg hover:bg-foreground/[0.06] transition-[background-color,color] duration-150 ml-1.5',
+                'p-1 rounded-lg hover:bg-foreground/[0.06] transition-[background-color,color] duration-150',
                 !isCollapsed && 'glow-active',
               )}
               title={isCollapsed ? 'Expand Sidebar (⌘B)' : 'Collapse Sidebar (⌘B)'}
             >
               <SidebarSimple
                 weight={isCollapsed ? 'regular' : 'fill'}
-                className={cn('w-4 h-4', isCollapsed ? 'text-muted-foreground' : 'text-primary')}
+                className={cn('w-3.5 h-3.5', isCollapsed ? 'text-muted-foreground' : 'text-primary')}
               />
             </button>
           )}
@@ -413,31 +414,26 @@ function AppContent() {
             </span>
           )}
           {rootPath !== null && (
-            <button
+            <TitlebarButton
               onClick={handleToggleTerminal}
-              className={cn(
-                'p-1 rounded-lg hover:bg-foreground/[0.06] transition-[background-color,color] duration-150',
-                terminalPanelOpen && 'glow-active',
-              )}
+              icon={<Terminal className={cn('w-4 h-4', terminalPanelOpen ? 'text-primary' : 'text-muted-foreground')} />}
+              label="Terminal"
+              active={terminalPanelOpen}
               title="Toggle Terminal (⌘J)"
-            >
-              <Terminal className={cn('w-4 h-4', terminalPanelOpen ? 'text-primary' : 'text-muted-foreground')} />
-            </button>
+            />
           )}
-          <button
+          <TitlebarButton
             onClick={() => openSettings()}
-            className="p-1 rounded-lg hover:bg-foreground/[0.06] transition-[background-color,color] duration-150"
+            icon={<GearSix className="w-4 h-4 text-muted-foreground" />}
+            label="Settings"
             title="Settings (⌘,)"
-          >
-            <GearSix className="w-4 h-4 text-muted-foreground" />
-          </button>
-          <button
+          />
+          <TitlebarButton
             onClick={signOut}
-            className="p-1 rounded-lg hover:bg-foreground/[0.06] transition-[background-color,color] duration-150"
+            icon={<SignOut className="w-4 h-4 text-muted-foreground" />}
+            label="Sign Out"
             title="Sign out"
-          >
-            <SignOut className="w-4 h-4 text-muted-foreground" />
-          </button>
+          />
         </div>
       </div>
 

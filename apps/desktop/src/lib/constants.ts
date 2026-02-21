@@ -5,7 +5,7 @@
 export const SIDEBAR = {
   collapsed: 0,
   expanded: 256,
-  min: 180,
+  min: 220,
   max: 400,
   iconColumnWidth: 40,
 } as const;
