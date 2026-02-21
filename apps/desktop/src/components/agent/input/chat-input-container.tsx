@@ -175,7 +175,7 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
               {isAgentRunning ? (
                 <button
                   onClick={onAbort}
-                  className="inline-flex items-center justify-center h-[30px] w-[30px] rounded-[8px] bg-destructive/10 text-destructive hover:bg-destructive/20 hover:scale-105 active:scale-95 transition-[transform,background-color,color] duration-200"
+                  className="inline-flex items-center justify-center h-[30px] w-[30px] rounded-[8px] bg-destructive text-white shadow-[0_0_8px_-2px] shadow-destructive/40 hover:brightness-110 hover:scale-105 active:scale-95 transition-[transform,background-color,filter] duration-200"
                   aria-label="Stop generation"
                 >
                   <Stop weight="fill" className="h-3.5 w-3.5" />
