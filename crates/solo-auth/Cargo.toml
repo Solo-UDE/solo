@@ -38,3 +38,6 @@ urlencoding = "2"
 
 # Lazy static for model registry
 lazy_static = "1.5"
+
+# Cross-platform keychain (macOS Keychain, Windows Credential Manager, Linux libsecret)
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }

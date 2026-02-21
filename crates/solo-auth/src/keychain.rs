@@ -1,35 +1,32 @@
-//! Minimal keychain helper for API key storage
+//! Cross-platform keychain helper for API key storage
 //!
-//! Uses the macOS Keychain (via security-framework) to store and retrieve
-//! provider API keys. On other platforms, falls back to environment variables.
+//! Uses the `keyring` crate to store and retrieve provider API keys.
+//! Supports macOS Keychain, Windows Credential Manager, and Linux libsecret.
+
+use keyring::Entry;
 
 const SERVICE_NAME: &str = "com.solo-ide.agent";
 
 /// Store an API key in the keychain
 pub fn set_api_key(provider: &str, key: &str) -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    {
-        use security_framework::passwords::set_generic_password;
-        set_generic_password(SERVICE_NAME, provider, key.as_bytes())
-            .map_err(|e| format!("Failed to store API key: {}", e))
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        let _ = (provider, key);
-        Err("Keychain storage is only supported on macOS".to_string())
-    }
+    let entry = Entry::new(SERVICE_NAME, provider)
+        .map_err(|e| format!("Failed to create keyring entry: {}", e))?;
+    entry
+        .set_password(key)
+        .map_err(|e| format!("Failed to store API key: {}", e))
 }
 
 /// Retrieve an API key from the keychain, falling back to environment variable
 pub fn get_api_key(provider: &str) -> Result<Option<String>, String> {
     // Try keychain first
-    #[cfg(target_os = "macos")]
-    {
-        use security_framework::passwords::get_generic_password;
-        if let Ok(bytes) = get_generic_password(SERVICE_NAME, provider) {
-            let key = String::from_utf8(bytes.clone())
-                .map_err(|e| format!("Invalid UTF-8 in keychain: {}", e))?;
-            return Ok(Some(key));
+    let entry = Entry::new(SERVICE_NAME, provider)
+        .map_err(|e| format!("Failed to create keyring entry: {}", e))?;
+
+    match entry.get_password() {
+        Ok(key) => return Ok(Some(key)),
+        Err(keyring::Error::NoEntry) => {}
+        Err(e) => {
+            tracing::warn!("Failed to read from keyring: {}", e);
         }
     }
 
@@ -38,6 +35,7 @@ pub fn get_api_key(provider: &str) -> Result<Option<String>, String> {
         "anthropic" => "ANTHROPIC_API_KEY",
         "openai" => "OPENAI_API_KEY",
         "gemini" => "GOOGLE_API_KEY",
+        "elevenlabs" => "ELEVENLABS_API_KEY",
         _ => return Ok(None),
     };
 
@@ -51,25 +49,12 @@ pub fn has_api_key(provider: &str) -> Result<bool, String> {
 
 /// Remove an API key from the keychain
 pub fn clear_api_key(provider: &str) -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    {
-        use security_framework::passwords::delete_generic_password;
-        match delete_generic_password(SERVICE_NAME, provider) {
-            Ok(()) => Ok(()),
-            Err(e) => {
-                // If not found, that's fine
-                let msg = e.to_string();
-                if msg.contains("not found") || msg.contains("-25300") {
-                    Ok(())
-                } else {
-                    Err(format!("Failed to delete API key: {}", e))
-                }
-            }
-        }
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        let _ = provider;
-        Ok(())
+    let entry = Entry::new(SERVICE_NAME, provider)
+        .map_err(|e| format!("Failed to create keyring entry: {}", e))?;
+
+    match entry.delete_credential() {
+        Ok(()) => Ok(()),
+        Err(keyring::Error::NoEntry) => Ok(()), // Already gone, that's fine
+        Err(e) => Err(format!("Failed to delete API key: {}", e)),
     }
 }

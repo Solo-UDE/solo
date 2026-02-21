@@ -281,6 +281,7 @@ pub fn run() {
             // ElevenLabs voice commands
             elevenlabs_commands::elevenlabs_set_api_key,
             elevenlabs_commands::elevenlabs_has_api_key,
+            elevenlabs_commands::elevenlabs_clear_api_key,
             elevenlabs_commands::elevenlabs_stt_start,
             elevenlabs_commands::elevenlabs_stt_send_audio,
             elevenlabs_commands::elevenlabs_stt_commit,

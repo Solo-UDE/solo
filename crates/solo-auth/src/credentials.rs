@@ -10,8 +10,8 @@ use crate::oauth::{
     AuthMethodInfo, AuthType, OAuthToken, OpenAIOAuthToken, AnthropicOAuthConfig, OpenAIOAuthConfig,
 };
 use crate::provider::{ProviderError, ProviderResult, ProviderType};
+use keyring::Entry;
 use serde::{Deserialize, Serialize};
-use std::process::Command;
 use ts_rs::TS;
 
 /// Client ID used by Claude Code CLI for OAuth token refresh
@@ -225,27 +225,22 @@ impl CredentialManager {
         Ok(self.get_credentials_with_source(provider).await?.map(|i| i.source))
     }
 
-    /// Get credentials from macOS Keychain
+    /// Get credentials from OS keychain (macOS Keychain, Windows Credential Manager, Linux libsecret)
     async fn get_from_keychain(&self, provider: ProviderType) -> ProviderResult<Option<String>> {
         let service = Self::keychain_service(provider);
 
-        // Use security command to read from Keychain
-        let output = Command::new("security")
-            .args(["find-generic-password", "-s", &service, "-w"])
-            .output();
-
-        match output {
-            Ok(output) if output.status.success() => {
-                let key = String::from_utf8_lossy(&output.stdout)
-                    .trim()
-                    .to_string();
-                if key.is_empty() {
-                    Ok(None)
-                } else {
-                    Ok(Some(key))
-                }
+        let entry = match Entry::new(&service, "api-key") {
+            Ok(e) => e,
+            Err(e) => {
+                tracing::warn!("Failed to create keyring entry: {}", e);
+                return Ok(None);
             }
-            Ok(_) => Ok(None), // Not found in keychain
+        };
+
+        match entry.get_password() {
+            Ok(key) if key.is_empty() => Ok(None),
+            Ok(key) => Ok(Some(key)),
+            Err(keyring::Error::NoEntry) => Ok(None),
             Err(e) => {
                 tracing::warn!("Failed to read from keychain: {}", e);
                 Ok(None)
@@ -316,76 +311,71 @@ impl CredentialManager {
     /// Claude Code CLI stores credentials in the keychain with service name
     /// "Claude Code-credentials" as a JSON object containing OAuth tokens.
     async fn get_claude_oauth(&self) -> ProviderResult<Option<String>> {
-        // Claude Code stores OAuth token in keychain with this service name
-        let output = Command::new("security")
-            .args([
-                "find-generic-password",
-                "-s",
-                "Claude Code-credentials",
-                "-w",
-            ])
-            .output();
-
-        match output {
-            Ok(output) if output.status.success() => {
-                let json_str = String::from_utf8_lossy(&output.stdout)
-                    .trim()
-                    .to_string();
-                if json_str.is_empty() {
-                    return Ok(None);
-                }
-
-                // Parse the JSON to extract the access token
-                // Format: {"claudeAiOauth":{"accessToken":"...", "expiresAt":..., "refreshToken":"...", ...}}
-                match serde_json::from_str::<serde_json::Value>(&json_str) {
-                    Ok(value) => {
-                        let oauth_obj = match value.get("claudeAiOauth") {
-                            Some(obj) => obj,
-                            None => {
-                                tracing::debug!("Claude Code credentials found but no claudeAiOauth");
-                                return Ok(None);
-                            }
-                        };
-
-                        let access_token = match oauth_obj.get("accessToken").and_then(|t| t.as_str()) {
-                            Some(t) => t.to_string(),
-                            None => {
-                                tracing::debug!("Claude Code credentials found but no accessToken");
-                                return Ok(None);
-                            }
-                        };
-
-                        // Check if token is expired (with 5-min buffer)
-                        if let Some(expires_at) = Self::parse_expires_at(oauth_obj) {
-                            if Self::is_claude_token_expired(expires_at) {
-                                tracing::debug!("Claude Code OAuth token expired, attempting refresh");
-
-                                // Try to refresh using the refresh token
-                                if let Some(refresh_token) = oauth_obj.get("refreshToken").and_then(|t| t.as_str()) {
-                                    if let Some(new_token) = Self::refresh_claude_code_token(refresh_token).await {
-                                        tracing::info!("Successfully refreshed Claude Code OAuth token");
-                                        return Ok(Some(new_token));
-                                    }
-                                    tracing::warn!("Failed to refresh Claude Code OAuth token");
-                                } else {
-                                    tracing::debug!("No refreshToken in Claude Code credentials");
-                                }
-
-                                return Ok(None);
-                            }
-                        }
-
-                        Ok(Some(access_token))
-                    }
-                    Err(e) => {
-                        tracing::warn!("Failed to parse Claude Code credentials JSON: {}", e);
-                        Ok(None)
-                    }
-                }
+        let entry = match Entry::new("Claude Code-credentials", "default") {
+            Ok(e) => e,
+            Err(e) => {
+                tracing::warn!("Failed to create keyring entry for Claude Code: {}", e);
+                return Ok(None);
             }
-            Ok(_) => Ok(None),
+        };
+
+        let json_str = match entry.get_password() {
+            Ok(s) => s,
+            Err(keyring::Error::NoEntry) => return Ok(None),
             Err(e) => {
                 tracing::warn!("Failed to read Claude OAuth from keychain: {}", e);
+                return Ok(None);
+            }
+        };
+
+        if json_str.is_empty() {
+            return Ok(None);
+        }
+
+        // Parse the JSON to extract the access token
+        // Format: {"claudeAiOauth":{"accessToken":"...", "expiresAt":..., "refreshToken":"...", ...}}
+        match serde_json::from_str::<serde_json::Value>(&json_str) {
+            Ok(value) => {
+                let oauth_obj = match value.get("claudeAiOauth") {
+                    Some(obj) => obj,
+                    None => {
+                        tracing::debug!("Claude Code credentials found but no claudeAiOauth");
+                        return Ok(None);
+                    }
+                };
+
+                let access_token = match oauth_obj.get("accessToken").and_then(|t| t.as_str()) {
+                    Some(t) => t.to_string(),
+                    None => {
+                        tracing::debug!("Claude Code credentials found but no accessToken");
+                        return Ok(None);
+                    }
+                };
+
+                // Check if token is expired (with 5-min buffer)
+                if let Some(expires_at) = Self::parse_expires_at(oauth_obj) {
+                    if Self::is_claude_token_expired(expires_at) {
+                        tracing::debug!("Claude Code OAuth token expired, attempting refresh");
+
+                        // Try to refresh using the refresh token
+                        if let Some(refresh_token) = oauth_obj.get("refreshToken").and_then(|t| t.as_str()) {
+                            if let Some(new_token) = Self::refresh_claude_code_token(refresh_token).await {
+                                tracing::info!("Successfully refreshed Claude Code OAuth token");
+                                return Ok(Some(new_token));
+                            }
+                            tracing::warn!("Failed to refresh Claude Code OAuth token");
+                        } else {
+                            tracing::debug!("No refreshToken in Claude Code credentials");
+                        }
+
+                        return Ok(None);
+                    }
+                }
+
+                Ok(Some(access_token))
+            }
+            Err(e) => {
+                tracing::warn!("Failed to parse Claude Code credentials JSON: {}", e);
                 Ok(None)
             }
         }
@@ -457,18 +447,8 @@ impl CredentialManager {
         &self,
     ) -> ProviderResult<Option<(String, Option<i64>, CredentialSource, serde_json::Value)>> {
         // Try keychain first
-        let keychain_result = Command::new("security")
-            .args([
-                "find-generic-password",
-                "-s",
-                "Claude Code-credentials",
-                "-w",
-            ])
-            .output();
-
-        if let Ok(output) = keychain_result {
-            if output.status.success() {
-                let json_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if let Ok(entry) = Entry::new("Claude Code-credentials", "default") {
+            if let Ok(json_str) = entry.get_password() {
                 if !json_str.is_empty() {
                     if let Ok(value) = serde_json::from_str::<serde_json::Value>(&json_str) {
                         if let Some(oauth_obj) = value.get("claudeAiOauth") {
@@ -560,34 +540,16 @@ impl CredentialManager {
         std::env::var(provider.env_var_name()).ok()
     }
 
-    /// Store credentials in Keychain
+    /// Store credentials in OS keychain
     pub async fn set_credentials(&self, provider: ProviderType, api_key: &str) -> ProviderResult<()> {
         let service = Self::keychain_service(provider);
 
-        // Delete existing entry if it exists
-        let _ = Command::new("security")
-            .args(["delete-generic-password", "-s", &service])
-            .output();
+        let entry = Entry::new(&service, "api-key")
+            .map_err(|e| ProviderError::KeychainError(format!("Failed to create keyring entry: {}", e)))?;
 
-        // Add new entry
-        let output = Command::new("security")
-            .args([
-                "add-generic-password",
-                "-s",
-                &service,
-                "-a",
-                "api-key",
-                "-w",
-                api_key,
-                "-U", // Update if exists
-            ])
-            .output()
-            .map_err(|e| ProviderError::KeychainError(e.to_string()))?;
-
-        if !output.status.success() {
-            let error = String::from_utf8_lossy(&output.stderr);
-            return Err(ProviderError::KeychainError(error.to_string()));
-        }
+        entry
+            .set_password(api_key)
+            .map_err(|e| ProviderError::KeychainError(format!("Failed to store API key: {}", e)))?;
 
         // Update cache
         self.cache.write().await.insert(
@@ -601,20 +563,21 @@ impl CredentialManager {
         Ok(())
     }
 
-    /// Remove credentials from Keychain
+    /// Remove credentials from OS keychain
     pub async fn clear_credentials(&self, provider: ProviderType) -> ProviderResult<()> {
         let service = Self::keychain_service(provider);
 
-        let output = Command::new("security")
-            .args(["delete-generic-password", "-s", &service])
-            .output()
-            .map_err(|e| ProviderError::KeychainError(e.to_string()))?;
+        let entry = Entry::new(&service, "api-key")
+            .map_err(|e| ProviderError::KeychainError(format!("Failed to create keyring entry: {}", e)))?;
 
-        // Ignore "item not found" errors
-        if !output.status.success() {
-            let error = String::from_utf8_lossy(&output.stderr);
-            if !error.contains("could not be found") {
-                return Err(ProviderError::KeychainError(error.to_string()));
+        match entry.delete_credential() {
+            Ok(()) => {}
+            Err(keyring::Error::NoEntry) => {} // Already gone, that's fine
+            Err(e) => {
+                return Err(ProviderError::KeychainError(format!(
+                    "Failed to delete credential: {}",
+                    e
+                )));
             }
         }
 
@@ -643,7 +606,7 @@ impl CredentialManager {
     // OAuth Token Management
     // =========================================================================
 
-    /// Store an OAuth token in the keychain
+    /// Store an OAuth token in the OS keychain
     pub async fn set_oauth_token(
         &self,
         provider: ProviderType,
@@ -655,30 +618,12 @@ impl CredentialManager {
         let token_json = serde_json::to_string(&token)
             .map_err(|e| ProviderError::AuthError(format!("Failed to serialize token: {}", e)))?;
 
-        // Delete existing entry if it exists
-        let _ = Command::new("security")
-            .args(["delete-generic-password", "-s", &service])
-            .output();
+        let entry = Entry::new(&service, "oauth-token")
+            .map_err(|e| ProviderError::KeychainError(format!("Failed to create keyring entry: {}", e)))?;
 
-        // Add new entry
-        let output = Command::new("security")
-            .args([
-                "add-generic-password",
-                "-s",
-                &service,
-                "-a",
-                "oauth-token",
-                "-w",
-                &token_json,
-                "-U",
-            ])
-            .output()
-            .map_err(|e| ProviderError::KeychainError(e.to_string()))?;
-
-        if !output.status.success() {
-            let error = String::from_utf8_lossy(&output.stderr);
-            return Err(ProviderError::KeychainError(error.to_string()));
-        }
+        entry
+            .set_password(&token_json)
+            .map_err(|e| ProviderError::KeychainError(format!("Failed to store OAuth token: {}", e)))?;
 
         // Update cache
         self.oauth_cache.write().await.insert(
@@ -707,17 +652,17 @@ impl CredentialManager {
         // Try to load from keychain
         let service = Self::oauth_keychain_service(provider);
 
-        let output = Command::new("security")
-            .args(["find-generic-password", "-s", &service, "-w"])
-            .output();
+        let entry = match Entry::new(&service, "oauth-token") {
+            Ok(e) => e,
+            Err(e) => {
+                tracing::warn!("Failed to create keyring entry: {}", e);
+                return Ok(None);
+            }
+        };
 
-        match output {
-            Ok(output) if output.status.success() => {
-                let token_json = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                if token_json.is_empty() {
-                    return Ok(None);
-                }
-
+        match entry.get_password() {
+            Ok(token_json) if token_json.is_empty() => Ok(None),
+            Ok(token_json) => {
                 match serde_json::from_str::<OAuthToken>(&token_json) {
                     Ok(token) => {
                         // Cache the token
@@ -736,7 +681,7 @@ impl CredentialManager {
                     }
                 }
             }
-            Ok(_) => Ok(None),
+            Err(keyring::Error::NoEntry) => Ok(None),
             Err(e) => {
                 tracing::warn!("Failed to read OAuth token from keychain: {}", e);
                 Ok(None)
@@ -772,7 +717,7 @@ impl CredentialManager {
 
         let new_token = match provider {
             ProviderType::Anthropic => AnthropicOAuthConfig::refresh_token(&refresh_token).await?,
-            ProviderType::OpenAI | ProviderType::Gemini => unreachable!(), // Handled above
+            ProviderType::OpenAI | ProviderType::Gemini | ProviderType::ElevenLabs => unreachable!(), // Handled above or no OAuth
         };
 
         // Store the new token
@@ -787,7 +732,7 @@ impl CredentialManager {
     // OpenAI OAuth Token Management
     // =========================================================================
 
-    /// Store an OpenAI OAuth token in the keychain
+    /// Store an OpenAI OAuth token in the OS keychain
     pub async fn set_openai_oauth_token(&self, token: OpenAIOAuthToken) -> ProviderResult<()> {
         let service = Self::oauth_keychain_service(ProviderType::OpenAI);
 
@@ -795,30 +740,12 @@ impl CredentialManager {
         let token_json = serde_json::to_string(&token)
             .map_err(|e| ProviderError::AuthError(format!("Failed to serialize OpenAI token: {}", e)))?;
 
-        // Delete existing entry if it exists
-        let _ = Command::new("security")
-            .args(["delete-generic-password", "-s", &service])
-            .output();
+        let entry = Entry::new(&service, "oauth-token")
+            .map_err(|e| ProviderError::KeychainError(format!("Failed to create keyring entry: {}", e)))?;
 
-        // Add new entry
-        let output = Command::new("security")
-            .args([
-                "add-generic-password",
-                "-s",
-                &service,
-                "-a",
-                "oauth-token",
-                "-w",
-                &token_json,
-                "-U",
-            ])
-            .output()
-            .map_err(|e| ProviderError::KeychainError(e.to_string()))?;
-
-        if !output.status.success() {
-            let error = String::from_utf8_lossy(&output.stderr);
-            return Err(ProviderError::KeychainError(error.to_string()));
-        }
+        entry
+            .set_password(&token_json)
+            .map_err(|e| ProviderError::KeychainError(format!("Failed to store OpenAI OAuth token: {}", e)))?;
 
         // Update cache
         *self.openai_oauth_cache.write().await = Some(OpenAIOAuthCredentialInfo {
@@ -844,17 +771,17 @@ impl CredentialManager {
         // Try to load from keychain
         let service = Self::oauth_keychain_service(ProviderType::OpenAI);
 
-        let output = Command::new("security")
-            .args(["find-generic-password", "-s", &service, "-w"])
-            .output();
+        let entry = match Entry::new(&service, "oauth-token") {
+            Ok(e) => e,
+            Err(e) => {
+                tracing::warn!("Failed to create keyring entry: {}", e);
+                return Ok(None);
+            }
+        };
 
-        match output {
-            Ok(output) if output.status.success() => {
-                let token_json = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                if token_json.is_empty() {
-                    return Ok(None);
-                }
-
+        match entry.get_password() {
+            Ok(token_json) if token_json.is_empty() => Ok(None),
+            Ok(token_json) => {
                 match serde_json::from_str::<OpenAIOAuthToken>(&token_json) {
                     Ok(token) => {
                         // Cache the token
@@ -870,7 +797,7 @@ impl CredentialManager {
                     }
                 }
             }
-            Ok(_) => Ok(None),
+            Err(keyring::Error::NoEntry) => Ok(None),
             Err(e) => {
                 tracing::warn!("Failed to read OpenAI OAuth token from keychain: {}", e);
                 Ok(None)
@@ -921,20 +848,21 @@ impl CredentialManager {
         Ok(None)
     }
 
-    /// Remove OAuth token from keychain
+    /// Remove OAuth token from OS keychain
     pub async fn disconnect_oauth(&self, provider: ProviderType) -> ProviderResult<()> {
         let service = Self::oauth_keychain_service(provider);
 
-        let output = Command::new("security")
-            .args(["delete-generic-password", "-s", &service])
-            .output()
-            .map_err(|e| ProviderError::KeychainError(e.to_string()))?;
+        let entry = Entry::new(&service, "oauth-token")
+            .map_err(|e| ProviderError::KeychainError(format!("Failed to create keyring entry: {}", e)))?;
 
-        // Ignore "item not found" errors
-        if !output.status.success() {
-            let error = String::from_utf8_lossy(&output.stderr);
-            if !error.contains("could not be found") {
-                return Err(ProviderError::KeychainError(error.to_string()));
+        match entry.delete_credential() {
+            Ok(()) => {}
+            Err(keyring::Error::NoEntry) => {} // Already gone, that's fine
+            Err(e) => {
+                return Err(ProviderError::KeychainError(format!(
+                    "Failed to delete OAuth token: {}",
+                    e
+                )));
             }
         }
 

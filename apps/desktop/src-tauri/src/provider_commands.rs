@@ -290,8 +290,8 @@ pub async fn start_oauth_flow(
         ProviderType::OpenAI => {
             OpenAIOAuthConfig::build_auth_url().map_err(|e| e.to_string())?
         }
-        ProviderType::Gemini => {
-            return Err("Gemini does not support OAuth".to_string());
+        ProviderType::Gemini | ProviderType::ElevenLabs => {
+            return Err(format!("{} does not support OAuth", provider_type.display_name()));
         }
     };
 
@@ -348,8 +348,8 @@ pub async fn complete_oauth_flow(
                 .await
                 .map_err(|e| e.to_string())?;
         }
-        ProviderType::Gemini => {
-            return Err("Gemini does not support OAuth".to_string());
+        ProviderType::Gemini | ProviderType::ElevenLabs => {
+            return Err(format!("{} does not support OAuth", provider_type.display_name()));
         }
     }
 
