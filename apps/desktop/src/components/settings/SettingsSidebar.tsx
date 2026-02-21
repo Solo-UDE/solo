@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Sun, Code, Terminal, FolderOpen, Keyboard, Brain, BookOpen, ArrowSquareOut, SignOut, ArrowLeft, ArrowCounterClockwise } from '@phosphor-icons/react';
+import { Sun, Code, Terminal, FolderOpen, Keyboard, Brain, Microphone, BookOpen, ArrowSquareOut, SignOut, ArrowLeft, ArrowCounterClockwise } from '@phosphor-icons/react';
 import { useUIStore, type SettingsTabId } from '../../stores/uiStore';
 import { useAuthStore } from '../../stores/authStore';
 import { useSettingsStore } from '../../stores/settingsStore';
@@ -18,6 +18,7 @@ const TABS: TabDef[] = [
   { id: 'files', label: 'Files', icon: FolderOpen },
   { id: 'shortcuts', label: 'Shortcuts', icon: Keyboard },
   { id: 'ai', label: 'Providers', icon: Brain },
+  { id: 'voice', label: 'Voice', icon: Microphone },
 ];
 
 export function SettingsSidebar() {

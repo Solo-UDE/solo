@@ -687,6 +687,15 @@ html.dark .shadow-glass {
   animation: streaming-dot 1.2s ease-in-out infinite;
 }
 
+@keyframes pulse-ring {
+  0%, 100% { box-shadow: 0 0 0 0 oklch(from var(--destructive) l c h / 0.4); }
+  50% { box-shadow: 0 0 0 4px oklch(from var(--destructive) l c h / 0); }
+}
+
+.animate-pulse-ring {
+  animation: pulse-ring 1.5s ease-in-out infinite;
+}
+
 /* =============================================================================
    STREAMDOWN THEME OVERRIDES
    Solo-branded styling for streaming markdown elements

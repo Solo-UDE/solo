@@ -257,6 +257,7 @@ export const AgentMessage: FC<AgentMessageProps> = ({
         {!content.isStreaming && !content.isInterrupted && content.isLastAssistantMessage !== undefined ? (
           <MessageActions
             showDisclaimer={content.isLastAssistantMessage}
+            messageText={content.narrative}
           />
         ) : null}
 
