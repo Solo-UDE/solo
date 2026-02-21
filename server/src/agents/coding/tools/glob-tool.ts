@@ -11,7 +11,7 @@ const globParams = z.object({
 export const createGlobTool = (desktopClient: DesktopClient, mux: AgentMux, conversationId: string) =>
   tool({
     description:
-      'Find files matching a glob pattern. Use this to discover files by name pattern (e.g., "**/*.ts", "src/**/*.tsx"). Returns a list of matching file paths.',
+      'Find all files matching a glob pattern. Useful for discovering files by naming patterns or extensions. Examples: "*.json", "src/**/*.test.tsx", "**/README.md", "**/*.css". Returns a sorted list of matching file paths. Use this before grep when you need to know what files exist.',
     inputSchema: globParams,
     execute: async (args: z.infer<typeof globParams>) => {
       const { pattern, path } = args;

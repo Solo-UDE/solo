@@ -481,7 +481,7 @@ pub async fn git_pull(
 			};
 
 			// Check last synced SHA
-			let last_synced_ref = format!("refs/orchids/last-github-integ/{}", branch);
+			let last_synced_ref = format!("refs/solo/last-github-integ/{}", branch);
 			let last_synced_oid = repo.refname_to_id(&last_synced_ref).ok();
 
 			// If already synced and not force reset, skip

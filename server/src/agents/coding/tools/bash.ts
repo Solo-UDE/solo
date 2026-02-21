@@ -15,7 +15,7 @@ export const createBashTool = (
 ) =>
   tool({
     description:
-      'Execute a shell command on the user\'s machine. Use this for running build commands, installing packages, running tests, git operations, or any terminal command. Commands execute in the workspace root directory.',
+      'Execute a shell command on the user\'s machine. Use this for running build commands, installing packages, running tests, git operations, or any terminal command. Commands execute in the workspace root directory. Do NOT use bash for operations that have dedicated tools: use read instead of cat/head/tail, edit instead of sed/awk, grep instead of grep/rg, glob instead of find, ls instead of ls. Chain commands with ; or && when needed.',
     inputSchema: bashParams,
     execute: async (args: z.infer<typeof bashParams>) => {
       const { command } = args;
