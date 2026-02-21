@@ -1,9 +1,10 @@
-import React, { useRef, useState, useCallback } from 'react';
+import React, { useRef, useState, useCallback, useEffect } from 'react';
 import { Stop } from '@phosphor-icons/react';
 
 import { ContextMenu } from './context-menu';
 import { ContextTracker } from './context-tracker';
 import { LexicalEditor } from './lexical-editor';
+import { AcceptModeToggle } from './accept-mode-toggle';
 import { ThinkingToggle } from './thinking-toggle';
 import { AttachmentBar } from './AttachmentBar';
 import { DropZoneOverlay } from './DropZoneOverlay';
@@ -30,6 +31,8 @@ export interface ChatInputContainerProps {
   onModeChange?: (mode: 'planning' | 'fast') => void;
   thinkingEnabled?: boolean;
   onThinkingChange?: (enabled: boolean) => void;
+  acceptEnabled?: boolean;
+  onAcceptChange?: (enabled: boolean) => void;
 }
 
 export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
@@ -43,6 +46,8 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
   onModeChange,
   thinkingEnabled = false,
   onThinkingChange,
+  acceptEnabled = false,
+  onAcceptChange,
 }) => {
   const [content, setContent] = useState('');
   const [mode, setMode] = useState<'planning' | 'fast'>('planning');
@@ -51,6 +56,8 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
   const attachments = useAttachmentStore((s) => s.attachments);
   const clearAttachments = useAttachmentStore((s) => s.clear);
   const editorRef = useRef<LexicalEditorHandle>(null);
+  const voiceSuggestionDismissedRef = useRef(false);
+  const [showVoiceSuggestion, setShowVoiceSuggestion] = useState(false);
   const worktrees = useWorktreeList();
 
   const handleSubmit = (): void => {
@@ -89,9 +96,26 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
   // Voice input handler: focus editor then insert transcribed text
   const handleVoiceTranscript = useCallback((text: string) => {
     console.log('[ChatInput] Voice transcript received, inserting:', text);
+    voiceSuggestionDismissedRef.current = true;
+    setShowVoiceSuggestion(false);
     editorRef.current?.focus();
     editorRef.current?.insertText(text + ' ');
     setContent((prev) => prev + text + ' ');
+  }, []);
+
+  // Show voice suggestion chip when user types 20+ words
+  useEffect(() => {
+    if (voiceSuggestionDismissedRef.current || isAgentRunning) {
+      setShowVoiceSuggestion(false);
+      return;
+    }
+    const wordCount = content.trim().split(/\s+/).filter(Boolean).length;
+    setShowVoiceSuggestion(wordCount >= 20);
+  }, [content, isAgentRunning]);
+
+  const handleDismissVoiceSuggestion = useCallback(() => {
+    voiceSuggestionDismissedRef.current = true;
+    setShowVoiceSuggestion(false);
   }, []);
 
   // Only show the selector when there are linked worktrees (more than just main)
@@ -131,6 +155,11 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
                 onChange={(enabled) => onThinkingChange?.(enabled)}
                 disabled={isAgentRunning}
               />
+              <AcceptModeToggle
+                enabled={acceptEnabled}
+                onChange={(enabled) => onAcceptChange?.(enabled)}
+                disabled={isAgentRunning}
+              />
               <ContextTracker disabled={isAgentRunning} />
 
               {showWorktreeSelector && (
@@ -156,6 +185,8 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
               <VoiceButton
                 disabled={isAgentRunning}
                 onTranscript={handleVoiceTranscript}
+                showSuggestion={showVoiceSuggestion}
+                onSuggestionDismiss={handleDismissVoiceSuggestion}
               />
 
               {/* Screen record (mock) */}

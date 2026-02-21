@@ -46,6 +46,8 @@ export interface UseAgentSessionReturn {
 	setPlanMode: (enabled: boolean) => Promise<void>;
 	/** Set thinking mode on the bridge */
 	setThinkingMode: (enabled: boolean, maxTokens?: number) => Promise<void>;
+	/** Set accept mode (auto-approve permissions) on the bridge */
+	setAcceptMode: (enabled: boolean) => Promise<void>;
 	/** Clear any error */
 	clearError: () => void;
 }
@@ -78,6 +80,7 @@ export function useAgentSession(
 	const storeClearError = useAgentStore((state) => state.clearError);
 	const storeSetPlanMode = useAgentStore((state) => state.setPlanMode);
 	const storeSetThinkingMode = useAgentStore((state) => state.setThinkingMode);
+	const storeSetAcceptMode = useAgentStore((state) => state.setAcceptMode);
 
 	// Track if we've attempted auto-creation
 	const autoCreated = useRef(false);
@@ -145,6 +148,12 @@ export function useAgentSession(
 		}
 	}, [storeSetThinkingMode, effectiveSessionId]);
 
+	const setAcceptMode = useCallback(async (enabled: boolean) => {
+		if (effectiveSessionId) {
+			await storeSetAcceptMode(effectiveSessionId, enabled);
+		}
+	}, [storeSetAcceptMode, effectiveSessionId]);
+
 	const clearError = useCallback(() => {
 		if (effectiveSessionId) {
 			storeClearError(effectiveSessionId);
@@ -163,6 +172,7 @@ export function useAgentSession(
 		setModel,
 		setPlanMode,
 		setThinkingMode,
+		setAcceptMode,
 		clearError,
 	};
 }

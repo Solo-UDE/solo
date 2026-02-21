@@ -4,7 +4,7 @@
  */
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
-import { motion } from 'motion/react';
+import { AnimatePresence, motion } from 'motion/react';
 import { Plus, ChatTeardrop, DotsThree, PencilSimple, Trash, MagnifyingGlass } from '@phosphor-icons/react';
 import { useAgentStore, useSessions, useActiveSessionId } from '@/stores/agentStore';
 import type { Message } from '@/stores/agentStore';
@@ -368,13 +368,15 @@ export const SessionList: FC<SessionListProps> = ({
       <div className={cn('flex flex-col h-full', className)}>
         {/* New Session Button */}
         <div className="p-2 border-b border-border/30">
-          <button
+          <motion.button
             onClick={onNewSession}
-            className="w-full h-9 px-3 flex items-center gap-2 rounded-lg bg-primary text-primary-foreground hover:brightness-110 active:scale-[0.97] transition-[transform,background-color] duration-200"
+            whileTap={{ scale: [1, 0.92, 1.03, 1] }}
+            transition={{ duration: 0.3 }}
+            className="w-full h-9 px-3 flex items-center gap-2 rounded-lg bg-primary text-primary-foreground hover:brightness-110 transition-[background-color] duration-200"
           >
             <Plus className="h-4 w-4" />
             <span className="text-sm font-medium">New session</span>
-          </button>
+          </motion.button>
         </div>
 
         {/* Search Input */}
@@ -406,36 +408,40 @@ export const SessionList: FC<SessionListProps> = ({
             </motion.div>
           ) : (
             <div className="space-y-1">
-              {filteredSessions.map((session, i) => (
-                <motion.div
-                  key={session.id}
-                  initial={{ opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{
-                    type: 'spring',
-                    stiffness: 500,
-                    damping: 30,
-                    delay: Math.min(i * 0.03, 0.3),
-                  }}
-                >
-                <SessionItem
-                  session={session}
-                  isActive={activeSessionId === session.id}
-                  isStreaming={streamingIds.has(session.id)}
-                  hasOpenTab={openSessionIds.has(session.id)}
-                  isRenaming={rename.renamingId === session.id}
-                  renameValue={rename.renameValue}
-                  messagesMap={messagesMap}
-                  onSelect={() => onSessionSelect(session.id)}
-                  onStartRename={() => rename.startRename(session.id, session.name || getSessionTitle(session.id, undefined, messagesMap))}
-                  onDoubleClickRename={() => rename.startRename(session.id, session.name || getSessionTitle(session.id, undefined, messagesMap))}
-                  onCommitRename={rename.commitRename}
-                  onCancelRename={rename.cancelRename}
-                  onRenameChange={rename.setRenameValue}
-                  onRequestDelete={() => handleDeleteSession(session.id)}
-                />
-                </motion.div>
-              ))}
+              <AnimatePresence initial={false}>
+                {filteredSessions.map((session) => (
+                  <motion.div
+                    key={session.id}
+                    layout
+                    initial={{ opacity: 0, scale: 0.9, y: -8 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.1 } }}
+                    transition={{
+                      type: 'spring',
+                      stiffness: 500,
+                      damping: 30,
+                      layout: { type: 'spring', stiffness: 500, damping: 35 },
+                    }}
+                  >
+                    <SessionItem
+                      session={session}
+                      isActive={activeSessionId === session.id}
+                      isStreaming={streamingIds.has(session.id)}
+                      hasOpenTab={openSessionIds.has(session.id)}
+                      isRenaming={rename.renamingId === session.id}
+                      renameValue={rename.renameValue}
+                      messagesMap={messagesMap}
+                      onSelect={() => onSessionSelect(session.id)}
+                      onStartRename={() => rename.startRename(session.id, session.name || getSessionTitle(session.id, undefined, messagesMap))}
+                      onDoubleClickRename={() => rename.startRename(session.id, session.name || getSessionTitle(session.id, undefined, messagesMap))}
+                      onCommitRename={rename.commitRename}
+                      onCancelRename={rename.cancelRename}
+                      onRenameChange={rename.setRenameValue}
+                      onRequestDelete={() => handleDeleteSession(session.id)}
+                    />
+                  </motion.div>
+                ))}
+              </AnimatePresence>
             </div>
           )}
         </div>

@@ -256,6 +256,7 @@ interface AgentActions {
 	// Mode management
 	setPlanMode: (sessionId: string, enabled: boolean) => Promise<void>;
 	setThinkingMode: (sessionId: string, enabled: boolean, maxTokens?: number) => Promise<void>;
+	setAcceptMode: (sessionId: string, enabled: boolean) => Promise<void>;
 
 	// Bridge event handlers
 	handleAgentMessage: (sessionId: string, message: BridgeAgentMessage) => void;
@@ -734,6 +735,14 @@ export const useAgentStore = create<AgentStore>()(
 				await backend.agentSetThinkingMode(sessionId, enabled, maxTokens);
 			} catch (error) {
 				console.error('Failed to set thinking mode:', error);
+			}
+		},
+
+		setAcceptMode: async (sessionId: string, enabled: boolean) => {
+			try {
+				await backend.agentSetAcceptMode(sessionId, enabled);
+			} catch (error) {
+				console.error('Failed to set accept mode:', error);
 			}
 		},
 
