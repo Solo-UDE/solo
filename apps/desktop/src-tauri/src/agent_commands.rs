@@ -200,6 +200,19 @@ pub async fn agent_get_accept_mode(
     state.get_accept_mode(&session_id).map_err(to_error)
 }
 
+/// Set tool permission policy for a session
+#[tauri::command]
+pub async fn agent_set_tool_policy(
+    session_id: String,
+    mode: String,
+    is_worktree_session: bool,
+    state: State<'_, Arc<SessionManager>>,
+) -> Result<()> {
+    state
+        .set_tool_policy(&session_id, &mode, is_worktree_session)
+        .map_err(to_error)
+}
+
 // ============================================================================
 // Commit Message Generation
 // ============================================================================

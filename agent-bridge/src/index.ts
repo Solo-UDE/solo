@@ -249,6 +249,16 @@ async function handleRequest(
       break;
     }
 
+    case 'set_tool_policy': {
+      sessionManager.setToolPolicy(
+        request.sessionId,
+        request.mode,
+        request.isWorktreeSession ?? false,
+      );
+      sendResponse({ type: 'success', requestType: request.type });
+      break;
+    }
+
     case 'is_session_ready': {
       const ready = sessionManager.isSessionReady(request.sessionId);
       sendResponse({ type: 'boolean', requestType: request.type, value: ready });

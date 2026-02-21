@@ -531,6 +531,12 @@ export const useAgentStore = create<AgentStore>()(
 					});
 				}
 
+				// Apply tool permission policy from settings
+				import('@/stores/settingsStore').then(({ useSettingsStore }) => {
+					const policy = useSettingsStore.getState().ai.toolPermissionPolicy;
+					backend.agentSetToolPolicy(sessionId, policy, !!activeWt).catch(console.error);
+				});
+
 				get().persistSessions(sessionId);
 				return sessionId;
 			} catch (error) {

@@ -251,6 +251,26 @@ impl SessionManager {
         Self::check_response(response)
     }
 
+    /// Set tool permission policy for a session
+    pub fn set_tool_policy(
+        &self,
+        session_id: &str,
+        mode: &str,
+        is_worktree_session: bool,
+    ) -> Result<()> {
+        self.ensure_running()?;
+
+        let request = BridgeRequest::SetToolPolicy {
+            session_id: session_id.to_owned(),
+            mode: mode.to_owned(),
+            is_worktree_session,
+        };
+
+        let bridge = self.bridge.lock();
+        let response = bridge.send_request(&request)?;
+        Self::check_response(response)
+    }
+
     /// Get accept mode for a session
     pub fn get_accept_mode(&self, session_id: &str) -> Result<bool> {
         self.ensure_running()?;

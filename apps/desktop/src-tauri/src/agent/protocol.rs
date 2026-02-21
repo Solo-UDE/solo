@@ -286,6 +286,13 @@ pub enum BridgeRequest {
         #[serde(rename = "sessionId")]
         session_id: String,
     },
+    SetToolPolicy {
+        #[serde(rename = "sessionId")]
+        session_id: String,
+        mode: String,
+        #[serde(rename = "isWorktreeSession", default)]
+        is_worktree_session: bool,
+    },
     IsSessionReady {
         #[serde(rename = "sessionId")]
         session_id: String,
