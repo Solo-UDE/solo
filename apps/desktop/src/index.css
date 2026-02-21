@@ -323,7 +323,7 @@ html.dark {
   body {
     background-color: transparent;
     color: var(--foreground);
-    font-family: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    font-family: "Inter Variable", "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
       "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     font-feature-settings: "rlig" 1, "calt" 1;
     -webkit-font-smoothing: antialiased;
@@ -615,6 +615,31 @@ html.dark ::-webkit-scrollbar-thumb:hover {
 
 html.dark .shadow-glass {
   box-shadow: 0 4px 16px oklch(0% 0 0 / 25%), 0 2px 4px oklch(0% 0 0 / 12%);
+}
+
+/* Primary button hover glow — warm halo around primary actions */
+.glow-primary {
+  transition: box-shadow 200ms ease;
+}
+
+.glow-primary:hover {
+  box-shadow:
+    0 4px 16px -2px oklch(from var(--primary) l c h / 25%),
+    0 0 0 1px oklch(from var(--primary) l c h / 8%);
+}
+
+/* Interactive card hover lift — subtle elevation on hover */
+.hover-lift {
+  transition: box-shadow 200ms ease, transform 200ms ease;
+}
+
+.hover-lift:hover {
+  box-shadow: 0 4px 12px -2px oklch(0% 0 0 / 10%);
+  transform: translateY(-1px);
+}
+
+html.dark .hover-lift:hover {
+  box-shadow: 0 4px 12px -2px oklch(0% 0 0 / 25%);
 }
 
 /* =============================================================================

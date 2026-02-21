@@ -24,9 +24,11 @@ import { useGitStore } from '@/stores/gitStore';
 import { useGitHubAccountsStore } from '@/stores/githubAccountsStore';
 import { usePanelTabsStore } from '@/stores/panelTabsStore';
 import { BUILTIN_PANEL_TYPES } from '@/lib/panels';
+import { motion } from 'motion/react';
 import { BranchSelector } from './BranchSelector';
 import { FileChangeItem } from './FileChangeItem';
 import { GitHubSetup } from './GitHubSetup';
+import { AnimatedList } from '../ui/animated-list';
 import { ConfirmDialog } from '../ui/confirm-dialog';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -261,13 +263,22 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
     <div className={cn('flex flex-col h-full', className)}>
       {/* Empty state for non-git repos */}
       {isNotRepo && (
-        <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
-          <GitBranch className="w-10 h-10 text-muted-foreground/30 mb-3" />
-          <p className="text-xs text-muted-foreground/60 leading-relaxed">
-            This workspace is not a git repository. Open a folder that contains a{' '}
-            <span className="text-muted-foreground">.git</span> directory, or initialize one.
-          </p>
-        </div>
+        <motion.div
+          className="flex-1 flex flex-col items-center justify-center px-6 text-center gap-3"
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+        >
+          <div className="w-10 h-10 rounded-2xl bg-muted/50 flex items-center justify-center">
+            <GitBranch className="w-5 h-5 text-muted-foreground/40" />
+          </div>
+          <div className="space-y-1">
+            <p className="text-xs font-medium text-muted-foreground">Not a git repository</p>
+            <p className="text-[11px] text-muted-foreground/50 leading-relaxed">
+              Open a folder with a <span className="text-muted-foreground/70">.git</span> directory, or initialize one.
+            </p>
+          </div>
+        </motion.div>
       )}
 
       {/* Main content */}
@@ -468,7 +479,7 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
 
                 {/* Staged file list */}
                 {stagedOpen && (
-                  <div className="overflow-y-auto px-1">
+                  <AnimatedList className="overflow-y-auto px-1">
                     {stagedFiles.map((file) => (
                       <FileChangeItem
                         key={`staged-${file.path}`}
@@ -479,7 +490,7 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
                         onUnstage={handleUnstageFile}
                       />
                     ))}
-                  </div>
+                  </AnimatedList>
                 )}
               </>
             )}
@@ -546,20 +557,28 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
             {changesOpen && (
               <div className="flex-1 overflow-y-auto px-1">
                 {unstagedFiles.length === 0 ? (
-                  <div className="px-3 py-4 text-center">
+                  <motion.div
+                    className="flex flex-col items-center py-6 gap-1"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ duration: 0.15 }}
+                  >
+                    <Check className="w-4 h-4 text-muted-foreground/30 mb-0.5" weight="bold" />
                     <p className="text-[11px] text-muted-foreground/50">No changes detected</p>
-                  </div>
+                  </motion.div>
                 ) : (
-                  unstagedFiles.map((file) => (
-                    <FileChangeItem
-                      key={file.path}
-                      file={file}
-                      onDiscard={handleDiscardFile}
-                      onViewDiff={handleViewDiff}
-                      onStage={handleStageFile}
-                      onUnstage={handleUnstageFile}
-                    />
-                  ))
+                  <AnimatedList>
+                    {unstagedFiles.map((file) => (
+                      <FileChangeItem
+                        key={file.path}
+                        file={file}
+                        onDiscard={handleDiscardFile}
+                        onViewDiff={handleViewDiff}
+                        onStage={handleStageFile}
+                        onUnstage={handleUnstageFile}
+                      />
+                    ))}
+                  </AnimatedList>
                 )}
               </div>
             )}

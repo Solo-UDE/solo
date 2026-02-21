@@ -29,7 +29,7 @@ const TokenSection: FC<{ title: string; accum: TokenAccum }> = ({ title, accum }
 		{accum.totalCostUsd > 0 && (
 			<div className="flex items-center justify-between px-2 py-0.5 mt-1 border-t border-border/20">
 				<span className="text-xs text-muted-foreground">Cost</span>
-				<span className="text-xs font-mono text-emerald-400">
+				<span className="text-xs font-mono text-success">
 					${accum.totalCostUsd.toFixed(4)}
 				</span>
 			</div>

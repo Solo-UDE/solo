@@ -4,7 +4,8 @@
  */
 
 import { useState, useEffect } from 'react';
-import { FileText, CircleNotch, WarningCircle } from '@phosphor-icons/react';
+import { FileText, WarningCircle } from '@phosphor-icons/react';
+import { CodeSkeleton } from '@/components/ui/skeletons';
 import * as fs from '../../lib/tauri/fs';
 
 interface FileViewerProps {
@@ -86,11 +87,8 @@ export function FileViewer({ filePath, className = '' }: FileViewerProps) {
 
   if (loading) {
     return (
-      <div className={`flex items-center justify-center h-full ${className}`}>
-        <div className="text-center space-y-4">
-          <CircleNotch weight="bold" className="w-8 h-8 text-primary animate-spin mx-auto" />
-          <p className="text-sm text-muted-foreground">Loading file...</p>
-        </div>
+      <div className={`h-full ${className}`}>
+        <CodeSkeleton lines={16} />
       </div>
     );
   }

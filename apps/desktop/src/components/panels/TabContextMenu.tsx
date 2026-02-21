@@ -126,7 +126,7 @@ export function TabContextMenu({
   return (
     <div
       ref={menuRef}
-      className="fixed z-50 min-w-[160px] bg-popover rounded-lg shadow-glass p-1 overflow-hidden"
+      className="fixed z-50 min-w-[160px] bg-popover rounded-lg shadow-glass p-1 overflow-hidden animate-[pop-in_120ms_ease-out]"
       style={{
         left: pos.x,
         top: pos.y,

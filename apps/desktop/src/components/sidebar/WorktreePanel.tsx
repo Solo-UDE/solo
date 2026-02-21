@@ -5,6 +5,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { FC } from 'react';
 import { Plus, Lock, LockOpen, Trash, TreeStructure, CircleNotch, Broom } from '@phosphor-icons/react';
+import { motion } from 'motion/react';
+import { ListSkeleton } from '@/components/ui/skeletons';
 import { useWorktreeStore, useWorktreeList } from '@/stores/worktreeStore';
 import { cn } from '@/lib/utils';
 import type { WorktreeInfo } from '../../bindings';
@@ -166,17 +168,22 @@ export const WorktreePanel: FC<WorktreePanelProps> = ({ className }) => {
       {/* Worktree list */}
       <div className="flex-1 overflow-y-auto">
         {isLoading && worktrees.length === 0 ? (
-          <div className="flex items-center justify-center py-8">
-            <CircleNotch className="w-5 h-5 text-muted-foreground animate-spin" />
-          </div>
+          <ListSkeleton rows={3} />
         ) : worktrees.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-8 text-center px-4">
-            <TreeStructure className="w-8 h-8 text-muted-foreground/50 mb-2" />
-            <p className="text-xs text-muted-foreground">No worktrees yet</p>
-            <p className="text-xs text-muted-foreground/70 mt-1">
+          <motion.div
+            className="flex flex-col items-center justify-center py-8 text-center px-4"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+          >
+            <div className="w-10 h-10 rounded-2xl bg-muted/50 flex items-center justify-center mb-2">
+              <TreeStructure className="w-5 h-5 text-muted-foreground/40" />
+            </div>
+            <p className="text-xs font-medium text-muted-foreground">No worktrees yet</p>
+            <p className="text-xs text-muted-foreground/60 mt-1">
               Create one to run agents in isolated branches
             </p>
-          </div>
+          </motion.div>
         ) : (
           <div className="py-1">
             {worktrees.map((wt) => (
@@ -239,10 +246,10 @@ const WorktreeCard: FC<WorktreeCardProps> = ({
             {worktree.is_main ? 'main' : (worktree.branch ?? worktree.id)}
           </span>
           {worktree.is_locked && (
-            <Lock className="w-3 h-3 text-amber-500 shrink-0" />
+            <Lock className="w-3 h-3 text-warning shrink-0" />
           )}
           {worktree.is_dirty && (
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" title="Uncommitted changes" />
+            <span className="w-1.5 h-1.5 rounded-full bg-warning shrink-0" title="Uncommitted changes" />
           )}
         </div>
 

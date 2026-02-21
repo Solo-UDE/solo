@@ -4,6 +4,7 @@
 
 import { useState, useCallback } from "react";
 import { GithubLogo, Envelope, CircleNotch, WarningCircle, ArrowSquareOut } from "@phosphor-icons/react";
+import { Button, Input } from "@solo/ui";
 import {
   useAuthStore,
   useIsAuthenticating,
@@ -51,18 +52,19 @@ export function LoginScreen() {
 
         {/* Error message */}
         {error && (
-          <div className="mb-6 p-3 rounded-lg bg-destructive/10 flex items-start gap-2">
-            <WarningCircle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
+          <div className="mb-6 p-3 rounded-lg bg-destructive/10 flex items-start gap-2" role="alert">
+            <WarningCircle className="w-4 h-4 text-destructive shrink-0 mt-0.5" aria-hidden="true" />
             <p className="text-sm text-destructive">{error}</p>
           </div>
         )}
 
         {/* GitHub OAuth button */}
-        <button
-          type="button"
+        <Button
+          variant="primary"
+          size="md"
           onClick={handleGitHubClick}
           disabled={isAuthenticating}
-          className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-[10px] bg-foreground text-background font-medium text-sm transition-[transform,background-color] duration-200 hover:bg-foreground/90 active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full bg-foreground text-background hover:bg-foreground/90 hover:brightness-100"
         >
           {isAuthenticating ? (
             <CircleNotch weight="bold" className="w-4 h-4 animate-spin" />
@@ -70,7 +72,7 @@ export function LoginScreen() {
             <GithubLogo className="w-4 h-4" />
           )}
           Continue with GitHub
-        </button>
+        </Button>
 
         {/* Browser notice */}
         {isAuthenticating && (
@@ -116,19 +118,20 @@ export function LoginScreen() {
             >
               Email
             </label>
-            <input
+            <Input
               type="email"
               id="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
               disabled={isAuthenticating}
-              className="w-full px-3 py-2 rounded-lg bg-muted/40 border-none text-foreground text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:bg-muted/60 focus:ring-1 focus:ring-ring/30 disabled:opacity-50"
             />
-            <button
+            <Button
               type="submit"
+              variant="secondary"
+              size="md"
               disabled={isAuthenticating || !email.trim()}
-              className="w-full mt-3 flex items-center justify-center gap-2 px-4 py-2.5 rounded-[10px] bg-muted text-foreground font-medium text-sm shadow-sm transition-[transform,background-color] duration-200 hover:bg-muted/80 active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full mt-3"
             >
               {isAuthenticating ? (
                 <CircleNotch weight="bold" className="w-4 h-4 animate-spin" />
@@ -136,7 +139,7 @@ export function LoginScreen() {
                 <Envelope className="w-4 h-4" />
               )}
               Send Magic Link
-            </button>
+            </Button>
           </form>
         )}
 
