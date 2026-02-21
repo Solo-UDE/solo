@@ -7,6 +7,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import type { FC } from 'react';
 import { GithubLogo, Plus, Lock, Globe, CircleNotch, SignOut } from '@phosphor-icons/react';
+import { Button, IconButton, Input } from '@solo/ui';
 import { useGitStore } from '@/stores/gitStore';
 import { useGitHubAccountsStore } from '@/stores/githubAccountsStore';
 import { createRepo } from '@/lib/github-api';
@@ -99,17 +100,12 @@ export const GitHubSetup: FC<GitHubSetupProps> = ({ className }) => {
           <p className="text-xs text-destructive mb-3 text-center">{error}</p>
         )}
 
-        <button
+        <Button
+          variant="primary"
+          size="sm"
           onClick={handleConnect}
           disabled={isConnecting}
-          className={cn(
-            'h-[34px] px-4 rounded-[10px] text-xs font-medium',
-            'flex items-center gap-2',
-            'bg-foreground text-background',
-            'hover:brightness-110 active:scale-[0.97]',
-            'disabled:opacity-40 disabled:pointer-events-none',
-            'transition-[transform,background-color,color] duration-200',
-          )}
+          className="h-[34px] px-4 text-xs bg-foreground text-background hover:bg-foreground/90 hover:brightness-100"
         >
           {isConnecting ? (
             <CircleNotch className="w-4 h-4 animate-spin" />
@@ -117,7 +113,7 @@ export const GitHubSetup: FC<GitHubSetupProps> = ({ className }) => {
             <GithubLogo className="w-4 h-4" weight="bold" />
           )}
           {isConnecting ? 'Connecting...' : 'Sign in with GitHub'}
-        </button>
+        </Button>
       </div>
     );
   }
@@ -135,13 +131,14 @@ export const GitHubSetup: FC<GitHubSetupProps> = ({ className }) => {
           <p className="text-xs font-medium text-foreground">{ghUser.login}</p>
           <p className="text-[10px] text-muted-foreground/50">Connected</p>
         </div>
-        <button
+        <IconButton
+          variant="ghost"
+          size="sm"
           onClick={handleDisconnect}
-          className="p-1.5 rounded-md hover:bg-muted/60 transition-colors"
           title="Disconnect GitHub"
         >
           <SignOut className="w-3.5 h-3.5 text-muted-foreground" />
-        </button>
+        </IconButton>
       </div>
 
       {/* Create repo form */}
@@ -150,16 +147,10 @@ export const GitHubSetup: FC<GitHubSetupProps> = ({ className }) => {
           <label className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider mb-1 block">
             Repository Name
           </label>
-          <input
+          <Input
             value={repoName}
             onChange={(e) => setRepoName(e.target.value)}
             placeholder="my-project"
-            className={cn(
-              'w-full h-9 px-3 rounded-lg text-xs',
-              'bg-muted/40 border-none text-foreground placeholder:text-muted-foreground/50',
-              'focus:bg-muted/60 focus:ring-1 focus:ring-ring/30 focus:outline-none',
-              'transition-colors duration-150',
-            )}
           />
         </div>
 
@@ -197,17 +188,12 @@ export const GitHubSetup: FC<GitHubSetupProps> = ({ className }) => {
           <p className="text-xs text-destructive">{error}</p>
         )}
 
-        <button
+        <Button
+          variant="primary"
+          size="sm"
           onClick={handleCreateRepo}
           disabled={!repoName.trim() || isCreating}
-          className={cn(
-            'w-full h-[34px] rounded-[10px] text-xs font-medium',
-            'flex items-center justify-center gap-1.5',
-            'bg-primary text-primary-foreground',
-            'hover:brightness-110 active:scale-[0.97]',
-            'disabled:opacity-40 disabled:pointer-events-none',
-            'transition-[transform,background-color,color] duration-200',
-          )}
+          className="w-full h-[34px] text-xs"
         >
           {isCreating ? (
             <CircleNotch className="w-3.5 h-3.5 animate-spin" />
@@ -215,7 +201,7 @@ export const GitHubSetup: FC<GitHubSetupProps> = ({ className }) => {
             <Plus className="w-3.5 h-3.5" weight="bold" />
           )}
           {isCreating ? 'Creating...' : 'Create Repository'}
-        </button>
+        </Button>
       </div>
     </div>
   );

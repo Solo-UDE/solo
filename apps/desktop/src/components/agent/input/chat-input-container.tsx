@@ -1,5 +1,5 @@
-import React, { useRef, useState } from 'react';
-import { Stop, Waveform } from '@phosphor-icons/react';
+import React, { useRef, useState, useCallback } from 'react';
+import { Stop } from '@phosphor-icons/react';
 
 import { ContextMenu } from './context-menu';
 import { ContextTracker } from './context-tracker';
@@ -17,6 +17,7 @@ import { useProviderStore } from '../../../stores/provider-store';
 import { useAttachmentStore } from '../../../stores/attachmentStore';
 import { useWorktreeList } from '../../../stores/worktreeStore';
 import { DEFAULT_MODEL_ID } from '../../../lib/constants';
+import { VoiceButton } from './voice-button';
 
 export interface ChatInputContainerProps {
   onSubmit: (content: string, mode: 'planning' | 'fast', model: string, attachments?: Attachment[], mentions?: FileMention[]) => void;
@@ -85,6 +86,14 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
     onModeChange?.(newMode);
   };
 
+  // Voice input handler: focus editor then insert transcribed text
+  const handleVoiceTranscript = useCallback((text: string) => {
+    console.log('[ChatInput] Voice transcript received, inserting:', text);
+    editorRef.current?.focus();
+    editorRef.current?.insertText(text + ' ');
+    setContent((prev) => prev + text + ' ');
+  }, []);
+
   // Only show the selector when there are linked worktrees (more than just main)
   const showWorktreeSelector = onWorktreeChange && worktrees.length > 1;
 
@@ -143,16 +152,11 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
             </div>
 
             <div className="flex items-center gap-1">
-              {/* Voice (mock) */}
-              <button
-                type="button"
-                className="inline-flex items-center justify-center h-[30px] w-[30px] rounded-[8px] text-muted-foreground hover:bg-muted/60 hover:text-foreground active:scale-95 transition-[transform,background-color,color] duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
-                aria-label="Voice"
-                title="Voice"
+              {/* Voice input (ElevenLabs STT) */}
+              <VoiceButton
                 disabled={isAgentRunning}
-              >
-                <Waveform className="h-4 w-4" />
-              </button>
+                onTranscript={handleVoiceTranscript}
+              />
 
               {/* Screen record (mock) */}
               <button

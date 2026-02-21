@@ -4,7 +4,9 @@
  */
 
 import { useState, useCallback } from 'react';
-import { CaretRight, CaretDown, CircleNotch } from '@phosphor-icons/react';
+import { CaretRight, CaretDown, TreeStructure } from '@phosphor-icons/react';
+import { motion } from 'motion/react';
+import { ListSkeleton } from '@/components/ui/skeletons';
 import type { Symbol, SymbolKind } from '../../lib/tauri/parse';
 import { getSymbolIcon, getSymbolKindName } from '../../lib/tauri/parse';
 
@@ -140,13 +142,8 @@ export function SymbolOutline({
 }: SymbolOutlineProps) {
   if (isLoading) {
     return (
-      <div
-        className={`flex items-center justify-center h-full bg-background ${className}`}
-      >
-        <div className="text-center space-y-2">
-          <CircleNotch weight="bold" className="w-5 h-5 text-primary animate-spin mx-auto" />
-          <p className="text-xs text-muted-foreground">Parsing...</p>
-        </div>
+      <div className={`h-full bg-background ${className}`}>
+        <ListSkeleton rows={6} />
       </div>
     );
   }
@@ -165,11 +162,15 @@ export function SymbolOutline({
 
   if (symbols.length === 0) {
     return (
-      <div
-        className={`flex items-center justify-center h-full bg-background ${className}`}
+      <motion.div
+        className={`flex flex-col items-center justify-center h-full bg-background gap-1.5 ${className}`}
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ type: 'spring', stiffness: 400, damping: 25 }}
       >
-        <p className="text-xs text-muted-foreground">No symbols</p>
-      </div>
+        <TreeStructure className="w-5 h-5 text-muted-foreground/30 mb-0.5" />
+        <p className="text-xs text-muted-foreground/60">No symbols found</p>
+      </motion.div>
     );
   }
 

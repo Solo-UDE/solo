@@ -14,8 +14,10 @@ import {
   ArrowUp,
   ArrowDown,
 } from '@phosphor-icons/react';
+import { ListSkeleton } from '@/components/ui/skeletons';
 import { useWorktreeStore, useWorktreeList } from '@/stores/worktreeStore';
 import { useGitStore } from '@/stores/gitStore';
+import { AnimatedList } from '@/components/ui/animated-list';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -215,6 +217,7 @@ export const WorktreeSwitcher: FC<WorktreeSwitcherProps> = ({ onClose }) => {
               }}
               onKeyDown={handleBranchKeyDown}
               placeholder="Branch name..."
+              aria-label="New branch name"
               disabled={isCreatingBranch}
               className={cn(
                 'flex-1 h-7 px-2 rounded-md text-xs',
@@ -355,11 +358,9 @@ export const WorktreeSwitcher: FC<WorktreeSwitcherProps> = ({ onClose }) => {
 
           {/* Worktree list */}
           {isLoadingWorktrees && worktrees.length === 0 ? (
-            <div className="flex items-center justify-center py-4">
-              <CircleNotch className="w-4 h-4 text-muted-foreground animate-spin" />
-            </div>
+            <ListSkeleton rows={3} className="p-1" />
           ) : (
-            <div className="space-y-0.5">
+            <AnimatedList className="space-y-0.5" stagger={0.03} slideY={4}>
               {worktrees.map((wt) => {
                 const isActive = wt.is_main ? activeWorktreeId === null : activeWorktreeId === wt.id;
                 return (
@@ -382,15 +383,15 @@ export const WorktreeSwitcher: FC<WorktreeSwitcherProps> = ({ onClose }) => {
                       {wt.is_main ? 'main' : (wt.branch ?? wt.id)}
                     </span>
                     {wt.is_locked && (
-                      <Lock className="w-3 h-3 text-amber-500 shrink-0 ml-auto" />
+                      <Lock className="w-3 h-3 text-warning shrink-0 ml-auto" />
                     )}
                     {wt.is_dirty && (
-                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0 ml-auto" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-warning shrink-0 ml-auto" />
                     )}
                   </button>
                 );
               })}
-            </div>
+            </AnimatedList>
           )}
         </>
       )}

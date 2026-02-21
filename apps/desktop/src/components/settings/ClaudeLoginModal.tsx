@@ -4,7 +4,8 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { CheckCircle, CircleNotch, WarningCircle, Terminal, ArrowsClockwise } from '@phosphor-icons/react';
+import { CheckCircle, WarningCircle, Terminal, ArrowsClockwise } from '@phosphor-icons/react';
+import { Skeleton } from '@solo/ui';
 import {
 	Dialog,
 	DialogContent,
@@ -109,8 +110,11 @@ export function ClaudeLoginModal({ isOpen, onClose, onSuccess }: ClaudeLoginModa
 				<div className="p-5 space-y-4">
 					{step === 'checking' && (
 						<div className="flex flex-col items-center justify-center gap-3 py-6">
-							<CircleNotch weight="bold" className="w-6 h-6 text-primary animate-spin" />
-							<p className="text-sm text-muted-foreground">Checking authentication...</p>
+							<div className="relative w-6 h-6">
+								<div className="absolute inset-0 rounded-full border-2 border-primary/20" />
+								<div className="absolute inset-0 rounded-full border-2 border-transparent border-t-primary animate-spin" />
+							</div>
+							<Skeleton shimmer className="h-3 w-40 rounded" />
 						</div>
 					)}
 
@@ -174,9 +178,9 @@ export function ClaudeLoginModal({ isOpen, onClose, onSuccess }: ClaudeLoginModa
 
 					{step === 'complete' && (
 						<div className="flex flex-col items-center justify-center gap-3 py-6">
-							<CheckCircle className="w-8 h-8 text-green-500" />
+							<CheckCircle className="w-8 h-8 text-success" />
 							<div className="text-center">
-								<p className="text-sm font-medium text-green-600">Successfully authenticated!</p>
+								<p className="text-sm font-medium text-success">Successfully authenticated!</p>
 								<p className="text-xs text-muted-foreground mt-1">You can now use Claude in Solo</p>
 							</div>
 						</div>

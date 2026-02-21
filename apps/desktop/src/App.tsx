@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { AnimatePresence, motion } from "motion/react";
 import { GearSix, SidebarSimple, SignOut, Terminal } from "@phosphor-icons/react";
 import { PrimarySidebar } from "./components/sidebar";
 import { SidebarTerminal } from "./components/sidebar";
@@ -20,6 +21,7 @@ import { useAgentStream } from "./hooks/useAgentStream";
 import { useTerminalStream } from "./hooks/useTerminalStream";
 import { useGitStream } from "./hooks/useGitStream";
 import { useWorktreeStream } from "./hooks/useWorktreeStream";
+import { useElevenLabsStream } from "./hooks/useElevenLabsStream";
 import { useTerminalStore, clearActiveTerminal, findInActiveTerminal } from "./stores/terminalStore";
 import { useFileExplorerStore } from "./stores/fileExplorerStore";
 import { useGitHubAccountsStore } from "./stores/githubAccountsStore";
@@ -31,6 +33,9 @@ import { HTML5Backend } from "react-dnd-html5-backend";
 import { Toaster } from "sonner";
 import { WorkspaceSwitcher } from "./components/titlebar/WorkspaceSwitcher";
 import { WelcomeScreen } from "./components/welcome";
+
+// Shared easing curve matching --ease-smooth
+const EASE_SMOOTH: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
 // Register built-in panels on module load
 registerBuiltinPanels();
@@ -120,6 +125,7 @@ function AppContent() {
   useTerminalStream();
   useGitStream();
   useWorktreeStream();
+  useElevenLabsStream();
 
   // Load GitHub token from keychain so the icon rail shows auth status
   useEffect(() => {
@@ -404,59 +410,84 @@ function AppContent() {
         </div>
       </div>
 
-      {/* Full-height content — sidebar bg extends behind titlebar */}
-      {rootPath === null && !settingsOpen ? (
-        <WelcomeScreen />
-      ) : settingsOpen ? (
-        <div className="flex h-full pt-[38px]">
-          <SettingsView />
-        </div>
-      ) : (
-        <DndProvider backend={HTML5Backend}>
-        <div className="flex h-full">
-          <PrimarySidebar ref={sidebarRef} width={leftSidebarWidth} onFileOpen={handleFileOpen} />
+      {/* Full-height content — animated view transitions */}
+      <AnimatePresence mode="wait">
+        {rootPath === null && !settingsOpen ? (
+          <motion.div
+            key="welcome"
+            initial={{ opacity: 0, scale: 0.99 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.99 }}
+            transition={{ duration: 0.2, ease: EASE_SMOOTH }}
+            className="h-full"
+          >
+            <WelcomeScreen />
+          </motion.div>
+        ) : settingsOpen ? (
+          <motion.div
+            key="settings"
+            initial={{ opacity: 0, x: 24 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 24 }}
+            transition={{ duration: 0.25, ease: EASE_SMOOTH }}
+            className="flex h-full pt-[38px]"
+          >
+            <SettingsView />
+          </motion.div>
+        ) : (
+          <motion.div
+            key="workspace"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15, ease: EASE_SMOOTH }}
+            className="flex h-full"
+          >
+            <DndProvider backend={HTML5Backend}>
+              <PrimarySidebar ref={sidebarRef} width={leftSidebarWidth} onFileOpen={handleFileOpen} />
 
-          <div
-            className="split-divider"
-            onPointerDown={handlePointerDown}
-            onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerUp}
-            onDoubleClick={handleDoubleClick}
-          />
+              <div
+                className="split-divider"
+                onPointerDown={handlePointerDown}
+                onPointerMove={handlePointerMove}
+                onPointerUp={handlePointerUp}
+                onDoubleClick={handleDoubleClick}
+              />
 
-          {/* Right column: opaque background covers vibrancy for editor area */}
-          <div className="flex-1 flex flex-col overflow-hidden min-h-0 pt-[38px] bg-background">
-            <div className="flex-1 overflow-hidden min-h-0">
-              <MosaicLayout />
-            </div>
-
-            <div className={cn(
-              'grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]',
-              terminalPanelOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]',
-            )}>
-              <div className="overflow-hidden min-h-0">
-                <div
-                  className={cn(
-                    'h-1.5 shrink-0 cursor-row-resize flex items-center justify-center hover:bg-primary/20 transition-colors',
-                    isDraggingTerminal && 'bg-primary/30',
-                  )}
-                  onMouseDown={handleTerminalDragStart}
-                >
-                  <div className="w-8 h-px bg-border/60 rounded-full" />
+              {/* Right column: opaque background covers vibrancy for editor area */}
+              <div className="flex-1 flex flex-col overflow-hidden min-h-0 pt-[38px] bg-background">
+                <div className="flex-1 overflow-hidden min-h-0">
+                  <MosaicLayout />
                 </div>
 
-                <div
-                  className="overflow-hidden"
-                  style={{ height: terminalPanelHeight }}
-                >
-                  <SidebarTerminal />
+                <div className={cn(
+                  'grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]',
+                  terminalPanelOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]',
+                )}>
+                  <div className="overflow-hidden min-h-0">
+                    <div
+                      className={cn(
+                        'h-1.5 shrink-0 cursor-row-resize flex items-center justify-center hover:bg-primary/20 transition-colors',
+                        isDraggingTerminal && 'bg-primary/30',
+                      )}
+                      onMouseDown={handleTerminalDragStart}
+                    >
+                      <div className="w-8 h-px bg-border/60 rounded-full" />
+                    </div>
+
+                    <div
+                      className="overflow-hidden"
+                      style={{ height: terminalPanelHeight }}
+                    >
+                      <SidebarTerminal />
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          </div>
-        </div>
-        </DndProvider>
-      )}
+            </DndProvider>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <Toaster richColors position="bottom-right" theme={resolvedTheme} />
     </div>

@@ -4,6 +4,7 @@
 
 import type { FC } from 'react';
 import { Files, ChatTeardrop, GitBranch, GithubLogo, SpinnerGap, SignOut } from '@phosphor-icons/react';
+import { motion } from 'motion/react';
 import { useUIStore } from '@/stores/uiStore';
 import type { SidebarTab } from '@/stores/uiStore';
 import { useGitHubAccountsStore } from '@/stores/githubAccountsStore';
@@ -29,31 +30,36 @@ export const IconRail: FC = () => {
   const activeIndex = TABS.findIndex((t) => t.key === activeTab);
 
   return (
-    <div className="relative flex flex-col items-center w-9 shrink-0 py-3 gap-1 border-r border-white/[0.04]">
+    <nav className="relative flex flex-col items-center w-9 shrink-0 py-3 gap-1 border-r border-white/[0.04]" role="tablist" aria-label="Sidebar navigation">
       {/* Sliding accent indicator */}
-      <div
-        className="absolute left-0 w-[2px] h-5 rounded-r-full bg-primary transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]"
-        style={{
-          top: `${12 + activeIndex * 36}px`, // py-3 (12px) + index * (32px button + 4px gap)
-        }}
+      <motion.div
+        className="absolute left-0 w-[2px] h-5 rounded-r-full bg-primary"
+        animate={{ top: 12 + activeIndex * 36 }}
+        transition={{ type: 'spring', stiffness: 500, damping: 30 }}
       />
 
       {TABS.map(({ key, icon: Icon, label }) => (
         <button
           key={key}
+          role="tab"
+          aria-selected={activeTab === key}
           onClick={() => setActiveTab(key)}
           className={cn(
             'w-8 h-8 flex items-center justify-center rounded-lg',
             'transition-[transform,background-color,color] duration-200',
+            'active:scale-95',
             activeTab === key
               ? 'text-foreground'
-              : 'text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted/60 hover:scale-105 active:scale-95',
+              : 'text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted/60 hover:scale-105',
           )}
+          aria-label={label}
+          aria-current={activeTab === key ? 'true' : undefined}
           title={label}
         >
           <Icon
             className="w-[18px] h-[18px]"
             weight={activeTab === key ? 'fill' : 'regular'}
+            aria-hidden="true"
           />
         </button>
       ))}
@@ -110,6 +116,6 @@ export const IconRail: FC = () => {
           </button>
         )}
       </div>
-    </div>
+    </nav>
   );
 };
