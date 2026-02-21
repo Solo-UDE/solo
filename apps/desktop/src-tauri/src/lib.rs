@@ -286,6 +286,11 @@ pub fn run() {
             worktree_commands::worktree_lock,
             worktree_commands::worktree_unlock,
             worktree_commands::worktree_prune,
+            worktree_commands::worktree_bind_agent,
+            worktree_commands::worktree_unbind_agent,
+            worktree_commands::worktree_find_by_agent,
+            worktree_commands::worktree_diff_from_base,
+            worktree_commands::worktree_promote,
             worktree_commands::worktree_set_setup_commands,
             worktree_commands::worktree_get_setup_commands,
         ])

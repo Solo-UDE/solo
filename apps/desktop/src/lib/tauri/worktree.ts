@@ -8,6 +8,7 @@ import type {
 	CreateWorktreeRequest,
 	RemoveWorktreeRequest,
 	WorktreeSetupConfig,
+	WorktreeDiffEntry,
 } from '../../bindings';
 
 export async function listWorktrees(): Promise<WorktreeInfo[]> {
@@ -22,16 +23,16 @@ export async function createWorktree(
 
 export async function removeWorktree(
 	request: RemoveWorktreeRequest
-): Promise<void> {
-	return invoke('worktree_remove', { request });
+): Promise<string | null> {
+	return invoke<string | null>('worktree_remove', { request });
 }
 
 export async function getWorktree(id: string): Promise<WorktreeInfo> {
 	return invoke<WorktreeInfo>('worktree_get', { id });
 }
 
-export async function setActiveWorktree(id: string | null): Promise<void> {
-	return invoke('worktree_set_active', { id });
+export async function setActiveWorktree(id: string | null): Promise<string | null> {
+	return invoke<string | null>('worktree_set_active', { id });
 }
 
 export async function getActiveWorktree(): Promise<WorktreeInfo | null> {
@@ -51,6 +52,36 @@ export async function unlockWorktree(id: string): Promise<void> {
 
 export async function pruneWorktrees(): Promise<string[]> {
 	return invoke<string[]>('worktree_prune');
+}
+
+export async function bindAgent(
+	worktreeId: string,
+	sessionId: string
+): Promise<void> {
+	return invoke('worktree_bind_agent', { worktreeId, sessionId });
+}
+
+export async function unbindAgent(worktreeId: string): Promise<void> {
+	return invoke('worktree_unbind_agent', { worktreeId });
+}
+
+export async function findByAgent(
+	sessionId: string
+): Promise<string | null> {
+	return invoke<string | null>('worktree_find_by_agent', { sessionId });
+}
+
+export async function diffFromBase(
+	worktreeId: string
+): Promise<WorktreeDiffEntry[]> {
+	return invoke<WorktreeDiffEntry[]>('worktree_diff_from_base', { worktreeId });
+}
+
+export async function promote(
+	worktreeId: string,
+	branchName: string
+): Promise<void> {
+	return invoke('worktree_promote', { worktreeId, branchName });
 }
 
 export async function setSetupCommands(

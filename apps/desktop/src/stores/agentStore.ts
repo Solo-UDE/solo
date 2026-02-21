@@ -524,6 +524,13 @@ export const useAgentStore = create<AgentStore>()(
 					state.sessionStreaming.set(sessionId, createDefaultStreamState());
 				});
 
+				// Bind agent to active worktree (auto-locks it)
+				if (activeWt) {
+					import('@/lib/tauri/worktree').then(({ bindAgent }) => {
+						bindAgent(activeWt.id, sessionId).catch(console.error);
+					});
+				}
+
 				get().persistSessions(sessionId);
 				return sessionId;
 			} catch (error) {
@@ -597,6 +604,12 @@ export const useAgentStore = create<AgentStore>()(
 			backend.agentDeleteSession(sessionId).catch(console.error);
 			// Delete session file from disk (fire-and-forget)
 			deleteSessionFile(sessionId).catch(console.error);
+			// Unbind from any worktree (fire-and-forget)
+			import('@/lib/tauri/worktree').then(({ findByAgent, unbindAgent }) => {
+				findByAgent(sessionId).then((wtId) => {
+					if (wtId) unbindAgent(wtId).catch(console.error);
+				}).catch(console.error);
+			});
 
 			set((state) => {
 				state.sessions.delete(sessionId);

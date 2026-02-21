@@ -469,6 +469,20 @@ pub struct WorktreeSetupConfig {
     pub commands: Vec<String>,
 }
 
+/// A single changed file in a worktree diff relative to its base branch.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct WorktreeDiffEntry {
+    /// File path relative to repo root
+    pub path: String,
+    /// Change status: "added", "modified", "deleted", "renamed"
+    pub status: String,
+    /// Lines added (0 if unavailable)
+    pub additions: u32,
+    /// Lines removed (0 if unavailable)
+    pub deletions: u32,
+}
+
 // =============================================================================
 // Backend Events (sent from Rust to TypeScript)
 // =============================================================================
