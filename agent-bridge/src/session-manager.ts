@@ -1158,6 +1158,19 @@ export class SessionManager extends Disposable {
   }
 
   /**
+   * Set tool permission policy for a session.
+   */
+  setToolPolicy(sessionId: string, mode: string, isWorktreeSession: boolean): void {
+    const agent = this.activeSessions.get(sessionId);
+    if (agent) {
+      const pm = agent.getPermissionManager();
+      pm.setPolicyMode(mode as 'ask-all' | 'smart' | 'approve-all');
+      pm.setPolicyContext({ isWorktreeSession });
+    }
+    logger.info({ sessionId, mode, isWorktreeSession }, 'Tool policy updated');
+  }
+
+  /**
    * Dispose the session manager
    */
   override dispose(): void {

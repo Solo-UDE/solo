@@ -10,7 +10,7 @@ import { SIDEBAR, TERMINAL_SECTION } from '@/lib/constants';
 export type SidebarTab = 'explorer' | 'sessions' | 'source-control';
 
 // Settings tab types
-export type SettingsTabId = 'general' | 'editor' | 'terminal' | 'files' | 'shortcuts' | 'ai';
+export type SettingsTabId = 'general' | 'editor' | 'terminal' | 'files' | 'shortcuts' | 'ai' | 'voice';
 
 interface UIState {
   leftSidebarWidth: number;

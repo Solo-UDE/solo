@@ -29,5 +29,11 @@ export { TextShimmer } from './TextShimmer';
 export { ThinkingBar } from './ThinkingBar';
 export { StreamingSkeleton } from './StreamingSkeleton';
 
+// Progress tracker
+export { ProgressTracker } from './ProgressTracker';
+export { ProgressTrackerItem } from './ProgressTrackerItem';
+export { AgentLoadingGrid } from './AgentLoadingGrid';
+export { AgentAnimatedDots } from './AgentAnimatedDots';
+
 // Tool approval
 export { ToolApprovalCard } from './ToolApprovalCard';

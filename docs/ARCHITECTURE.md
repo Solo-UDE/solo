@@ -176,5 +176,5 @@ Following Orbit-web's warm aesthetic:
 
 - Orbit IDE: `/Orbit/claude.md`
 - Orbit-web UI: `/Orbit-web/components/`
-- Orchids Desktop AI: `/orchids/desktop/src/`
+- Legacy Desktop AI: reference codebase
 - UI Skill: `/.claude/skills/orbit-ui-skill/`

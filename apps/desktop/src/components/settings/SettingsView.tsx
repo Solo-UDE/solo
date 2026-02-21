@@ -8,8 +8,9 @@ import { TerminalTab } from './tabs/TerminalTab';
 import { FilesTab } from './tabs/FilesTab';
 import { ShortcutsTab } from './tabs/ShortcutsTab';
 import { AITab } from './tabs/AITab';
+import { VoiceTab } from './tabs/VoiceTab';
 
-const TAB_ORDER: SettingsTabId[] = ['general', 'editor', 'terminal', 'files', 'shortcuts', 'ai'];
+const TAB_ORDER: SettingsTabId[] = ['general', 'editor', 'terminal', 'files', 'shortcuts', 'ai', 'voice'];
 
 const TAB_LABELS: Record<SettingsTabId, string> = {
   general: 'General',
@@ -18,6 +19,7 @@ const TAB_LABELS: Record<SettingsTabId, string> = {
   files: 'Files',
   shortcuts: 'Shortcuts',
   ai: 'Providers',
+  voice: 'Voice',
 };
 
 export function SettingsView() {
@@ -40,6 +42,8 @@ export function SettingsView() {
         return <ShortcutsTab />;
       case 'ai':
         return <AITab />;
+      case 'voice':
+        return <VoiceTab />;
       default:
         return null;
     }

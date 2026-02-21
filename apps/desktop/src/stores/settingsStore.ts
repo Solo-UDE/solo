@@ -15,6 +15,7 @@ export type TabSize = 2 | 4 | 8;
 export type CursorStyle = 'line' | 'block' | 'underline';
 export type RenderWhitespace = 'none' | 'boundary' | 'all';
 export type LineEnding = 'lf' | 'crlf' | 'auto';
+export type ToolPermissionPolicy = 'ask-all' | 'smart' | 'approve-all';
 
 export const FONT_FAMILIES = [
   { label: 'SF Mono', value: '"SF Mono", SFMono-Regular, ui-monospace, monospace' },
@@ -104,6 +105,8 @@ interface ShortcutsSettings {
 interface AISettings {
   streaming: boolean;
   autoApproveTools: boolean;
+  /** Tool permission policy: 'ask-all' (prompt everything), 'smart' (tier-based), 'approve-all' (auto-approve everything) */
+  toolPermissionPolicy: ToolPermissionPolicy;
   maxTokens: number;
   customApiUrl: string;
   /** Days to keep old sessions (0 = infinite). Default 30. */
@@ -159,6 +162,7 @@ const DEFAULT_SETTINGS: SettingsState = {
   ai: {
     streaming: true,
     autoApproveTools: false,
+    toolPermissionPolicy: 'ask-all',
     maxTokens: 4096,
     customApiUrl: '',
     sessionRetentionDays: 30,
@@ -206,6 +210,7 @@ interface SettingsActions {
   // AI
   setStreaming: (enabled: boolean) => void;
   setAutoApproveTools: (enabled: boolean) => void;
+  setToolPermissionPolicy: (policy: ToolPermissionPolicy) => void;
   setMaxTokens: (tokens: number) => void;
   setCustomApiUrl: (url: string) => void;
 
@@ -388,6 +393,11 @@ export const useSettingsStore = create<SettingsStore>()(
           s.ai.autoApproveTools = enabled;
         }),
 
+      setToolPermissionPolicy: (policy) =>
+        set((s) => {
+          s.ai.toolPermissionPolicy = policy;
+        }),
+
       setMaxTokens: (tokens) =>
         set((s) => {
           s.ai.maxTokens = Math.max(1024, Math.min(32768, tokens));
@@ -442,6 +452,7 @@ export const useShowHiddenFiles = () => useSettingsStore((s) => s.files.showHidd
 export const useKeybindings = () => useSettingsStore((s) => s.shortcuts.keybindings);
 export const useStreaming = () => useSettingsStore((s) => s.ai.streaming);
 export const useAutoApproveTools = () => useSettingsStore((s) => s.ai.autoApproveTools);
+export const useToolPermissionPolicy = () => useSettingsStore((s) => s.ai.toolPermissionPolicy);
 export const useMaxTokens = () => useSettingsStore((s) => s.ai.maxTokens);
 export const useCustomApiUrl = () => useSettingsStore((s) => s.ai.customApiUrl);
 

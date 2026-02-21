@@ -1,6 +1,6 @@
 /**
  * Dialog - Radix UI Dialog wrapper with animations
- * Based on Orchids design system
+ * Based on Solo design system
  */
 
 import * as React from "react";

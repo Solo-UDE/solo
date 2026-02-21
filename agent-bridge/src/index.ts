@@ -8,6 +8,7 @@ import * as readline from 'readline';
 
 import { createLogger, configureFileLogging, setDebugCallback, shutdownFileLogging } from './logger.js';
 import { SessionManager } from './session-manager.js';
+import { generateCommitMessage } from './commit-message.js';
 
 import type { BridgeEvent, BridgeRequest, BridgeResponse, CommandResponse } from './protocol.js';
 import type { LogEntry } from './logger.js';
@@ -248,6 +249,16 @@ async function handleRequest(
       break;
     }
 
+    case 'set_tool_policy': {
+      sessionManager.setToolPolicy(
+        request.sessionId,
+        request.mode,
+        request.isWorktreeSession ?? false,
+      );
+      sendResponse({ type: 'success', requestType: request.type });
+      break;
+    }
+
     case 'is_session_ready': {
       const ready = sessionManager.isSessionReady(request.sessionId);
       sendResponse({ type: 'boolean', requestType: request.type, value: ready });
@@ -257,6 +268,12 @@ async function handleRequest(
     case 'get_sdk_session_id': {
       const sdkSessionId = sessionManager.getSDKSessionId(request.sessionId);
       sendResponse({ type: 'string', requestType: request.type, value: sdkSessionId ?? null });
+      break;
+    }
+
+    case 'generate_commit_message': {
+      const message = await generateCommitMessage(request.diff);
+      sendResponse({ type: 'string', requestType: request.type, value: message });
       break;
     }
 

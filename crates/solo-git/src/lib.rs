@@ -31,7 +31,7 @@ pub mod error;
 
 use config::{WorktreeConfig, WorktreeMetadata};
 use error::GitError;
-use solo_protocol::{CreateWorktreeRequest, WorktreeInfo};
+use solo_protocol::{CreateWorktreeRequest, WorktreeDiffEntry, WorktreeInfo};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::{debug, info, warn};
@@ -523,6 +523,171 @@ impl WorktreeManager {
 
         config.save(&self.config_path)?;
         Ok(pruned)
+    }
+
+    /// Bind an agent session to a worktree.
+    pub fn set_agent_session(&self, id: &str, session_id: &str) -> Result<(), GitError> {
+        let mut config = WorktreeConfig::load(&self.config_path)?;
+        let meta = config
+            .get_mut(id)
+            .ok_or_else(|| GitError::WorktreeNotFound(id.to_string()))?;
+        meta.agent_session_id = Some(session_id.to_string());
+        config.save(&self.config_path)
+    }
+
+    /// Clear the agent session binding from a worktree.
+    pub fn clear_agent_session(&self, id: &str) -> Result<(), GitError> {
+        let mut config = WorktreeConfig::load(&self.config_path)?;
+        let meta = config
+            .get_mut(id)
+            .ok_or_else(|| GitError::WorktreeNotFound(id.to_string()))?;
+        meta.agent_session_id = None;
+        config.save(&self.config_path)
+    }
+
+    /// Find the worktree ID bound to an agent session. Returns None if no match.
+    pub fn find_by_agent_session(&self, session_id: &str) -> Result<Option<String>, GitError> {
+        let config = WorktreeConfig::load(&self.config_path)?;
+        Ok(config
+            .worktrees
+            .values()
+            .find(|m| m.agent_session_id.as_deref() == Some(session_id))
+            .map(|m| m.id.clone()))
+    }
+
+    /// Diff a worktree against its merge-base with the main branch.
+    /// Returns changed files with status and line counts.
+    pub fn diff_from_base(&self, id: &str) -> Result<Vec<WorktreeDiffEntry>, GitError> {
+        if id == "main" {
+            return Ok(Vec::new());
+        }
+
+        let config = WorktreeConfig::load(&self.config_path)?;
+        let meta = config
+            .get(id)
+            .ok_or_else(|| GitError::WorktreeNotFound(id.to_string()))?;
+
+        let wt_path = PathBuf::from(&meta.path);
+        let wt_repo = git2::Repository::open(&wt_path)?;
+
+        // Find the main branch HEAD
+        let main_repo = git2::Repository::open(&self.repo_path)?;
+        let main_head = main_repo
+            .head()
+            .map_err(|_| GitError::Config("Could not resolve main HEAD".to_string()))?
+            .peel_to_commit()
+            .map_err(|_| GitError::Config("Main HEAD is not a commit".to_string()))?;
+
+        // Worktree HEAD
+        let wt_head = wt_repo
+            .head()
+            .map_err(|_| GitError::Config("Could not resolve worktree HEAD".to_string()))?
+            .peel_to_commit()
+            .map_err(|_| GitError::Config("Worktree HEAD is not a commit".to_string()))?;
+
+        // Find merge-base
+        let base_oid = main_repo
+            .merge_base(main_head.id(), wt_head.id())
+            .map_err(|_| {
+                GitError::Config("Could not find merge-base between main and worktree".to_string())
+            })?;
+
+        let base_commit = main_repo.find_commit(base_oid)?;
+        let base_tree = base_commit.tree()?;
+        let wt_tree = wt_head.tree()?;
+
+        let diff = main_repo.diff_tree_to_tree(Some(&base_tree), Some(&wt_tree), None)?;
+
+        let mut entries = Vec::new();
+        let stats = diff.stats()?;
+        let _ = stats; // We iterate deltas individually
+
+        for delta in diff.deltas() {
+            let status = match delta.status() {
+                git2::Delta::Added => "added",
+                git2::Delta::Deleted => "deleted",
+                git2::Delta::Modified => "modified",
+                git2::Delta::Renamed => "renamed",
+                git2::Delta::Copied => "copied",
+                _ => "modified",
+            };
+
+            let path = delta
+                .new_file()
+                .path()
+                .or_else(|| delta.old_file().path())
+                .map(|p| p.display().to_string())
+                .unwrap_or_default();
+
+            entries.push(WorktreeDiffEntry {
+                path,
+                status: status.to_string(),
+                additions: 0,
+                deletions: 0,
+            });
+        }
+
+        // Get per-file line stats via `git diff --numstat` (libgit2's patch stats
+        // require loading full patches which is expensive for large diffs)
+        let numstat_output = std::process::Command::new("git")
+            .current_dir(&self.repo_path)
+            .args(["diff", "--numstat", &base_oid.to_string(), &wt_head.id().to_string()])
+            .output();
+
+        if let Ok(output) = numstat_output {
+            if output.status.success() {
+                let text = String::from_utf8_lossy(&output.stdout);
+                for line in text.lines() {
+                    let parts: Vec<&str> = line.split('\t').collect();
+                    if parts.len() >= 3 {
+                        let adds = parts[0].parse::<u32>().unwrap_or(0);
+                        let dels = parts[1].parse::<u32>().unwrap_or(0);
+                        let file_path = parts[2];
+                        if let Some(entry) = entries.iter_mut().find(|e| e.path == file_path) {
+                            entry.additions = adds;
+                            entry.deletions = dels;
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(entries)
+    }
+
+    /// Create a named branch pointing at a worktree's current HEAD.
+    /// Useful for detached-HEAD worktrees that need a branch before merging.
+    pub fn promote_to_branch(&self, id: &str, branch_name: &str) -> Result<(), GitError> {
+        if id == "main" {
+            return Err(GitError::Config("Cannot promote main worktree".to_string()));
+        }
+
+        let config = WorktreeConfig::load(&self.config_path)?;
+        let meta = config
+            .get(id)
+            .ok_or_else(|| GitError::WorktreeNotFound(id.to_string()))?;
+
+        let wt_path = PathBuf::from(&meta.path);
+        let wt_repo = git2::Repository::open(&wt_path)?;
+        let head = wt_repo
+            .head()
+            .map_err(|_| GitError::Config("Could not resolve worktree HEAD".to_string()))?;
+        let commit = head
+            .peel_to_commit()
+            .map_err(|_| GitError::Config("Worktree HEAD is not a commit".to_string()))?;
+
+        // Create the branch in the main repo so it's visible everywhere
+        let main_repo = git2::Repository::open(&self.repo_path)?;
+        if main_repo
+            .find_branch(branch_name, git2::BranchType::Local)
+            .is_ok()
+        {
+            return Err(GitError::BranchAlreadyExists(branch_name.to_string()));
+        }
+
+        main_repo.branch(branch_name, &commit, false)?;
+        info!(id = %id, branch = %branch_name, "Promoted worktree to branch");
+        Ok(())
     }
 }
 

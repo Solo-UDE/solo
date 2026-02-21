@@ -4,13 +4,14 @@ import { MessageActions } from './message-actions';
 import { MessageFeedback } from './message-feedback';
 import { NotifyUserCard } from './notify-user-card';
 import { ProceedIndicator } from './proceed-indicator';
-import { TaskPhaseCard } from './task-phase-card';
 import { ThinkingBox } from './thinking-box';
 import { TurnProgress } from './turn-progress';
 import { TodoToolWidget } from './tools';
 import { renderToolCard } from '../streaming/tool-registry';
 import { StreamingSkeleton } from '../streaming/StreamingSkeleton';
 import { ToolApprovalCard } from '../streaming/ToolApprovalCard';
+import { ProgressTracker } from '../streaming/ProgressTracker';
+import { deriveProgressPhases } from '@/lib/deriveProgressPhases';
 import type { RenderBlock } from '../messageAdapter';
 
 import type { FC, ReactNode } from 'react';
@@ -25,20 +26,6 @@ export interface AgentMessageContent {
   narrative?: string;
   /** Ordered blocks for interleaved rendering (text, thinking, tools mixed in order) */
   blocks?: RenderBlock[];
-  taskPhases?: {
-    id: string;
-    title: string;
-    summary: string;
-    filesEdited?: {
-      path: string;
-      status: 'added' | 'modified' | 'deleted';
-    }[];
-    progressUpdates?: {
-      step: number;
-      description: string;
-      status: 'pending' | 'in_progress' | 'completed' | 'failed';
-    }[];
-  }[];
   toolCalls?: {
     id: string;
     toolName: string;
@@ -117,6 +104,10 @@ export const AgentMessage: FC<AgentMessageProps> = ({
   // Use ordered blocks if available, otherwise fall back to legacy rendering
   const hasBlocks = content.blocks && content.blocks.length > 0;
 
+  const progressPhases = content.isStreaming
+    ? deriveProgressPhases(content.blocks ?? [], true)
+    : [];
+
   return (
     <div className={`flex gap-3 px-4 animate-in fade-in-0 slide-in-from-bottom-2 duration-200 ${className}`}>
       {/* Content */}
@@ -131,12 +122,8 @@ export const AgentMessage: FC<AgentMessageProps> = ({
         {/* === Ordered Blocks Rendering === */}
         {hasBlocks ? (
           <div className="space-y-3">
-            {/* Skeleton when streaming started but no blocks have content yet */}
-            {content.isStreaming && content.blocks!.every((b) =>
-              b.type === 'toolCall' || b.type === 'approval' ? false : !('content' in b && b.content)
-            ) ? (
-              <StreamingSkeleton />
-            ) : null}
+            {/* Progress tracker — shows semantic phases derived from blocks */}
+            {progressPhases.length > 0 ? <ProgressTracker phases={progressPhases} /> : null}
             {content.blocks!.map((block, i) => {
               switch (block.type) {
                 case 'narrative':
@@ -176,44 +163,19 @@ export const AgentMessage: FC<AgentMessageProps> = ({
               }
             })}
 
-            {/* Trailing loader: shown when streaming and the last block is a completed tool call
-                (gap between tool finishing and next narrative/tool arriving) */}
-            {content.isStreaming && (() => {
-              const blocks = content.blocks!;
-              const last = blocks[blocks.length - 1];
-              // Show dots if last block is a finished tool call or if last narrative isn't actively streaming
-              if (last?.type === 'toolCall' && last.status !== 'running') return true;
-              if (last?.type === 'thinking' && !last.isStreaming) return true;
-              return false;
-            })() ? (
-              <StreamingSkeleton label="Thinking..." />
-            ) : null}
+            {/* Trailing gap is handled by deriveProgressPhases — it appends
+                an active "Reasoning" phase when the last block is completed. */}
           </div>
         ) : (
           /* === Legacy (non-block) Rendering === */
           <>
-            {/* Streaming skeleton — shown before first token arrives */}
+            {/* Progress tracker for pre-block streaming, fallback skeleton for legacy messages */}
             {content.isStreaming && !content.narrative && !content.toolCalls?.length ? (
-              <StreamingSkeleton />
+              progressPhases.length > 0 ? <ProgressTracker phases={progressPhases} /> : <StreamingSkeleton />
             ) : null}
 
             {/* Narrative */}
             {content.narrative ? <AgentNarrative content={content.narrative} isStreaming={content.isStreaming} /> : null}
-
-            {/* Task Phase Cards */}
-            {content.taskPhases && content.taskPhases.length > 0 ? (
-              <div className="space-y-3">
-                {content.taskPhases.map((phase) => (
-                  <TaskPhaseCard
-                    key={phase.id}
-                    title={phase.title}
-                    summary={phase.summary}
-                    {...(phase.filesEdited && { filesEdited: phase.filesEdited })}
-                    {...(phase.progressUpdates && { progressUpdates: phase.progressUpdates })}
-                  />
-                ))}
-              </div>
-            ) : null}
 
             {/* Tool Calls */}
             {content.toolCalls && content.toolCalls.length > 0 ? (
@@ -257,6 +219,7 @@ export const AgentMessage: FC<AgentMessageProps> = ({
         {!content.isStreaming && !content.isInterrupted && content.isLastAssistantMessage !== undefined ? (
           <MessageActions
             showDisclaimer={content.isLastAssistantMessage}
+            messageText={content.narrative}
           />
         ) : null}
 

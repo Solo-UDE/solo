@@ -12,17 +12,20 @@ import {
   CaretDown,
   CaretRight,
   Check,
+  CircleNotch,
+  CloudArrowDown,
   GitBranch,
   GithubLogo,
   Minus,
   Plus,
+  Sparkle,
 } from '@phosphor-icons/react';
-import { Button } from '@solo/ui';
 import { useGitStore } from '@/stores/gitStore';
 import { useGitHubAccountsStore } from '@/stores/githubAccountsStore';
 import { usePanelTabsStore } from '@/stores/panelTabsStore';
 import { BUILTIN_PANEL_TYPES } from '@/lib/panels';
 import { motion } from 'motion/react';
+import { BranchSelector } from './BranchSelector';
 import { FileChangeItem } from './FileChangeItem';
 import { GitHubSetup } from './GitHubSetup';
 import { AnimatedList } from '../ui/animated-list';
@@ -52,6 +55,8 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
   const isCommitting = useGitStore((s) => s.isCommitting);
   const isPushing = useGitStore((s) => s.isPushing);
   const isPulling = useGitStore((s) => s.isPulling);
+  const isFetching = useGitStore((s) => s.isFetching);
+  const isGeneratingMessage = useGitStore((s) => s.isGeneratingMessage);
   const commitsAhead = useGitStore((s) => s.commitsAhead);
   const setCommitMessage = useGitStore((s) => s.setCommitMessage);
   const startPolling = useGitStore((s) => s.startPolling);
@@ -63,6 +68,8 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
   const commit = useGitStore((s) => s.commit);
   const push = useGitStore((s) => s.push);
   const pull = useGitStore((s) => s.pull);
+  const fetch = useGitStore((s) => s.fetch);
+  const generateCommitMessage = useGitStore((s) => s.generateCommitMessage);
   const stageAllFiles = useGitStore((s) => s.stageAllFiles);
   const unstageAllFiles = useGitStore((s) => s.unstageAllFiles);
   const ghToken = useGitHubAccountsStore((s) => s.token);
@@ -130,6 +137,28 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
       toast.error('Pull failed', { description: String(err) });
     }
   }, [ghToken, connectGitHub, pull]);
+
+  // Fetch
+  const handleFetch = useCallback(async () => {
+    if (!ghToken) {
+      try { await connectGitHub(); } catch { return; }
+    }
+    try {
+      await fetch();
+      toast.success('Fetched from remote');
+    } catch (err) {
+      toast.error('Fetch failed', { description: String(err) });
+    }
+  }, [ghToken, connectGitHub, fetch]);
+
+  // Generate commit message via AI
+  const handleGenerate = useCallback(async () => {
+    try {
+      await generateCommitMessage();
+    } catch (err) {
+      toast.error('Failed to generate message', { description: String(err) });
+    }
+  }, [generateCommitMessage]);
 
   // Handle Cmd+Enter in commit textarea — triggers commit (not push)
   const handleKeyDown = useCallback(
@@ -255,6 +284,11 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
       {/* Main content */}
       {repoStatus?.is_repo && (
         <>
+          {/* Branch selector */}
+          <div className="px-3 pb-1 shrink-0">
+            <BranchSelector />
+          </div>
+
           {/* Commit Section */}
           <div className="px-3 pb-2 shrink-0">
             <textarea
@@ -269,32 +303,83 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
                 'transition-colors duration-150',
               )}
             />
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={handleCommit}
-              disabled={!commitMessage.trim() || isCommitting || stagedFiles.length === 0}
-              className="w-full h-[34px] mt-1.5 text-xs"
-              title={stagedFiles.length === 0 ? 'Stage files before committing' : 'Commit staged changes (Cmd+Enter)'}
-            >
-              {isCommitting ? (
-                <ArrowsClockwise className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Check className="w-3.5 h-3.5" weight="bold" />
-              )}
-              {isCommitting ? 'Committing...' : 'Commit'}
-            </Button>
+            <div className="flex gap-1.5 mt-1.5">
+              <button
+                onClick={handleGenerate}
+                disabled={isGeneratingMessage || stagedFiles.length === 0}
+                className={cn(
+                  'h-[34px] px-3 rounded-[10px] text-xs font-medium',
+                  'flex items-center justify-center gap-1.5',
+                  'bg-muted/40 text-foreground',
+                  'hover:bg-muted/60 active:scale-[0.97]',
+                  'disabled:opacity-40 disabled:pointer-events-none',
+                  'transition-[transform,background-color] duration-200',
+                )}
+                title="Generate commit message with AI"
+              >
+                {isGeneratingMessage ? (
+                  <CircleNotch className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Sparkle className="w-3.5 h-3.5" weight="bold" />
+                )}
+              </button>
+              <button
+                onClick={handleCommit}
+                disabled={!commitMessage.trim() || isCommitting || stagedFiles.length === 0}
+                className={cn(
+                  'flex-1 h-[34px] rounded-[10px] text-xs font-medium',
+                  'flex items-center justify-center gap-1.5',
+                  'bg-primary text-primary-foreground',
+                  'hover:brightness-110 active:scale-[0.97]',
+                  'disabled:opacity-40 disabled:pointer-events-none',
+                  'transition-[transform,background-color,color] duration-200',
+                )}
+                title={stagedFiles.length === 0 ? 'Stage files before committing' : 'Commit staged changes (Cmd+Enter)'}
+              >
+                {isCommitting ? (
+                  <ArrowsClockwise className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Check className="w-3.5 h-3.5" weight="bold" />
+                )}
+                {isCommitting ? 'Committing...' : 'Commit'}
+              </button>
+            </div>
           </div>
 
-          {/* Push / Pull buttons (shown when remote exists) */}
+          {/* Fetch / Pull / Push buttons (shown when remote exists) */}
           {repoStatus.has_remote && (
             <div className="flex gap-1.5 px-3 pb-2">
-              <Button
-                variant="secondary"
-                size="sm"
+              <button
+                onClick={handleFetch}
+                disabled={isFetching || isPulling || isPushing}
+                className={cn(
+                  'flex-1 h-[30px] rounded-[10px] text-xs font-medium',
+                  'flex items-center justify-center gap-1.5',
+                  'bg-muted/40 text-foreground',
+                  'hover:bg-muted/60 active:scale-[0.97]',
+                  'disabled:opacity-40 disabled:pointer-events-none',
+                  'transition-[transform,background-color] duration-200',
+                )}
+                title="Fetch from remote"
+              >
+                {isFetching ? (
+                  <ArrowsClockwise className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <CloudArrowDown className="w-3.5 h-3.5" weight="bold" />
+                )}
+                Fetch
+              </button>
+              <button
                 onClick={handlePull}
-                disabled={isPulling || isPushing}
-                className="flex-1 h-[30px] text-xs"
+                disabled={isPulling || isPushing || isFetching}
+                className={cn(
+                  'flex-1 h-[30px] rounded-[10px] text-xs font-medium',
+                  'flex items-center justify-center gap-1.5',
+                  'bg-muted/40 text-foreground',
+                  'hover:bg-muted/60 active:scale-[0.97]',
+                  'disabled:opacity-40 disabled:pointer-events-none',
+                  'transition-[transform,background-color] duration-200',
+                )}
                 title="Pull from remote"
               >
                 {isPulling ? (
@@ -303,13 +388,18 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
                   <ArrowDown className="w-3.5 h-3.5" weight="bold" />
                 )}
                 Pull
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
+              </button>
+              <button
                 onClick={handlePush}
-                disabled={isPushing || isPulling}
-                className="flex-1 h-[30px] text-xs"
+                disabled={isPushing || isPulling || isFetching}
+                className={cn(
+                  'flex-1 h-[30px] rounded-[10px] text-xs font-medium',
+                  'flex items-center justify-center gap-1.5',
+                  'bg-muted/40 text-foreground',
+                  'hover:bg-muted/60 active:scale-[0.97]',
+                  'disabled:opacity-40 disabled:pointer-events-none',
+                  'transition-[transform,background-color] duration-200',
+                )}
                 title="Push to remote"
               >
                 {isPushing ? (
@@ -323,22 +413,26 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
                     {commitsAhead}
                   </span>
                 )}
-              </Button>
+              </button>
             </div>
           )}
 
           {/* GitHub connect prompt when remote exists but no token */}
           {repoStatus.has_remote && !ghToken && (
             <div className="px-3 pb-2">
-              <Button
-                variant="ghost"
-                size="sm"
+              <button
                 onClick={() => connectGitHub()}
-                className="w-full h-[30px] text-xs text-muted-foreground"
+                className={cn(
+                  'w-full h-[30px] rounded-[10px] text-xs font-medium',
+                  'flex items-center justify-center gap-1.5',
+                  'bg-muted/30 text-muted-foreground',
+                  'hover:bg-muted/50 active:scale-[0.97]',
+                  'transition-[transform,background-color] duration-200',
+                )}
               >
                 <GithubLogo className="w-3.5 h-3.5" weight="bold" />
                 Sign in to push &amp; pull
-              </Button>
+              </button>
             </div>
           )}
 
@@ -367,7 +461,7 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
                   <span
                     className={cn(
                       'ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold',
-                      'bg-success/10 text-success',
+                      'bg-emerald-400/10 text-emerald-400',
                     )}
                   >
                     {stagedFiles.length}
@@ -429,10 +523,10 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
               {changesSummary && (changesSummary.insertions > 0 || changesSummary.deletions > 0) && (
                 <span className="ml-1 flex items-center gap-1 text-[10px]">
                   {changesSummary.insertions > 0 && (
-                    <span className="text-success">+{changesSummary.insertions}</span>
+                    <span className="text-emerald-400">+{changesSummary.insertions}</span>
                   )}
                   {changesSummary.deletions > 0 && (
-                    <span className="text-destructive">-{changesSummary.deletions}</span>
+                    <span className="text-red-400">-{changesSummary.deletions}</span>
                   )}
                 </span>
               )}
