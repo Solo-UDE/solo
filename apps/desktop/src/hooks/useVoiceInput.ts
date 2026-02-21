@@ -29,6 +29,8 @@ interface UseVoiceInputReturn {
   status: string;
   /** Error message if any */
   error?: string;
+  /** AnalyserNode for real-time frequency visualization (null when not recording) */
+  analyserNode: AnalyserNode | null;
   /** Start voice recording */
   startRecording: () => Promise<void>;
   /** Stop recording and commit transcript */
@@ -45,6 +47,7 @@ export function useVoiceInput(
   const [isRecording, setIsRecording] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string>();
+  const [analyserNode, setAnalyserNode] = useState<AnalyserNode | null>(null);
 
   const captureRef = useRef<AudioCapture | null>(null);
   const sessionIdRef = useRef<string | null>(null);
@@ -69,6 +72,7 @@ export function useVoiceInput(
       console.log('[VoiceInput] Session died, stopping mic capture');
       captureRef.current.stop();
       captureRef.current = null;
+      setAnalyserNode(null);
       setIsRecording(false);
     }
   }
@@ -124,6 +128,7 @@ export function useVoiceInput(
 
       await capture.start();
       captureRef.current = capture;
+      setAnalyserNode(capture.analyserNode);
 
       const actualRate = capture.actualSampleRate;
       console.log(`[VoiceInput] Mic started, actual sample rate: ${actualRate}`);
@@ -136,6 +141,7 @@ export function useVoiceInput(
       const msg = err instanceof Error ? err.message : String(err);
       setLocalError(msg);
       setIsRecording(false);
+      setAnalyserNode(null);
 
       // Clean up mic and session
       captureRef.current?.stop();
@@ -175,6 +181,7 @@ export function useVoiceInput(
     // Stop mic capture first
     captureRef.current?.stop();
     captureRef.current = null;
+    setAnalyserNode(null);
 
     // Commit the current audio buffer, then close the session
     try {
@@ -201,6 +208,7 @@ export function useVoiceInput(
     committedText: sttSession.committedText,
     status: sttSession.status,
     error: localError ?? sttSession.error,
+    analyserNode,
     startRecording,
     stopRecording,
   };
