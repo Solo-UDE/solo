@@ -12,7 +12,7 @@ const readParams = z.object({
 export const createReadTool = (desktopClient: DesktopClient, mux: AgentMux, conversationId: string) =>
   tool({
     description:
-      'Read the contents of a file at the specified path. Use this to inspect existing code, configuration files, or any text file. The path must be absolute or relative to the workspace root.',
+      'Read the contents of a file. Returns the file content with line numbers. Use this to inspect existing code before making changes, understand file structure, check configuration files, or verify the results of edits. You MUST read a file before editing it. The path must be absolute or relative to the workspace root. Use offset and limit for large files to read specific sections.',
     inputSchema: readParams,
     execute: async (args: z.infer<typeof readParams>) => {
       const { path, offset, limit } = args;

@@ -496,12 +496,15 @@ export const useAgentStore = create<AgentStore>()(
 			const sessionId = generateSessionId();
 			const agentModel = toAgentModel(model || 'opus');
 
-			try {
-				await backend.agentCreateSession(sessionId, { model: agentModel });
+			// Capture workspace path BEFORE creating session so the agent knows its cwd
+			const { useFileExplorerStore } = await import('@/stores/fileExplorerStore');
+			const workspacePath = useFileExplorerStore.getState().rootPath ?? undefined;
 
-				// Capture workspace path for session filtering
-				const { useFileExplorerStore } = await import('@/stores/fileExplorerStore');
-				const workspacePath = useFileExplorerStore.getState().rootPath ?? undefined;
+			try {
+				await backend.agentCreateSession(sessionId, {
+					model: agentModel,
+					cwd: workspacePath,
+				});
 
 				set((state) => {
 					state.sessions.set(sessionId, {

@@ -66,17 +66,24 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
           useUIStore.getState().toggleTerminalPanel();
         }
 
-        // 3. Reset git state
+        // 3. Reset agent sessions so new ones pick up the new workspace
+        const { useAgentStore } = await import('./agentStore');
+        const agentState = useAgentStore.getState();
+        for (const sessionId of agentState.sessions.keys()) {
+          agentState.deleteSession(sessionId);
+        }
+
+        // 4. Reset git state
         useGitStore.getState().reset();
 
-        // 4. Close current folder and open new one
+        // 5. Close current folder and open new one
         useFileExplorerStore.getState().closeFolder();
         await useFileExplorerStore.getState().setRootPath(path);
 
-        // 5. Track in recents
+        // 6. Track in recents
         get().addRecent(path);
 
-        // 6. Re-detect git (startPolling does immediate fetch + sets up 5s interval)
+        // 7. Re-detect git (startPolling does immediate fetch + sets up 5s interval)
         useGitStore.getState().startPolling();
       },
     })),

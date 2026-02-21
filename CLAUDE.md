@@ -60,11 +60,22 @@ When adding a new command: define types in `solo-protocol`, write the command fn
 - `docs/ARCHITECTURE.md` — system design and component overview
 - `docs/DECISIONS.md` — architectural decision log with rationale
 - `docs/PROGRESS.md` — implementation phase tracker
-- `docs/MIGRATION.md` — Orchids-to-Solo migration plan and priority tiers
+- `docs/MIGRATION.md` — feature migration plan and priority tiers
 
 ## Migration Context
 
-Solo is migrating features from the Orchids Electron app. Phases 1-7 are complete (terminal, file explorer, AI agent, code editor, auth, settings, layout). Phase 8 (Git Integration) is in progress.
+Solo is migrating features from the legacy Electron app. Phases 1-7 are complete (terminal, file explorer, AI agent, code editor, auth, settings, layout). Phase 8 (Git Integration) is in progress.
+
+## Branding Policy
+
+**STRICT: Never reference the legacy Electron product name anywhere in this codebase.** This includes:
+- Code comments, JSDoc, file headers
+- Commit messages, PR descriptions
+- Documentation, READMEs, changelogs
+- Variable names, string literals, git refs
+- Agent system prompts or user-facing text
+
+Use "Solo" or "the legacy codebase" / "the reference codebase" if historical context is needed.
 
 ### Skills
 
