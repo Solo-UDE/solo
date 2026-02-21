@@ -20,10 +20,8 @@ import {
 } from '@phosphor-icons/react';
 import { useUIStore } from '@/stores/uiStore';
 import { useGitStore } from '@/stores/gitStore';
-import { useActiveWorktree, useWorktreeCount } from '@/stores/worktreeStore';
+import { useActiveWorktree } from '@/stores/worktreeStore';
 import { useFileExplorerStore, getParentPath } from '@/stores/fileExplorerStore';
-import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
-import { CreateWorktreePopover } from './CreateWorktreePopover';
 import { WorktreeSwitcher } from './WorktreeSwitcher';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -34,7 +32,6 @@ interface ContextHeaderProps {
 
 export const ContextHeader: FC<ContextHeaderProps> = ({ onNewSession }) => {
   const activeTab = useUIStore((s) => s.activeTab);
-  const [createOpen, setCreateOpen] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
 
   // Git state
@@ -56,7 +53,6 @@ export const ContextHeader: FC<ContextHeaderProps> = ({ onNewSession }) => {
   const collapseAll = useFileExplorerStore((s) => s.collapseAll);
 
   const activeWorktree = useActiveWorktree();
-  const worktreeCount = useWorktreeCount();
 
   const folderName = rootPath?.split('/').pop() ?? '';
   const isGitRepo = repoStatus?.is_repo ?? false;
@@ -122,14 +118,14 @@ export const ContextHeader: FC<ContextHeaderProps> = ({ onNewSession }) => {
   const DisplayIcon = isGitRepo ? GitBranch : rootPath ? FolderOpen : null;
 
   return (
-    <div className="flex items-center justify-between h-9 px-2 shrink-0">
+    <div className="relative flex items-center justify-between gap-4 h-9 px-2 shrink-0">
       {/* Left: Branch/folder name (clickable when git repo) */}
       <div className="relative flex items-center gap-1.5 min-w-0 flex-1">
         <button
           onClick={() => isGitRepo && setSwitcherOpen((v) => !v)}
           className={cn(
-            'flex items-center gap-1.5 h-7 px-2 rounded-lg min-w-0 max-w-full',
-            'text-xs text-muted-foreground',
+            'flex items-center gap-1.5 h-7 px-2 rounded-lg overflow-hidden max-w-full',
+            'text-xs text-muted-foreground bg-muted/30',
             isGitRepo && 'hover:bg-muted/60 hover:text-foreground active:scale-[0.97] transition-[transform,background-color,color] duration-150 cursor-pointer',
             !isGitRepo && 'cursor-default',
           )}
@@ -152,26 +148,6 @@ export const ContextHeader: FC<ContextHeaderProps> = ({ onNewSession }) => {
         {/* Branch switcher dropdown */}
         {switcherOpen && <WorktreeSwitcher onClose={() => setSwitcherOpen(false)} />}
 
-        {/* Create worktree [+] — only visible when WorktreeScopeBar is hidden */}
-        {worktreeCount <= 1 && isGitRepo && (
-          <Popover open={createOpen} onOpenChange={setCreateOpen}>
-            <PopoverTrigger asChild>
-              <button
-                className={cn(
-                  'w-6 h-6 flex items-center justify-center rounded-lg shrink-0',
-                  'text-muted-foreground/60 hover:bg-muted/60 hover:text-muted-foreground',
-                  'active:scale-[0.9] transition-[transform,background-color,color] duration-150',
-                )}
-                title="Create worktree"
-              >
-                <Plus className="w-3 h-3" weight="bold" />
-              </button>
-            </PopoverTrigger>
-            <PopoverContent side="bottom" align="start" className="w-auto p-3">
-              <CreateWorktreePopover onClose={() => setCreateOpen(false)} />
-            </PopoverContent>
-          </Popover>
-        )}
       </div>
 
       {/* Right: View-specific actions */}
@@ -230,7 +206,7 @@ const IconButton: FC<IconButtonProps> = ({ onClick, title, icon: Icon, disabled,
     onClick={onClick}
     disabled={disabled}
     className={cn(
-      'relative w-7 h-7 flex items-center justify-center rounded-lg',
+      'relative w-6 h-6 flex items-center justify-center rounded-lg',
       'text-muted-foreground hover:bg-muted/60 hover:text-foreground hover:scale-105',
       'disabled:opacity-30 disabled:pointer-events-none',
       'active:scale-95 transition-[transform,background-color,color] duration-200',

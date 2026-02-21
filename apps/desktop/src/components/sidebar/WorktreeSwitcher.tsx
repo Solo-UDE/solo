@@ -306,58 +306,58 @@ export const WorktreeSwitcher: FC<WorktreeSwitcherProps> = ({ onClose }) => {
         )}
       </div>
 
-      {/* Worktrees section (only shown when multiple worktrees exist) */}
-      {hasWorktrees && (
-        <>
-          {/* Divider */}
-          <div className="mx-2 my-1.5 h-px bg-muted/40" />
+      {/* Worktrees section - always visible for discoverability */}
+      <>
+        {/* Divider */}
+        <div className="mx-2 my-1.5 h-px bg-muted/40" />
 
-          <div className="flex items-center justify-between px-2.5 py-1.5">
-            <span className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider">
-              Worktrees
-            </span>
-            <button
-              onClick={() => setShowWorktreeForm(true)}
-              className={cn(
-                'w-5 h-5 flex items-center justify-center rounded-md',
-                'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
-                'active:scale-[0.9] transition-[transform,background-color] duration-150',
-              )}
-              title="Create worktree"
-            >
-              <Plus className="w-3 h-3" weight="bold" />
-            </button>
-          </div>
+        <div className="flex items-center justify-between px-2.5 py-1.5">
+          <span className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider">
+            Worktrees
+          </span>
+          <button
+            onClick={() => setShowWorktreeForm(true)}
+            className={cn(
+              'w-5 h-5 flex items-center justify-center rounded-md',
+              'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
+              'active:scale-[0.9] transition-[transform,background-color] duration-150',
+            )}
+            title="Create worktree"
+          >
+            <Plus className="w-3 h-3" weight="bold" />
+          </button>
+        </div>
 
-          {/* Create worktree form */}
-          {showWorktreeForm && (
-            <div className="px-1.5 pb-1.5">
-              <div className="flex items-center gap-1.5">
-                <input
-                  ref={worktreeInputRef}
-                  type="text"
-                  value={worktreeBranchName}
-                  onChange={(e) => setWorktreeBranchName(e.target.value)}
-                  onKeyDown={handleWorktreeKeyDown}
-                  placeholder="Branch name..."
-                  disabled={isCreatingWorktree}
-                  className={cn(
-                    'flex-1 h-7 px-2 rounded-md text-xs',
-                    'bg-muted/40 border-none text-foreground placeholder:text-muted-foreground/50',
-                    'focus:bg-muted/60 focus:ring-1 focus:ring-ring/30 focus:outline-none',
-                    'disabled:opacity-50',
-                    'transition-colors duration-150',
-                  )}
-                />
-                {isCreatingWorktree && (
-                  <CircleNotch className="w-3.5 h-3.5 text-muted-foreground animate-spin shrink-0" />
+        {/* Create worktree form */}
+        {showWorktreeForm && (
+          <div className="px-1.5 pb-1.5">
+            <div className="flex items-center gap-1.5">
+              <input
+                ref={worktreeInputRef}
+                type="text"
+                value={worktreeBranchName}
+                onChange={(e) => setWorktreeBranchName(e.target.value)}
+                onKeyDown={handleWorktreeKeyDown}
+                placeholder="Branch name..."
+                disabled={isCreatingWorktree}
+                className={cn(
+                  'flex-1 h-7 px-2 rounded-md text-xs',
+                  'bg-muted/40 border-none text-foreground placeholder:text-muted-foreground/50',
+                  'focus:bg-muted/60 focus:ring-1 focus:ring-ring/30 focus:outline-none',
+                  'disabled:opacity-50',
+                  'transition-colors duration-150',
                 )}
-              </div>
+              />
+              {isCreatingWorktree && (
+                <CircleNotch className="w-3.5 h-3.5 text-muted-foreground animate-spin shrink-0" />
+              )}
             </div>
-          )}
+          </div>
+        )}
 
-          {/* Worktree list */}
-          {isLoadingWorktrees && worktrees.length === 0 ? (
+        {/* Worktree list (only when worktrees exist) */}
+        {hasWorktrees && (
+          isLoadingWorktrees && worktrees.length === 0 ? (
             <ListSkeleton rows={3} className="p-1" />
           ) : (
             <AnimatedList className="space-y-0.5" stagger={0.03} slideY={4}>
@@ -392,9 +392,9 @@ export const WorktreeSwitcher: FC<WorktreeSwitcherProps> = ({ onClose }) => {
                 );
               })}
             </AnimatedList>
-          )}
-        </>
-      )}
+          )
+        )}
+      </>
     </div>
   );
 };

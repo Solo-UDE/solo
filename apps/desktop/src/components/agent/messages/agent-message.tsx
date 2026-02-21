@@ -5,7 +5,6 @@ import { MessageFeedback } from './message-feedback';
 import { NotifyUserCard } from './notify-user-card';
 import { ProceedIndicator } from './proceed-indicator';
 import { ThinkingBox } from './thinking-box';
-import { TurnProgress } from './turn-progress';
 import { TodoToolWidget } from './tools';
 import { renderToolCard } from '../streaming/tool-registry';
 import { StreamingSkeleton } from '../streaming/StreamingSkeleton';
@@ -212,8 +211,6 @@ export const AgentMessage: FC<AgentMessageProps> = ({
           </>
         )}
 
-        {/* Turn progress indicator */}
-        {content.turnNumber ? <TurnProgress turnNumber={content.turnNumber} /> : null}
 
         {/* Message Actions (shown after message completes, not during streaming) */}
         {!content.isStreaming && !content.isInterrupted && content.isLastAssistantMessage !== undefined ? (

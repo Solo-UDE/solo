@@ -398,7 +398,7 @@ html[data-vibrancy] .terminal-panel .xterm-viewport {
   content: '';
   position: absolute;
   left: 50%;
-  top: 0;
+  top: 38px;
   bottom: 0;
   width: 1px;
   transform: translateX(-50%);
