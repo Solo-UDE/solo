@@ -9,6 +9,7 @@ import { Plus, ChatTeardrop, DotsThree, PencilSimple, Trash, MagnifyingGlass } f
 import { useAgentStore, useSessions, useActiveSessionId } from '@/stores/agentStore';
 import type { Message } from '@/stores/agentStore';
 import { usePanelTabsStore } from '@/stores/panelTabsStore';
+import { useWorktreeStore, useWorktreeBoundSessionIds } from '@/stores/worktreeStore';
 import { BUILTIN_PANEL_TYPES } from '@/lib/panels/constants';
 import { useInlineRename } from '@/hooks/useInlineRename';
 import { cn } from '@/lib/utils';
@@ -292,28 +293,53 @@ export const SessionList: FC<SessionListProps> = ({
   const renameSession = useAgentStore((state) => state.renameSession);
   const deleteSession = useAgentStore((state) => state.deleteSession);
 
+  // Worktree scoping
+  const activeWorktreeId = useWorktreeStore((s) => s.activeWorktreeId);
+  const activeWorktreeMap = useWorktreeStore((s) => s.worktrees);
+  const boundSessionIds = useWorktreeBoundSessionIds();
+
+  // Scope sessions by active worktree
+  const scopedSessions = useMemo(() => {
+    const activeWt = activeWorktreeId ? activeWorktreeMap.get(activeWorktreeId) : null;
+    return sessions.filter((session) => {
+      if (activeWt) {
+        // In a worktree: show sessions bound to this worktree + unbound sessions
+        return session.id === activeWt.agent_session_id || !boundSessionIds.has(session.id);
+      }
+      // Main workspace: show only unbound sessions
+      return !boundSessionIds.has(session.id);
+    });
+  }, [sessions, activeWorktreeId, activeWorktreeMap, boundSessionIds]);
+
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
 
   // Rename state (shared hook)
   const rename = useInlineRename((id, value) => renameSession(id, value));
 
-  // Filter sessions by search query
+  // Filter scoped sessions by search query
   const filteredSessions = useMemo(() => {
-    if (!searchQuery.trim()) return sessions;
+    if (!searchQuery.trim()) return scopedSessions;
     const q = searchQuery.toLowerCase();
-    return sessions.filter((session) => {
+    return scopedSessions.filter((session) => {
       const title = getSessionTitle(session.id, session.name, messagesMap).toLowerCase();
       return title.includes(q);
     });
-  }, [sessions, searchQuery, messagesMap]);
+  }, [scopedSessions, searchQuery, messagesMap]);
 
   const handleDeleteSession = useCallback((sessionId: string) => {
     deleteSession(sessionId);
   }, [deleteSession]);
 
   // Empty state
-  if (sessions.length === 0) {
+  if (scopedSessions.length === 0) {
+    const emptyMessage = activeWorktreeId
+      ? 'No sessions in this worktree'
+      : 'No sessions yet';
+    const emptySubtext = activeWorktreeId
+      ? 'Start a new session to work in this worktree'
+      : 'Start a conversation with Claude';
+
     return (
       <motion.div
         className={cn('flex flex-col items-center justify-center h-full gap-3 p-6', className)}
@@ -325,8 +351,8 @@ export const SessionList: FC<SessionListProps> = ({
           <ChatTeardrop className="w-6 h-6 text-muted-foreground/40" />
         </div>
         <div className="text-center space-y-1">
-          <p className="text-sm font-medium text-muted-foreground">No sessions yet</p>
-          <p className="text-xs text-muted-foreground/60">Start a conversation with Claude</p>
+          <p className="text-sm font-medium text-muted-foreground">{emptyMessage}</p>
+          <p className="text-xs text-muted-foreground/60">{emptySubtext}</p>
         </div>
         <button
           onClick={onNewSession}

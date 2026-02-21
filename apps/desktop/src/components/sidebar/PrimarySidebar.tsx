@@ -8,6 +8,7 @@ import { FileExplorer } from '@/components/file-explorer';
 import { SessionList } from '@/components/agent';
 import { SourceControlPanel } from '@/components/source-control';
 import { IconRail } from './IconRail';
+import { WorktreeScopeBar } from './WorktreeScopeBar';
 import { ContextHeader } from './ContextHeader';
 import { TRANSITIONS } from '@/lib/constants';
 import { useUIStore, useIsLeftSidebarCollapsed } from '@/stores/uiStore';
@@ -86,7 +87,7 @@ export const PrimarySidebar = forwardRef<HTMLElement, PrimarySidebarProps>(({ wi
 
       {/* Content Column */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Context Header */}
+        {!isCollapsed && <WorktreeScopeBar />}
         {!isCollapsed && <ContextHeader onNewSession={handleNewSession} />}
 
         {/* Tab Content - Sliding Reel (3 panels) */}

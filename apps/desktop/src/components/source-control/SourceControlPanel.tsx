@@ -27,7 +27,6 @@ import { usePanelTabsStore } from '@/stores/panelTabsStore';
 import { useWorktreeList } from '@/stores/worktreeStore';
 import { BUILTIN_PANEL_TYPES } from '@/lib/panels';
 import { motion } from 'motion/react';
-import { BranchSelector } from './BranchSelector';
 import { FileChangeItem } from './FileChangeItem';
 import { GitHubSetup } from './GitHubSetup';
 import { WorktreePanel } from '../sidebar/WorktreePanel';
