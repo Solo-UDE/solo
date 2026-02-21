@@ -5,7 +5,7 @@
 
 import { useCallback, useRef, useState, useEffect, type MouseEvent } from 'react';
 import { useDrop } from 'react-dnd';
-import { LayoutGroup, motion } from 'motion/react';
+import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
 import { CaretLeft, CaretRight } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Tab } from './Tab';
@@ -148,22 +148,32 @@ export function TabBar({
         role="tablist"
       >
         <LayoutGroup>
-          {tabs.map((tab, index) => (
-            <motion.div key={tab.id} layout transition={{ type: 'spring', stiffness: 500, damping: 35 }}>
-              <Tab
-                instance={tab}
-                isActive={tab.id === activeTabId}
-                tileId={tileId}
-                index={index}
-                tabs={tabs}
-                onActivate={() => onTabActivate(tab.id)}
-                onClose={() => onTabClose(tab.id)}
-                onReorder={onTabReorder}
-                onMoveToTile={handleMoveToTile}
-                onContextMenu={onTabContextMenu}
-              />
-            </motion.div>
-          ))}
+          <AnimatePresence initial={false}>
+            {tabs.map((tab, index) => (
+              <motion.div
+                key={tab.id}
+                layout
+                initial={{ opacity: 0, scaleX: 0.7, scaleY: 0.85 }}
+                animate={{ opacity: 1, scaleX: 1, scaleY: 1 }}
+                exit={{ opacity: 0, scaleX: 0.85, scaleY: 0.9, transition: { duration: 0.12 } }}
+                transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+                style={{ transformOrigin: 'left center' }}
+              >
+                <Tab
+                  instance={tab}
+                  isActive={tab.id === activeTabId}
+                  tileId={tileId}
+                  index={index}
+                  tabs={tabs}
+                  onActivate={() => onTabActivate(tab.id)}
+                  onClose={() => onTabClose(tab.id)}
+                  onReorder={onTabReorder}
+                  onMoveToTile={handleMoveToTile}
+                  onContextMenu={onTabContextMenu}
+                />
+              </motion.div>
+            ))}
+          </AnimatePresence>
         </LayoutGroup>
       </div>
 
