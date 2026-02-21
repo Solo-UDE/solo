@@ -272,7 +272,7 @@ async function handleRequest(
     }
 
     case 'generate_commit_message': {
-      const message = await generateCommitMessage(request.diff);
+      const message = await generateCommitMessage(request.diff, request.apiKey);
       sendResponse({ type: 'string', requestType: request.type, value: message });
       break;
     }

@@ -213,6 +213,8 @@ export const useWorktreeStore = create<WorktreeStore>()(
 		handleWorktreeReady: (worktreeId, info) => {
 			set((state) => {
 				state.worktrees.set(worktreeId, info);
+				// Clear setup progress once the worktree is ready
+				state.setupProgress.delete(worktreeId);
 			});
 		},
 
@@ -250,12 +252,16 @@ export const useWorktreeStore = create<WorktreeStore>()(
 
 		handleSetupProgress: (worktreeId, output, isComplete) => {
 			set((state) => {
-				const lines = state.setupProgress.get(worktreeId) ?? [];
+				let lines = state.setupProgress.get(worktreeId) ?? [];
+
+				// Cap at 200 lines to prevent unbounded growth
+				if (lines.length >= 200) {
+					lines = lines.slice(-100);
+				}
 				lines.push(output);
 				state.setupProgress.set(worktreeId, lines);
 
 				if (isComplete) {
-					// Mark as complete by appending a final line
 					lines.push('Setup complete');
 					state.setupProgress.set(worktreeId, lines);
 				}

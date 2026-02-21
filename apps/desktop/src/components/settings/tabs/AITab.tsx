@@ -4,13 +4,15 @@
  */
 
 import { useCallback, useState, useEffect, useMemo } from 'react';
-import { CheckCircle, WarningCircle, CircleNotch, Clock, Terminal, Sparkle, ArrowClockwise, XCircle, ShieldCheck } from '@phosphor-icons/react';
+import { CheckCircle, WarningCircle, CircleNotch, Clock, Terminal, Sparkle, ArrowClockwise, XCircle, ShieldCheck, TreeStructure } from '@phosphor-icons/react';
 import { useSettingsStore } from '../../../stores/settingsStore';
 import { useProviderStore, useOAuthPending } from '../../../stores/provider-store';
 import { useShallow } from 'zustand/react/shallow';
 import { SettingRow, SelectDropdown, ToggleSwitch, NumberInput, PasswordInput } from '../controls';
 import { ClaudeLoginModal } from '../ClaudeLoginModal';
 import { verifyClaudeSetup } from '../../../lib/backend';
+import { getSetupCommands, setSetupCommands } from '../../../lib/tauri/worktree';
+import { toast } from 'sonner';
 import type { ProviderType, AuthMethodInfo, ClaudeSetupStatus } from '../../../lib/backend';
 
 /**
@@ -473,13 +475,45 @@ export function AITab() {
   // Settings store (AI behavior)
   const streaming = useSettingsStore((s) => s.ai.streaming);
   const autoApproveTools = useSettingsStore((s) => s.ai.autoApproveTools);
+  const toolPermissionPolicy = useSettingsStore((s) => s.ai.toolPermissionPolicy);
   const maxTokens = useSettingsStore((s) => s.ai.maxTokens);
   const customApiUrl = useSettingsStore((s) => s.ai.customApiUrl);
 
   const setStreaming = useSettingsStore((s) => s.setStreaming);
   const setAutoApproveTools = useSettingsStore((s) => s.setAutoApproveTools);
+  const setToolPermissionPolicy = useSettingsStore((s) => s.setToolPermissionPolicy);
   const setMaxTokens = useSettingsStore((s) => s.setMaxTokens);
   const setCustomApiUrl = useSettingsStore((s) => s.setCustomApiUrl);
+
+  // Worktree setup commands state
+  const [setupCommandsText, setSetupCommandsText] = useState('');
+  const [isLoadingSetup, setIsLoadingSetup] = useState(false);
+  const [isSavingSetup, setIsSavingSetup] = useState(false);
+
+  useEffect(() => {
+    setIsLoadingSetup(true);
+    getSetupCommands()
+      .then((config) => {
+        setSetupCommandsText(config.commands.join('\n'));
+      })
+      .catch(() => {
+        // No commands configured yet
+      })
+      .finally(() => setIsLoadingSetup(false));
+  }, []);
+
+  const handleSaveSetupCommands = useCallback(async () => {
+    setIsSavingSetup(true);
+    try {
+      const commands = setupCommandsText.split('\n').filter((line) => line.trim());
+      await setSetupCommands({ commands });
+      toast.success('Setup commands saved');
+    } catch (err) {
+      toast.error('Failed to save setup commands', { description: String(err) });
+    } finally {
+      setIsSavingSetup(false);
+    }
+  }, [setupCommandsText]);
 
   // Initialize provider store on mount
   useEffect(() => {
@@ -664,11 +698,55 @@ export function AITab() {
           </SettingRow>
 
           <SettingRow
-            label="Auto-approve Tools"
-            description="Let AI execute tools without confirmation"
+            label="Tool Permissions"
+            description="Control when tools need manual approval"
           >
-            <ToggleSwitch checked={autoApproveTools} onChange={setAutoApproveTools} />
+            <SelectDropdown
+              value={toolPermissionPolicy}
+              options={[
+                { label: 'Ask for all tools', value: 'ask-all' },
+                { label: 'Smart (tier-based)', value: 'smart' },
+                { label: 'Auto-approve all', value: 'approve-all' },
+              ]}
+              onChange={setToolPermissionPolicy}
+            />
           </SettingRow>
+
+          {toolPermissionPolicy !== 'approve-all' && (
+            <SettingRow
+              label="Auto-approve Tools"
+              description="Let AI execute tools without confirmation"
+            >
+              <ToggleSwitch checked={autoApproveTools} onChange={setAutoApproveTools} />
+            </SettingRow>
+          )}
+        </div>
+      </div>
+
+      {/* Worktree Setup Section */}
+      <div>
+        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4 flex items-center gap-2">
+          <TreeStructure className="w-3.5 h-3.5" />
+          Worktree Setup
+        </h3>
+        <div className="space-y-3">
+          <div className="text-xs text-muted-foreground">
+            Shell commands to run after creating a new worktree (one per line)
+          </div>
+          <textarea
+            value={setupCommandsText}
+            onChange={(e) => setSetupCommandsText(e.target.value)}
+            disabled={isLoadingSetup}
+            placeholder={'bun install\nbun run build'}
+            className="w-full h-24 px-3 py-2 bg-background border border-border rounded-none text-xs text-foreground font-mono placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/50 resize-y disabled:opacity-50"
+          />
+          <button
+            onClick={handleSaveSetupCommands}
+            disabled={isSavingSetup}
+            className="h-8 px-4 text-xs bg-primary text-primary-foreground rounded-none hover:bg-primary/90 disabled:opacity-50 transition-colors"
+          >
+            {isSavingSetup ? 'Saving...' : 'Save'}
+          </button>
         </div>
       </div>
 

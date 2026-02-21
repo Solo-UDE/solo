@@ -627,30 +627,30 @@ impl WorktreeManager {
             });
         }
 
-        // Get per-file line stats via `git diff --numstat` (libgit2's patch stats
-        // require loading full patches which is expensive for large diffs)
-        let numstat_output = std::process::Command::new("git")
-            .current_dir(&self.repo_path)
-            .args(["diff", "--numstat", &base_oid.to_string(), &wt_head.id().to_string()])
-            .output();
-
-        if let Ok(output) = numstat_output {
-            if output.status.success() {
-                let text = String::from_utf8_lossy(&output.stdout);
-                for line in text.lines() {
-                    let parts: Vec<&str> = line.split('\t').collect();
-                    if parts.len() >= 3 {
-                        let adds = parts[0].parse::<u32>().unwrap_or(0);
-                        let dels = parts[1].parse::<u32>().unwrap_or(0);
-                        let file_path = parts[2];
-                        if let Some(entry) = entries.iter_mut().find(|e| e.path == file_path) {
-                            entry.additions = adds;
-                            entry.deletions = dels;
+        // Collect per-file line stats using libgit2's diff line callback
+        // (avoids spawning a git subprocess)
+        let _ = diff.foreach(
+            &mut |_delta, _progress| true,
+            None,
+            Some(&mut |_delta, _hunk| true),
+            Some(&mut |delta, _hunk, line| {
+                if let Some(path) = delta
+                    .new_file()
+                    .path()
+                    .or_else(|| delta.old_file().path())
+                    .and_then(|p| p.to_str())
+                {
+                    if let Some(entry) = entries.iter_mut().find(|e| e.path == path) {
+                        match line.origin() {
+                            '+' => entry.additions += 1,
+                            '-' => entry.deletions += 1,
+                            _ => {}
                         }
                     }
                 }
-            }
-        }
+                true
+            }),
+        );
 
         Ok(entries)
     }

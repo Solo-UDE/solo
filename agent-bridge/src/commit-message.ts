@@ -17,25 +17,22 @@ Rules:
 - If changes span multiple areas, use the most significant type
 - Be specific: "fix: resolve null pointer in user auth flow" not "fix: bug fix"`;
 
-export async function generateCommitMessage(diff: string): Promise<string> {
+export async function generateCommitMessage(diff: string, apiKey?: string): Promise<string> {
   logger.info('Generating commit message...');
 
-  // Resolve credentials the same way the agent does
-  const credentials = ClaudeCredentials.getCredentials();
-  if (!credentials.hasCredentials) {
-    throw new Error('No credentials found. Log in to Claude Code CLI or set ANTHROPIC_API_KEY.');
+  // Prefer the API key passed from the Rust credential manager
+  let resolvedKey = apiKey;
+
+  if (!resolvedKey) {
+    // Fall back to environment variable
+    resolvedKey = ClaudeCredentials.getApiKeyFromEnv() ?? undefined;
   }
 
-  let client: Anthropic;
-  if (credentials.type === 'oauth') {
-    const token = ClaudeCredentials.getOAuthTokenFromKeychain();
-    if (!token) throw new Error('OAuth token expired or unavailable');
-    client = new Anthropic({ authToken: token });
-  } else {
-    const apiKey = ClaudeCredentials.getApiKeyFromEnv();
-    if (!apiKey) throw new Error('API key was detected but is no longer available');
-    client = new Anthropic({ apiKey });
+  if (!resolvedKey) {
+    throw new Error('No API key available. Set one in Settings > AI or set ANTHROPIC_API_KEY.');
   }
+
+  const client = new Anthropic({ apiKey: resolvedKey });
 
   const response = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',

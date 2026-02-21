@@ -5,8 +5,9 @@
 //! because `git2::Repository` is `!Send`.
 
 use git2::{
-    build::CheckoutBuilder, Cred, Delta, DiffOptions, FetchOptions, IndexAddOption, MergeOptions,
-    PushOptions, RemoteCallbacks, Repository, ResetType, Signature, StatusOptions,
+    build::CheckoutBuilder, Cred, CredentialType, Delta, DiffOptions, FetchOptions,
+    IndexAddOption, MergeOptions, PushOptions, RemoteCallbacks, Repository, ResetType, Signature,
+    StatusOptions,
 };
 use solo_protocol::{
     BackendEvent, BranchInfo, GitChangedFile, GitChangesResponse, GitChangesSummary,
@@ -139,27 +140,39 @@ fn get_github_integ_info(repo: &Repository, branch: &str) -> (bool, bool) {
     (has_remote, has_branch)
 }
 
-/// Create auth callbacks with token
-fn make_fetch_options<'a>(token: &'a str) -> FetchOptions<'a> {
+/// Returns true if the URL uses SSH transport.
+fn is_ssh_url(url: &str) -> bool {
+    url.starts_with("git@") || url.starts_with("ssh://")
+}
+
+/// Build auth callbacks that handle both HTTPS (OAuth token) and SSH (agent).
+fn make_auth_callbacks(token: &str) -> RemoteCallbacks<'_> {
     let mut callbacks = RemoteCallbacks::new();
     let token_owned = token.to_string();
-    callbacks.credentials(move |_url, _username, _allowed| {
-        Cred::userpass_plaintext("x-access-token", &token_owned)
+    callbacks.credentials(move |_url, username_from_url, allowed| {
+        if allowed.contains(CredentialType::SSH_KEY) {
+            // SSH remote — use the system SSH agent (or default key)
+            let user = username_from_url.unwrap_or("git");
+            Cred::ssh_key_from_agent(user)
+        } else {
+            // HTTPS remote — use the GitHub OAuth token
+            Cred::userpass_plaintext("x-access-token", &token_owned)
+        }
     });
+    callbacks
+}
+
+/// Create fetch options with dual-transport auth
+fn make_fetch_options<'a>(token: &'a str) -> FetchOptions<'a> {
     let mut fetch_opts = FetchOptions::new();
-    fetch_opts.remote_callbacks(callbacks);
+    fetch_opts.remote_callbacks(make_auth_callbacks(token));
     fetch_opts
 }
 
-/// Create push options with token auth
+/// Create push options with dual-transport auth
 fn make_push_options<'a>(token: &'a str) -> PushOptions<'a> {
-    let mut callbacks = RemoteCallbacks::new();
-    let token_owned = token.to_string();
-    callbacks.credentials(move |_url, _username, _allowed| {
-        Cred::userpass_plaintext("x-access-token", &token_owned)
-    });
     let mut push_opts = PushOptions::new();
-    push_opts.remote_callbacks(callbacks);
+    push_opts.remote_callbacks(make_auth_callbacks(token));
     push_opts
 }
 
@@ -328,9 +341,13 @@ pub async fn git_push(
 
         let repo = ensure_local_repo_scope(&workspace_path)?;
 
-        let authenticated_url =
-            github_repo_url.replace("https://", &format!("https://{}@", access_token));
-        upsert_remote(&repo, "github-integ", &authenticated_url)?;
+        // For HTTPS, embed token in URL; for SSH, the callback handles auth
+        let remote_url = if is_ssh_url(&github_repo_url) {
+            github_repo_url.clone()
+        } else {
+            github_repo_url.replace("https://", &format!("https://{}@", access_token))
+        };
+        upsert_remote(&repo, "github-integ", &remote_url)?;
 
         let result = (|| -> Result<GitPushResponse, String> {
             // Must have at least one commit
@@ -451,9 +468,12 @@ pub async fn git_pull(
 
 		let mut repo = ensure_local_repo_scope(&workspace_path)?;
 
-		let authenticated_url =
-			github_repo_url.replace("https://", &format!("https://{}@", access_token));
-		upsert_remote(&repo, "github-integ", &authenticated_url)?;
+		let remote_url = if is_ssh_url(&github_repo_url) {
+			github_repo_url.clone()
+		} else {
+			github_repo_url.replace("https://", &format!("https://{}@", access_token))
+		};
+		upsert_remote(&repo, "github-integ", &remote_url)?;
 
 		let result = (|| -> Result<GitPullResponse, String> {
 			// Fetch from GitHub
@@ -1505,9 +1525,12 @@ pub async fn git_fetch(
 
         let repo = ensure_local_repo_scope(&workspace_path)?;
 
-        let authenticated_url =
-            github_repo_url.replace("https://", &format!("https://{}@", access_token));
-        upsert_remote(&repo, "github-integ", &authenticated_url)?;
+        let remote_url = if is_ssh_url(&github_repo_url) {
+            github_repo_url.clone()
+        } else {
+            github_repo_url.replace("https://", &format!("https://{}@", access_token))
+        };
+        upsert_remote(&repo, "github-integ", &remote_url)?;
 
         let result = (|| -> Result<(), String> {
             let mut remote = repo

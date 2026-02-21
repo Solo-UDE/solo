@@ -16,9 +16,11 @@ import {
   CloudArrowDown,
   CloudArrowUp,
   ArrowsInSimple,
+  TreeStructure,
 } from '@phosphor-icons/react';
 import { useUIStore } from '@/stores/uiStore';
 import { useGitStore } from '@/stores/gitStore';
+import { useActiveWorktree } from '@/stores/worktreeStore';
 import { useFileExplorerStore, getParentPath } from '@/stores/fileExplorerStore';
 import { WorktreeSwitcher } from './WorktreeSwitcher';
 import { cn } from '@/lib/utils';
@@ -49,6 +51,8 @@ export const ContextHeader: FC<ContextHeaderProps> = ({ onNewSession }) => {
   const setRootPath = useFileExplorerStore((s) => s.setRootPath);
   const closeFolder = useFileExplorerStore((s) => s.closeFolder);
   const collapseAll = useFileExplorerStore((s) => s.collapseAll);
+
+  const activeWorktree = useActiveWorktree();
 
   const folderName = rootPath?.split('/').pop() ?? '';
   const isGitRepo = repoStatus?.is_repo ?? false;
@@ -133,6 +137,9 @@ export const ContextHeader: FC<ContextHeaderProps> = ({ onNewSession }) => {
             />
           )}
           <span className="truncate">{displayName}</span>
+          {activeWorktree && (
+            <TreeStructure className="w-3 h-3 text-primary/60 shrink-0" weight="bold" />
+          )}
           {rootPath && <CaretDown className="w-3 h-3 opacity-50 shrink-0" />}
         </button>
 
