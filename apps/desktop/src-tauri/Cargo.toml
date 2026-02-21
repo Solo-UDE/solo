@@ -24,6 +24,7 @@ solo-auth = { path = "../../../crates/solo-auth" }
 solo-parse = { path = "../../../crates/solo-parse" }
 solo-embeddings = { path = "../../../crates/solo-embeddings" }
 solo-git = { path = "../../../crates/solo-git" }
+solo-elevenlabs = { path = "../../../crates/solo-elevenlabs" }
 
 tauri = { workspace = true, features = ["macos-private-api"] }
 uuid = { version = "1.11", features = ["v4"] }

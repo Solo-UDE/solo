@@ -20,6 +20,7 @@ import { useAgentStream } from "./hooks/useAgentStream";
 import { useTerminalStream } from "./hooks/useTerminalStream";
 import { useGitStream } from "./hooks/useGitStream";
 import { useWorktreeStream } from "./hooks/useWorktreeStream";
+import { useElevenLabsStream } from "./hooks/useElevenLabsStream";
 import { useTerminalStore, clearActiveTerminal, findInActiveTerminal } from "./stores/terminalStore";
 import { useFileExplorerStore } from "./stores/fileExplorerStore";
 import { createTerminal, killTerminal } from "./lib/tauri/terminal";
@@ -119,6 +120,7 @@ function AppContent() {
   useTerminalStream();
   useGitStream();
   useWorktreeStream();
+  useElevenLabsStream();
 
   // Load persisted agent sessions on startup, then prune expired ones
   useEffect(() => {
