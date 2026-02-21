@@ -19,15 +19,17 @@ import {
   Minus,
   Plus,
   Sparkle,
+  TreeStructure,
 } from '@phosphor-icons/react';
 import { useGitStore } from '@/stores/gitStore';
 import { useGitHubAccountsStore } from '@/stores/githubAccountsStore';
 import { usePanelTabsStore } from '@/stores/panelTabsStore';
+import { useWorktreeList } from '@/stores/worktreeStore';
 import { BUILTIN_PANEL_TYPES } from '@/lib/panels';
 import { motion } from 'motion/react';
-import { BranchSelector } from './BranchSelector';
 import { FileChangeItem } from './FileChangeItem';
 import { GitHubSetup } from './GitHubSetup';
+import { WorktreePanel } from '../sidebar/WorktreePanel';
 import { AnimatedList } from '../ui/animated-list';
 import { ConfirmDialog } from '../ui/confirm-dialog';
 import { cn } from '@/lib/utils';
@@ -40,6 +42,8 @@ interface SourceControlPanelProps {
 export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) => {
   const [stagedOpen, setStagedOpen] = useState(true);
   const [changesOpen, setChangesOpen] = useState(true);
+  const [worktreesOpen, setWorktreesOpen] = useState(true);
+  const worktrees = useWorktreeList();
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
     title: string;
@@ -284,11 +288,6 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
       {/* Main content */}
       {repoStatus?.is_repo && (
         <>
-          {/* Branch selector */}
-          <div className="px-3 pb-1 shrink-0">
-            <BranchSelector />
-          </div>
-
           {/* Commit Section */}
           <div className="px-3 pb-2 shrink-0">
             <textarea
@@ -581,6 +580,39 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
                   </AnimatedList>
                 )}
               </div>
+            )}
+
+            {/* Worktrees section — hidden when only the default worktree exists */}
+            {worktrees.length > 1 && (
+              <>
+                <button
+                  onClick={() => setWorktreesOpen((prev) => !prev)}
+                  className={cn(
+                    'group flex items-center gap-1.5 h-7 px-3 shrink-0',
+                    'text-xs font-medium text-muted-foreground',
+                    'hover:text-foreground transition-colors duration-150',
+                  )}
+                >
+                  {worktreesOpen ? (
+                    <CaretDown className="w-3 h-3" weight="bold" />
+                  ) : (
+                    <CaretRight className="w-3 h-3" weight="bold" />
+                  )}
+                  <TreeStructure className="w-3 h-3" />
+                  Worktrees
+                  <span
+                    className={cn(
+                      'ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold',
+                      'bg-primary/10 text-primary',
+                    )}
+                  >
+                    {worktrees.length}
+                  </span>
+                </button>
+                {worktreesOpen && (
+                  <WorktreePanel embedded className="px-0" />
+                )}
+              </>
             )}
           </div>
         </>

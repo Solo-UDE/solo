@@ -303,6 +303,9 @@ pub enum BridgeRequest {
     },
     GenerateCommitMessage {
         diff: String,
+        /// Resolved API key from the credential manager
+        #[serde(rename = "apiKey", skip_serializing_if = "Option::is_none")]
+        api_key: Option<String>,
     },
     Shutdown,
 }

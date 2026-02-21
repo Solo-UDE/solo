@@ -315,10 +315,11 @@ impl SessionManager {
     }
 
     /// Generate a commit message from a diff using the AI bridge
-    pub fn generate_commit_message(&self, diff: &str) -> Result<String> {
+    pub fn generate_commit_message(&self, diff: &str, api_key: Option<String>) -> Result<String> {
         self.ensure_running()?;
         let request = BridgeRequest::GenerateCommitMessage {
             diff: diff.to_owned(),
+            api_key,
         };
         let bridge = self.bridge.lock();
         let response = bridge.send_request(&request)?;

@@ -24,6 +24,7 @@ import { useWorktreeStream } from "./hooks/useWorktreeStream";
 import { useElevenLabsStream } from "./hooks/useElevenLabsStream";
 import { useTerminalStore, clearActiveTerminal, findInActiveTerminal } from "./stores/terminalStore";
 import { useFileExplorerStore } from "./stores/fileExplorerStore";
+import { useGitHubAccountsStore } from "./stores/githubAccountsStore";
 import { createTerminal, killTerminal } from "./lib/tauri/terminal";
 import { SIDEBAR } from "./lib/constants";
 import { cn } from "./lib/utils";
@@ -125,6 +126,11 @@ function AppContent() {
   useGitStream();
   useWorktreeStream();
   useElevenLabsStream();
+
+  // Load GitHub token from keychain so the icon rail shows auth status
+  useEffect(() => {
+    useGitHubAccountsStore.getState().loadToken();
+  }, []);
 
   // Load persisted agent sessions on startup, then prune expired ones
   useEffect(() => {

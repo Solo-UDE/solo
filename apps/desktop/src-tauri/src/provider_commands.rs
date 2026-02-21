@@ -358,12 +358,14 @@ pub async fn complete_oauth_flow(
     Ok(())
 }
 
-/// Wait for OAuth callback from browser (starts a local HTTP server)
+/// Wait for OAuth callback from browser (starts a local HTTP server).
+/// The expected_state parameter is validated against the callback's state
+/// to prevent CSRF attacks.
 #[tauri::command]
-pub async fn wait_for_oauth_callback() -> Result<(String, String), String> {
+pub async fn wait_for_oauth_callback(expected_state: String) -> Result<(String, String), String> {
     info!("Waiting for OAuth callback");
 
-    let result = start_callback_server(None)
+    let result = start_callback_server(&expected_state, None)
         .await
         .map_err(|e| format!("OAuth callback failed: {:?}", e))?;
 

@@ -153,6 +153,7 @@ export interface GetSDKSessionIdRequest {
 export interface GenerateCommitMessageRequest {
   type: 'generate_commit_message';
   diff: string;
+  apiKey?: string;
 }
 
 /**

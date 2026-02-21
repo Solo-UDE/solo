@@ -16,9 +16,28 @@ pub struct GitHubOAuthConfig;
 impl GitHubOAuthConfig {
     pub const AUTHORIZATION_URL: &'static str = "https://github.com/login/oauth/authorize";
     pub const TOKEN_URL: &'static str = "https://github.com/login/oauth/access_token";
-    pub const CLIENT_ID: &'static str = "Ov23liwTZvhwuuli58QQ";
-    pub const CLIENT_SECRET: &'static str = "d868272c66f7eef32417a5208dc06cfd4d8ee20e";
     pub const SCOPES: &'static [&'static str] = &["repo", "read:user", "user:email"];
+
+    /// Get client ID from environment (compile-time or runtime)
+    pub fn client_id() -> String {
+        option_env!("SOLO_GITHUB_CLIENT_ID")
+            .map(String::from)
+            .or_else(|| std::env::var("SOLO_GITHUB_CLIENT_ID").ok())
+            .unwrap_or_else(|| "Ov23liwTZvhwuuli58QQ".to_string())
+    }
+
+    /// Get client secret from environment (compile-time or runtime).
+    /// Returns an error if not configured — secrets must not be hardcoded.
+    pub fn client_secret() -> Result<String, ProviderError> {
+        option_env!("SOLO_GITHUB_CLIENT_SECRET")
+            .map(String::from)
+            .or_else(|| std::env::var("SOLO_GITHUB_CLIENT_SECRET").ok())
+            .ok_or_else(|| {
+                ProviderError::AuthError(
+                    "GitHub OAuth client secret not configured. Set SOLO_GITHUB_CLIENT_SECRET environment variable.".to_string()
+                )
+            })
+    }
 
     /// Build the authorization URL for browser redirect.
     ///
@@ -30,12 +49,14 @@ impl GitHubOAuthConfig {
         let code_verifier = generate_code_verifier();
         let redirect_uri = get_callback_url();
 
+        let client_id = Self::client_id();
+
         let mut url = Url::parse(Self::AUTHORIZATION_URL)
             .map_err(|e| ProviderError::AuthError(format!("Invalid auth URL: {}", e)))?;
 
         {
             let mut params = url.query_pairs_mut();
-            params.append_pair("client_id", Self::CLIENT_ID);
+            params.append_pair("client_id", &client_id);
             params.append_pair("redirect_uri", &redirect_uri);
             params.append_pair("scope", &Self::SCOPES.join(" "));
             params.append_pair("state", &state);
@@ -59,14 +80,16 @@ impl GitHubOAuthConfig {
     /// so we set a far-future expiry (10 years).
     pub async fn exchange_code(code: &str) -> Result<OAuthToken, ProviderError> {
         let redirect_uri = get_callback_url();
+        let client_id = Self::client_id();
+        let client_secret = Self::client_secret()?;
 
         let client = reqwest::Client::new();
         let response = client
             .post(Self::TOKEN_URL)
             .header("Accept", "application/json")
             .form(&[
-                ("client_id", Self::CLIENT_ID),
-                ("client_secret", Self::CLIENT_SECRET),
+                ("client_id", client_id.as_str()),
+                ("client_secret", client_secret.as_str()),
                 ("code", code),
                 ("redirect_uri", &redirect_uri),
             ])
@@ -159,8 +182,7 @@ mod tests {
     fn test_constants() {
         assert!(GitHubOAuthConfig::AUTHORIZATION_URL.starts_with("https://"));
         assert!(GitHubOAuthConfig::TOKEN_URL.starts_with("https://"));
-        assert!(!GitHubOAuthConfig::CLIENT_ID.is_empty());
-        assert!(!GitHubOAuthConfig::CLIENT_SECRET.is_empty());
+        assert!(!GitHubOAuthConfig::client_id().is_empty());
         assert!(!GitHubOAuthConfig::SCOPES.is_empty());
         assert!(GitHubOAuthConfig::SCOPES.contains(&"repo"));
     }
