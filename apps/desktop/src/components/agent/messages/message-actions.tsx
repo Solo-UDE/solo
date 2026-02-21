@@ -1,4 +1,5 @@
 import { Check, Copy, ThumbsUp, ThumbsDown } from '@phosphor-icons/react';
+import { IconButton } from '@solo/ui';
 import { useState } from 'react';
 
 import type { FC } from 'react';
@@ -29,27 +30,36 @@ export const MessageActions: FC<MessageActionsProps> = ({
   return (
     <div className="mt-3 flex flex-col gap-2 items-end">
       <div className="flex items-center gap-1">
-        <button
-          className="h-6 w-6 flex items-center justify-center rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+        <IconButton
+          variant="ghost"
+          size="sm"
+          className="h-6 w-6"
+          aria-label={copied ? 'Copied' : 'Copy message'}
           title={copied ? 'Copied!' : 'Copy'}
           onClick={handleCopy}
         >
-          {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-        </button>
-        <button
-          className="h-6 w-6 flex items-center justify-center rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+          {copied ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : <Copy className="h-3.5 w-3.5" aria-hidden="true" />}
+        </IconButton>
+        <IconButton
+          variant="ghost"
+          size="sm"
+          className="h-6 w-6"
+          aria-label="Like message"
           title="Like"
           onClick={onLike}
         >
-          <ThumbsUp className="h-3.5 w-3.5" />
-        </button>
-        <button
-          className="h-6 w-6 flex items-center justify-center rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+          <ThumbsUp className="h-3.5 w-3.5" aria-hidden="true" />
+        </IconButton>
+        <IconButton
+          variant="ghost"
+          size="sm"
+          className="h-6 w-6"
+          aria-label="Dislike message"
           title="Dislike"
           onClick={onDislike}
         >
-          <ThumbsDown className="h-3.5 w-3.5" />
-        </button>
+          <ThumbsDown className="h-3.5 w-3.5" aria-hidden="true" />
+        </IconButton>
       </div>
       {showDisclaimer ? (
         <p className="text-xs text-muted-foreground/70">

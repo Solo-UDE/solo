@@ -2,6 +2,7 @@ import { CaretDown, CaretRight } from '@phosphor-icons/react';
 import { useState } from 'react';
 
 import { ProgressStep } from './progress-step';
+import { AnimatedList } from '@/components/ui/animated-list';
 
 import type { FC } from 'react';
 
@@ -50,7 +51,7 @@ export const ProgressUpdates: FC<ProgressUpdatesProps> = ({
 
       {/* Progress Steps */}
       {isExpanded ? (
-        <div className="space-y-2 pl-2">
+        <AnimatedList className="space-y-2 pl-2" stagger={0.04} slideY={4}>
           {updates.map((update) => (
             <ProgressStep
               key={update.step}
@@ -59,7 +60,7 @@ export const ProgressUpdates: FC<ProgressUpdatesProps> = ({
               status={update.status}
             />
           ))}
-        </div>
+        </AnimatedList>
       ) : null}
     </div>
   );

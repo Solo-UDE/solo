@@ -198,14 +198,13 @@ const IconButton: FC<IconButtonProps> = ({ onClick, title, icon: Icon, disabled,
     disabled={disabled}
     className={cn(
       'relative w-7 h-7 flex items-center justify-center rounded-lg',
-      'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
+      'text-muted-foreground hover:bg-muted/60 hover:text-foreground hover:scale-105',
       'disabled:opacity-30 disabled:pointer-events-none',
-      'active:scale-[0.9] transition-[transform,background-color,color] duration-200',
-      loading && 'animate-pulse',
+      'active:scale-95 transition-[transform,background-color,color] duration-200',
     )}
     title={title}
   >
-    <Icon className="w-3.5 h-3.5" weight="bold" />
+    <Icon className={cn('w-3.5 h-3.5', loading && 'animate-spin')} weight="bold" />
     {badge != null && badge > 0 && (
       <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-0.5 flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[9px] font-semibold leading-none">
         {badge}

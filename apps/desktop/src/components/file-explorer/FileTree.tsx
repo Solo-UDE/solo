@@ -5,6 +5,7 @@
 import React, { useCallback, useRef, useEffect, useState, useMemo } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
+import { toast } from 'sonner';
 import { FileTreeNode } from './FileTreeNode';
 import { CreationRow } from './CreationRow';
 import { ConfirmDialog } from '../ui/confirm-dialog';
@@ -98,7 +99,10 @@ export function FileTree({ onFileOpen }: FileTreeProps) {
 
   const handleConfirmDelete = useCallback(() => {
     if (deleteConfirm) {
-      deleteFiles(deleteConfirm.paths);
+      const { name } = deleteConfirm;
+      deleteFiles(deleteConfirm.paths)
+        .then(() => toast.success(`Deleted ${name}`))
+        .catch((err) => toast.error(`Failed to delete ${name}`, { description: String(err) }));
       setDeleteConfirm(null);
     }
   }, [deleteConfirm, deleteFiles]);

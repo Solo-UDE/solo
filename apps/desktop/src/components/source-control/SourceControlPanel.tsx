@@ -17,12 +17,15 @@ import {
   Minus,
   Plus,
 } from '@phosphor-icons/react';
+import { Button } from '@solo/ui';
 import { useGitStore } from '@/stores/gitStore';
 import { useGitHubAccountsStore } from '@/stores/githubAccountsStore';
 import { usePanelTabsStore } from '@/stores/panelTabsStore';
 import { BUILTIN_PANEL_TYPES } from '@/lib/panels';
+import { motion } from 'motion/react';
 import { FileChangeItem } from './FileChangeItem';
 import { GitHubSetup } from './GitHubSetup';
+import { AnimatedList } from '../ui/animated-list';
 import { ConfirmDialog } from '../ui/confirm-dialog';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -231,13 +234,22 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
     <div className={cn('flex flex-col h-full', className)}>
       {/* Empty state for non-git repos */}
       {isNotRepo && (
-        <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
-          <GitBranch className="w-10 h-10 text-muted-foreground/30 mb-3" />
-          <p className="text-xs text-muted-foreground/60 leading-relaxed">
-            This workspace is not a git repository. Open a folder that contains a{' '}
-            <span className="text-muted-foreground">.git</span> directory, or initialize one.
-          </p>
-        </div>
+        <motion.div
+          className="flex-1 flex flex-col items-center justify-center px-6 text-center gap-3"
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+        >
+          <div className="w-10 h-10 rounded-2xl bg-muted/50 flex items-center justify-center">
+            <GitBranch className="w-5 h-5 text-muted-foreground/40" />
+          </div>
+          <div className="space-y-1">
+            <p className="text-xs font-medium text-muted-foreground">Not a git repository</p>
+            <p className="text-[11px] text-muted-foreground/50 leading-relaxed">
+              Open a folder with a <span className="text-muted-foreground/70">.git</span> directory, or initialize one.
+            </p>
+          </div>
+        </motion.div>
       )}
 
       {/* Main content */}
@@ -257,17 +269,12 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
                 'transition-colors duration-150',
               )}
             />
-            <button
+            <Button
+              variant="primary"
+              size="sm"
               onClick={handleCommit}
               disabled={!commitMessage.trim() || isCommitting || stagedFiles.length === 0}
-              className={cn(
-                'w-full h-[34px] mt-1.5 rounded-[10px] text-xs font-medium',
-                'flex items-center justify-center gap-1.5',
-                'bg-primary text-primary-foreground',
-                'hover:brightness-110 active:scale-[0.97]',
-                'disabled:opacity-40 disabled:pointer-events-none',
-                'transition-[transform,background-color,color] duration-200',
-              )}
+              className="w-full h-[34px] mt-1.5 text-xs"
               title={stagedFiles.length === 0 ? 'Stage files before committing' : 'Commit staged changes (Cmd+Enter)'}
             >
               {isCommitting ? (
@@ -276,23 +283,18 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
                 <Check className="w-3.5 h-3.5" weight="bold" />
               )}
               {isCommitting ? 'Committing...' : 'Commit'}
-            </button>
+            </Button>
           </div>
 
           {/* Push / Pull buttons (shown when remote exists) */}
           {repoStatus.has_remote && (
             <div className="flex gap-1.5 px-3 pb-2">
-              <button
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={handlePull}
                 disabled={isPulling || isPushing}
-                className={cn(
-                  'flex-1 h-[30px] rounded-[10px] text-xs font-medium',
-                  'flex items-center justify-center gap-1.5',
-                  'bg-muted/40 text-foreground',
-                  'hover:bg-muted/60 active:scale-[0.97]',
-                  'disabled:opacity-40 disabled:pointer-events-none',
-                  'transition-[transform,background-color] duration-200',
-                )}
+                className="flex-1 h-[30px] text-xs"
                 title="Pull from remote"
               >
                 {isPulling ? (
@@ -301,18 +303,13 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
                   <ArrowDown className="w-3.5 h-3.5" weight="bold" />
                 )}
                 Pull
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={handlePush}
                 disabled={isPushing || isPulling}
-                className={cn(
-                  'flex-1 h-[30px] rounded-[10px] text-xs font-medium',
-                  'flex items-center justify-center gap-1.5',
-                  'bg-muted/40 text-foreground',
-                  'hover:bg-muted/60 active:scale-[0.97]',
-                  'disabled:opacity-40 disabled:pointer-events-none',
-                  'transition-[transform,background-color] duration-200',
-                )}
+                className="flex-1 h-[30px] text-xs"
                 title="Push to remote"
               >
                 {isPushing ? (
@@ -326,26 +323,22 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
                     {commitsAhead}
                   </span>
                 )}
-              </button>
+              </Button>
             </div>
           )}
 
           {/* GitHub connect prompt when remote exists but no token */}
           {repoStatus.has_remote && !ghToken && (
             <div className="px-3 pb-2">
-              <button
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() => connectGitHub()}
-                className={cn(
-                  'w-full h-[30px] rounded-[10px] text-xs font-medium',
-                  'flex items-center justify-center gap-1.5',
-                  'bg-muted/30 text-muted-foreground',
-                  'hover:bg-muted/50 active:scale-[0.97]',
-                  'transition-[transform,background-color] duration-200',
-                )}
+                className="w-full h-[30px] text-xs text-muted-foreground"
               >
                 <GithubLogo className="w-3.5 h-3.5" weight="bold" />
                 Sign in to push &amp; pull
-              </button>
+              </Button>
             </div>
           )}
 
@@ -374,7 +367,7 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
                   <span
                     className={cn(
                       'ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold',
-                      'bg-emerald-400/10 text-emerald-400',
+                      'bg-success/10 text-success',
                     )}
                   >
                     {stagedFiles.length}
@@ -392,7 +385,7 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
 
                 {/* Staged file list */}
                 {stagedOpen && (
-                  <div className="overflow-y-auto px-1">
+                  <AnimatedList className="overflow-y-auto px-1">
                     {stagedFiles.map((file) => (
                       <FileChangeItem
                         key={`staged-${file.path}`}
@@ -403,7 +396,7 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
                         onUnstage={handleUnstageFile}
                       />
                     ))}
-                  </div>
+                  </AnimatedList>
                 )}
               </>
             )}
@@ -436,10 +429,10 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
               {changesSummary && (changesSummary.insertions > 0 || changesSummary.deletions > 0) && (
                 <span className="ml-1 flex items-center gap-1 text-[10px]">
                   {changesSummary.insertions > 0 && (
-                    <span className="text-emerald-400">+{changesSummary.insertions}</span>
+                    <span className="text-success">+{changesSummary.insertions}</span>
                   )}
                   {changesSummary.deletions > 0 && (
-                    <span className="text-red-400">-{changesSummary.deletions}</span>
+                    <span className="text-destructive">-{changesSummary.deletions}</span>
                   )}
                 </span>
               )}
@@ -470,20 +463,28 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
             {changesOpen && (
               <div className="flex-1 overflow-y-auto px-1">
                 {unstagedFiles.length === 0 ? (
-                  <div className="px-3 py-4 text-center">
+                  <motion.div
+                    className="flex flex-col items-center py-6 gap-1"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ duration: 0.15 }}
+                  >
+                    <Check className="w-4 h-4 text-muted-foreground/30 mb-0.5" weight="bold" />
                     <p className="text-[11px] text-muted-foreground/50">No changes detected</p>
-                  </div>
+                  </motion.div>
                 ) : (
-                  unstagedFiles.map((file) => (
-                    <FileChangeItem
-                      key={file.path}
-                      file={file}
-                      onDiscard={handleDiscardFile}
-                      onViewDiff={handleViewDiff}
-                      onStage={handleStageFile}
-                      onUnstage={handleUnstageFile}
-                    />
-                  ))
+                  <AnimatedList>
+                    {unstagedFiles.map((file) => (
+                      <FileChangeItem
+                        key={file.path}
+                        file={file}
+                        onDiscard={handleDiscardFile}
+                        onViewDiff={handleViewDiff}
+                        onStage={handleStageFile}
+                        onUnstage={handleUnstageFile}
+                      />
+                    ))}
+                  </AnimatedList>
                 )}
               </div>
             )}

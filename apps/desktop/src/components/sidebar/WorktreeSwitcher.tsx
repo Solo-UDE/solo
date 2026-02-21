@@ -5,7 +5,9 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { FC } from 'react';
 import { Lock, Plus, CircleNotch, TreeStructure, GitBranch } from '@phosphor-icons/react';
+import { ListSkeleton } from '@/components/ui/skeletons';
 import { useWorktreeStore, useWorktreeList } from '@/stores/worktreeStore';
+import { AnimatedList } from '@/components/ui/animated-list';
 import { cn } from '@/lib/utils';
 
 interface WorktreeSwitcherProps {
@@ -123,6 +125,7 @@ export const WorktreeSwitcher: FC<WorktreeSwitcherProps> = ({ onClose }) => {
               onChange={(e) => setBranchName(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Branch name..."
+              aria-label="New worktree branch name"
               disabled={isCreating}
               className={cn(
                 'flex-1 h-7 px-2 rounded-md text-xs',
@@ -141,16 +144,14 @@ export const WorktreeSwitcher: FC<WorktreeSwitcherProps> = ({ onClose }) => {
 
       {/* Worktree list */}
       {isLoading && worktrees.length === 0 ? (
-        <div className="flex items-center justify-center py-4">
-          <CircleNotch className="w-4 h-4 text-muted-foreground animate-spin" />
-        </div>
+        <ListSkeleton rows={3} className="p-1" />
       ) : worktrees.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-4 text-center px-3">
           <TreeStructure className="w-6 h-6 text-muted-foreground/40 mb-1" />
           <p className="text-[11px] text-muted-foreground/60">No worktrees yet</p>
         </div>
       ) : (
-        <div className="space-y-0.5">
+        <AnimatedList className="space-y-0.5" stagger={0.03} slideY={4}>
           {worktrees.map((wt) => {
             const isActive = wt.is_main ? activeWorktreeId === null : activeWorktreeId === wt.id;
             return (
@@ -173,15 +174,15 @@ export const WorktreeSwitcher: FC<WorktreeSwitcherProps> = ({ onClose }) => {
                   {wt.is_main ? 'main' : (wt.branch ?? wt.id)}
                 </span>
                 {wt.is_locked && (
-                  <Lock className="w-3 h-3 text-amber-500 shrink-0 ml-auto" />
+                  <Lock className="w-3 h-3 text-warning shrink-0 ml-auto" />
                 )}
                 {wt.is_dirty && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0 ml-auto" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-warning shrink-0 ml-auto" />
                 )}
               </button>
             );
           })}
-        </div>
+        </AnimatedList>
       )}
     </div>
   );

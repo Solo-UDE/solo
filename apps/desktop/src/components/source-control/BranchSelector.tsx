@@ -125,9 +125,10 @@ export const BranchSelector: FC = () => {
                 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
                 'active:scale-[0.9] transition-[transform,background-color] duration-150',
               )}
+              aria-label="Create branch"
               title="Create branch"
             >
-              <Plus className="w-3 h-3" weight="bold" />
+              <Plus className="w-3 h-3" weight="bold" aria-hidden="true" />
             </button>
           </div>
 
@@ -145,6 +146,7 @@ export const BranchSelector: FC = () => {
                   }}
                   onKeyDown={handleCreateKeyDown}
                   placeholder="Branch name..."
+                  aria-label="New branch name"
                   disabled={isCreatingBranch}
                   className={cn(
                     'flex-1 h-7 px-2 rounded-md text-xs',

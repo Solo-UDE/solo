@@ -19,6 +19,7 @@ import {
 	Check,
 	X,
 } from '@phosphor-icons/react';
+import { Button } from '@solo/ui';
 
 export interface ToolApprovalCardProps {
 	readonly requestId: string;
@@ -99,10 +100,12 @@ export const ToolApprovalCard: FC<ToolApprovalCardProps> = ({
 	return (
 		<div
 			className={`my-2 rounded-xl bg-warning/5 backdrop-blur-sm border border-warning/20 overflow-hidden animate-in fade-in-0 slide-in-from-bottom-1 duration-200 ${className}`}
+			role="alertdialog"
+			aria-label={`Permission required for ${toolName}`}
 		>
 			{/* Header */}
 			<div className="flex items-center gap-2 px-3 py-2.5">
-				<ShieldWarning className="h-4 w-4 text-warning shrink-0" weight="fill" />
+				<ShieldWarning className="h-4 w-4 text-warning shrink-0" weight="fill" aria-hidden="true" />
 				<span className="text-xs font-semibold text-warning">Permission Required</span>
 
 				{/* Tool context */}
@@ -119,22 +122,26 @@ export const ToolApprovalCard: FC<ToolApprovalCardProps> = ({
 				<div className="flex-1" />
 
 				{/* Action buttons */}
-				<button
+				<Button
+					variant="ghost"
+					size="sm"
 					onClick={handleDeny}
-					className="inline-flex items-center gap-1 h-7 px-2.5 text-xs font-medium rounded-lg bg-muted/60 hover:bg-muted transition-colors text-foreground"
+					className="h-7 px-2.5 text-xs bg-muted/60 hover:bg-muted"
 				>
 					<X className="h-3 w-3" />
 					Deny
 					<kbd className="text-[9px] opacity-40 ml-0.5">⇧⌘⌫</kbd>
-				</button>
-				<button
+				</Button>
+				<Button
+					variant="primary"
+					size="sm"
 					onClick={handleApprove}
-					className="inline-flex items-center gap-1 h-7 px-3 text-xs font-medium rounded-lg bg-primary text-primary-foreground hover:brightness-110 transition-all active:scale-[0.97]"
+					className="h-7 px-3 text-xs"
 				>
 					<Check className="h-3 w-3" weight="bold" />
 					Allow
 					<kbd className="text-[9px] opacity-50 ml-0.5">⌘⏎</kbd>
-				</button>
+				</Button>
 			</div>
 
 			{/* Input preview */}

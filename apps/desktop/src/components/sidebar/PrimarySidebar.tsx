@@ -3,6 +3,7 @@
  */
 
 import { useCallback, useMemo, forwardRef } from 'react';
+import { motion } from 'motion/react';
 import { FileExplorer } from '@/components/file-explorer';
 import { SessionList } from '@/components/agent';
 import { SourceControlPanel } from '@/components/source-control';
@@ -67,9 +68,9 @@ export const PrimarySidebar = forwardRef<HTMLElement, PrimarySidebarProps>(({ wi
     createSessionAndShow();
   }, [createSessionAndShow]);
 
-  // Compute translateX for the 3-panel reel
+  // Compute x offset for the 3-panel reel (percentage of container width)
   const activeTabIndex = TAB_KEYS.indexOf(activeTab);
-  const translateX = `${(activeTabIndex >= 0 ? activeTabIndex : 0) * -33.333}%`;
+  const reelOffsetPercent = (activeTabIndex >= 0 ? activeTabIndex : 0) * -33.333;
 
   return (
     <aside
@@ -90,12 +91,11 @@ export const PrimarySidebar = forwardRef<HTMLElement, PrimarySidebarProps>(({ wi
 
         {/* Tab Content - Sliding Reel (3 panels) */}
         <div className="flex-1 min-h-0 overflow-hidden">
-          <div
-            className="flex h-full transition-transform duration-300 ease-[cubic-bezier(0.18,1.14,0.5,1.18)]"
-            style={{
-              width: '300%',
-              transform: `translateX(${translateX})`,
-            }}
+          <motion.div
+            className="flex h-full"
+            style={{ width: '300%' }}
+            animate={{ x: `${reelOffsetPercent}%` }}
+            transition={{ type: 'spring', stiffness: 400, damping: 35 }}
           >
             {/* Explorer Panel */}
             <div className="w-1/3 h-full overflow-hidden">
@@ -123,7 +123,7 @@ export const PrimarySidebar = forwardRef<HTMLElement, PrimarySidebarProps>(({ wi
                 <SourceControlPanel className="h-full" />
               )}
             </div>
-          </div>
+          </motion.div>
         </div>
       </div>
 

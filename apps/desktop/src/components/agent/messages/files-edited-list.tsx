@@ -1,4 +1,5 @@
 import { File, FilePlus, NotePencil, FileX } from '@phosphor-icons/react';
+import { AnimatedList } from '@/components/ui/animated-list';
 
 import type { FC } from 'react';
 
@@ -50,7 +51,7 @@ export const FilesEditedList: FC<FilesEditedListProps> = ({
   };
 
   return (
-    <div className={`flex flex-wrap gap-2 ${className}`}>
+    <AnimatedList className={`flex flex-wrap gap-2 ${className}`} stagger={0.025} slideY={4}>
       {files.map((file, index) => (
         <button
           key={`${file.path}-${String(index)}`}
@@ -64,6 +65,6 @@ export const FilesEditedList: FC<FilesEditedListProps> = ({
           <span className="truncate max-w-[200px]">{getFileName(file.path)}</span>
         </button>
       ))}
-    </div>
+    </AnimatedList>
   );
 };

@@ -5,6 +5,7 @@
 
 import { useCallback, useState, useEffect, useMemo } from 'react';
 import { CheckCircle, WarningCircle, CircleNotch, Clock, Terminal, Sparkle, ArrowClockwise, XCircle, ShieldCheck } from '@phosphor-icons/react';
+import { ListSkeleton } from '../../ui/skeletons';
 import { useSettingsStore } from '../../../stores/settingsStore';
 import { useProviderStore, useOAuthPending } from '../../../stores/provider-store';
 import { useShallow } from 'zustand/react/shallow';
@@ -34,7 +35,7 @@ function ConnectionStatusBadge({
 }) {
   if (!authInfo || authInfo.authType === 'none') {
     return (
-      <div className="flex items-center gap-1.5 text-xs text-amber-600">
+      <div className="flex items-center gap-1.5 text-xs text-warning">
         <WarningCircle className="w-3.5 h-3.5" />
         Not configured
       </div>
@@ -45,7 +46,7 @@ function ConnectionStatusBadge({
 
   return (
     <div className="flex items-center gap-2">
-      <div className="flex items-center gap-1.5 text-xs text-green-600">
+      <div className="flex items-center gap-1.5 text-xs text-success">
         <CheckCircle className="w-3.5 h-3.5" />
         Connected
       </div>
@@ -119,7 +120,7 @@ function ProviderCard({
 
   return (
     <div
-      className={`p-4 rounded-none border bg-card/50 space-y-4 transition-all duration-200 ${
+      className={`p-4 rounded-none border bg-card/50 space-y-4 transition-all duration-200 hover-lift ${
         isActive
           ? 'border-primary/50 ring-2 ring-primary/20'
           : 'border-border hover:border-border/80'
@@ -250,7 +251,7 @@ function ProviderCard({
         <div className="flex items-center justify-between mb-2">
           <div className="text-xs text-muted-foreground">API Key</div>
           {hasCredentials && authInfo?.authType === 'api-key' && (
-            <div className="flex items-center gap-1.5 text-xs text-green-600">
+            <div className="flex items-center gap-1.5 text-xs text-success">
               <CheckCircle className="w-3.5 h-3.5" />
               Saved
             </div>
@@ -316,9 +317,9 @@ function ClaudeSetupDiagnostic() {
       return <span className="text-muted-foreground">—</span>;
     }
     return ok ? (
-      <CheckCircle className="w-3.5 h-3.5 text-green-600 inline" />
+      <CheckCircle className="w-3.5 h-3.5 text-success inline" />
     ) : (
-      <XCircle className="w-3.5 h-3.5 text-red-500 inline" />
+      <XCircle className="w-3.5 h-3.5 text-destructive inline" />
     );
   };
 
@@ -341,7 +342,7 @@ function ClaudeSetupDiagnostic() {
       </div>
 
       {error && (
-        <div className="text-xs text-red-500 bg-red-500/10 px-2 py-1 rounded-none">
+        <div className="text-xs text-destructive bg-destructive/10 px-2 py-1 rounded-none">
           {error}
         </div>
       )}
@@ -396,12 +397,12 @@ function ClaudeSetupDiagnostic() {
             </span>
           </StatusRow>
           {status.error && (
-            <div className="pt-1.5 text-[10px] text-red-500/80 break-all">
+            <div className="pt-1.5 text-[10px] text-destructive/80 break-all">
               {status.error}
             </div>
           )}
           {status.requiresCliMode && !status.cliInstalled && (
-            <div className="pt-2 text-[10px] text-amber-600 bg-amber-500/10 px-2 py-1.5 rounded-none">
+            <div className="pt-2 text-[10px] text-warning bg-warning/10 px-2 py-1.5 rounded-none">
               Subscription tokens require the Claude CLI. Install with:<br />
               <code className="text-[10px]">npm i -g @anthropic-ai/claude-code</code>
             </div>
@@ -559,8 +560,8 @@ export function AITab() {
 
   if (!isInitialized && isLoading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <CircleNotch weight="bold" className="w-6 h-6 animate-spin text-muted-foreground" />
+      <div className="py-4">
+        <ListSkeleton rows={5} />
       </div>
     );
   }
