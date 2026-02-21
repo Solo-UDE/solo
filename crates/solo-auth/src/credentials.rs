@@ -10,80 +10,10 @@ use crate::oauth::{
     AuthMethodInfo, AuthType, OAuthToken, OpenAIOAuthToken, AnthropicOAuthConfig, OpenAIOAuthConfig,
 };
 use crate::provider::{ProviderError, ProviderResult, ProviderType};
+use keyring::Entry;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use ts_rs::TS;
-
-// Native keychain access (no shell spawning)
-#[cfg(target_os = "macos")]
-use security_framework::passwords::{
-    delete_generic_password, get_generic_password, set_generic_password,
-};
-
-/// Read a value from the macOS Keychain using the native API.
-#[cfg(target_os = "macos")]
-fn keychain_get(service: &str) -> Option<String> {
-    get_generic_password(service, "solo")
-        .ok()
-        .and_then(|bytes| String::from_utf8(bytes).ok())
-        .filter(|s| !s.is_empty())
-}
-
-/// Read a value from the Keychain with a custom account name.
-#[cfg(target_os = "macos")]
-fn keychain_get_with_account(service: &str, account: &str) -> Option<String> {
-    get_generic_password(service, account)
-        .ok()
-        .and_then(|bytes| String::from_utf8(bytes).ok())
-        .filter(|s| !s.is_empty())
-}
-
-/// Write a value to the macOS Keychain using the native API.
-#[cfg(target_os = "macos")]
-fn keychain_set(service: &str, account: &str, value: &str) -> Result<(), ProviderError> {
-    // set_generic_password creates or updates the entry
-    set_generic_password(service, account, value.as_bytes())
-        .map_err(|e| ProviderError::KeychainError(format!("Failed to write keychain: {}", e)))
-}
-
-/// Delete a value from the macOS Keychain using the native API.
-#[cfg(target_os = "macos")]
-fn keychain_delete(service: &str, account: &str) -> Result<(), ProviderError> {
-    match delete_generic_password(service, account) {
-        Ok(()) => Ok(()),
-        Err(e) => {
-            let msg = e.to_string();
-            // Ignore "not found" errors (item may have already been removed)
-            if msg.contains("not found") || msg.contains("-25300") {
-                Ok(())
-            } else {
-                Err(ProviderError::KeychainError(format!(
-                    "Failed to delete keychain entry: {}",
-                    e
-                )))
-            }
-        }
-    }
-}
-
-// Fallbacks for non-macOS platforms
-#[cfg(not(target_os = "macos"))]
-fn keychain_get(_service: &str) -> Option<String> {
-    None
-}
-#[cfg(not(target_os = "macos"))]
-fn keychain_get_with_account(_service: &str, _account: &str) -> Option<String> {
-    None
-}
-#[cfg(not(target_os = "macos"))]
-fn keychain_set(_service: &str, _account: &str, _value: &str) -> Result<(), ProviderError> {
-    Err(ProviderError::KeychainError(
-        "Keychain storage is only supported on macOS".to_string(),
-    ))
-}
-#[cfg(not(target_os = "macos"))]
-fn keychain_delete(_service: &str, _account: &str) -> Result<(), ProviderError> {
-    Ok(())
-}
 
 /// Client ID used by Claude Code CLI for OAuth token refresh
 const CLAUDE_CODE_OAUTH_CLIENT_ID: &str = "claude-desktop";
@@ -130,8 +60,10 @@ pub struct CredentialInfo {
     pub source: CredentialSource,
 }
 
-/// Keychain service names
-const KEYCHAIN_SERVICE_PREFIX: &str = "solo.provider";
+/// Single vault entry in the OS keychain — all Solo credentials stored as one JSON blob.
+/// This ensures only ONE keychain ACL prompt on macOS when the binary changes.
+const VAULT_SERVICE: &str = "com.solo-ide.credentials";
+const VAULT_ACCOUNT: &str = "vault";
 
 /// Credential info with OAuth token support
 #[derive(Debug, Clone)]
@@ -151,17 +83,20 @@ pub struct OpenAIOAuthCredentialInfo {
     pub source: CredentialSource,
 }
 
-/// Keychain service name for GitHub OAuth tokens (git operations)
-const GITHUB_OAUTH_KEYCHAIN_SERVICE: &str = "solo.github.oauth";
-
-/// Credential manager for storing and retrieving API keys and OAuth tokens
+/// Credential manager for storing and retrieving API keys and OAuth tokens.
+///
+/// All Solo-managed credentials are stored in a single keychain entry ("vault")
+/// as a JSON `HashMap<String, String>`. This ensures only one ACL prompt on macOS
+/// when the app binary changes.
 pub struct CredentialManager {
     /// Cache for API key credentials (to avoid repeated keychain access)
-    cache: tokio::sync::RwLock<std::collections::HashMap<ProviderType, CredentialInfo>>,
+    cache: tokio::sync::RwLock<HashMap<ProviderType, CredentialInfo>>,
     /// Cache for OAuth tokens (generic)
-    oauth_cache: tokio::sync::RwLock<std::collections::HashMap<ProviderType, OAuthCredentialInfo>>,
+    oauth_cache: tokio::sync::RwLock<HashMap<ProviderType, OAuthCredentialInfo>>,
     /// Cache for OpenAI OAuth tokens (with account_id)
     openai_oauth_cache: tokio::sync::RwLock<Option<OpenAIOAuthCredentialInfo>>,
+    /// In-memory cache of the vault (loaded from single keychain entry)
+    vault: tokio::sync::RwLock<Option<HashMap<String, String>>>,
     /// Cache for GitHub OAuth token (for git operations, separate from AI provider tokens)
     github_oauth_cache: tokio::sync::RwLock<Option<OAuthToken>>,
 }
@@ -170,21 +105,122 @@ impl CredentialManager {
     /// Create a new credential manager
     pub fn new() -> Self {
         Self {
-            cache: tokio::sync::RwLock::new(std::collections::HashMap::new()),
-            oauth_cache: tokio::sync::RwLock::new(std::collections::HashMap::new()),
+            cache: tokio::sync::RwLock::new(HashMap::new()),
+            oauth_cache: tokio::sync::RwLock::new(HashMap::new()),
             openai_oauth_cache: tokio::sync::RwLock::new(None),
+            vault: tokio::sync::RwLock::new(None),
             github_oauth_cache: tokio::sync::RwLock::new(None),
         }
     }
 
-    /// Get the keychain service name for a provider's API key
-    fn keychain_service(provider: ProviderType) -> String {
-        format!("{}.{}.apiKey", KEYCHAIN_SERVICE_PREFIX, provider.as_str())
+    // =========================================================================
+    // Vault Infrastructure
+    // =========================================================================
+
+    /// Get the vault key for a provider's API key
+    fn api_key_vault_key(provider: ProviderType) -> String {
+        format!("{}.apiKey", provider.as_str())
     }
 
-    /// Get the keychain service name for a provider's OAuth token
-    fn oauth_keychain_service(provider: ProviderType) -> String {
-        format!("{}.{}.oauth", KEYCHAIN_SERVICE_PREFIX, provider.as_str())
+    /// Get the vault key for a provider's OAuth token
+    fn oauth_vault_key(provider: ProviderType) -> String {
+        format!("{}.oauth", provider.as_str())
+    }
+
+    /// Vault key for GitHub OAuth token
+    fn github_oauth_vault_key() -> &'static str {
+        "github.oauth"
+    }
+
+    /// Load the vault from the single keychain entry (lazy, called once)
+    async fn load_vault(&self) -> ProviderResult<()> {
+        // Already loaded?
+        if self.vault.read().await.is_some() {
+            return Ok(());
+        }
+
+        let entry = match Entry::new(VAULT_SERVICE, VAULT_ACCOUNT) {
+            Ok(e) => e,
+            Err(e) => {
+                tracing::warn!("Failed to create vault keyring entry: {}", e);
+                *self.vault.write().await = Some(HashMap::new());
+                return Ok(());
+            }
+        };
+
+        let data = match entry.get_password() {
+            Ok(json) if json.is_empty() => HashMap::new(),
+            Ok(json) => serde_json::from_str::<HashMap<String, String>>(&json).unwrap_or_else(|e| {
+                tracing::warn!("Failed to parse vault JSON, starting fresh: {}", e);
+                HashMap::new()
+            }),
+            Err(keyring::Error::NoEntry) => HashMap::new(),
+            Err(e) => {
+                tracing::warn!("Failed to read vault from keychain: {}", e);
+                HashMap::new()
+            }
+        };
+
+        *self.vault.write().await = Some(data);
+        Ok(())
+    }
+
+    /// Persist the vault HashMap to the single keychain entry
+    fn persist_vault(data: &HashMap<String, String>) -> ProviderResult<()> {
+        let json = serde_json::to_string(data)
+            .map_err(|e| ProviderError::KeychainError(format!("Failed to serialize vault: {}", e)))?;
+
+        let entry = Entry::new(VAULT_SERVICE, VAULT_ACCOUNT)
+            .map_err(|e| ProviderError::KeychainError(format!("Failed to create vault entry: {}", e)))?;
+
+        entry
+            .set_password(&json)
+            .map_err(|e| ProviderError::KeychainError(format!("Failed to write vault: {}", e)))?;
+
+        Ok(())
+    }
+
+    /// Get a value from the vault
+    async fn vault_get(&self, key: &str) -> ProviderResult<Option<String>> {
+        self.load_vault().await?;
+        let guard = self.vault.read().await;
+        Ok(guard.as_ref().and_then(|v| v.get(key).cloned()))
+    }
+
+    /// Set a value in the vault (updates in-memory + persists)
+    async fn vault_set(&self, key: &str, value: &str) -> ProviderResult<()> {
+        self.load_vault().await?;
+        let mut guard = self.vault.write().await;
+        let vault = guard.get_or_insert_with(HashMap::new);
+        vault.insert(key.to_string(), value.to_string());
+        Self::persist_vault(vault)?;
+        Ok(())
+    }
+
+    /// Delete a value from the vault (removes from in-memory + persists)
+    async fn vault_delete(&self, key: &str) -> ProviderResult<()> {
+        self.load_vault().await?;
+        let mut guard = self.vault.write().await;
+        if let Some(vault) = guard.as_mut() {
+            vault.remove(key);
+            Self::persist_vault(vault)?;
+        }
+        Ok(())
+    }
+
+    /// Get a raw value from the vault (for non-provider credentials like Supabase)
+    pub async fn vault_get_raw(&self, key: &str) -> ProviderResult<Option<String>> {
+        self.vault_get(key).await
+    }
+
+    /// Set a raw value in the vault (for non-provider credentials like Supabase)
+    pub async fn vault_set_raw(&self, key: &str, value: &str) -> ProviderResult<()> {
+        self.vault_set(key, value).await
+    }
+
+    /// Delete a raw value from the vault (for non-provider credentials like Supabase)
+    pub async fn vault_delete_raw(&self, key: &str) -> ProviderResult<()> {
+        self.vault_delete(key).await
     }
 
     /// Get credentials for a provider, checking multiple sources
@@ -302,10 +338,13 @@ impl CredentialManager {
         Ok(self.get_credentials_with_source(provider).await?.map(|i| i.source))
     }
 
-    /// Get credentials from macOS Keychain
+    /// Get API key from the vault
     async fn get_from_keychain(&self, provider: ProviderType) -> ProviderResult<Option<String>> {
-        let service = Self::keychain_service(provider);
-        Ok(keychain_get(&service))
+        let key = Self::api_key_vault_key(provider);
+        match self.vault_get(&key).await {
+            Ok(Some(v)) if v.is_empty() => Ok(None),
+            other => other,
+        }
     }
 
     /// Parse `expiresAt` from Claude Code credential JSON.
@@ -371,10 +410,26 @@ impl CredentialManager {
     /// Claude Code CLI stores credentials in the keychain with service name
     /// "Claude Code-credentials" as a JSON object containing OAuth tokens.
     async fn get_claude_oauth(&self) -> ProviderResult<Option<String>> {
-        let json_str = match keychain_get_with_account("Claude Code-credentials", "Claude Code-credentials") {
-            Some(s) => s,
-            None => return Ok(None),
+        let entry = match Entry::new("Claude Code-credentials", "default") {
+            Ok(e) => e,
+            Err(e) => {
+                tracing::warn!("Failed to create keyring entry for Claude Code: {}", e);
+                return Ok(None);
+            }
         };
+
+        let json_str = match entry.get_password() {
+            Ok(s) => s,
+            Err(keyring::Error::NoEntry) => return Ok(None),
+            Err(e) => {
+                tracing::warn!("Failed to read Claude OAuth from keychain: {}", e);
+                return Ok(None);
+            }
+        };
+
+        if json_str.is_empty() {
+            return Ok(None);
+        }
 
         // Parse the JSON to extract the access token
         // Format: {"claudeAiOauth":{"accessToken":"...", "expiresAt":..., "refreshToken":"...", ...}}
@@ -401,6 +456,7 @@ impl CredentialManager {
                     if Self::is_claude_token_expired(expires_at) {
                         tracing::debug!("Claude Code OAuth token expired, attempting refresh");
 
+                        // Try to refresh using the refresh token
                         if let Some(refresh_token) = oauth_obj.get("refreshToken").and_then(|t| t.as_str()) {
                             if let Some(new_token) = Self::refresh_claude_code_token(refresh_token).await {
                                 tracing::info!("Successfully refreshed Claude Code OAuth token");
@@ -489,38 +545,43 @@ impl CredentialManager {
     pub async fn get_claude_oauth_detailed(
         &self,
     ) -> ProviderResult<Option<(String, Option<i64>, CredentialSource, serde_json::Value)>> {
-        // Try keychain first (native API)
-        if let Some(json_str) = keychain_get_with_account("Claude Code-credentials", "Claude Code-credentials") {
-            if let Ok(value) = serde_json::from_str::<serde_json::Value>(&json_str) {
-                if let Some(oauth_obj) = value.get("claudeAiOauth") {
-                    if let Some(access_token) = oauth_obj.get("accessToken").and_then(|t| t.as_str()) {
-                        let expires_at = Self::parse_expires_at(oauth_obj);
+        // Try keychain first
+        if let Ok(entry) = Entry::new("Claude Code-credentials", "default") {
+            if let Ok(json_str) = entry.get_password() {
+                if !json_str.is_empty() {
+                    if let Ok(value) = serde_json::from_str::<serde_json::Value>(&json_str) {
+                        if let Some(oauth_obj) = value.get("claudeAiOauth") {
+                            if let Some(access_token) = oauth_obj.get("accessToken").and_then(|t| t.as_str()) {
+                                let expires_at = Self::parse_expires_at(oauth_obj);
 
-                        let final_token = if let Some(exp) = expires_at {
-                            if Self::is_claude_token_expired(exp) {
-                                if let Some(refresh_token) = oauth_obj.get("refreshToken").and_then(|t| t.as_str()) {
-                                    if let Some(new_token) = Self::refresh_claude_code_token(refresh_token).await {
-                                        tracing::info!("Refreshed Claude Code token in detailed check");
-                                        new_token
+                                // If expired, try to refresh and return the new token
+                                let final_token = if let Some(exp) = expires_at {
+                                    if Self::is_claude_token_expired(exp) {
+                                        if let Some(refresh_token) = oauth_obj.get("refreshToken").and_then(|t| t.as_str()) {
+                                            if let Some(new_token) = Self::refresh_claude_code_token(refresh_token).await {
+                                                tracing::info!("Refreshed Claude Code token in detailed check");
+                                                new_token
+                                            } else {
+                                                access_token.to_string()
+                                            }
+                                        } else {
+                                            access_token.to_string()
+                                        }
                                     } else {
                                         access_token.to_string()
                                     }
                                 } else {
                                     access_token.to_string()
-                                }
-                            } else {
-                                access_token.to_string()
-                            }
-                        } else {
-                            access_token.to_string()
-                        };
+                                };
 
-                        return Ok(Some((
-                            final_token,
-                            expires_at,
-                            CredentialSource::ClaudeOAuth,
-                            oauth_obj.clone(),
-                        )));
+                                return Ok(Some((
+                                    final_token,
+                                    expires_at,
+                                    CredentialSource::ClaudeOAuth,
+                                    oauth_obj.clone(),
+                                )));
+                            }
+                        }
                     }
                 }
             }
@@ -578,10 +639,10 @@ impl CredentialManager {
         std::env::var(provider.env_var_name()).ok()
     }
 
-    /// Store credentials in Keychain
+    /// Store credentials in the vault
     pub async fn set_credentials(&self, provider: ProviderType, api_key: &str) -> ProviderResult<()> {
-        let service = Self::keychain_service(provider);
-        keychain_set(&service, "api-key", api_key)?;
+        let key = Self::api_key_vault_key(provider);
+        self.vault_set(&key, api_key).await?;
 
         // Update cache
         self.cache.write().await.insert(
@@ -595,10 +656,10 @@ impl CredentialManager {
         Ok(())
     }
 
-    /// Remove credentials from Keychain
+    /// Remove credentials from the vault
     pub async fn clear_credentials(&self, provider: ProviderType) -> ProviderResult<()> {
-        let service = Self::keychain_service(provider);
-        keychain_delete(&service, "api-key")?;
+        let key = Self::api_key_vault_key(provider);
+        self.vault_delete(&key).await?;
 
         // Remove from cache
         self.cache.write().await.remove(&provider);
@@ -614,11 +675,12 @@ impl CredentialManager {
             .unwrap_or(false)
     }
 
-    /// Clear the credential cache
+    /// Clear all in-memory caches (forces re-read from keychain on next access)
     pub async fn clear_cache(&self) {
         self.cache.write().await.clear();
         self.oauth_cache.write().await.clear();
         *self.openai_oauth_cache.write().await = None;
+        *self.vault.write().await = None;
         *self.github_oauth_cache.write().await = None;
     }
 
@@ -626,18 +688,18 @@ impl CredentialManager {
     // OAuth Token Management
     // =========================================================================
 
-    /// Store an OAuth token in the keychain
+    /// Store an OAuth token in the vault
     pub async fn set_oauth_token(
         &self,
         provider: ProviderType,
         token: OAuthToken,
     ) -> ProviderResult<()> {
-        let service = Self::oauth_keychain_service(provider);
+        let key = Self::oauth_vault_key(provider);
 
         let token_json = serde_json::to_string(&token)
             .map_err(|e| ProviderError::AuthError(format!("Failed to serialize token: {}", e)))?;
 
-        keychain_set(&service, "oauth-token", &token_json)?;
+        self.vault_set(&key, &token_json).await?;
 
         // Update cache
         self.oauth_cache.write().await.insert(
@@ -663,28 +725,30 @@ impl CredentialManager {
             return Ok(Some(info.token.clone()));
         }
 
-        // Try to load from keychain
-        let service = Self::oauth_keychain_service(provider);
-        let token_json = match keychain_get(&service) {
-            Some(s) => s,
-            None => return Ok(None),
-        };
-
-        match serde_json::from_str::<OAuthToken>(&token_json) {
-            Ok(token) => {
-                self.oauth_cache.write().await.insert(
-                    provider,
-                    OAuthCredentialInfo {
-                        token: token.clone(),
-                        source: CredentialSource::SoloOAuth,
-                    },
-                );
-                Ok(Some(token))
+        // Try to load from vault
+        let key = Self::oauth_vault_key(provider);
+        match self.vault_get(&key).await? {
+            Some(token_json) if token_json.is_empty() => Ok(None),
+            Some(token_json) => {
+                match serde_json::from_str::<OAuthToken>(&token_json) {
+                    Ok(token) => {
+                        // Cache the token
+                        self.oauth_cache.write().await.insert(
+                            provider,
+                            OAuthCredentialInfo {
+                                token: token.clone(),
+                                source: CredentialSource::SoloOAuth,
+                            },
+                        );
+                        Ok(Some(token))
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to parse OAuth token from vault: {}", e);
+                        Ok(None)
+                    }
+                }
             }
-            Err(e) => {
-                tracing::warn!("Failed to parse OAuth token from keychain: {}", e);
-                Ok(None)
-            }
+            None => Ok(None),
         }
     }
 
@@ -716,7 +780,7 @@ impl CredentialManager {
 
         let new_token = match provider {
             ProviderType::Anthropic => AnthropicOAuthConfig::refresh_token(&refresh_token).await?,
-            ProviderType::OpenAI | ProviderType::Gemini => unreachable!(), // Handled above
+            ProviderType::OpenAI | ProviderType::Gemini | ProviderType::ElevenLabs => unreachable!(), // Handled above or no OAuth
         };
 
         // Store the new token
@@ -731,14 +795,14 @@ impl CredentialManager {
     // OpenAI OAuth Token Management
     // =========================================================================
 
-    /// Store an OpenAI OAuth token in the keychain
+    /// Store an OpenAI OAuth token in the vault
     pub async fn set_openai_oauth_token(&self, token: OpenAIOAuthToken) -> ProviderResult<()> {
-        let service = Self::oauth_keychain_service(ProviderType::OpenAI);
+        let key = Self::oauth_vault_key(ProviderType::OpenAI);
 
         let token_json = serde_json::to_string(&token)
             .map_err(|e| ProviderError::AuthError(format!("Failed to serialize OpenAI token: {}", e)))?;
 
-        keychain_set(&service, "oauth-token", &token_json)?;
+        self.vault_set(&key, &token_json).await?;
 
         // Update cache
         *self.openai_oauth_cache.write().await = Some(OpenAIOAuthCredentialInfo {
@@ -761,25 +825,27 @@ impl CredentialManager {
             return Ok(Some(info.token.clone()));
         }
 
-        // Try to load from keychain
-        let service = Self::oauth_keychain_service(ProviderType::OpenAI);
-        let token_json = match keychain_get(&service) {
-            Some(s) => s,
-            None => return Ok(None),
-        };
-
-        match serde_json::from_str::<OpenAIOAuthToken>(&token_json) {
-            Ok(token) => {
-                *self.openai_oauth_cache.write().await = Some(OpenAIOAuthCredentialInfo {
-                    token: token.clone(),
-                    source: CredentialSource::SoloOAuth,
-                });
-                Ok(Some(token))
+        // Try to load from vault
+        let key = Self::oauth_vault_key(ProviderType::OpenAI);
+        match self.vault_get(&key).await? {
+            Some(token_json) if token_json.is_empty() => Ok(None),
+            Some(token_json) => {
+                match serde_json::from_str::<OpenAIOAuthToken>(&token_json) {
+                    Ok(token) => {
+                        // Cache the token
+                        *self.openai_oauth_cache.write().await = Some(OpenAIOAuthCredentialInfo {
+                            token: token.clone(),
+                            source: CredentialSource::SoloOAuth,
+                        });
+                        Ok(Some(token))
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to parse OpenAI OAuth token from vault: {}", e);
+                        Ok(None)
+                    }
+                }
             }
-            Err(e) => {
-                tracing::warn!("Failed to parse OpenAI OAuth token from keychain: {}", e);
-                Ok(None)
-            }
+            None => Ok(None),
         }
     }
 
@@ -826,10 +892,10 @@ impl CredentialManager {
         Ok(None)
     }
 
-    /// Remove OAuth token from keychain
+    /// Remove OAuth token from the vault
     pub async fn disconnect_oauth(&self, provider: ProviderType) -> ProviderResult<()> {
-        let service = Self::oauth_keychain_service(provider);
-        keychain_delete(&service, "oauth-token")?;
+        let key = Self::oauth_vault_key(provider);
+        self.vault_delete(&key).await?;
 
         // Remove from cache
         self.oauth_cache.write().await.remove(&provider);
@@ -848,29 +914,29 @@ impl CredentialManager {
     // GitHub OAuth Token Management (for git operations)
     // =========================================================================
 
-    /// Store a GitHub OAuth token in cache + keychain
+    /// Store a GitHub OAuth token in cache + vault
     pub async fn set_github_oauth_token(&self, token: OAuthToken) -> ProviderResult<()> {
         let token_json = serde_json::to_string(&token)
             .map_err(|e| ProviderError::AuthError(format!("Failed to serialize GitHub token: {}", e)))?;
 
-        keychain_set(GITHUB_OAUTH_KEYCHAIN_SERVICE, "oauth-token", &token_json)?;
+        self.vault_set(Self::github_oauth_vault_key(), &token_json).await?;
 
         *self.github_oauth_cache.write().await = Some(token);
         tracing::info!("Stored GitHub OAuth token");
         Ok(())
     }
 
-    /// Get the GitHub OAuth token (cache -> keychain)
+    /// Get the GitHub OAuth token (cache -> vault)
     pub async fn get_github_oauth_token(&self) -> ProviderResult<Option<OAuthToken>> {
         // Check cache
         if let Some(token) = self.github_oauth_cache.read().await.as_ref() {
             return Ok(Some(token.clone()));
         }
 
-        // Try keychain
-        let token_json = match keychain_get_with_account(GITHUB_OAUTH_KEYCHAIN_SERVICE, "oauth-token") {
-            Some(s) => s,
-            None => return Ok(None),
+        // Try vault
+        let token_json = match self.vault_get(Self::github_oauth_vault_key()).await? {
+            Some(s) if !s.is_empty() => s,
+            _ => return Ok(None),
         };
 
         match serde_json::from_str::<OAuthToken>(&token_json) {
@@ -879,15 +945,15 @@ impl CredentialManager {
                 Ok(Some(token))
             }
             Err(e) => {
-                tracing::warn!("Failed to parse GitHub OAuth token from keychain: {}", e);
+                tracing::warn!("Failed to parse GitHub OAuth token from vault: {}", e);
                 Ok(None)
             }
         }
     }
 
-    /// Clear the GitHub OAuth token from cache + keychain
+    /// Clear the GitHub OAuth token from cache + vault
     pub async fn clear_github_oauth_token(&self) -> ProviderResult<()> {
-        keychain_delete(GITHUB_OAUTH_KEYCHAIN_SERVICE, "oauth-token")?;
+        self.vault_delete(Self::github_oauth_vault_key()).await?;
 
         *self.github_oauth_cache.write().await = None;
         tracing::info!("Cleared GitHub OAuth token");
@@ -966,26 +1032,42 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_keychain_service_name() {
+    fn test_vault_key_names() {
         assert_eq!(
-            CredentialManager::keychain_service(ProviderType::Anthropic),
-            "solo.provider.anthropic.apiKey"
+            CredentialManager::api_key_vault_key(ProviderType::Anthropic),
+            "anthropic.apiKey"
         );
         assert_eq!(
-            CredentialManager::keychain_service(ProviderType::OpenAI),
-            "solo.provider.openai.apiKey"
+            CredentialManager::api_key_vault_key(ProviderType::OpenAI),
+            "openai.apiKey"
+        );
+        assert_eq!(
+            CredentialManager::api_key_vault_key(ProviderType::Gemini),
+            "gemini.apiKey"
+        );
+        assert_eq!(
+            CredentialManager::api_key_vault_key(ProviderType::ElevenLabs),
+            "elevenlabs.apiKey"
         );
     }
 
     #[test]
-    fn test_oauth_keychain_service_name() {
+    fn test_oauth_vault_key_names() {
         assert_eq!(
-            CredentialManager::oauth_keychain_service(ProviderType::Anthropic),
-            "solo.provider.anthropic.oauth"
+            CredentialManager::oauth_vault_key(ProviderType::Anthropic),
+            "anthropic.oauth"
         );
         assert_eq!(
-            CredentialManager::oauth_keychain_service(ProviderType::OpenAI),
-            "solo.provider.openai.oauth"
+            CredentialManager::oauth_vault_key(ProviderType::OpenAI),
+            "openai.oauth"
+        );
+    }
+
+    #[test]
+    fn test_github_oauth_vault_key() {
+        assert_eq!(
+            CredentialManager::github_oauth_vault_key(),
+            "github.oauth"
         );
     }
 

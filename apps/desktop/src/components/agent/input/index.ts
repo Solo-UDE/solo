@@ -6,3 +6,5 @@ export { ModelSelector, type ModelSelectorProps, type ModelOption, CLAUDE_MODELS
 export { ModelPicker, type ModelPickerProps, renderModelIcon } from './model-picker';
 export { ContextMenu, type ContextMenuProps } from './context-menu';
 export { ThinkingToggle, type ThinkingToggleProps } from './thinking-toggle';
+export { AcceptModeToggle, type AcceptModeToggleProps } from './accept-mode-toggle';
+

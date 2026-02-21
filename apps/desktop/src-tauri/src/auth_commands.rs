@@ -7,11 +7,12 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
-use std::process::Command;
 use std::sync::Arc;
 use tauri::State;
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
+
+use crate::provider_commands::ProviderAuthState;
 
 // =============================================================================
 // Configuration
@@ -25,9 +26,9 @@ const SUPABASE_ANON_KEY: &str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOi
 
 const REDIRECT_URL: &str = "soloide://auth/callback";
 
-/// Keychain service names for auth tokens
-const KEYCHAIN_ACCESS_TOKEN: &str = "solo.supabase.accessToken";
-const KEYCHAIN_REFRESH_TOKEN: &str = "solo.supabase.refreshToken";
+/// Vault key names for Supabase auth tokens
+const VAULT_KEY_ACCESS_TOKEN: &str = "supabase.accessToken";
+const VAULT_KEY_REFRESH_TOKEN: &str = "supabase.refreshToken";
 
 // =============================================================================
 // Types
@@ -137,74 +138,32 @@ impl Default for AuthState {
 }
 
 // =============================================================================
-// Keychain Helpers
+// Vault Helpers (delegate to CredentialManager)
 // =============================================================================
 
-/// Read a value from macOS Keychain
-fn keychain_read(service: &str) -> Option<String> {
-    let output = Command::new("security")
-        .args(["find-generic-password", "-s", service, "-w"])
-        .output()
-        .ok()?;
-
-    if output.status.success() {
-        let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if value.is_empty() {
-            None
-        } else {
-            Some(value)
-        }
-    } else {
-        None
-    }
+/// Read a value from the credential vault
+async fn vault_read(auth: &ProviderAuthState, key: &str) -> Option<String> {
+    auth.credentials
+        .vault_get_raw(key)
+        .await
+        .ok()
+        .flatten()
 }
 
-/// Write a value to macOS Keychain
-fn keychain_write(service: &str, value: &str) -> Result<(), String> {
-    // Delete existing entry if present
-    let _ = Command::new("security")
-        .args(["delete-generic-password", "-s", service])
-        .output();
-
-    // Add new entry
-    let output = Command::new("security")
-        .args([
-            "add-generic-password",
-            "-s",
-            service,
-            "-a",
-            "solo-auth",
-            "-w",
-            value,
-            "-U",
-        ])
-        .output()
-        .map_err(|e| format!("Failed to execute security command: {}", e))?;
-
-    if output.status.success() {
-        Ok(())
-    } else {
-        let error = String::from_utf8_lossy(&output.stderr);
-        Err(format!("Keychain write failed: {}", error))
-    }
+/// Write a value to the credential vault
+async fn vault_write(auth: &ProviderAuthState, key: &str, value: &str) -> Result<(), String> {
+    auth.credentials
+        .vault_set_raw(key, value)
+        .await
+        .map_err(|e| format!("Failed to write to vault: {}", e))
 }
 
-/// Delete a value from macOS Keychain
-fn keychain_delete(service: &str) -> Result<(), String> {
-    let output = Command::new("security")
-        .args(["delete-generic-password", "-s", service])
-        .output()
-        .map_err(|e| format!("Failed to execute security command: {}", e))?;
-
-    // Ignore "item not found" errors
-    if !output.status.success() {
-        let error = String::from_utf8_lossy(&output.stderr);
-        if !error.contains("could not be found") {
-            return Err(format!("Keychain delete failed: {}", error));
-        }
-    }
-
-    Ok(())
+/// Delete a value from the credential vault
+async fn vault_delete_key(auth: &ProviderAuthState, key: &str) -> Result<(), String> {
+    auth.credentials
+        .vault_delete_raw(key)
+        .await
+        .map_err(|e| format!("Failed to delete from vault: {}", e))
 }
 
 // =============================================================================
@@ -294,6 +253,7 @@ pub async fn auth_start_magic_link(
 pub async fn auth_exchange_code(
     code: String,
     state: State<'_, AuthState>,
+    auth: State<'_, ProviderAuthState>,
 ) -> Result<AuthStateResponse, String> {
     info!(
         "Exchanging authorization code for tokens, code={}",
@@ -341,9 +301,9 @@ pub async fn auth_exchange_code(
             .await
             .map_err(|e| format!("Failed to parse token response: {}", e))?;
 
-        // Store tokens in keychain
-        keychain_write(KEYCHAIN_ACCESS_TOKEN, &token_response.access_token)?;
-        keychain_write(KEYCHAIN_REFRESH_TOKEN, &token_response.refresh_token)?;
+        // Store tokens in vault
+        vault_write(&auth, VAULT_KEY_ACCESS_TOKEN, &token_response.access_token).await?;
+        vault_write(&auth, VAULT_KEY_REFRESH_TOKEN, &token_response.refresh_token).await?;
 
         // Create session
         let session = Session {
@@ -391,9 +351,12 @@ pub async fn auth_exchange_code(
     }
 }
 
-/// Get current session (restores from keychain if needed)
+/// Get current session (restores from vault if needed)
 #[tauri::command]
-pub async fn auth_get_session(state: State<'_, AuthState>) -> Result<AuthStateResponse, String> {
+pub async fn auth_get_session(
+    state: State<'_, AuthState>,
+    auth: State<'_, ProviderAuthState>,
+) -> Result<AuthStateResponse, String> {
     debug!("Getting current session");
 
     // Check cached session first
@@ -404,8 +367,8 @@ pub async fn auth_get_session(state: State<'_, AuthState>) -> Result<AuthStateRe
         });
     }
 
-    // Try to restore from keychain
-    let access_token = match keychain_read(KEYCHAIN_ACCESS_TOKEN) {
+    // Try to restore from vault
+    let access_token = match vault_read(&auth, VAULT_KEY_ACCESS_TOKEN).await {
         Some(token) => token,
         None => {
             debug!("No stored session found");
@@ -416,7 +379,7 @@ pub async fn auth_get_session(state: State<'_, AuthState>) -> Result<AuthStateRe
         }
     };
 
-    let refresh_token = keychain_read(KEYCHAIN_REFRESH_TOKEN);
+    let refresh_token = vault_read(&auth, VAULT_KEY_REFRESH_TOKEN).await;
 
     // Validate token by getting user info
     let response = state
@@ -453,12 +416,12 @@ pub async fn auth_get_session(state: State<'_, AuthState>) -> Result<AuthStateRe
     } else if response.status() == 401 {
         // Token expired, try refresh
         if let Some(refresh) = refresh_token {
-            return refresh_session_internal(&state, &refresh).await;
+            return refresh_session_internal(&state, &auth, &refresh).await;
         }
 
         // No refresh token, clear invalid tokens
-        let _ = keychain_delete(KEYCHAIN_ACCESS_TOKEN);
-        let _ = keychain_delete(KEYCHAIN_REFRESH_TOKEN);
+        let _ = vault_delete_key(&auth, VAULT_KEY_ACCESS_TOKEN).await;
+        let _ = vault_delete_key(&auth, VAULT_KEY_REFRESH_TOKEN).await;
 
         Ok(AuthStateResponse {
             user: None,
@@ -477,18 +440,20 @@ pub async fn auth_get_session(state: State<'_, AuthState>) -> Result<AuthStateRe
 #[tauri::command]
 pub async fn auth_refresh_session(
     state: State<'_, AuthState>,
+    auth: State<'_, ProviderAuthState>,
 ) -> Result<AuthStateResponse, String> {
     info!("Refreshing session");
 
     let refresh_token =
-        keychain_read(KEYCHAIN_REFRESH_TOKEN).ok_or("No refresh token available")?;
+        vault_read(&auth, VAULT_KEY_REFRESH_TOKEN).await.ok_or("No refresh token available")?;
 
-    refresh_session_internal(&state, &refresh_token).await
+    refresh_session_internal(&state, &auth, &refresh_token).await
 }
 
 /// Internal function to refresh session
 async fn refresh_session_internal(
     state: &State<'_, AuthState>,
+    auth: &State<'_, ProviderAuthState>,
     refresh_token: &str,
 ) -> Result<AuthStateResponse, String> {
     let response = state
@@ -509,9 +474,9 @@ async fn refresh_session_internal(
             .await
             .map_err(|e| format!("Failed to parse refresh response: {}", e))?;
 
-        // Store new tokens
-        keychain_write(KEYCHAIN_ACCESS_TOKEN, &token_response.access_token)?;
-        keychain_write(KEYCHAIN_REFRESH_TOKEN, &token_response.refresh_token)?;
+        // Store new tokens in vault
+        vault_write(auth, VAULT_KEY_ACCESS_TOKEN, &token_response.access_token).await?;
+        vault_write(auth, VAULT_KEY_REFRESH_TOKEN, &token_response.refresh_token).await?;
 
         let session = Session {
             access_token: token_response.access_token,
@@ -531,8 +496,8 @@ async fn refresh_session_internal(
         })
     } else {
         // Refresh failed, clear tokens
-        let _ = keychain_delete(KEYCHAIN_ACCESS_TOKEN);
-        let _ = keychain_delete(KEYCHAIN_REFRESH_TOKEN);
+        let _ = vault_delete_key(auth, VAULT_KEY_ACCESS_TOKEN).await;
+        let _ = vault_delete_key(auth, VAULT_KEY_REFRESH_TOKEN).await;
         *state.session.write().await = None;
 
         Err("Session expired, please sign in again".to_string())
@@ -541,7 +506,10 @@ async fn refresh_session_internal(
 
 /// Sign out - clear session and tokens
 #[tauri::command]
-pub async fn auth_sign_out(state: State<'_, AuthState>) -> Result<(), String> {
+pub async fn auth_sign_out(
+    state: State<'_, AuthState>,
+    auth: State<'_, ProviderAuthState>,
+) -> Result<(), String> {
     info!("Signing out");
 
     // Try to call Supabase logout (best effort)
@@ -555,9 +523,9 @@ pub async fn auth_sign_out(state: State<'_, AuthState>) -> Result<(), String> {
             .await;
     }
 
-    // Clear keychain
-    keychain_delete(KEYCHAIN_ACCESS_TOKEN)?;
-    keychain_delete(KEYCHAIN_REFRESH_TOKEN)?;
+    // Clear vault entries
+    vault_delete_key(&auth, VAULT_KEY_ACCESS_TOKEN).await?;
+    vault_delete_key(&auth, VAULT_KEY_REFRESH_TOKEN).await?;
 
     // Clear cached session
     *state.session.write().await = None;
@@ -568,11 +536,14 @@ pub async fn auth_sign_out(state: State<'_, AuthState>) -> Result<(), String> {
 
 /// Get the current access token (for API calls)
 #[tauri::command]
-pub async fn auth_get_access_token(state: State<'_, AuthState>) -> Result<Option<String>, String> {
+pub async fn auth_get_access_token(
+    state: State<'_, AuthState>,
+    auth: State<'_, ProviderAuthState>,
+) -> Result<Option<String>, String> {
     if let Some(session) = state.session.read().await.as_ref() {
         return Ok(Some(session.access_token.clone()));
     }
 
-    // Try keychain
-    Ok(keychain_read(KEYCHAIN_ACCESS_TOKEN))
+    // Try vault
+    Ok(vault_read(&auth, VAULT_KEY_ACCESS_TOKEN).await)
 }

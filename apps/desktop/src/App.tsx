@@ -33,6 +33,7 @@ import { HTML5Backend } from "react-dnd-html5-backend";
 import { Toaster } from "sonner";
 import { WorkspaceSwitcher } from "./components/titlebar/WorkspaceSwitcher";
 import { WelcomeScreen } from "./components/welcome";
+import { KeyboardShortcutsOverlay } from "./components/KeyboardShortcutsOverlay";
 
 // Shared easing curve matching --ease-smooth
 const EASE_SMOOTH: [number, number, number, number] = [0.16, 1, 0.3, 1];
@@ -45,6 +46,9 @@ function AppContent() {
   const sidebarRef = useRef<HTMLElement>(null);
   const dragStartX = useRef<number>(0);
   const dragStartWidth = useRef<number>(0);
+
+  // Keyboard shortcuts overlay state
+  const [shortcutsOverlayOpen, setShortcutsOverlayOpen] = useState(false);
 
   // Terminal panel drag state
   const [isDraggingTerminal, setIsDraggingTerminal] = useState(false);
@@ -202,6 +206,27 @@ function AppContent() {
         return;
       }
 
+      // Cmd+N — new agent session
+      if (e.key === 'n' && e.metaKey && !e.shiftKey && !e.ctrlKey) {
+        e.preventDefault();
+        const model = useProviderStore.getState().selectedModel || undefined;
+        useAgentStore.getState().createSession(model)
+          .then((newSessionId) => {
+            if (newSessionId) {
+              usePanelTabsStore.getState().openPanel(BUILTIN_PANEL_TYPES.AGENT, { sessionId: newSessionId });
+            }
+          })
+          .catch((err) => console.error('Failed to create agent session:', err));
+        return;
+      }
+
+      // Cmd+? (Cmd+Shift+/) — toggle keyboard shortcuts overlay
+      if (e.key === '?' && e.metaKey) {
+        e.preventDefault();
+        setShortcutsOverlayOpen((prev) => !prev);
+        return;
+      }
+
       // Terminal-specific shortcuts (only when terminal panel is open)
       const isTerminalOpen = useUIStore.getState().terminalPanelOpen;
       if (!isTerminalOpen) return;
@@ -271,6 +296,12 @@ function AppContent() {
     const fileName = path.split('/').pop() ?? 'Untitled';
     openPanel(BUILTIN_PANEL_TYPES.FILE_VIEWER, { filePath: path, fileName });
   }, [openPanel]);
+
+  // Open Settings > Shortcuts from the overlay
+  const handleOpenShortcutsSettings = useCallback(() => {
+    setShortcutsOverlayOpen(false);
+    openSettings('shortcuts');
+  }, [openSettings]);
 
   // Sidebar resize handlers — direct DOM manipulation for zero-lag dragging
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
@@ -489,6 +520,11 @@ function AppContent() {
         )}
       </AnimatePresence>
 
+      <KeyboardShortcutsOverlay
+        open={shortcutsOverlayOpen}
+        onOpenChange={setShortcutsOverlayOpen}
+        onOpenSettings={handleOpenShortcutsSettings}
+      />
       <Toaster richColors position="bottom-right" theme={resolvedTheme} />
     </div>
   );
