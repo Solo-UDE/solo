@@ -17,7 +17,7 @@ export const createEditTool = (
 ) =>
   tool({
     description:
-      'Edit a file by replacing an exact string match with new content. The old_string must match exactly (including whitespace/indentation). Use this for targeted edits to existing files rather than rewriting entire files.',
+      'Edit a file by replacing an exact string match with new content. The old_string must match exactly (including whitespace/indentation). Use this for targeted edits to existing files rather than rewriting entire files. If the edit fails because old_string is not found, re-read the file and try again with the correct string. If the old_string matches multiple locations, provide more surrounding context to make the match unique.',
     inputSchema: editParams,
     execute: async (args: z.infer<typeof editParams>) => {
       const { path, old_string, new_string } = args;

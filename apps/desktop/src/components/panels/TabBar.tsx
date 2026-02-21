@@ -5,6 +5,7 @@
 
 import { useCallback, useRef, useState, useEffect, type MouseEvent } from 'react';
 import { useDrop } from 'react-dnd';
+import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
 import { CaretLeft, CaretRight } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Tab } from './Tab';
@@ -120,7 +121,7 @@ export function TabBar({
       ref={dropRef}
       className={cn(
         'flex items-center bg-muted/30 border-b border-border/30',
-        'h-[35px] min-h-[35px]',
+        'h-[35px] min-h-[35px] transition-colors duration-150',
         isOver && 'bg-primary/10'
       )}
       style={{ height: TAB_BAR.height }}
@@ -146,21 +147,34 @@ export function TabBar({
         className="flex-1 flex items-center overflow-x-auto scrollbar-none"
         role="tablist"
       >
-        {tabs.map((tab, index) => (
-          <Tab
-            key={tab.id}
-            instance={tab}
-            isActive={tab.id === activeTabId}
-            tileId={tileId}
-            index={index}
-            tabs={tabs}
-            onActivate={() => onTabActivate(tab.id)}
-            onClose={() => onTabClose(tab.id)}
-            onReorder={onTabReorder}
-            onMoveToTile={handleMoveToTile}
-            onContextMenu={onTabContextMenu}
-          />
-        ))}
+        <LayoutGroup>
+          <AnimatePresence initial={false}>
+            {tabs.map((tab, index) => (
+              <motion.div
+                key={tab.id}
+                layout
+                initial={{ opacity: 0, scaleX: 0.7, scaleY: 0.85 }}
+                animate={{ opacity: 1, scaleX: 1, scaleY: 1 }}
+                exit={{ opacity: 0, scaleX: 0.85, scaleY: 0.9, transition: { duration: 0.12 } }}
+                transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+                style={{ transformOrigin: 'left center' }}
+              >
+                <Tab
+                  instance={tab}
+                  isActive={tab.id === activeTabId}
+                  tileId={tileId}
+                  index={index}
+                  tabs={tabs}
+                  onActivate={() => onTabActivate(tab.id)}
+                  onClose={() => onTabClose(tab.id)}
+                  onReorder={onTabReorder}
+                  onMoveToTile={handleMoveToTile}
+                  onContextMenu={onTabContextMenu}
+                />
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </LayoutGroup>
       </div>
 
       {/* Scroll right button */}

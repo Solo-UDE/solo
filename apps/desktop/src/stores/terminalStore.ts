@@ -92,7 +92,7 @@ export const useTerminalStore = create<TerminalState>()(
 		markExited: (id) =>
 			set((state) => {
 				const terminal = state.terminals.get(id);
-				if (terminal) {
+				if (terminal && terminal.isAlive) {
 					terminal.isAlive = false;
 					terminal.title = `${terminal.title} (exited)`;
 				}
@@ -106,6 +106,7 @@ export const useTerminalStore = create<TerminalState>()(
 				}
 			}),
 
+		/** Store-only reset — does NOT kill backend PTYs. Callers must kill PTYs first. */
 		closeAll: () =>
 			set((state) => {
 				state.terminals = new Map();

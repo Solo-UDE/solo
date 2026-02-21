@@ -122,6 +122,16 @@ export interface GetAcceptModeRequest {
 }
 
 /**
+ * Set tool permission policy mode for a session
+ */
+export interface SetToolPolicyRequest {
+  type: 'set_tool_policy';
+  sessionId: string;
+  mode: 'ask-all' | 'smart' | 'approve-all';
+  isWorktreeSession?: boolean;
+}
+
+/**
  * Check if session is ready
  */
 export interface IsSessionReadyRequest {
@@ -135,6 +145,15 @@ export interface IsSessionReadyRequest {
 export interface GetSDKSessionIdRequest {
   type: 'get_sdk_session_id';
   sessionId: string;
+}
+
+/**
+ * Generate a commit message from a diff
+ */
+export interface GenerateCommitMessageRequest {
+  type: 'generate_commit_message';
+  diff: string;
+  apiKey?: string;
 }
 
 /**
@@ -160,8 +179,10 @@ export type BridgeRequest =
   | GetPlanModeRequest
   | SetAcceptModeRequest
   | GetAcceptModeRequest
+  | SetToolPolicyRequest
   | IsSessionReadyRequest
   | GetSDKSessionIdRequest
+  | GenerateCommitMessageRequest
   | ShutdownRequest;
 
 // ============================================================================

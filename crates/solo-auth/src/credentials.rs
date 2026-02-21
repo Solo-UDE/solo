@@ -97,6 +97,8 @@ pub struct CredentialManager {
     openai_oauth_cache: tokio::sync::RwLock<Option<OpenAIOAuthCredentialInfo>>,
     /// In-memory cache of the vault (loaded from single keychain entry)
     vault: tokio::sync::RwLock<Option<HashMap<String, String>>>,
+    /// Cache for GitHub OAuth token (for git operations, separate from AI provider tokens)
+    github_oauth_cache: tokio::sync::RwLock<Option<OAuthToken>>,
 }
 
 impl CredentialManager {
@@ -107,6 +109,7 @@ impl CredentialManager {
             oauth_cache: tokio::sync::RwLock::new(HashMap::new()),
             openai_oauth_cache: tokio::sync::RwLock::new(None),
             vault: tokio::sync::RwLock::new(None),
+            github_oauth_cache: tokio::sync::RwLock::new(None),
         }
     }
 
@@ -122,6 +125,11 @@ impl CredentialManager {
     /// Get the vault key for a provider's OAuth token
     fn oauth_vault_key(provider: ProviderType) -> String {
         format!("{}.oauth", provider.as_str())
+    }
+
+    /// Vault key for GitHub OAuth token
+    fn github_oauth_vault_key() -> &'static str {
+        "github.oauth"
     }
 
     /// Load the vault from the single keychain entry (lazy, called once)
@@ -673,6 +681,7 @@ impl CredentialManager {
         self.oauth_cache.write().await.clear();
         *self.openai_oauth_cache.write().await = None;
         *self.vault.write().await = None;
+        *self.github_oauth_cache.write().await = None;
     }
 
     // =========================================================================
@@ -687,7 +696,6 @@ impl CredentialManager {
     ) -> ProviderResult<()> {
         let key = Self::oauth_vault_key(provider);
 
-        // Serialize token to JSON
         let token_json = serde_json::to_string(&token)
             .map_err(|e| ProviderError::AuthError(format!("Failed to serialize token: {}", e)))?;
 
@@ -791,7 +799,6 @@ impl CredentialManager {
     pub async fn set_openai_oauth_token(&self, token: OpenAIOAuthToken) -> ProviderResult<()> {
         let key = Self::oauth_vault_key(ProviderType::OpenAI);
 
-        // Serialize token to JSON
         let token_json = serde_json::to_string(&token)
             .map_err(|e| ProviderError::AuthError(format!("Failed to serialize OpenAI token: {}", e)))?;
 
@@ -903,6 +910,64 @@ impl CredentialManager {
         Ok(())
     }
 
+    // =========================================================================
+    // GitHub OAuth Token Management (for git operations)
+    // =========================================================================
+
+    /// Store a GitHub OAuth token in cache + vault
+    pub async fn set_github_oauth_token(&self, token: OAuthToken) -> ProviderResult<()> {
+        let token_json = serde_json::to_string(&token)
+            .map_err(|e| ProviderError::AuthError(format!("Failed to serialize GitHub token: {}", e)))?;
+
+        self.vault_set(Self::github_oauth_vault_key(), &token_json).await?;
+
+        *self.github_oauth_cache.write().await = Some(token);
+        tracing::info!("Stored GitHub OAuth token");
+        Ok(())
+    }
+
+    /// Get the GitHub OAuth token (cache -> vault)
+    pub async fn get_github_oauth_token(&self) -> ProviderResult<Option<OAuthToken>> {
+        // Check cache
+        if let Some(token) = self.github_oauth_cache.read().await.as_ref() {
+            return Ok(Some(token.clone()));
+        }
+
+        // Try vault
+        let token_json = match self.vault_get(Self::github_oauth_vault_key()).await? {
+            Some(s) if !s.is_empty() => s,
+            _ => return Ok(None),
+        };
+
+        match serde_json::from_str::<OAuthToken>(&token_json) {
+            Ok(token) => {
+                *self.github_oauth_cache.write().await = Some(token.clone());
+                Ok(Some(token))
+            }
+            Err(e) => {
+                tracing::warn!("Failed to parse GitHub OAuth token from vault: {}", e);
+                Ok(None)
+            }
+        }
+    }
+
+    /// Clear the GitHub OAuth token from cache + vault
+    pub async fn clear_github_oauth_token(&self) -> ProviderResult<()> {
+        self.vault_delete(Self::github_oauth_vault_key()).await?;
+
+        *self.github_oauth_cache.write().await = None;
+        tracing::info!("Cleared GitHub OAuth token");
+        Ok(())
+    }
+
+    /// Convenience: get just the access token string (or None)
+    pub async fn get_github_access_token(&self) -> ProviderResult<Option<String>> {
+        Ok(self
+            .get_github_oauth_token()
+            .await?
+            .map(|t| t.access_token))
+    }
+
     /// Get authentication method info for a provider
     pub async fn get_auth_method_info(&self, provider: ProviderType) -> ProviderResult<AuthMethodInfo> {
         // Check for OAuth token first
@@ -995,6 +1060,14 @@ mod tests {
         assert_eq!(
             CredentialManager::oauth_vault_key(ProviderType::OpenAI),
             "openai.oauth"
+        );
+    }
+
+    #[test]
+    fn test_github_oauth_vault_key() {
+        assert_eq!(
+            CredentialManager::github_oauth_vault_key(),
+            "github.oauth"
         );
     }
 

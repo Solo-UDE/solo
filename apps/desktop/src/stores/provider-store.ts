@@ -213,7 +213,7 @@ export const useProviderStore = create<ProviderStore>()((set, get) => ({
 			oauthPending: { ...state.oauthPending, [provider]: true },
 		}));
 		try {
-			await startOAuthFlowBackend(provider, method as 'browser' | 'paste_code');
+			await startOAuthFlowBackend(provider, method as 'browser' | 'paste-code');
 			await get().refreshProviderStatus(provider);
 			await get().refreshAuthMethod(provider);
 		} catch (error) {

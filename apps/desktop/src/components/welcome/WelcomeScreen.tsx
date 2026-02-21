@@ -1,10 +1,10 @@
 import { useState, useCallback, useEffect } from 'react';
 import { FolderOpen, GitBranch, Clock, FolderSimple, X } from '@phosphor-icons/react';
+import { Button, IconButton } from '@solo/ui';
 import SoloDecryptAnimation from '../agent/SoloDecryptAnimation';
 import { CloneDialog } from './CloneDialog';
 import { openFolderDialog } from '@/lib/tauri/fs';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
-import { cn } from '@/lib/utils';
 
 /** Extract the last segment of a path */
 const dirName = (p: string) => {
@@ -91,21 +91,25 @@ export function WelcomeScreen() {
             transition: 'opacity 280ms var(--ease-smooth), transform 280ms var(--ease-smooth)',
           }}
         >
-          <button
+          <Button
+            variant="primary"
+            size="sm"
             onClick={handleOpenProject}
-            className="h-9 px-4 rounded-[10px] bg-primary text-primary-foreground text-xs font-medium shadow-sm hover:brightness-110 active:scale-[0.97] transition-all duration-200 flex items-center gap-2 cursor-pointer"
+            className="text-xs shadow-sm"
           >
             <FolderOpen className="w-3.5 h-3.5" weight="duotone" />
             Open Project
             <kbd className="ml-1 text-[10px] opacity-60 font-normal">⌘O</kbd>
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={() => setCloneOpen(true)}
-            className="h-9 px-4 rounded-[10px] bg-muted/40 text-foreground/80 text-xs font-medium hover:bg-muted/60 hover:scale-[1.02] active:scale-[0.97] transition-all duration-200 flex items-center gap-2 cursor-pointer"
+            className="text-xs"
           >
             <GitBranch className="w-3.5 h-3.5 text-muted-foreground" />
             Clone from GitHub
-          </button>
+          </Button>
         </div>
 
         {/* Recent Projects — staggered fade-in */}
@@ -150,17 +154,15 @@ export function WelcomeScreen() {
                         {truncatePath(path)}
                       </div>
                     </div>
-                    <button
+                    <IconButton
+                      variant="ghost"
+                      size="sm"
                       onClick={(e) => handleRemoveRecent(e, path)}
-                      className={cn(
-                        'w-5 h-5 rounded flex items-center justify-center',
-                        'opacity-0 group-hover:opacity-100 hover:bg-destructive/10',
-                        'transition-opacity duration-150',
-                      )}
+                      className="w-5 h-5 opacity-0 group-hover:opacity-100 hover:bg-destructive/10 transition-opacity duration-150"
                       title="Remove from recents"
                     >
                       <X className="w-3 h-3 text-muted-foreground" />
-                    </button>
+                    </IconButton>
                   </div>
                 ))}
               </div>

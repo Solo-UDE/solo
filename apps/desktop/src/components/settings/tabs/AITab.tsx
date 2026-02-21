@@ -3,14 +3,18 @@
  * Shows both Anthropic and OpenAI providers as separate cards
  */
 
-import { useCallback, useState, useEffect, useMemo } from 'react';
-import { CheckCircle, WarningCircle, CircleNotch, Clock, Terminal, Sparkle, ArrowClockwise, XCircle, ShieldCheck } from '@phosphor-icons/react';
+import { useCallback, useState, useEffect, useMemo, useRef } from 'react';
+import { CheckCircle, WarningCircle, CircleNotch, Clock, Terminal, Sparkle, ArrowClockwise, XCircle, ShieldCheck, TreeStructure } from '@phosphor-icons/react';
+import { motion } from 'motion/react';
+import { ListSkeleton } from '../../ui/skeletons';
 import { useSettingsStore } from '../../../stores/settingsStore';
 import { useProviderStore, useOAuthPending } from '../../../stores/provider-store';
 import { useShallow } from 'zustand/react/shallow';
 import { SettingRow, SelectDropdown, ToggleSwitch, NumberInput, PasswordInput } from '../controls';
 import { ClaudeLoginModal } from '../ClaudeLoginModal';
 import { verifyClaudeSetup } from '../../../lib/backend';
+import { getSetupCommands, setSetupCommands } from '../../../lib/tauri/worktree';
+import { toast } from 'sonner';
 import type { ProviderType, AuthMethodInfo, ClaudeSetupStatus } from '../../../lib/backend';
 
 /**
@@ -34,7 +38,7 @@ function ConnectionStatusBadge({
 }) {
   if (!authInfo || authInfo.authType === 'none') {
     return (
-      <div className="flex items-center gap-1.5 text-xs text-amber-600">
+      <div className="flex items-center gap-1.5 text-xs text-warning">
         <WarningCircle className="w-3.5 h-3.5" />
         Not configured
       </div>
@@ -45,7 +49,7 @@ function ConnectionStatusBadge({
 
   return (
     <div className="flex items-center gap-2">
-      <div className="flex items-center gap-1.5 text-xs text-green-600">
+      <div className="flex items-center gap-1.5 text-xs text-success">
         <CheckCircle className="w-3.5 h-3.5" />
         Connected
       </div>
@@ -119,7 +123,7 @@ function ProviderCard({
 
   return (
     <div
-      className={`p-4 rounded-none border bg-card/50 space-y-4 transition-all duration-200 ${
+      className={`p-4 rounded-none border bg-card/50 space-y-4 transition-all duration-200 hover-lift ${
         isActive
           ? 'border-primary/50 ring-2 ring-primary/20'
           : 'border-border hover:border-border/80'
@@ -250,7 +254,7 @@ function ProviderCard({
         <div className="flex items-center justify-between mb-2">
           <div className="text-xs text-muted-foreground">API Key</div>
           {hasCredentials && authInfo?.authType === 'api-key' && (
-            <div className="flex items-center gap-1.5 text-xs text-green-600">
+            <div className="flex items-center gap-1.5 text-xs text-success">
               <CheckCircle className="w-3.5 h-3.5" />
               Saved
             </div>
@@ -285,13 +289,24 @@ function ClaudeSetupDiagnostic() {
   const [status, setStatus] = useState<ClaudeSetupStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [resultKey, setResultKey] = useState(0);
+  const isFirstRun = useRef(true);
 
   const runCheck = useCallback(async () => {
+    const isRecheck = !isFirstRun.current;
+    isFirstRun.current = false;
     setLoading(true);
     setError(null);
+    if (isRecheck) {
+      setStatus(null);
+    }
     try {
-      const result = await verifyClaudeSetup();
+      const [result] = await Promise.all([
+        verifyClaudeSetup(),
+        isRecheck ? new Promise<void>((r) => setTimeout(r, 750)) : Promise.resolve(),
+      ]);
       setStatus(result);
+      setResultKey((k) => k + 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -304,11 +319,16 @@ function ClaudeSetupDiagnostic() {
     runCheck();
   }, [runCheck]);
 
-  const StatusRow = ({ label, children }: { label: string; children: React.ReactNode }) => (
-    <div className="flex items-center justify-between py-1.5">
+  const StatusRow = ({ label, children, index = 0 }: { label: string; children: React.ReactNode; index?: number }) => (
+    <motion.div
+      className="flex items-center justify-between py-1.5"
+      initial={{ opacity: 0, x: -6 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ type: 'spring', stiffness: 500, damping: 30, delay: index * 0.09 }}
+    >
       <span className="text-xs text-muted-foreground">{label}</span>
       <span className="text-xs font-mono">{children}</span>
-    </div>
+    </motion.div>
   );
 
   const StatusIcon = ({ ok }: { ok: boolean | null | undefined }) => {
@@ -316,9 +336,9 @@ function ClaudeSetupDiagnostic() {
       return <span className="text-muted-foreground">—</span>;
     }
     return ok ? (
-      <CheckCircle className="w-3.5 h-3.5 text-green-600 inline" />
+      <CheckCircle className="w-3.5 h-3.5 text-success inline" />
     ) : (
-      <XCircle className="w-3.5 h-3.5 text-red-500 inline" />
+      <XCircle className="w-3.5 h-3.5 text-destructive inline" />
     );
   };
 
@@ -329,63 +349,71 @@ function ClaudeSetupDiagnostic() {
           <ShieldCheck className="w-4 h-4 text-muted-foreground" />
           <span className="text-sm font-medium text-foreground">Claude Code Setup</span>
         </div>
-        <button
+        <motion.button
           type="button"
           onClick={runCheck}
           disabled={loading}
+          whileTap={{ scale: [1, 0.92, 1.05, 1] }}
+          transition={{ duration: 0.3 }}
           className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
         >
           <ArrowClockwise className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
           {loading ? 'Checking...' : 'Recheck'}
-        </button>
+        </motion.button>
       </div>
 
       {error && (
-        <div className="text-xs text-red-500 bg-red-500/10 px-2 py-1 rounded-none">
+        <div className="text-xs text-destructive bg-destructive/10 px-2 py-1 rounded-none">
           {error}
         </div>
       )}
 
+      {!status && loading && (
+        <div className="flex items-center justify-center py-6">
+          <span className="text-xs text-muted-foreground/60 animate-pulse">Scanning environment...</span>
+        </div>
+      )}
+
       {status && (
-        <div className="divide-y divide-border/50">
-          <StatusRow label="CLI installed">
+        <div key={resultKey} className="divide-y divide-border/50">
+          <StatusRow label="CLI installed" index={0}>
             <span className="flex items-center gap-1.5">
               <StatusIcon ok={status.cliInstalled} />
               {status.cliPath ?? 'Not found'}
             </span>
           </StatusRow>
-          <StatusRow label="Credentials">
+          <StatusRow label="Credentials" index={1}>
             <span className="flex items-center gap-1.5">
               <StatusIcon ok={status.credentialsFound} />
               {status.credentialSource ?? 'None'}
             </span>
           </StatusRow>
           {status.requiresCliMode && (
-            <StatusRow label="Mode">
+            <StatusRow label="Mode" index={2}>
               <span className="flex items-center gap-1.5">
                 <StatusIcon ok={status.cliModeAvailable} />
                 {status.cliModeAvailable ? 'CLI Mode (Subscription)' : 'CLI required'}
               </span>
             </StatusRow>
           )}
-          <StatusRow label="Token expiry">
+          <StatusRow label="Token expiry" index={3}>
             <span className="flex items-center gap-1.5">
               <StatusIcon ok={status.credentialsFound ? !status.tokenExpired : null} />
               {status.tokenExpiresInSeconds != null
                 ? status.tokenExpiresInSeconds > 0
                   ? formatExpiryTime(status.tokenExpiresInSeconds)
                   : 'Expired'
-                : '—'}
+                : '---'}
             </span>
           </StatusRow>
           {status.scopes && (
-            <StatusRow label="Scopes">
+            <StatusRow label="Scopes" index={4}>
               <span className="text-[10px] text-muted-foreground">
                 {status.scopes.join(', ')}
               </span>
             </StatusRow>
           )}
-          <StatusRow label="Status">
+          <StatusRow label="Status" index={5}>
             <span className="flex items-center gap-1.5">
               <StatusIcon ok={status.apiVerified} />
               {status.apiVerified === true
@@ -396,15 +424,25 @@ function ClaudeSetupDiagnostic() {
             </span>
           </StatusRow>
           {status.error && (
-            <div className="pt-1.5 text-[10px] text-red-500/80 break-all">
+            <motion.div
+              className="pt-1.5 text-[10px] text-destructive/80 break-all"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.5 }}
+            >
               {status.error}
-            </div>
+            </motion.div>
           )}
           {status.requiresCliMode && !status.cliInstalled && (
-            <div className="pt-2 text-[10px] text-amber-600 bg-amber-500/10 px-2 py-1.5 rounded-none">
+            <motion.div
+              className="pt-2 text-[10px] text-warning bg-warning/10 px-2 py-1.5 rounded-none"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.5 }}
+            >
               Subscription tokens require the Claude CLI. Install with:<br />
               <code className="text-[10px]">npm i -g @anthropic-ai/claude-code</code>
-            </div>
+            </motion.div>
           )}
         </div>
       )}
@@ -473,13 +511,45 @@ export function AITab() {
   // Settings store (AI behavior)
   const streaming = useSettingsStore((s) => s.ai.streaming);
   const autoApproveTools = useSettingsStore((s) => s.ai.autoApproveTools);
+  const toolPermissionPolicy = useSettingsStore((s) => s.ai.toolPermissionPolicy);
   const maxTokens = useSettingsStore((s) => s.ai.maxTokens);
   const customApiUrl = useSettingsStore((s) => s.ai.customApiUrl);
 
   const setStreaming = useSettingsStore((s) => s.setStreaming);
   const setAutoApproveTools = useSettingsStore((s) => s.setAutoApproveTools);
+  const setToolPermissionPolicy = useSettingsStore((s) => s.setToolPermissionPolicy);
   const setMaxTokens = useSettingsStore((s) => s.setMaxTokens);
   const setCustomApiUrl = useSettingsStore((s) => s.setCustomApiUrl);
+
+  // Worktree setup commands state
+  const [setupCommandsText, setSetupCommandsText] = useState('');
+  const [isLoadingSetup, setIsLoadingSetup] = useState(false);
+  const [isSavingSetup, setIsSavingSetup] = useState(false);
+
+  useEffect(() => {
+    setIsLoadingSetup(true);
+    getSetupCommands()
+      .then((config) => {
+        setSetupCommandsText(config.commands.join('\n'));
+      })
+      .catch(() => {
+        // No commands configured yet
+      })
+      .finally(() => setIsLoadingSetup(false));
+  }, []);
+
+  const handleSaveSetupCommands = useCallback(async () => {
+    setIsSavingSetup(true);
+    try {
+      const commands = setupCommandsText.split('\n').filter((line) => line.trim());
+      await setSetupCommands({ commands });
+      toast.success('Setup commands saved');
+    } catch (err) {
+      toast.error('Failed to save setup commands', { description: String(err) });
+    } finally {
+      setIsSavingSetup(false);
+    }
+  }, [setupCommandsText]);
 
   // Initialize provider store on mount
   useEffect(() => {
@@ -559,8 +629,8 @@ export function AITab() {
 
   if (!isInitialized && isLoading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <CircleNotch weight="bold" className="w-6 h-6 animate-spin text-muted-foreground" />
+      <div className="py-4">
+        <ListSkeleton rows={5} />
       </div>
     );
   }
@@ -664,11 +734,55 @@ export function AITab() {
           </SettingRow>
 
           <SettingRow
-            label="Auto-approve Tools"
-            description="Let AI execute tools without confirmation"
+            label="Tool Permissions"
+            description="Control when tools need manual approval"
           >
-            <ToggleSwitch checked={autoApproveTools} onChange={setAutoApproveTools} />
+            <SelectDropdown
+              value={toolPermissionPolicy}
+              options={[
+                { label: 'Ask for all tools', value: 'ask-all' },
+                { label: 'Smart (tier-based)', value: 'smart' },
+                { label: 'Auto-approve all', value: 'approve-all' },
+              ]}
+              onChange={setToolPermissionPolicy}
+            />
           </SettingRow>
+
+          {toolPermissionPolicy !== 'approve-all' && (
+            <SettingRow
+              label="Auto-approve Tools"
+              description="Let AI execute tools without confirmation"
+            >
+              <ToggleSwitch checked={autoApproveTools} onChange={setAutoApproveTools} />
+            </SettingRow>
+          )}
+        </div>
+      </div>
+
+      {/* Worktree Setup Section */}
+      <div>
+        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4 flex items-center gap-2">
+          <TreeStructure className="w-3.5 h-3.5" />
+          Worktree Setup
+        </h3>
+        <div className="space-y-3">
+          <div className="text-xs text-muted-foreground">
+            Shell commands to run after creating a new worktree (one per line)
+          </div>
+          <textarea
+            value={setupCommandsText}
+            onChange={(e) => setSetupCommandsText(e.target.value)}
+            disabled={isLoadingSetup}
+            placeholder={'bun install\nbun run build'}
+            className="w-full h-24 px-3 py-2 bg-background border border-border rounded-none text-xs text-foreground font-mono placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/50 resize-y disabled:opacity-50"
+          />
+          <button
+            onClick={handleSaveSetupCommands}
+            disabled={isSavingSetup}
+            className="h-8 px-4 text-xs bg-primary text-primary-foreground rounded-none hover:bg-primary/90 disabled:opacity-50 transition-colors"
+          >
+            {isSavingSetup ? 'Saving...' : 'Save'}
+          </button>
         </div>
       </div>
 

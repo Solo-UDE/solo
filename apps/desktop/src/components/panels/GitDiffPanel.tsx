@@ -4,7 +4,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { DiffEditor, type BeforeMount } from '@monaco-editor/react';
-import { CircleNotch, WarningCircle } from '@phosphor-icons/react';
+import { WarningCircle } from '@phosphor-icons/react';
+import { CodeSkeleton } from '@/components/ui/skeletons';
 import { gitGetFileDiff } from '@/lib/tauri/git';
 import { registerSoloTheme, SOLO_THEME_NAME } from '@/components/editor/theme';
 import type { PanelProps } from '@/lib/panels/types';
@@ -95,8 +96,8 @@ export const GitDiffPanel = ({
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <CircleNotch className="w-5 h-5 text-muted-foreground animate-spin" />
+      <div className="h-full">
+        <CodeSkeleton lines={14} />
       </div>
     );
   }

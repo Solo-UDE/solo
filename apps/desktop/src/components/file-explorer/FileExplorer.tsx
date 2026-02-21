@@ -5,6 +5,7 @@
 import { useEffect } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { FolderOpen, X } from '@phosphor-icons/react';
+import { motion } from 'motion/react';
 import { FileTree } from './FileTree';
 import { useFileExplorerStore } from '../../stores/fileExplorerStore';
 import type { BackendEvent } from '../../bindings';
@@ -73,12 +74,20 @@ export function FileExplorer({ onFileOpen, className = '' }: FileExplorerProps) 
         {rootPath ? (
           <FileTree onFileOpen={onFileOpen} />
         ) : (
-          <div className="flex flex-col items-center justify-center h-full gap-4 p-4">
-            <FolderOpen className="w-12 h-12 text-muted-foreground/50" />
-            <p className="text-sm text-muted-foreground text-center">
-              Open a folder from the title bar
-            </p>
-          </div>
+          <motion.div
+            className="flex flex-col items-center justify-center h-full gap-3 p-4"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+          >
+            <div className="w-12 h-12 rounded-2xl bg-muted/50 flex items-center justify-center">
+              <FolderOpen className="w-6 h-6 text-muted-foreground/40" />
+            </div>
+            <div className="text-center space-y-1">
+              <p className="text-sm font-medium text-muted-foreground">No folder open</p>
+              <p className="text-xs text-muted-foreground/60">Open a folder from the title bar</p>
+            </div>
+          </motion.div>
         )}
       </div>
     </div>

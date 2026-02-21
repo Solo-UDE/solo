@@ -286,6 +286,13 @@ pub enum BridgeRequest {
         #[serde(rename = "sessionId")]
         session_id: String,
     },
+    SetToolPolicy {
+        #[serde(rename = "sessionId")]
+        session_id: String,
+        mode: String,
+        #[serde(rename = "isWorktreeSession", default)]
+        is_worktree_session: bool,
+    },
     IsSessionReady {
         #[serde(rename = "sessionId")]
         session_id: String,
@@ -293,6 +300,12 @@ pub enum BridgeRequest {
     GetSdkSessionId {
         #[serde(rename = "sessionId")]
         session_id: String,
+    },
+    GenerateCommitMessage {
+        diff: String,
+        /// Resolved API key from the credential manager
+        #[serde(rename = "apiKey", skip_serializing_if = "Option::is_none")]
+        api_key: Option<String>,
     },
     Shutdown,
 }

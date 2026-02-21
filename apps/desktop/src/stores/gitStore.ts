@@ -17,11 +17,24 @@ import {
   gitStageAll,
   gitUnstageAll,
   gitCreateBranch,
+  gitFetch,
+  gitListBranches,
+  gitCheckoutBranch,
+  gitDeleteBranch,
+  gitMerge,
+  gitStash,
+  gitStashPop,
+  gitStashList,
+  githubGetToken,
 } from '@/lib/tauri/git';
 import { useFileExplorerStore } from '@/stores/fileExplorerStore';
 import type { GitRepoStatus } from '@/bindings/GitRepoStatus';
 import type { GitChangedFile } from '@/bindings/GitChangedFile';
 import type { GitChangesSummary } from '@/bindings/GitChangesSummary';
+import type { BranchInfo } from '@/bindings/BranchInfo';
+import type { StashEntry } from '@/bindings/StashEntry';
+import type { GitMergeResult } from '@/bindings/GitMergeResult';
+import type { GitStashPopResult } from '@/bindings/GitStashPopResult';
 
 interface GitState {
   // Repository status
@@ -30,12 +43,21 @@ interface GitState {
   changesSummary: GitChangesSummary | null;
   commitsAhead: number | null;
 
+  // Branch & stash data
+  branches: BranchInfo[];
+  stashEntries: StashEntry[];
+
   // Operation flags
   isCommitting: boolean;
   isPushing: boolean;
   isPulling: boolean;
+  isFetching: boolean;
   isDiscarding: boolean;
   isCreatingBranch: boolean;
+  isCheckingOut: boolean;
+  isMerging: boolean;
+  isStashing: boolean;
+  isGeneratingMessage: boolean;
   isLoading: boolean;
 
   // User input
@@ -51,8 +73,9 @@ interface GitActions {
   fetchRepoStatus: () => Promise<void>;
   fetchChanges: () => Promise<void>;
   commit: (commitMessage: string) => Promise<void>;
-  push: (accessToken: string) => Promise<void>;
-  pull: (accessToken: string, forceReset?: boolean) => Promise<void>;
+  push: () => Promise<void>;
+  pull: (forceReset?: boolean) => Promise<void>;
+  fetch: () => Promise<void>;
   discardFile: (filePath: string) => Promise<void>;
   discardAll: () => Promise<void>;
   stageFile: (filePath: string) => Promise<void>;
@@ -60,6 +83,14 @@ interface GitActions {
   stageAllFiles: () => Promise<void>;
   unstageAllFiles: () => Promise<void>;
   createBranch: (name: string) => Promise<void>;
+  listBranches: () => Promise<void>;
+  checkoutBranch: (name: string) => Promise<void>;
+  deleteBranch: (name: string, force?: boolean) => Promise<void>;
+  merge: (sourceBranch: string) => Promise<GitMergeResult>;
+  stash: (message?: string) => Promise<void>;
+  stashPop: () => Promise<GitStashPopResult>;
+  stashList: () => Promise<void>;
+  generateCommitMessage: () => Promise<void>;
   setCommitMessage: (message: string) => void;
   setCurrentBranch: (branch: string) => void;
   setGithubRepoUrl: (url: string) => void;
@@ -77,11 +108,18 @@ export const useGitStore = create<GitState & GitActions>()(
     changedFiles: [],
     changesSummary: null,
     commitsAhead: null,
+    branches: [],
+    stashEntries: [],
     isCommitting: false,
     isPushing: false,
     isPulling: false,
+    isFetching: false,
     isDiscarding: false,
     isCreatingBranch: false,
+    isCheckingOut: false,
+    isMerging: false,
+    isStashing: false,
+    isGeneratingMessage: false,
     isLoading: false,
     commitMessage: '',
     currentBranch: 'main',
@@ -142,15 +180,17 @@ export const useGitStore = create<GitState & GitActions>()(
       }
     },
 
-    push: async (accessToken: string) => {
+    push: async () => {
       const { currentBranch, githubRepoUrl } = get();
       if (!githubRepoUrl) return;
+
+      const accessToken = await githubGetToken();
+      if (!accessToken) throw new Error('Not connected to GitHub. Please connect first.');
 
       set((state) => { state.isPushing = true; });
       try {
         await gitPush(accessToken, githubRepoUrl, currentBranch);
         set((state) => { state.isPushing = false; });
-        // Refresh after push
         await get().fetchChanges();
         await get().fetchRepoStatus();
       } catch (err) {
@@ -159,15 +199,17 @@ export const useGitStore = create<GitState & GitActions>()(
       }
     },
 
-    pull: async (accessToken: string, forceReset?: boolean) => {
+    pull: async (forceReset?: boolean) => {
       const { currentBranch, githubRepoUrl } = get();
       if (!githubRepoUrl) return;
+
+      const accessToken = await githubGetToken();
+      if (!accessToken) throw new Error('Not connected to GitHub. Please connect first.');
 
       set((state) => { state.isPulling = true; });
       try {
         await gitPull(accessToken, githubRepoUrl, currentBranch, forceReset ?? false);
         set((state) => { state.isPulling = false; });
-        // Refresh after pull
         await get().fetchChanges();
         await get().fetchRepoStatus();
       } catch (err) {
@@ -249,8 +291,126 @@ export const useGitStore = create<GitState & GitActions>()(
         set((state) => { state.isCreatingBranch = false; });
         await get().fetchRepoStatus();
         await get().fetchChanges();
+        await get().listBranches();
       } catch (err) {
         set((state) => { state.isCreatingBranch = false; });
+        throw err;
+      }
+    },
+
+    fetch: async () => {
+      const { currentBranch, githubRepoUrl } = get();
+      if (!githubRepoUrl) return;
+
+      const accessToken = await githubGetToken();
+      if (!accessToken) throw new Error('Not connected to GitHub. Please connect first.');
+
+      set((state) => { state.isFetching = true; });
+      try {
+        await gitFetch(accessToken, githubRepoUrl, currentBranch);
+        set((state) => { state.isFetching = false; });
+        await get().fetchRepoStatus();
+        await get().listBranches();
+      } catch (err) {
+        set((state) => { state.isFetching = false; });
+        throw err;
+      }
+    },
+
+    listBranches: async () => {
+      try {
+        const branches = await gitListBranches();
+        set((state) => { state.branches = branches; });
+      } catch (err) {
+        console.error('Failed to list branches:', err);
+      }
+    },
+
+    checkoutBranch: async (name: string) => {
+      set((state) => { state.isCheckingOut = true; });
+      try {
+        await gitCheckoutBranch(name);
+        set((state) => { state.isCheckingOut = false; });
+        await get().fetchRepoStatus();
+        await get().fetchChanges();
+        await get().listBranches();
+      } catch (err) {
+        set((state) => { state.isCheckingOut = false; });
+        throw err;
+      }
+    },
+
+    deleteBranch: async (name: string, force?: boolean) => {
+      try {
+        await gitDeleteBranch(name, force ?? false);
+        await get().listBranches();
+      } catch (err) {
+        throw err;
+      }
+    },
+
+    merge: async (sourceBranch: string) => {
+      set((state) => { state.isMerging = true; });
+      try {
+        const result = await gitMerge(sourceBranch);
+        set((state) => { state.isMerging = false; });
+        await get().fetchRepoStatus();
+        await get().fetchChanges();
+        await get().listBranches();
+        return result;
+      } catch (err) {
+        set((state) => { state.isMerging = false; });
+        throw err;
+      }
+    },
+
+    stash: async (message?: string) => {
+      set((state) => { state.isStashing = true; });
+      try {
+        await gitStash(message, true);
+        set((state) => { state.isStashing = false; });
+        await get().fetchChanges();
+        await get().stashList();
+      } catch (err) {
+        set((state) => { state.isStashing = false; });
+        throw err;
+      }
+    },
+
+    stashPop: async () => {
+      set((state) => { state.isStashing = true; });
+      try {
+        const result = await gitStashPop();
+        set((state) => { state.isStashing = false; });
+        await get().fetchChanges();
+        await get().stashList();
+        return result;
+      } catch (err) {
+        set((state) => { state.isStashing = false; });
+        throw err;
+      }
+    },
+
+    stashList: async () => {
+      try {
+        const entries = await gitStashList();
+        set((state) => { state.stashEntries = entries; });
+      } catch (err) {
+        console.error('Failed to list stashes:', err);
+      }
+    },
+
+    generateCommitMessage: async () => {
+      set((state) => { state.isGeneratingMessage = true; });
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        const message = await invoke<string>('agent_generate_commit_message');
+        set((state) => {
+          state.commitMessage = message;
+          state.isGeneratingMessage = false;
+        });
+      } catch (err) {
+        set((state) => { state.isGeneratingMessage = false; });
         throw err;
       }
     },
@@ -274,6 +434,8 @@ export const useGitStore = create<GitState & GitActions>()(
       // Fetch immediately
       get().fetchRepoStatus();
       get().fetchChanges();
+      get().listBranches();
+      get().stashList();
 
       const id = setInterval(() => {
         get().fetchRepoStatus();
@@ -300,11 +462,18 @@ export const useGitStore = create<GitState & GitActions>()(
         state.changedFiles = [];
         state.changesSummary = null;
         state.commitsAhead = null;
+        state.branches = [];
+        state.stashEntries = [];
         state.isCommitting = false;
         state.isPushing = false;
         state.isPulling = false;
+        state.isFetching = false;
         state.isDiscarding = false;
         state.isCreatingBranch = false;
+        state.isCheckingOut = false;
+        state.isMerging = false;
+        state.isStashing = false;
+        state.isGeneratingMessage = false;
         state.isLoading = false;
         state.commitMessage = '';
         state.currentBranch = 'main';

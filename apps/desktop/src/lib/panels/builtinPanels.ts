@@ -9,6 +9,7 @@ import { WelcomePanel } from '@/components/panels/WelcomePanel';
 import { AgentPanel } from '@/components/panels/AgentPanel';
 import { TerminalPanel } from '@/components/panels/TerminalPanel';
 import { GitDiffPanel } from '@/components/panels/GitDiffPanel';
+import { WorktreeDiffPanel } from '@/components/panels/WorktreeDiffPanel';
 
 /**
  * Register all built-in panel types
@@ -45,7 +46,10 @@ export function registerBuiltinPanels(): void {
     preferredRegion: 'editor',
   });
 
-  // Agent Panel (AI chat session)
+  // Agent Panel — no serialization: agent-bridge sessions can't survive app restarts
+  // because the backend sidecar starts fresh with no sessions. Session history (messages)
+  // is persisted independently to ~/.solo/sessions/ and accessible via session history UI.
+  // Serializing would create zombie tabs that throw "Session not found".
   panelRegistry.register({
     id: 'agent',
     displayName: 'Agent Session',
@@ -54,13 +58,10 @@ export function registerBuiltinPanels(): void {
     getDefaultTitle: (data) => {
       const sessionId = data.sessionId as string | undefined;
       if (!sessionId) return 'New Session';
-      // Will be updated dynamically by the panel
       return 'New Session';
     },
     allowMultiple: true,
     preferredRegion: 'editor',
-    serializeData: (data) => ({ sessionId: data.sessionId }),
-    deserializeData: (raw) => ({ sessionId: raw.sessionId as string | undefined }),
   });
 
   // Terminal Panel — no serialization: terminals can't survive app restarts
@@ -84,6 +85,20 @@ export function registerBuiltinPanels(): void {
       const filePath = data.filePath as string | undefined;
       if (!filePath) return 'Diff';
       return `Diff: ${filePath.split('/').pop() ?? 'Diff'}`;
+    },
+    allowMultiple: true,
+    preferredRegion: 'editor',
+  });
+
+  // Worktree Diff Panel — shows changes vs base branch, no serialization
+  panelRegistry.register({
+    id: 'worktree-diff',
+    displayName: 'Worktree Diff',
+    defaultIcon: 'git-diff',
+    component: WorktreeDiffPanel,
+    getDefaultTitle: (data) => {
+      const branch = data.branch as string | undefined;
+      return branch ? `Diff: ${branch}` : 'Worktree Diff';
     },
     allowMultiple: true,
     preferredRegion: 'editor',

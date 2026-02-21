@@ -6,6 +6,7 @@
  */
 
 import { MagnifyingGlass } from '@phosphor-icons/react';
+import { AnimatedList } from '@/components/ui/animated-list';
 
 import { ToolCard } from './ToolCard';
 
@@ -82,11 +83,13 @@ export const SearchToolCard: FC<SearchToolCardProps> = ({
 				{/* Results preview (first 8 files) */}
 				{resultCount > 0 ? (
 					<div className="max-h-[160px] overflow-y-auto rounded-lg bg-muted/20 p-2">
-						{results.slice(0, 8).map((result, i) => (
-							<div key={`r-${String(i)}`} className="text-xs font-mono text-foreground/80 py-0.5 px-1 truncate">
-								{result}
-							</div>
-						))}
+						<AnimatedList stagger={0.02} slideY={3}>
+							{results.slice(0, 8).map((result, i) => (
+								<div key={`r-${String(i)}`} className="text-xs font-mono text-foreground/80 py-0.5 px-1 truncate">
+									{result}
+								</div>
+							))}
+						</AnimatedList>
 						{resultCount > 8 ? (
 							<div className="text-xs text-muted-foreground pt-1 px-1">
 								...and {resultCount - 8} more
