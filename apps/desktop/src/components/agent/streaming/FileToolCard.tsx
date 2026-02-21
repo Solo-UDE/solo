@@ -19,6 +19,7 @@ export interface FileToolCardProps {
 	readonly status: ToolStatus;
 	/** Extra content like diff stats or code preview */
 	readonly children?: ReactNode;
+	readonly style?: React.CSSProperties;
 }
 
 const getFileIcon = (toolName: string): ReactNode => {
@@ -48,6 +49,7 @@ export const FileToolCard: FC<FileToolCardProps> = ({
 	output,
 	status,
 	children,
+	style,
 }) => {
 	const fileName = filePath.split('/').pop() ?? filePath;
 	const dirPath = filePath.includes('/') ? filePath.slice(0, filePath.lastIndexOf('/') + 1) : '';
@@ -62,6 +64,7 @@ export const FileToolCard: FC<FileToolCardProps> = ({
 			collapsible={!!output || !!children}
 			defaultExpanded={false}
 			output={output}
+			style={style}
 		>
 			<div className="flex items-center gap-1.5 text-xs">
 				{/* Directory path (muted) + filename (foreground) */}
