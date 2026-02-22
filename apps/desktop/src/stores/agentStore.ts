@@ -1043,6 +1043,37 @@ export const useAgentStore = create<AgentStore>()(
 			if (message.type === 'result' || message.type === 'error') {
 				get().persistSessions(sessionId);
 			}
+
+			// Auto-generate title after first assistant turn completes
+			if (message.type === 'result') {
+				const currentSession = get().sessions.get(sessionId);
+				if (currentSession && !currentSession.name && currentSession.turnCount === 1) {
+					const sessionMessages = get().messages.get(sessionId) || [];
+					const firstUserMsg = sessionMessages.find((m) => m.role === 'user');
+					const firstAssistantMsg = sessionMessages.find(
+						(m) => m.role === 'assistant' && !m.isStreaming,
+					);
+					if (firstUserMsg && firstAssistantMsg) {
+						import('@tauri-apps/api/core').then(({ invoke }) => {
+							invoke<string>('agent_generate_session_title', {
+								userMessage: firstUserMsg.content,
+								assistantMessage: firstAssistantMsg.content,
+							})
+								.then((title) => {
+									if (title) {
+										const sess = get().sessions.get(sessionId);
+										if (sess && !sess.name) {
+											get().renameSession(sessionId, title);
+										}
+									}
+								})
+								.catch((err) => {
+									console.warn('[Agent] Title generation failed:', err);
+								});
+						});
+					}
+				}
+			}
 		},
 
 		handlePermissionRequest: (request: PermissionRequest) => {
