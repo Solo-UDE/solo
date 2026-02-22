@@ -38,6 +38,14 @@ export interface RepoEntry {
   currentBranch: string;
   /** Whether worktrees have been loaded at least once */
   _worktreesLoaded: boolean;
+  /** Count of worktrees with uncommitted changes */
+  dirtyWorktreeCount: number;
+  /** Whether any worktree has an active agent session */
+  hasActiveAgent: boolean;
+  /** Cached commits ahead (persisted when switching away) */
+  cachedCommitsAhead: number;
+  /** Cached commits behind (persisted when switching away) */
+  cachedCommitsBehind: number;
 }
 
 interface RepoState {
@@ -54,6 +62,8 @@ interface RepoActions {
   toggleExpanded: (path: string) => Promise<void>;
   selectWorktree: (repoPath: string, worktreeId: string | null) => Promise<void>;
   refreshWorktrees: (repoPath: string) => Promise<void>;
+  /** Recompute health fields from worktrees array */
+  syncRepoHealth: (repoPath: string) => void;
   /** Restore active repo on startup */
   restoreActiveRepo: () => Promise<void>;
 }
@@ -81,6 +91,10 @@ export const useRepoStore = create<RepoStore>()(
             worktrees: [],
             currentBranch: '',
             _worktreesLoaded: false,
+            dirtyWorktreeCount: 0,
+            hasActiveAgent: false,
+            cachedCommitsAhead: 0,
+            cachedCommitsBehind: 0,
           });
         });
 
@@ -146,6 +160,9 @@ export const useRepoStore = create<RepoStore>()(
                 entry._worktreesLoaded = true;
               }
             });
+
+            // Recompute health from the fresh worktree list
+            get().syncRepoHealth(repoPath);
           } catch (err) {
             console.error(`Failed to refresh worktrees for ${repoPath}:`, err);
             // Restore workspace on error too
@@ -156,6 +173,15 @@ export const useRepoStore = create<RepoStore>()(
         });
       },
 
+      syncRepoHealth: (repoPath: string) => {
+        set((state) => {
+          const entry = state.repos.get(repoPath);
+          if (!entry) return;
+          entry.dirtyWorktreeCount = entry.worktrees.filter((wt) => wt.is_dirty).length;
+          entry.hasActiveAgent = entry.worktrees.some((wt) => wt.agent_session_id != null);
+        });
+      },
+
       selectWorktree: async (repoPath: string, worktreeId: string | null) => {
         // Increment switch sequence to detect stale switches
         set((state) => { state._switchSeq += 1; });
@@ -163,13 +189,27 @@ export const useRepoStore = create<RepoStore>()(
 
         const { useWorkspaceStore } = await import('./workspaceStore');
         const { useWorktreeStore } = await import('./worktreeStore');
-        const { useUIStore } = await import('./uiStore');
         const { useFileExplorerStore } = await import('./fileExplorerStore');
 
         // 1. If switching repos, do a full workspace switch
         const currentRepo = get().activeRepoPath;
 
         if (currentRepo !== repoPath) {
+          // Cache git stats for the repo we're leaving
+          if (currentRepo) {
+            try {
+              const { useGitStore } = await import('./gitStore');
+              const gitState = useGitStore.getState();
+              set((state) => {
+                const entry = state.repos.get(currentRepo);
+                if (entry) {
+                  entry.cachedCommitsAhead = gitState.commitsAhead ?? 0;
+                }
+              });
+            } catch {
+              // Non-critical - just skip caching
+            }
+          }
           await useWorkspaceStore.getState().switchWorkspace(repoPath);
         } else {
           // Same repo — ensure rootPath is set (may be null after app restart)
@@ -195,16 +235,16 @@ export const useRepoStore = create<RepoStore>()(
 
         if (get()._switchSeq !== seq) return;
 
-        // 3. Update our state
+        // 3. Update our state + expand the active repo
         set((state) => {
           state.activeRepoPath = repoPath;
           state.activeWorktreeId = worktreeId;
+          // Auto-expand the active repo in the accordion
+          const entry = state.repos.get(repoPath);
+          if (entry) entry.isExpanded = true;
         });
 
-        // 4. Transition sidebar to worktree detail view
-        useUIStore.getState().setSidebarView('worktree');
-
-        // 5. Refresh the worktree list for the repo we just activated
+        // 4. Refresh the worktree list for the repo we just activated
         await get().refreshWorktrees(repoPath);
       },
 
@@ -232,13 +272,15 @@ export const useRepoStore = create<RepoStore>()(
           path: entry.path,
           name: entry.name,
           isExpanded: entry.isExpanded,
+          cachedCommitsAhead: entry.cachedCommitsAhead,
+          cachedCommitsBehind: entry.cachedCommitsBehind,
         })),
         activeRepoPath: state.activeRepoPath,
         activeWorktreeId: state.activeWorktreeId,
       }),
       merge: (persisted, current) => {
         const p = persisted as {
-          repos?: { path: string; name: string; isExpanded: boolean }[];
+          repos?: { path: string; name: string; isExpanded: boolean; cachedCommitsAhead?: number; cachedCommitsBehind?: number }[];
           activeRepoPath?: string | null;
           activeWorktreeId?: string | null;
         };
@@ -252,6 +294,10 @@ export const useRepoStore = create<RepoStore>()(
               worktrees: [],
               currentBranch: '',
               _worktreesLoaded: false,
+              dirtyWorktreeCount: 0,
+              hasActiveAgent: false,
+              cachedCommitsAhead: r.cachedCommitsAhead ?? 0,
+              cachedCommitsBehind: r.cachedCommitsBehind ?? 0,
             });
           }
         }
