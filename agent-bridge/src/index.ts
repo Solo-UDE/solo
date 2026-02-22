@@ -9,6 +9,7 @@ import * as readline from 'readline';
 import { createLogger, configureFileLogging, setDebugCallback, shutdownFileLogging } from './logger.js';
 import { SessionManager } from './session-manager.js';
 import { generateCommitMessage } from './commit-message.js';
+import { generateSessionTitle } from './session-title.js';
 
 import type { BridgeEvent, BridgeRequest, BridgeResponse, CommandResponse } from './protocol.js';
 import type { LogEntry } from './logger.js';
@@ -274,6 +275,12 @@ async function handleRequest(
     case 'generate_commit_message': {
       const message = await generateCommitMessage(request.diff, request.apiKey);
       sendResponse({ type: 'string', requestType: request.type, value: message });
+      break;
+    }
+
+    case 'generate_session_title': {
+      const title = await generateSessionTitle(request.userMessage, request.assistantMessage, request.apiKey);
+      sendResponse({ type: 'string', requestType: request.type, value: title });
       break;
     }
 

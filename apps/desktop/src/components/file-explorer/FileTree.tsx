@@ -16,6 +16,8 @@ import {
   getFileName,
 } from '../../stores/fileExplorerStore';
 import { useSettingsStore } from '../../stores/settingsStore';
+import { usePanelTabsStore } from '../../stores/panelTabsStore';
+import { DEFAULT_TILES, BUILTIN_PANEL_TYPES } from '../../lib/panels/constants';
 import { revealInFinder } from '../../lib/tauri/fs';
 import { createTerminal } from '../../lib/tauri/terminal';
 import { useTerminalStore } from '../../stores/terminalStore';
@@ -40,6 +42,15 @@ export function FileTree({ onFileOpen }: FileTreeProps) {
 
   const selected = useFileExplorerStore((s) => s.selected);
   const expanded = useFileExplorerStore((s) => s.expanded);
+
+  // Derive the active file path from the editor's active tab
+  const activeFilePath = usePanelTabsStore((state) => {
+    const tileState = state.tileTabs.get(DEFAULT_TILES.editor);
+    if (!tileState?.activeTabId) return null;
+    const instance = state.instances.get(tileState.activeTabId);
+    if (!instance || instance.panelType !== BUILTIN_PANEL_TYPES.FILE_VIEWER) return null;
+    return (instance.data.filePath as string) ?? null;
+  });
   const loading = useFileExplorerStore((s) => s.loading);
   const renamingPath = useFileExplorerStore((s) => s.renamingPath);
 
@@ -340,7 +351,7 @@ export function FileTree({ onFileOpen }: FileTreeProps) {
               entry={item.entry}
               depth={item.depth}
               isExpanded={expanded.has(item.entry.path)}
-              isSelected={selected.has(item.entry.path)}
+              isActive={activeFilePath === item.entry.path}
               isLoading={loading.has(item.entry.path)}
               isRenaming={renamingPath === item.entry.path}
               style={rowStyle}

@@ -34,7 +34,7 @@ interface FileTreeNodeProps {
   entry: FileTreeEntry;
   depth: number;
   isExpanded: boolean;
-  isSelected: boolean;
+  isActive: boolean;
   isLoading: boolean;
   isRenaming: boolean;
   style: React.CSSProperties;
@@ -109,7 +109,7 @@ export const FileTreeNode = memo(function FileTreeNode({
   entry,
   depth,
   isExpanded,
-  isSelected,
+  isActive,
   isLoading,
   isRenaming,
   style,
@@ -220,7 +220,7 @@ export const FileTreeNode = memo(function FileTreeNode({
         group flex items-center h-7 px-2 cursor-pointer select-none
         hover:bg-muted/50 active:bg-muted/70
         transition-colors duration-100
-        ${isSelected ? 'bg-primary/20 hover:bg-primary/30' : ''}
+        ${isActive ? 'bg-primary/20 hover:bg-primary/30' : ''}
       `}
       onClick={onClick}
       onDoubleClick={onDoubleClick}

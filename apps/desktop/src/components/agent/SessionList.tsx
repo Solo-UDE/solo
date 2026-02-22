@@ -226,8 +226,8 @@ const SessionItem: FC<{
             />
           ) : (
             <>
-              <span className="text-sm truncate block">{title}</span>
-              <span className="text-xs text-muted-foreground/60 truncate block">
+              <span className="text-[12.5px] truncate block">{title}</span>
+              <span className="text-[11px] text-muted-foreground/60 truncate block">
                 {formatSessionDate(session.createdAt)}
               </span>
             </>

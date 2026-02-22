@@ -120,7 +120,7 @@ export function TabBar({
     <div
       ref={dropRef}
       className={cn(
-        'flex items-center bg-muted/30 border-b border-border/30',
+        'flex items-center bg-background/20 backdrop-blur-md border-b border-white/[0.04]',
         'h-[35px] min-h-[35px] transition-colors duration-150',
         isOver && 'bg-primary/10'
       )}

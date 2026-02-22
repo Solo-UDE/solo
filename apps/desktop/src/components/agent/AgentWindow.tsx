@@ -55,6 +55,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 
 	// Track mode states for bridge sync
 	const [thinkingEnabled, setThinkingEnabled] = useState(false);
+	const [acceptEnabled, setAcceptEnabled] = useState(false);
 
 	const {
 		sessionId,
@@ -66,6 +67,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 		setModel,
 		setPlanMode,
 		setThinkingMode,
+		setAcceptMode,
 		clearError,
 	} = useAgentSession({
 		sessionId: initialSessionId ?? null,
@@ -160,6 +162,14 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 		[setThinkingMode]
 	);
 
+	// Handle accept mode toggle -- sync to bridge
+	const handleAcceptChange = useCallback(
+		(enabled: boolean) => {
+			setAcceptEnabled(enabled);
+			setAcceptMode(enabled);
+		},
+		[setAcceptMode]
+	);
 
 	const handleNewSession = useCallback(() => {
 		createSession(selectedModel || undefined).then((newSessionId) => {
@@ -203,6 +213,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 			<div
 				className={`relative flex flex-col h-full bg-background ${className}`}
 				data-instance-id={instanceId}
+				style={{ fontFamily: 'var(--font-chat)' }}
 			>
 				<div className="flex-1 flex items-center justify-center px-6">
 					<SoloEmptyState onPromptClick={handleSuggestedPrompt} />
@@ -229,6 +240,8 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 					onModeChange={handleModeChange}
 					thinkingEnabled={thinkingEnabled}
 					onThinkingChange={handleThinkingChange}
+					acceptEnabled={acceptEnabled}
+					onAcceptChange={handleAcceptChange}
 				/>
 			</div>
 		);
@@ -238,6 +251,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 		<div
 			className={`relative flex flex-col h-full bg-background ${className}`}
 			data-instance-id={instanceId}
+			style={{ fontFamily: 'var(--font-chat)' }}
 		>
 			<DropdownMenu>
 				<DropdownMenuTrigger asChild>
@@ -318,6 +332,8 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 				onModeChange={handleModeChange}
 				thinkingEnabled={thinkingEnabled}
 				onThinkingChange={handleThinkingChange}
+				acceptEnabled={acceptEnabled}
+				onAcceptChange={handleAcceptChange}
 			/>
 		</div>
 	);

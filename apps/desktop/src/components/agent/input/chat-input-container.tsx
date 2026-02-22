@@ -155,7 +155,7 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
           <AttachmentBar />
 
           {/* Bottom Controls */}
-          <div className="flex items-center justify-between px-3 pb-3 pt-1">
+          <div className="flex items-center justify-between px-3 pb-3 pt-1" style={{ fontFamily: 'var(--font-sans)' }}>
             <div className="flex items-center gap-1.5">
               <ContextMenu disabled={isAgentRunning} />
               <ModeSelector value={mode} onChange={handleModeChange} disabled={isAgentRunning} />
