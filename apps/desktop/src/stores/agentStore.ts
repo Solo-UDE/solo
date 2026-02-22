@@ -139,6 +139,8 @@ export interface AgentSession {
 export interface SessionStreamState {
 	streamingMessageId: string | null;
 	streamingContent: string;
+	/** Per-segment text accumulator — resets after each tool_use block so text between tools gets separate blocks */
+	streamingSegmentContent: string;
 	streamingThinking: string;
 	thinkingStartTime: number | null;
 	activeToolCalls: Map<string, ToolCallState>;
@@ -208,6 +210,7 @@ function createDefaultStreamState(): SessionStreamState {
 	return {
 		streamingMessageId: null,
 		streamingContent: '',
+		streamingSegmentContent: '',
 		streamingThinking: '',
 		thinkingStartTime: null,
 		activeToolCalls: new Map(),
@@ -252,6 +255,9 @@ interface AgentState {
 	// UI state
 	isAgentRunning: boolean;
 	error: string | null;
+
+	// Plan mode per session (sessionId -> boolean)
+	planModeActive: Map<string, boolean>;
 }
 
 interface AgentActions {
@@ -281,8 +287,9 @@ interface AgentActions {
 	handlePermissionRequest: (request: PermissionRequest) => void;
 	handleSessionInit: (sessionId: string, sdkSessionId: string, isResumed: boolean, isForked: boolean) => void;
 	handleTurnStart: (sessionId: string, turnNumber: number) => void;
+	handlePlanModeChanged: (sessionId: string, enabled: boolean) => void;
 	handleError: (message: string, stack?: string) => void;
-	respondPermission: (requestId: string, decision: 'approve' | 'deny', always?: boolean) => Promise<void>;
+	respondPermission: (requestId: string, decision: 'approve' | 'deny', always?: boolean, answers?: Record<string, string>) => Promise<void>;
 
 	// Abort / tool approval (compatibility with master's API surface)
 	abortSession: (sessionId: string) => Promise<void>;
@@ -319,6 +326,7 @@ const initialState: AgentState = {
 	selectedModel: DEFAULT_MODEL_ID,
 	isAgentRunning: false,
 	error: null,
+	planModeActive: new Map(),
 };
 
 // Create per-session debounced save function (saves 1 second after last change)
@@ -599,10 +607,13 @@ export const useAgentStore = create<AgentStore>()(
 					});
 				}
 
-				// Apply tool permission policy from settings
+				// Apply tool permission policy from settings (fire-and-forget)
 				import('@/stores/settingsStore').then(({ useSettingsStore }) => {
-					const policy = useSettingsStore.getState().ai.toolPermissionPolicy;
-					backend.agentSetToolPolicy(sessionId, policy, !!activeWt).catch(console.error);
+					const policy = useSettingsStore.getState().ai.toolPermissionPolicy ?? 'smart';
+					const isWorktree = !!activeWt;
+					backend.agentSetToolPolicy(sessionId, policy, isWorktree).catch((e) =>
+						console.warn('[Agent] set_tool_policy:', e)
+					);
 				});
 
 				get().persistSessions(sessionId);
@@ -724,6 +735,7 @@ export const useAgentStore = create<AgentStore>()(
 					// Reset streaming state
 					streamState.streamingMessageId = null;
 					streamState.streamingContent = '';
+					streamState.streamingSegmentContent = '';
 					streamState.streamingThinking = '';
 					streamState.thinkingStartTime = null;
 					streamState.activeToolCalls = new Map();
@@ -811,6 +823,7 @@ export const useAgentStore = create<AgentStore>()(
 				const streamState = getOrCreateStreamState(state.sessionStreaming, sessionId);
 				streamState.streamingMessageId = assistantMessageId;
 				streamState.streamingContent = '';
+				streamState.streamingSegmentContent = '';
 				streamState.streamingThinking = '';
 				streamState.isStreaming = true;
 				streamState.error = null;
@@ -891,8 +904,9 @@ export const useAgentStore = create<AgentStore>()(
 
 				switch (message.type) {
 					case 'text': {
-						// Append text delta to streaming content
-						streamState.streamingContent += message.content;
+						// Append text delta to both accumulators
+						streamState.streamingContent += message.content;        // total (for msg.content)
+						streamState.streamingSegmentContent += message.content;  // per-block segment
 
 						if (messages && streamState.streamingMessageId) {
 							const msg = messages.find((m) => m.id === streamState.streamingMessageId);
@@ -900,11 +914,13 @@ export const useAgentStore = create<AgentStore>()(
 								msg.content = streamState.streamingContent;
 
 								// Ordered blocks: append to last text block or create new one
+								// Uses streamingSegmentContent so each text segment between tools
+								// gets its own block with proper markdown boundaries
 								const lastBlock = msg.blocks[msg.blocks.length - 1];
 								if (lastBlock && lastBlock.type === 'text') {
-									lastBlock.text = streamState.streamingContent;
+									lastBlock.text = streamState.streamingSegmentContent;
 								} else {
-									msg.blocks.push({ type: 'text', text: streamState.streamingContent });
+									msg.blocks.push({ type: 'text', text: streamState.streamingSegmentContent });
 								}
 							}
 						}
@@ -945,6 +961,7 @@ export const useAgentStore = create<AgentStore>()(
 
 						const toolId = meta.toolId;
 						const toolStatus = meta.status || 'running';
+						console.log('[DIAG] tool_use event', meta.toolName, toolId, 'status:', toolStatus);
 
 						if (messages && streamState.streamingMessageId) {
 							const msg = messages.find((m) => m.id === streamState.streamingMessageId);
@@ -954,8 +971,13 @@ export const useAgentStore = create<AgentStore>()(
 								// Try to find existing entry by toolId first
 								let tc = msg.toolCalls.find((t) => t.id === toolId);
 
-								if (!tc && toolStatus === 'running') {
-									// Check for a permission-created entry with same name
+								if (!tc) {
+									// Check for a permission-created entry with same name.
+									// Permission-created tools use requestId as their id, which differs
+									// from the SDK's toolId. This fallback links them together.
+									// Must run for ALL statuses (not just 'running') so completion
+									// events can also match — e.g. AskUserQuestion may skip the
+									// intermediate 'running' event from the SDK.
 									tc = [...msg.toolCalls].reverse().find(
 										(t) => t.name === meta.toolName &&
 											(t.status === 'awaiting-permission' || t.status === 'running')
@@ -978,18 +1000,22 @@ export const useAgentStore = create<AgentStore>()(
 										block.toolCall.status = tc.status;
 										if (meta.toolOutput) block.toolCall.output = meta.toolOutput;
 									}
-								} else if (toolStatus === 'running') {
-									// Brand new tool (no permission required)
+								} else if (toolStatus === 'awaiting-permission' || toolStatus === 'running') {
+									// New tool entry — awaiting-permission from bridge (then quick
+									// success for auto-approved, or permission_request for prompted)
 									const newTc: ToolCallState = {
 										id: toolId,
 										name: meta.toolName || 'unknown',
 										input: meta.toolInput,
-										status: 'running',
+										status: toolStatus as ToolCallState['status'],
 									};
 									msg.toolCalls.push(newTc);
 
 									// Push ordered block — this creates the interleaving
 									msg.blocks.push({ type: 'tool_use', toolCall: newTc });
+
+									// Reset segment content so the next text delta starts a fresh block
+									streamState.streamingSegmentContent = '';
 								}
 							}
 						}
@@ -1062,6 +1088,7 @@ export const useAgentStore = create<AgentStore>()(
 						}
 						streamState.streamingMessageId = null;
 						streamState.streamingContent = '';
+						streamState.streamingSegmentContent = '';
 						streamState.streamingThinking = '';
 						streamState.thinkingStartTime = null;
 						streamState.activeToolCalls = new Map();
@@ -1085,6 +1112,7 @@ export const useAgentStore = create<AgentStore>()(
 
 						streamState.streamingMessageId = null;
 						streamState.streamingContent = '';
+						streamState.streamingSegmentContent = '';
 						streamState.streamingThinking = '';
 						streamState.thinkingStartTime = null;
 						streamState.activeToolCalls = new Map();
@@ -1131,6 +1159,7 @@ export const useAgentStore = create<AgentStore>()(
 		},
 
 		handlePermissionRequest: (request: PermissionRequest) => {
+			console.log('[DIAG] handlePermissionRequest called', request.toolName, request.requestId, request.sessionId);
 			set((state) => {
 				state.pendingPermissions.set(request.requestId, request);
 
@@ -1142,25 +1171,51 @@ export const useAgentStore = create<AgentStore>()(
 						const msg = messages.find((m) => m.id === streamState.streamingMessageId);
 						if (msg) {
 							if (!msg.toolCalls) msg.toolCalls = [];
-							const newTc: ToolCallState = {
-								id: request.requestId,
-								name: request.toolName,
-								input: request.toolInput,
-								status: 'awaiting-permission',
-								requestId: request.requestId,
-							};
-							msg.toolCalls.push(newTc);
 
-							// Push ordered block for interleaving
-							msg.blocks.push({ type: 'tool_use', toolCall: newTc });
+							// Look for an existing entry created by tool_use event
+							// that hasn't been linked to a permission request yet
+							const existing = [...msg.toolCalls].reverse().find(
+								(t) => t.name === request.toolName &&
+									t.status === 'awaiting-permission' &&
+									!t.requestId
+							);
+
+							if (existing) {
+								// Link permission request to the existing tool_use entry
+								existing.requestId = request.requestId;
+								// Update the matching block too
+								const block = msg.blocks.find(
+									(b) => b.type === 'tool_use' && b.toolCall.id === existing.id
+								);
+								if (block && block.type === 'tool_use') {
+									block.toolCall.requestId = request.requestId;
+								}
+							} else {
+								// Fallback: create new entry (if permission_request arrives before tool_use)
+								const newTc: ToolCallState = {
+									id: request.requestId,
+									name: request.toolName,
+									input: request.toolInput,
+									status: 'awaiting-permission',
+									requestId: request.requestId,
+								};
+								msg.toolCalls.push(newTc);
+								msg.blocks.push({ type: 'tool_use', toolCall: newTc });
+							}
+							console.log('[DIAG] Permission entry created/linked, blocks:', msg.blocks.length, 'toolCalls:', msg.toolCalls?.length);
 						}
 					}
+
+					// Reset segment content so the next text delta starts a fresh block
+					streamState.streamingSegmentContent = '';
 				}
 			});
 		},
 
 		handleSessionInit: (sessionId: string, sdkSessionId: string, _isResumed: boolean, _isForked: boolean) => {
-			// Snapshot session + messages inside Immer for immediate persistence
+			// Snapshot session + messages inside Immer for immediate persistence.
+			// Must deep-clone to fully escape Immer proxies — after set() returns,
+			// all proxies are revoked and any retained references throw.
 			let sessionSnapshot: AgentSession | undefined;
 			let messagesSnapshot: Message[] = [];
 
@@ -1169,15 +1224,28 @@ export const useAgentStore = create<AgentStore>()(
 				if (session) {
 					session.sdkSessionId = sdkSessionId;
 					session.resumable = true;
-					// Snapshot current state for persistence outside Immer
-					sessionSnapshot = { ...session, createdAt: new Date(session.createdAt) };
-					messagesSnapshot = [...(state.messages.get(sessionId) || [])];
+					// JSON round-trip avoids DataCloneError that structuredClone throws
+					// on Immer proxy objects (Maps, Sets, Proxy wrappers from enableMapSet).
+					const rawSession = JSON.parse(JSON.stringify(session)) as AgentSession;
+					rawSession.createdAt = new Date(rawSession.createdAt);
+					sessionSnapshot = rawSession;
+					const rawMessages = JSON.parse(JSON.stringify(
+						state.messages.get(sessionId) || []
+					)) as Message[];
+					for (const m of rawMessages) {
+						m.timestamp = new Date(m.timestamp);
+					}
+					messagesSnapshot = rawMessages;
 				}
 			});
 
 			// Persist immediately (no debounce) — sdkSessionId is critical for resume
 			if (sessionSnapshot) {
-				saveSession(sessionSnapshot, messagesSnapshot);
+				try {
+					saveSession(sessionSnapshot, messagesSnapshot);
+				} catch (e) {
+					console.error('[handleSessionInit] Failed to persist session:', e);
+				}
 			}
 		},
 
@@ -1190,6 +1258,12 @@ export const useAgentStore = create<AgentStore>()(
 			});
 		},
 
+		handlePlanModeChanged: (sessionId: string, enabled: boolean) => {
+			set((state) => {
+				state.planModeActive.set(sessionId, enabled);
+			});
+		},
+
 		handleError: (message: string, _stack?: string) => {
 			console.error('[Agent bridge error]', message);
 			set((state) => {
@@ -1197,9 +1271,9 @@ export const useAgentStore = create<AgentStore>()(
 			});
 		},
 
-		respondPermission: async (requestId: string, decision: 'approve' | 'deny', always: boolean = false) => {
+		respondPermission: async (requestId: string, decision: 'approve' | 'deny', always: boolean = false, answers?: Record<string, string>) => {
 			try {
-				await backend.agentRespondPermission(requestId, decision, always);
+				await backend.agentRespondPermission(requestId, decision, always, answers);
 			} catch (error) {
 				console.error('Failed to respond to permission:', error);
 			}
@@ -1222,7 +1296,13 @@ export const useAgentStore = create<AgentStore>()(
 					state.pendingPermissions.delete(requestId);
 				}
 
-				const newStatus = decision === 'approve' ? 'running' as const : 'error' as const;
+				// AskUserQuestion is fully resolved once the user submits answers —
+				// the user's response IS the tool output, so mark as success immediately
+				// rather than waiting for a backend round-trip.
+				const isAskQuestion = request?.toolName?.toLowerCase() === 'askuserquestion';
+				const newStatus = decision === 'deny'
+					? 'error' as const
+					: (isAskQuestion ? 'success' as const : 'running' as const);
 				const denyOutput = decision === 'deny' ? 'Denied by user' : undefined;
 
 				// Update tool call status in the relevant message
@@ -1265,6 +1345,7 @@ export const useAgentStore = create<AgentStore>()(
 						if (decision === 'deny') {
 							streamState.streamingMessageId = null;
 							streamState.streamingContent = '';
+							streamState.streamingSegmentContent = '';
 							streamState.streamingThinking = '';
 							streamState.thinkingStartTime = null;
 							streamState.activeToolCalls = new Map();
@@ -1425,4 +1506,11 @@ export const usePendingToolApprovals = (): PermissionRequest[] => {
 
 export const useSelectedModel = (): string => {
 	return useAgentStore((state) => state.selectedModel);
+};
+
+export const usePlanModeActive = (sessionId: string | null): boolean => {
+	return useAgentStore((state) => {
+		if (!sessionId) return false;
+		return state.planModeActive.get(sessionId) ?? false;
+	});
 };

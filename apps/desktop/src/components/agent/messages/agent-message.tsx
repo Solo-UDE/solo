@@ -9,8 +9,10 @@ import { TodoToolWidget } from './tools';
 import { renderToolCard } from '../streaming/tool-registry';
 import { StreamingSkeleton } from '../streaming/StreamingSkeleton';
 import { ToolApprovalCard } from '../streaming/ToolApprovalCard';
+import { AskUserQuestionCard } from '../streaming/AskUserQuestionCard';
 import { ProgressTracker } from '../streaming/ProgressTracker';
-import { deriveProgressPhases } from '@/lib/deriveProgressPhases';
+import { ProgressTrackerItem } from '../streaming/ProgressTrackerItem';
+import { deriveProgressPhases, buildInterleavedTimeline } from '@/lib/deriveProgressPhases';
 import type { RenderBlock } from '../messageAdapter';
 
 import type { CSSProperties, FC, ReactNode } from 'react';
@@ -54,6 +56,7 @@ export interface AgentMessageProps {
   timestamp: Date;
   agentName?: string;
   onToolApproval?: (toolCallId: string, approved: boolean) => void;
+  onAnswerQuestion?: (requestId: string, answers: Record<string, string>) => void;
   messageId?: string;
   className?: string;
 }
@@ -67,10 +70,42 @@ const renderToolWidget = (
   output?: string,
   style?: CSSProperties,
 ): ReactNode => {
-  // TodoWrite has unique props — handle separately
-  if (toolName.toLowerCase() === 'todowrite') {
+  const name = toolName.toLowerCase();
+
+  // TodoWrite and TaskCreate/TaskUpdate use the todo widget
+  if (name === 'todowrite' || name === 'taskcreate') {
+    // TodoWrite passes an array of todos; TaskCreate passes a single task
     const todosInput = toolInput['todos'];
-    return <TodoToolWidget key={key} todos={Array.isArray(todosInput) ? todosInput : undefined} isRunning={status === 'running'} />;
+    const todos = Array.isArray(todosInput)
+      ? todosInput
+      : [{ content: (toolInput['subject'] as string) || (toolInput['description'] as string), status: status === 'success' ? 'completed' : 'pending' }];
+    return <TodoToolWidget key={key} todos={todos} isRunning={status === 'running'} />;
+  }
+
+  if (name === 'taskupdate') {
+    const taskId = toolInput['taskId'] as string || '';
+    const newStatus = toolInput['status'] as string || '';
+    const subject = toolInput['subject'] as string || '';
+    const label = subject || `Task ${taskId}`;
+    return <TodoToolWidget key={key} todos={[{ content: label, status: newStatus || (status === 'success' ? 'completed' : 'pending') }]} isRunning={status === 'running'} />;
+  }
+
+  if (name === 'tasklist' || name === 'taskget') {
+    // Show output as a list if available, otherwise just the generic card
+    if (output) {
+      try {
+        const parsed = JSON.parse(output);
+        if (Array.isArray(parsed)) {
+          const todos = parsed.map((t: Record<string, unknown>) => ({
+            content: (t['subject'] as string) || (t['description'] as string) || JSON.stringify(t),
+            status: (t['status'] as string) || 'pending',
+            id: t['id'] as string,
+          }));
+          return <TodoToolWidget key={key} todos={todos} isRunning={false} />;
+        }
+      } catch { /* fall through to generic card */ }
+    }
+    return renderToolCard(key, toolName, toolInput, status, output);
   }
 
   // Use the registry for all other tools
@@ -82,7 +117,8 @@ export const AgentMessage: FC<AgentMessageProps> = ({
   timestamp,
   agentName: _agentName = 'Agent',
   onToolApproval,
-  messageId: _messageId,
+  onAnswerQuestion,
+  messageId,
   className = '',
 }) => {
   const formatTime = (date: Date): string => {
@@ -96,7 +132,11 @@ export const AgentMessage: FC<AgentMessageProps> = ({
   // Use ordered blocks if available, otherwise fall back to legacy rendering
   const hasBlocks = content.blocks && content.blocks.length > 0;
 
-  const progressPhases = content.isStreaming
+  // Build interleaved timeline for block-based messages, legacy phases for fallback
+  const timeline = hasBlocks
+    ? buildInterleavedTimeline(content.blocks ?? [], !!content.isStreaming)
+    : [];
+  const legacyProgressPhases = !hasBlocks && content.isStreaming
     ? deriveProgressPhases(content.blocks ?? [], true)
     : [];
 
@@ -111,30 +151,42 @@ export const AgentMessage: FC<AgentMessageProps> = ({
           {content.autoProceed ? <ProceedIndicator /> : null}
         </div>
 
-        {/* === Ordered Blocks Rendering === */}
+        {/* === Ordered Blocks Rendering (interleaved timeline) === */}
         {hasBlocks ? (
           <div className="space-y-3">
-            {/* Progress tracker — shows semantic phases derived from blocks */}
-            {progressPhases.length > 0 ? <ProgressTracker phases={progressPhases} /> : null}
-            {content.blocks!.map((block, i) => {
+            {timeline.map((entry) => {
+              if (entry.kind === 'progress') {
+                return (
+                  <ProgressTrackerItem
+                    key={entry.phase.id}
+                    label={entry.phase.label}
+                    status={entry.phase.status}
+                    isFirst={true}
+                    preview={entry.phase.preview}
+                  />
+                );
+              }
+              // entry.kind === 'content'
+              const block = entry.block;
+              const idx = entry.blockIndex;
               switch (block.type) {
                 case 'narrative':
                   return block.content ? (
-                    <AgentNarrative key={`block-${i}`} content={block.content} isStreaming={content.isStreaming} />
+                    <AgentNarrative key={`block-${idx}`} content={block.content} isStreaming={content.isStreaming} />
                   ) : null;
                 case 'thinking':
                   return block.content ? (
                     <ThinkingBox
-                      key={`block-${i}`}
+                      key={`block-${idx}`}
                       thinking={block.content}
                       thinkingDurationMs={block.durationMs}
                       isStreaming={block.isStreaming}
                     />
                   ) : null;
                 case 'toolCall': {
-                  const toolIndex = content.blocks!.slice(0, i).filter(b => b.type === 'toolCall').length;
+                  const toolIndex = content.blocks!.slice(0, idx).filter(b => b.type === 'toolCall').length;
                   return renderToolWidget(
-                    `block-${i}`,
+                    `block-${idx}`,
                     block.toolName,
                     block.toolInput,
                     block.status,
@@ -143,9 +195,20 @@ export const AgentMessage: FC<AgentMessageProps> = ({
                   );
                 }
                 case 'approval':
+                  if (block.toolName.toLowerCase() === 'askuserquestion') {
+                    return (
+                      <AskUserQuestionCard
+                        key={`block-${idx}`}
+                        requestId={block.requestId}
+                        toolInput={block.toolInput}
+                        onSubmit={(requestId, answers) => onAnswerQuestion?.(requestId, answers)}
+                        onReject={(requestId) => onToolApproval?.(requestId, false)}
+                      />
+                    );
+                  }
                   return (
                     <ToolApprovalCard
-                      key={`block-${i}`}
+                      key={`block-${idx}`}
                       requestId={block.requestId}
                       toolName={block.toolName}
                       toolInput={block.toolInput}
@@ -157,16 +220,13 @@ export const AgentMessage: FC<AgentMessageProps> = ({
                   return null;
               }
             })}
-
-            {/* Trailing gap is handled by deriveProgressPhases — it appends
-                an active "Reasoning" phase when the last block is completed. */}
           </div>
         ) : (
           /* === Legacy (non-block) Rendering === */
           <>
             {/* Progress tracker for pre-block streaming, fallback skeleton for legacy messages */}
             {content.isStreaming && !content.narrative && !content.toolCalls?.length ? (
-              progressPhases.length > 0 ? <ProgressTracker phases={progressPhases} /> : <StreamingSkeleton />
+              legacyProgressPhases.length > 0 ? <ProgressTracker phases={legacyProgressPhases} /> : <StreamingSkeleton />
             ) : null}
 
             {/* Narrative */}

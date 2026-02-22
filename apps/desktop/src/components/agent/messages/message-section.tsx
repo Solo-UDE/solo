@@ -27,6 +27,7 @@ export interface MessageSectionProps {
   sectionIndex: number;
   messages: Message[];
   onToolApproval?: (toolCallId: string, approved: boolean) => void;
+  onAnswerQuestion?: (requestId: string, answers: Record<string, string>) => void;
   className?: string;
 }
 
@@ -34,6 +35,7 @@ export const MessageSection: FC<MessageSectionProps> = ({
   sectionIndex,
   messages,
   onToolApproval,
+  onAnswerQuestion,
   className = '',
 }) => {
   return (
@@ -61,6 +63,7 @@ export const MessageSection: FC<MessageSectionProps> = ({
             content={message.content}
             timestamp={message.timestamp}
             onToolApproval={onToolApproval}
+            onAnswerQuestion={onAnswerQuestion}
           />
         );
       })}

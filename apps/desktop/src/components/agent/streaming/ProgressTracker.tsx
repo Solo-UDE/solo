@@ -17,6 +17,7 @@ export const ProgressTracker: FC<ProgressTrackerProps> = ({ phases, className = 
           label={phase.label}
           status={phase.status}
           isFirst={i === 0}
+          preview={phase.preview}
         />
       ))}
     </div>

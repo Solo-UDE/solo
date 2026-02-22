@@ -208,7 +208,7 @@ export async function agentSetToolPolicy(
 	mode: 'ask-all' | 'smart' | 'approve-all',
 	isWorktreeSession: boolean
 ): Promise<void> {
-	return invoke('agent_set_tool_policy', { sessionId, mode, isWorktreeSession });
+	return invoke('agent_set_tool_policy', { sessionId, mode: mode || 'ask-all', isWorktreeSession });
 }
 
 // =============================================================================

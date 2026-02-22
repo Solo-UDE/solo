@@ -93,7 +93,9 @@ function convertBlocksToRenderBlocks(
         break;
       case 'tool_use': {
         const tc = block.toolCall;
+        console.log('[DIAG] tool_use block', tc.name, tc.status, 'requestId:', tc.requestId);
         if (tc.status === 'awaiting-permission') {
+          console.log('[DIAG] → rendering as approval', tc.requestId || tc.id);
           result.push({
             type: 'approval',
             requestId: tc.requestId || tc.id,
