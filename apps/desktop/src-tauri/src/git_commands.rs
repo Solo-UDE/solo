@@ -10,9 +10,9 @@ use git2::{
     StatusOptions,
 };
 use solo_protocol::{
-    BackendEvent, BranchInfo, GitChangedFile, GitChangesResponse, GitChangesSummary,
-    GitFileDiffResponse, GitFileStatus, GitMergeResult, GitPullResponse, GitPushResponse,
-    GitRepoStatus, GitStashPopResult, StashEntry,
+    BackendEvent, BranchInfo, DiffHunk, DiffLine, FileDiff, GitChangedFile, GitChangesResponse,
+    GitChangesSummary, GitFileDiffResponse, GitFileStatus, GitMergeResult, GitPullResponse,
+    GitPushResponse, GitRepoStatus, GitStashPopResult, StashEntry,
 };
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -127,17 +127,30 @@ fn upsert_remote(repo: &Repository, name: &str, url: &str) -> Result<(), String>
     Ok(())
 }
 
-/// Check info about the github-integ remote
-fn get_github_integ_info(repo: &Repository, branch: &str) -> (bool, bool) {
-    let has_remote = repo.find_remote("github-integ").is_ok();
-    if !has_remote {
-        return (false, false);
+/// Find the best remote ref to diff against for a branch.
+/// Checks origin first, then github-integ, for both the exact branch
+/// and the default branch (main/master) as merge-base fallback.
+fn find_diff_base(repo: &Repository, branch: &str) -> Option<String> {
+    // Exact tracking branch on any remote
+    for remote in &["origin", "github-integ"] {
+        let ref_name = format!("refs/remotes/{}/{}", remote, branch);
+        if repo.refname_to_id(&ref_name).is_ok() {
+            return Some(format!("{}/{}", remote, branch));
+        }
     }
-
-    let ref_name = format!("refs/remotes/github-integ/{}", branch);
-    let has_branch = repo.refname_to_id(&ref_name).is_ok();
-
-    (has_remote, has_branch)
+    // Default branch fallback (for feature branches)
+    for default_branch in &["main", "master"] {
+        if *default_branch == branch {
+            continue;
+        }
+        for remote in &["origin", "github-integ"] {
+            let ref_name = format!("refs/remotes/{}/{}", remote, default_branch);
+            if repo.refname_to_id(&ref_name).is_ok() {
+                return Some(format!("{}/{}", remote, default_branch));
+            }
+        }
+    }
+    None
 }
 
 /// Returns true if the URL uses SSH transport.
@@ -657,119 +670,80 @@ pub async fn git_get_changes(
 
         let mut files_map: HashMap<String, GitChangedFile> = HashMap::new();
 
-        let (has_remote, has_branch) = get_github_integ_info(&repo, &branch);
+        // Resolve the best base tree to diff against
+        let base_tree = find_diff_base(&repo, &branch).and_then(|base_ref| {
+            let oid = repo.refname_to_id(&format!("refs/remotes/{}", base_ref)).ok()?;
+            let head_oid = repo.head().ok()?.target()?;
+            // Use merge-base so we only see branch changes, not upstream commits
+            let merge_base = repo.merge_base(head_oid, oid).ok()?;
+            repo.find_commit(merge_base).ok()?.tree().ok()
+        });
 
-        if has_remote && has_branch {
-            // SCENARIO 1: Compare working tree against github-integ/branch
-            let remote_ref = format!("refs/remotes/github-integ/{}", branch);
-            if let Ok(remote_oid) = repo.refname_to_id(&remote_ref) {
-                if let Ok(remote_commit) = repo.find_commit(remote_oid) {
-                    if let Ok(remote_tree) = remote_commit.tree() {
-                        // Diff remote tree against working directory
-                        let mut diff_opts = DiffOptions::new();
-                        diff_opts.include_untracked(true);
+        if let Some(ref tree) = base_tree {
+            // Compare merge-base tree → working directory (includes staged + unstaged)
+            let mut diff_opts = DiffOptions::new();
+            diff_opts.include_untracked(true);
 
-                        if let Ok(diff) = repo.diff_tree_to_workdir_with_index(
-                            Some(&remote_tree),
-                            Some(&mut diff_opts),
-                        ) {
-                            for delta_idx in 0..diff.deltas().count() {
-                                if let Some(delta) = diff.deltas().nth(delta_idx) {
-                                    let file_path = delta
-                                        .new_file()
-                                        .path()
-                                        .or_else(|| delta.old_file().path())
-                                        .and_then(|p| p.to_str())
-                                        .unwrap_or("")
-                                        .to_string();
+            if let Ok(diff) =
+                repo.diff_tree_to_workdir_with_index(Some(tree), Some(&mut diff_opts))
+            {
+                for delta_idx in 0..diff.deltas().count() {
+                    if let Some(delta) = diff.deltas().nth(delta_idx) {
+                        let file_path = delta
+                            .new_file()
+                            .path()
+                            .or_else(|| delta.old_file().path())
+                            .and_then(|p| p.to_str())
+                            .unwrap_or("")
+                            .to_string();
 
-                                    if file_path.is_empty() {
-                                        continue;
-                                    }
-
-                                    let status = match delta.status() {
-                                        Delta::Added | Delta::Untracked => GitFileStatus::Added,
-                                        Delta::Deleted => GitFileStatus::Deleted,
-                                        Delta::Renamed => GitFileStatus::Renamed,
-                                        _ => GitFileStatus::Modified,
-                                    };
-
-                                    files_map
-                                        .entry(file_path.clone())
-                                        .or_insert(GitChangedFile {
-                                            path: file_path,
-                                            status,
-                                            insertions: 0,
-                                            deletions: 0,
-                                            is_staged: false,
-                                        });
-                                }
-                            }
-
-                            // Get line stats
-                            let _ = diff.foreach(
-                                &mut |_delta, _progress| true,
-                                None,
-                                Some(&mut |_delta, _hunk| true),
-                                Some(&mut |delta, _hunk, line| {
-                                    if let Some(path) = delta
-                                        .new_file()
-                                        .path()
-                                        .or_else(|| delta.old_file().path())
-                                        .and_then(|p| p.to_str())
-                                    {
-                                        if let Some(file) = files_map.get_mut(path) {
-                                            match line.origin() {
-                                                '+' => file.insertions += 1,
-                                                '-' => file.deletions += 1,
-                                                _ => {}
-                                            }
-                                        }
-                                    }
-                                    true
-                                }),
-                            );
+                        if file_path.is_empty() {
+                            continue;
                         }
+
+                        let status = match delta.status() {
+                            Delta::Added | Delta::Untracked => GitFileStatus::Added,
+                            Delta::Deleted => GitFileStatus::Deleted,
+                            Delta::Renamed => GitFileStatus::Renamed,
+                            _ => GitFileStatus::Modified,
+                        };
+
+                        files_map.entry(file_path.clone()).or_insert(GitChangedFile {
+                            path: file_path,
+                            status,
+                            insertions: 0,
+                            deletions: 0,
+                            is_staged: false,
+                        });
                     }
                 }
-            }
-        } else if has_remote && !has_branch {
-            // SCENARIO 2: Show all tracked + untracked as 'added'
-            let statuses = repo
-                .statuses(Some(StatusOptions::new().include_untracked(true)))
-                .map_err(|e| format!("Failed to get status: {}", e))?;
 
-            for entry in statuses.iter() {
-                let s = entry.status();
-                if s.contains(git2::Status::IGNORED) {
-                    continue;
-                }
-                if let Some(path) = entry.path() {
-                    files_map.entry(path.to_string()).or_insert(GitChangedFile {
-                        path: path.to_string(),
-                        status: GitFileStatus::Added,
-                        insertions: 0,
-                        deletions: 0,
-                        is_staged: false,
-                    });
-                }
-            }
-
-            // Also add files from index
-            if let Ok(index) = repo.index() {
-                for entry in index.iter() {
-                    let path = String::from_utf8_lossy(&entry.path).to_string();
-                    files_map.entry(path.clone()).or_insert(GitChangedFile {
-                        path,
-                        status: GitFileStatus::Added,
-                        insertions: 0,
-                        deletions: 0,
-                        is_staged: false,
-                    });
-                }
+                // Get line stats
+                let _ = diff.foreach(
+                    &mut |_delta, _progress| true,
+                    None,
+                    Some(&mut |_delta, _hunk| true),
+                    Some(&mut |delta, _hunk, line| {
+                        if let Some(path) = delta
+                            .new_file()
+                            .path()
+                            .or_else(|| delta.old_file().path())
+                            .and_then(|p| p.to_str())
+                        {
+                            if let Some(file) = files_map.get_mut(path) {
+                                match line.origin() {
+                                    '+' => file.insertions += 1,
+                                    '-' => file.deletions += 1,
+                                    _ => {}
+                                }
+                            }
+                        }
+                        true
+                    }),
+                );
             }
         } else {
-            // SCENARIO 3: No remote — show git status
+            // No diff base found — fall back to status against HEAD
             let statuses = repo
                 .statuses(Some(
                     StatusOptions::new()
@@ -898,12 +872,8 @@ pub async fn git_get_file_diff(
     tokio::task::spawn_blocking(move || {
         let repo = ensure_local_repo_scope(&workspace_path)?;
 
-        let (has_remote, has_branch) = get_github_integ_info(&repo, &branch);
-        let base_ref = if has_remote && has_branch {
-            format!("github-integ/{}", branch)
-        } else {
-            "HEAD".to_string()
-        };
+        let base_ref = find_diff_base(&repo, &branch)
+            .unwrap_or_else(|| "HEAD".to_string());
 
         // Read current file content
         let full_path = workspace_path.join(&file_path);
@@ -948,6 +918,165 @@ pub async fn git_get_file_diff(
     .map_err(|e| format!("Task join error: {}", e))?
 }
 
+/// Get full unified diff for all branch changes, with hunk-level detail
+#[tauri::command]
+pub async fn git_get_branch_diff(
+    fs_state: State<'_, crate::fs_commands::FsState>,
+    branch: Option<String>,
+) -> Result<Vec<FileDiff>, String> {
+    let workspace_path = get_workspace_path(&fs_state).await?;
+    let branch = branch.unwrap_or_else(|| "main".to_string());
+
+    tokio::task::spawn_blocking(move || {
+        let repo = ensure_local_repo_scope(&workspace_path)?;
+
+        // Resolve base tree (same logic as git_get_changes)
+        let base_tree = find_diff_base(&repo, &branch).and_then(|base_ref| {
+            let oid = repo
+                .refname_to_id(&format!("refs/remotes/{}", base_ref))
+                .ok()?;
+            let head_oid = repo.head().ok()?.target()?;
+            let merge_base = repo.merge_base(head_oid, oid).ok()?;
+            repo.find_commit(merge_base).ok()?.tree().ok()
+        });
+
+        // Fall back to HEAD tree if no remote base found
+        let head_tree;
+        let diff_tree_ref = if base_tree.is_some() {
+            base_tree.as_ref()
+        } else {
+            head_tree = repo
+                .head()
+                .ok()
+                .and_then(|h| h.peel_to_commit().ok())
+                .and_then(|c| c.tree().ok());
+            head_tree.as_ref()
+        };
+
+        let mut diff_opts = DiffOptions::new();
+        diff_opts.include_untracked(true);
+
+        let diff = repo
+            .diff_tree_to_workdir_with_index(diff_tree_ref, Some(&mut diff_opts))
+            .map_err(|e| format!("Failed to compute diff: {}", e))?;
+
+        // Build per-file entries from deltas
+        let mut file_diffs: Vec<FileDiff> = Vec::new();
+        for i in 0..diff.deltas().count() {
+            if let Some(delta) = diff.deltas().nth(i) {
+                let path = delta
+                    .new_file()
+                    .path()
+                    .or_else(|| delta.old_file().path())
+                    .and_then(|p| p.to_str())
+                    .unwrap_or("")
+                    .to_string();
+                if path.is_empty() {
+                    continue;
+                }
+                let status = match delta.status() {
+                    Delta::Added | Delta::Untracked => "added",
+                    Delta::Deleted => "deleted",
+                    Delta::Renamed => "renamed",
+                    _ => "modified",
+                };
+                file_diffs.push(FileDiff {
+                    path,
+                    status: status.to_string(),
+                    additions: 0,
+                    deletions: 0,
+                    hunks: Vec::new(),
+                });
+            }
+        }
+
+        // Build hunks with line-level data via diff.foreach()
+        // Use RefCell for interior mutability (foreach closures share borrows)
+        use std::cell::RefCell;
+        let file_diffs = RefCell::new(file_diffs);
+        let current_file_idx: RefCell<Option<usize>> = RefCell::new(None);
+
+        let _ = diff.foreach(
+            &mut |delta, _progress| {
+                let path = delta
+                    .new_file()
+                    .path()
+                    .or_else(|| delta.old_file().path())
+                    .and_then(|p| p.to_str())
+                    .unwrap_or("");
+                *current_file_idx.borrow_mut() =
+                    file_diffs.borrow().iter().position(|f| f.path == path);
+                true
+            },
+            None,
+            Some(&mut |_delta, hunk| {
+                if let Some(idx) = *current_file_idx.borrow() {
+                    file_diffs.borrow_mut()[idx].hunks.push(DiffHunk {
+                        old_start: hunk.old_start(),
+                        new_start: hunk.new_start(),
+                        old_lines: hunk.old_lines(),
+                        new_lines: hunk.new_lines(),
+                        lines: Vec::new(),
+                    });
+                }
+                true
+            }),
+            Some(&mut |delta, _hunk, line| {
+                let path = delta
+                    .new_file()
+                    .path()
+                    .or_else(|| delta.old_file().path())
+                    .and_then(|p| p.to_str())
+                    .unwrap_or("");
+
+                let file_idx = match file_diffs.borrow().iter().position(|f| f.path == path) {
+                    Some(i) => i,
+                    None => return true,
+                };
+
+                let (kind, is_add, is_del) = match line.origin() {
+                    '+' => ("add", true, false),
+                    '-' => ("delete", false, true),
+                    _ => ("context", false, false),
+                };
+
+                let content =
+                    String::from_utf8_lossy(line.content()).trim_end_matches('\n').to_string();
+
+                let old_line_no = line.old_lineno();
+                let new_line_no = line.new_lineno();
+
+                let mut diffs = file_diffs.borrow_mut();
+                if is_add {
+                    diffs[file_idx].additions += 1;
+                }
+                if is_del {
+                    diffs[file_idx].deletions += 1;
+                }
+                if let Some(hunk) = diffs[file_idx].hunks.last_mut() {
+                    hunk.lines.push(DiffLine {
+                        kind: kind.to_string(),
+                        content,
+                        old_line_no,
+                        new_line_no,
+                    });
+                }
+
+                true
+            }),
+        );
+
+        let mut file_diffs = file_diffs.into_inner();
+
+        // Remove files with no actual changes (empty hunks, no additions/deletions)
+        file_diffs.retain(|f| f.additions > 0 || f.deletions > 0 || !f.hunks.is_empty());
+
+        Ok(file_diffs)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
 /// Get blob content from a tree spec like "HEAD:path/to/file"
 fn get_blob_content(repo: &Repository, treeish: &str, file_path: &str) -> Option<String> {
     let spec = format!("{}:{}", treeish, file_path);
@@ -971,7 +1100,8 @@ pub async fn git_discard_file(
         let repo = ensure_local_repo_scope(&workspace_path)?;
 
         let full_path = workspace_path.join(&file_path);
-        let (has_remote, has_branch) = get_github_integ_info(&repo, &branch);
+        let base_ref = find_diff_base(&repo, &branch)
+            .unwrap_or_else(|| "HEAD".to_string());
 
         // Check if file is untracked
         if let Ok(statuses) = repo.statuses(None) {
@@ -990,13 +1120,6 @@ pub async fn git_discard_file(
                 }
             }
         }
-
-        // Try to restore from github-integ or HEAD
-        let base_ref = if has_remote && has_branch {
-            format!("github-integ/{}", branch)
-        } else {
-            "HEAD".to_string()
-        };
 
         if let Some(content) = get_blob_content(&repo, &base_ref, &file_path) {
             std::fs::write(&full_path, content)
@@ -1025,13 +1148,7 @@ pub async fn git_discard_file(
 
         // For deleted files — try to restore
         if !full_path.exists() {
-            let restore_ref = if has_remote && has_branch {
-                format!("github-integ/{}", branch)
-            } else {
-                "HEAD".to_string()
-            };
-
-            if let Some(content) = get_blob_content(&repo, &restore_ref, &file_path) {
+            if let Some(content) = get_blob_content(&repo, &base_ref, &file_path) {
                 // Ensure parent directory exists
                 if let Some(parent) = full_path.parent() {
                     let _ = std::fs::create_dir_all(parent);
@@ -1068,13 +1185,10 @@ pub async fn git_discard_all(
     tokio::task::spawn_blocking(move || {
         let repo = ensure_local_repo_scope(&workspace_path)?;
 
-        let (has_remote, has_branch) = get_github_integ_info(&repo, &branch);
-
-        if has_remote && has_branch {
-            // Reset to github-integ version
-            let remote_ref = format!("refs/remotes/github-integ/{}", branch);
-            if let Ok(remote_oid) = repo.refname_to_id(&remote_ref) {
-                if let Ok(obj) = repo.find_object(remote_oid, None) {
+        if let Some(base_ref) = find_diff_base(&repo, &branch) {
+            let ref_name = format!("refs/remotes/{}", base_ref);
+            if let Ok(oid) = repo.refname_to_id(&ref_name) {
+                if let Ok(obj) = repo.find_object(oid, None) {
                     repo.reset(&obj, ResetType::Hard, None)
                         .map_err(|e| format!("Failed to reset: {}", e))?;
 

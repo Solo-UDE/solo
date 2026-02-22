@@ -17,6 +17,7 @@ import {
 import { ListSkeleton } from '@/components/ui/skeletons';
 import { useWorktreeStore, useWorktreeList } from '@/stores/worktreeStore';
 import { useGitStore } from '@/stores/gitStore';
+import { useUIStore } from '@/stores/uiStore';
 import { AnimatedList } from '@/components/ui/animated-list';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -25,15 +26,17 @@ interface WorktreeSwitcherProps {
   onClose: () => void;
 }
 
+/**
+ * WorktreeSwitcher — content-only panel for branch switching and worktree selection.
+ * Rendered inside a Radix Popover by ContextHeader (portal handles positioning/z-index).
+ */
 export const WorktreeSwitcher: FC<WorktreeSwitcherProps> = ({ onClose }) => {
-  const popoverRef = useRef<HTMLDivElement>(null);
 
   // Worktree state
   const worktrees = useWorktreeList();
   const activeWorktreeId = useWorktreeStore((s) => s.activeWorktreeId);
   const isLoadingWorktrees = useWorktreeStore((s) => s.isLoading);
   const loadWorktrees = useWorktreeStore((s) => s.loadWorktrees);
-  const createWorktree = useWorktreeStore((s) => s.createWorktree);
   const setActive = useWorktreeStore((s) => s.setActive);
 
   // Branch state
@@ -43,12 +46,6 @@ export const WorktreeSwitcher: FC<WorktreeSwitcherProps> = ({ onClose }) => {
   const createBranch = useGitStore((s) => s.createBranch);
   const checkoutBranch = useGitStore((s) => s.checkoutBranch);
   const deleteBranch = useGitStore((s) => s.deleteBranch);
-
-  // Worktree create form
-  const [showWorktreeForm, setShowWorktreeForm] = useState(false);
-  const [worktreeBranchName, setWorktreeBranchName] = useState('');
-  const [isCreatingWorktree, setIsCreatingWorktree] = useState(false);
-  const worktreeInputRef = useRef<HTMLInputElement>(null);
 
   // Branch create form
   const [showBranchForm, setShowBranchForm] = useState(false);
@@ -63,24 +60,7 @@ export const WorktreeSwitcher: FC<WorktreeSwitcherProps> = ({ onClose }) => {
     loadWorktrees();
   }, [loadWorktrees]);
 
-  // Close on outside click
-  useEffect(() => {
-    const handleClick = (e: MouseEvent) => {
-      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
-        onClose();
-      }
-    };
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [onClose]);
-
-  // Focus inputs when forms open
-  useEffect(() => {
-    if (showWorktreeForm && worktreeInputRef.current) {
-      worktreeInputRef.current.focus();
-    }
-  }, [showWorktreeForm]);
-
+  // Focus branch input when form opens
   useEffect(() => {
     if (showBranchForm && branchInputRef.current) {
       branchInputRef.current.focus();
@@ -93,35 +73,6 @@ export const WorktreeSwitcher: FC<WorktreeSwitcherProps> = ({ onClose }) => {
     await setActive(newId);
     onClose();
   }, [setActive, onClose]);
-
-  const handleCreateWorktree = useCallback(async () => {
-    if (!worktreeBranchName.trim()) return;
-    setIsCreatingWorktree(true);
-    try {
-      await createWorktree(worktreeBranchName.trim(), true);
-      setWorktreeBranchName('');
-      setShowWorktreeForm(false);
-    } catch {
-      // Error handled in store
-    } finally {
-      setIsCreatingWorktree(false);
-    }
-  }, [worktreeBranchName, createWorktree]);
-
-  const handleWorktreeKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      handleCreateWorktree();
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      if (showWorktreeForm) {
-        setShowWorktreeForm(false);
-        setWorktreeBranchName('');
-      } else {
-        onClose();
-      }
-    }
-  }, [handleCreateWorktree, showWorktreeForm, onClose]);
 
   // Branch handlers
   const handleCheckout = useCallback(async (name: string) => {
@@ -176,15 +127,7 @@ export const WorktreeSwitcher: FC<WorktreeSwitcherProps> = ({ onClose }) => {
   }, []);
 
   return (
-    <div
-      ref={popoverRef}
-      className={cn(
-        'absolute top-full left-0 mt-1 w-[260px] z-50',
-        'bg-card/95 backdrop-blur-md rounded-[14px] p-1.5',
-        'shadow-[0_8px_32px_-8px_rgba(0,0,0,0.3)]',
-        'animate-in fade-in slide-in-from-top-2 duration-150',
-      )}
-    >
+    <>
       {/* Branches section */}
       <div className="flex items-center justify-between px-2.5 py-1.5">
         <span className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider">
@@ -316,45 +259,7 @@ export const WorktreeSwitcher: FC<WorktreeSwitcherProps> = ({ onClose }) => {
             <span className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider">
               Worktrees
             </span>
-            <button
-              onClick={() => setShowWorktreeForm(true)}
-              className={cn(
-                'w-5 h-5 flex items-center justify-center rounded-md',
-                'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
-                'active:scale-[0.9] transition-[transform,background-color] duration-150',
-              )}
-              title="Create worktree"
-            >
-              <Plus className="w-3 h-3" weight="bold" />
-            </button>
           </div>
-
-          {/* Create worktree form */}
-          {showWorktreeForm && (
-            <div className="px-1.5 pb-1.5">
-              <div className="flex items-center gap-1.5">
-                <input
-                  ref={worktreeInputRef}
-                  type="text"
-                  value={worktreeBranchName}
-                  onChange={(e) => setWorktreeBranchName(e.target.value)}
-                  onKeyDown={handleWorktreeKeyDown}
-                  placeholder="Branch name..."
-                  disabled={isCreatingWorktree}
-                  className={cn(
-                    'flex-1 h-7 px-2 rounded-md text-xs',
-                    'bg-muted/40 border-none text-foreground placeholder:text-muted-foreground/50',
-                    'focus:bg-muted/60 focus:ring-1 focus:ring-ring/30 focus:outline-none',
-                    'disabled:opacity-50',
-                    'transition-colors duration-150',
-                  )}
-                />
-                {isCreatingWorktree && (
-                  <CircleNotch className="w-3.5 h-3.5 text-muted-foreground animate-spin shrink-0" />
-                )}
-              </div>
-            </div>
-          )}
 
           {/* Worktree list */}
           {isLoadingWorktrees && worktrees.length === 0 ? (
@@ -393,8 +298,23 @@ export const WorktreeSwitcher: FC<WorktreeSwitcherProps> = ({ onClose }) => {
               })}
             </AnimatedList>
           )}
+
+          {/* Navigate to source control for full management */}
+          <button
+            onClick={() => {
+              useUIStore.getState().setActiveTab('source-control');
+              onClose();
+            }}
+            className={cn(
+              'w-full flex items-center gap-2 px-2.5 py-1.5 mt-0.5 rounded-lg text-xs',
+              'text-muted-foreground/60 hover:bg-muted/40 hover:text-muted-foreground',
+              'transition-colors duration-150',
+            )}
+          >
+            <span className="text-[10px]">Manage worktrees...</span>
+          </button>
         </>
       )}
-    </div>
+    </>
   );
 };

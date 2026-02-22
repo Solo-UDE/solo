@@ -91,3 +91,93 @@ fn dirs_home() -> Result<PathBuf, GitError> {
         .map(PathBuf::from)
         .map_err(|_| GitError::Config("Could not determine home directory".to_string()))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_metadata(id: &str) -> WorktreeMetadata {
+        WorktreeMetadata {
+            id: id.to_string(),
+            branch: format!("feature-{}", id),
+            path: format!("/tmp/worktrees/{}", id),
+            created_at: 1_700_000_000,
+            agent_session_id: Some("session-42".to_string()),
+            is_locked: false,
+            lock_reason: None,
+        }
+    }
+
+    #[test]
+    fn test_config_roundtrip() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("worktrees.json");
+
+        let mut config = WorktreeConfig::default();
+        config.setup_commands = vec!["bun install".to_string()];
+        config.max_age_days = Some(30);
+        config.insert(sample_metadata("wt-1"));
+        config.insert(sample_metadata("wt-2"));
+
+        config.save(&path).unwrap();
+        let loaded = WorktreeConfig::load(&path).unwrap();
+
+        assert_eq!(loaded.worktrees.len(), 2);
+        assert_eq!(loaded.setup_commands, vec!["bun install".to_string()]);
+        assert_eq!(loaded.max_age_days, Some(30));
+        let m = loaded.get("wt-1").unwrap();
+        assert_eq!(m.branch, "feature-wt-1");
+        assert_eq!(m.agent_session_id.as_deref(), Some("session-42"));
+    }
+
+    #[test]
+    fn test_config_load_missing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("nonexistent.json");
+
+        let config = WorktreeConfig::load(&path).unwrap();
+        assert!(config.worktrees.is_empty());
+        assert!(config.setup_commands.is_empty());
+        assert_eq!(config.max_age_days, None);
+    }
+
+    #[test]
+    fn test_config_insert_and_get() {
+        let mut config = WorktreeConfig::default();
+        config.insert(sample_metadata("abc"));
+
+        let m = config.get("abc").unwrap();
+        assert_eq!(m.id, "abc");
+        assert_eq!(m.branch, "feature-abc");
+        assert_eq!(m.path, "/tmp/worktrees/abc");
+        assert_eq!(m.created_at, 1_700_000_000);
+        assert!(!m.is_locked);
+    }
+
+    #[test]
+    fn test_config_remove() {
+        let mut config = WorktreeConfig::default();
+        config.insert(sample_metadata("rm-me"));
+        assert!(config.get("rm-me").is_some());
+
+        let removed = config.remove("rm-me");
+        assert!(removed.is_some());
+        assert!(config.get("rm-me").is_none());
+    }
+
+    #[test]
+    fn test_config_creates_parent_dirs() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir
+            .path()
+            .join("a")
+            .join("b")
+            .join("c")
+            .join("worktrees.json");
+
+        let config = WorktreeConfig::default();
+        config.save(&path).unwrap();
+
+        assert!(path.exists());
+    }
+}

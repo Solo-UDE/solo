@@ -124,33 +124,45 @@ export const ContextHeader: FC<ContextHeaderProps> = ({ onNewSession }) => {
   return (
     <div className="flex items-center justify-between h-9 px-2 shrink-0">
       {/* Left: Branch/folder name (clickable when git repo) */}
-      <div className="relative flex items-center gap-1.5 min-w-0 flex-1">
-        <button
-          onClick={() => isGitRepo && setSwitcherOpen((v) => !v)}
-          className={cn(
-            'flex items-center gap-1.5 h-7 px-2 rounded-lg min-w-0 max-w-full',
-            'text-xs text-muted-foreground',
-            isGitRepo && 'hover:bg-muted/60 hover:text-foreground active:scale-[0.97] transition-[transform,background-color,color] duration-150 cursor-pointer',
-            !isGitRepo && 'cursor-default',
-          )}
-        >
-          {DisplayIcon && (
-            <DisplayIcon
-              className={cn('w-3.5 h-3.5 shrink-0', isGitRepo && 'text-primary')}
-              weight="bold"
-            />
-          )}
-          <span className="truncate">{displayName}</span>
-          {activeWorktree && (
-            <TreeStructure className="w-3 h-3 text-primary/60 shrink-0" weight="bold" />
-          )}
-          {isGitRepo && (
-            <CaretDown className="w-3 h-3 text-muted-foreground/60 shrink-0" weight="bold" />
-          )}
-        </button>
-
-        {/* Branch switcher dropdown */}
-        {switcherOpen && <WorktreeSwitcher onClose={() => setSwitcherOpen(false)} />}
+      <div className="flex items-center gap-1.5 min-w-0 flex-1">
+        {/* Branch switcher popover (portal-based, avoids overflow clipping) */}
+        <Popover open={switcherOpen} onOpenChange={(open) => isGitRepo && setSwitcherOpen(open)}>
+          <PopoverTrigger asChild>
+            <button
+              className={cn(
+                'flex items-center gap-1.5 h-7 px-2 rounded-lg min-w-0 max-w-full',
+                'text-xs text-muted-foreground',
+                isGitRepo && 'hover:bg-muted/60 hover:text-foreground active:scale-[0.97] transition-[transform,background-color,color] duration-150 cursor-pointer',
+                !isGitRepo && 'cursor-default',
+              )}
+            >
+              {DisplayIcon && (
+                <DisplayIcon
+                  className={cn('w-3.5 h-3.5 shrink-0', isGitRepo && 'text-primary')}
+                  weight="bold"
+                />
+              )}
+              <span className="truncate">{displayName}</span>
+              {activeWorktree && (
+                <TreeStructure className="w-3 h-3 text-primary/60 shrink-0" weight="bold" />
+              )}
+              {isGitRepo && (
+                <CaretDown className="w-3 h-3 text-muted-foreground/60 shrink-0" weight="bold" />
+              )}
+            </button>
+          </PopoverTrigger>
+          <PopoverContent
+            side="bottom"
+            align="start"
+            className={cn(
+              'w-[260px] p-1.5',
+              'bg-card/95 backdrop-blur-md rounded-[14px]',
+              'shadow-[0_8px_32px_-8px_rgba(0,0,0,0.3)]',
+            )}
+          >
+            <WorktreeSwitcher onClose={() => setSwitcherOpen(false)} />
+          </PopoverContent>
+        </Popover>
 
         {/* Create worktree [+] — only visible when WorktreeScopeBar is hidden */}
         {worktreeCount <= 1 && isGitRepo && (
