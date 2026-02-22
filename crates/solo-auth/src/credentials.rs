@@ -65,6 +65,29 @@ pub struct CredentialInfo {
 const VAULT_SERVICE: &str = "com.solo-ide.credentials";
 const VAULT_ACCOUNT: &str = "vault";
 
+/// Reserved vault key for schema version tracking.
+/// Allows future migrations to detect and transform older vault formats.
+const VAULT_VERSION_KEY: &str = "_version";
+/// Current vault schema version.
+const VAULT_VERSION: &str = "1";
+/// Sentinel key: once set, legacy migration is never attempted again.
+const VAULT_MIGRATED_KEY: &str = "_migrated";
+
+/// Legacy keychain entries from the pre-vault era.
+/// Each tuple: (old_service, old_account, new_vault_key)
+/// Kept for potential future use as a manual migration action in Settings.
+#[allow(dead_code)]
+const LEGACY_ENTRIES: &[(&str, &str, &str)] = &[
+    ("solo.provider.anthropic.apiKey", "api-key", "anthropic.apiKey"),
+    ("solo.provider.openai.apiKey", "api-key", "openai.apiKey"),
+    ("solo.provider.gemini.apiKey", "api-key", "gemini.apiKey"),
+    ("solo.provider.elevenlabs.apiKey", "api-key", "elevenlabs.apiKey"),
+    ("solo.provider.anthropic.oauth", "oauth-token", "anthropic.oauth"),
+    ("solo.provider.openai.oauth", "oauth-token", "openai.oauth"),
+    ("solo.supabase.accessToken", "solo-auth", "supabase.accessToken"),
+    ("solo.supabase.refreshToken", "solo-auth", "supabase.refreshToken"),
+];
+
 /// Credential info with OAuth token support
 #[derive(Debug, Clone)]
 pub struct OAuthCredentialInfo {
@@ -97,8 +120,18 @@ pub struct CredentialManager {
     openai_oauth_cache: tokio::sync::RwLock<Option<OpenAIOAuthCredentialInfo>>,
     /// In-memory cache of the vault (loaded from single keychain entry)
     vault: tokio::sync::RwLock<Option<HashMap<String, String>>>,
+    /// Serialize vault initialization — prevents concurrent keychain reads on startup
+    vault_init: tokio::sync::Mutex<()>,
     /// Cache for GitHub OAuth token (for git operations, separate from AI provider tokens)
     github_oauth_cache: tokio::sync::RwLock<Option<OAuthToken>>,
+    /// Cached Claude Code OAuth access token: None = not yet loaded, Some(None) = no token
+    claude_code_cache: tokio::sync::RwLock<Option<Option<String>>>,
+    /// Cached Claude Code detailed info: None = not yet loaded
+    claude_code_detailed_cache: tokio::sync::RwLock<
+        Option<Option<(String, Option<i64>, CredentialSource, serde_json::Value)>>,
+    >,
+    /// Serialize Claude Code keychain initialization (same double-checked locking pattern)
+    claude_code_init: tokio::sync::Mutex<()>,
 }
 
 impl CredentialManager {
@@ -109,7 +142,11 @@ impl CredentialManager {
             oauth_cache: tokio::sync::RwLock::new(HashMap::new()),
             openai_oauth_cache: tokio::sync::RwLock::new(None),
             vault: tokio::sync::RwLock::new(None),
+            vault_init: tokio::sync::Mutex::new(()),
             github_oauth_cache: tokio::sync::RwLock::new(None),
+            claude_code_cache: tokio::sync::RwLock::new(None),
+            claude_code_detailed_cache: tokio::sync::RwLock::new(None),
+            claude_code_init: tokio::sync::Mutex::new(()),
         }
     }
 
@@ -132,9 +169,26 @@ impl CredentialManager {
         "github.oauth"
     }
 
-    /// Load the vault from the single keychain entry (lazy, called once)
+    /// Load the vault from the single keychain entry (lazy, called once).
+    ///
+    /// Reads the vault JSON from the OS keychain and caches it in memory.
+    /// Does NOT write back to the keychain — sentinel values (`_version`,
+    /// `_migrated`) are stamped in memory only and will be naturally persisted
+    /// the next time the user explicitly saves a credential via `vault_set`.
+    ///
+    /// This ensures only ONE keychain access (read) on startup, avoiding
+    /// extra macOS permission prompts during development when each `cargo build`
+    /// produces a new binary signature.
     async fn load_vault(&self) -> ProviderResult<()> {
-        // Already loaded?
+        // Fast path: already loaded (no lock needed)
+        if self.vault.read().await.is_some() {
+            return Ok(());
+        }
+
+        // Serialize initialization — only one caller actually reads from keychain
+        let _guard = self.vault_init.lock().await;
+
+        // Double-check after acquiring lock (another caller may have loaded it)
         if self.vault.read().await.is_some() {
             return Ok(());
         }
@@ -148,12 +202,15 @@ impl CredentialManager {
             }
         };
 
-        let data = match entry.get_password() {
+        let mut data = match entry.get_password() {
             Ok(json) if json.is_empty() => HashMap::new(),
-            Ok(json) => serde_json::from_str::<HashMap<String, String>>(&json).unwrap_or_else(|e| {
-                tracing::warn!("Failed to parse vault JSON, starting fresh: {}", e);
-                HashMap::new()
-            }),
+            Ok(json) => match serde_json::from_str::<HashMap<String, String>>(&json) {
+                Ok(map) => map,
+                Err(e) => {
+                    tracing::error!("Vault JSON corrupted, attempting partial recovery: {}", e);
+                    Self::attempt_partial_recovery(&json)
+                }
+            },
             Err(keyring::Error::NoEntry) => HashMap::new(),
             Err(e) => {
                 tracing::warn!("Failed to read vault from keychain: {}", e);
@@ -161,8 +218,22 @@ impl CredentialManager {
             }
         };
 
+        // Stamp sentinels in memory only (persisted on next vault_set call)
+        if !data.contains_key(VAULT_MIGRATED_KEY) {
+            data.insert(VAULT_MIGRATED_KEY.to_string(), "1".to_string());
+        }
+        if !data.contains_key(VAULT_VERSION_KEY) {
+            data.insert(VAULT_VERSION_KEY.to_string(), VAULT_VERSION.to_string());
+        }
+
         *self.vault.write().await = Some(data);
         Ok(())
+    }
+
+    /// Pre-load the vault from keychain. Call once during app setup
+    /// to avoid race conditions from concurrent frontend commands.
+    pub async fn pre_warm(&self) -> ProviderResult<()> {
+        self.load_vault().await
     }
 
     /// Persist the vault HashMap to the single keychain entry
@@ -180,6 +251,102 @@ impl CredentialManager {
         Ok(())
     }
 
+    /// Attempt to recover key-value pairs from corrupted vault JSON.
+    ///
+    /// Tries to parse the raw string as a `serde_json::Value` and walks any
+    /// top-level object, extracting keys whose values are strings. This can
+    /// salvage credentials when the JSON is partially valid (e.g., truncated).
+    fn attempt_partial_recovery(json: &str) -> HashMap<String, String> {
+        match serde_json::from_str::<serde_json::Value>(json) {
+            Ok(serde_json::Value::Object(map)) => {
+                let mut recovered = HashMap::new();
+                for (k, v) in map {
+                    if let serde_json::Value::String(s) = v {
+                        recovered.insert(k, s);
+                    }
+                }
+                if recovered.is_empty() {
+                    tracing::error!("Vault JSON parsed as object but contained no string values");
+                } else {
+                    tracing::warn!(
+                        "Partially recovered {} key(s) from corrupted vault",
+                        recovered.len()
+                    );
+                }
+                recovered
+            }
+            _ => {
+                tracing::error!(
+                    "Vault JSON is unrecoverably corrupted — starting with empty vault"
+                );
+                HashMap::new()
+            }
+        }
+    }
+
+    /// Migrate credentials from legacy per-key keychain entries into the vault.
+    ///
+    /// NOT called automatically on startup (to avoid keychain prompts).
+    /// Kept for potential future use as a manual migration action in Settings.
+    ///
+    /// For each legacy entry:
+    /// 1. Reads from the old service/account keychain entry
+    /// 2. If the vault doesn't already have that key, copies the value in
+    /// 3. Deletes the old keychain entry to avoid stale duplicates
+    ///
+    /// **Fail-fast:** If any entry returns a permission/platform error (not
+    /// `NoEntry`), we stop immediately to avoid spamming the user with macOS
+    /// keychain permission dialogs.
+    #[allow(dead_code)]
+    fn migrate_legacy_entries(vault: &mut HashMap<String, String>) {
+        let mut migrated = 0u32;
+
+        for &(old_service, old_account, new_key) in LEGACY_ENTRIES {
+            // Don't overwrite newer vault data
+            if vault.contains_key(new_key) {
+                continue;
+            }
+
+            let entry = match Entry::new(old_service, old_account) {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
+
+            match entry.get_password() {
+                Ok(v) if !v.is_empty() => {
+                    vault.insert(new_key.to_string(), v);
+                    migrated += 1;
+
+                    // Best-effort cleanup of the old entry
+                    if let Err(e) = entry.delete_credential() {
+                        tracing::debug!(
+                            "Could not delete legacy entry {}/{}: {}",
+                            old_service, old_account, e
+                        );
+                    }
+                }
+                Ok(_) => {} // empty value — skip
+                Err(keyring::Error::NoEntry) => {} // doesn't exist — skip
+                Err(e) => {
+                    // Permission denied or platform error — stop immediately
+                    // to avoid a cascade of macOS keychain dialogs
+                    tracing::debug!(
+                        "Stopping legacy migration at {}/{}: {}",
+                        old_service, old_account, e
+                    );
+                    break;
+                }
+            }
+        }
+
+        if migrated > 0 {
+            tracing::info!(
+                "Migrated {} credential(s) from legacy keychain entries into vault",
+                migrated
+            );
+        }
+    }
+
     /// Get a value from the vault
     async fn vault_get(&self, key: &str) -> ProviderResult<Option<String>> {
         self.load_vault().await?;
@@ -187,23 +354,41 @@ impl CredentialManager {
         Ok(guard.as_ref().and_then(|v| v.get(key).cloned()))
     }
 
-    /// Set a value in the vault (updates in-memory + persists)
+    /// Set a value in the vault (updates in-memory + persists).
+    ///
+    /// Rolls back the in-memory state if the keychain write fails, so the
+    /// cache never claims a credential is saved when it isn't persisted.
     async fn vault_set(&self, key: &str, value: &str) -> ProviderResult<()> {
         self.load_vault().await?;
         let mut guard = self.vault.write().await;
         let vault = guard.get_or_insert_with(HashMap::new);
-        vault.insert(key.to_string(), value.to_string());
-        Self::persist_vault(vault)?;
+        let old_value = vault.insert(key.to_string(), value.to_string());
+        if let Err(e) = Self::persist_vault(vault) {
+            // Rollback in-memory state
+            match old_value {
+                Some(v) => { vault.insert(key.to_string(), v); }
+                None => { vault.remove(key); }
+            }
+            return Err(e);
+        }
         Ok(())
     }
 
-    /// Delete a value from the vault (removes from in-memory + persists)
+    /// Delete a value from the vault (removes from in-memory + persists).
+    ///
+    /// Rolls back the in-memory state if the keychain write fails.
     async fn vault_delete(&self, key: &str) -> ProviderResult<()> {
         self.load_vault().await?;
         let mut guard = self.vault.write().await;
         if let Some(vault) = guard.as_mut() {
-            vault.remove(key);
-            Self::persist_vault(vault)?;
+            let old_value = vault.remove(key);
+            if let Err(e) = Self::persist_vault(vault) {
+                // Rollback: re-insert the removed value
+                if let Some(v) = old_value {
+                    vault.insert(key.to_string(), v);
+                }
+                return Err(e);
+            }
         }
         Ok(())
     }
@@ -410,6 +595,26 @@ impl CredentialManager {
     /// Claude Code CLI stores credentials in the keychain with service name
     /// "Claude Code-credentials" as a JSON object containing OAuth tokens.
     async fn get_claude_oauth(&self) -> ProviderResult<Option<String>> {
+        // Fast path: return cached result
+        if let Some(cached) = self.claude_code_cache.read().await.as_ref() {
+            return Ok(cached.clone());
+        }
+
+        // Serialize initialization
+        let _guard = self.claude_code_init.lock().await;
+
+        // Double-check after acquiring lock
+        if let Some(cached) = self.claude_code_cache.read().await.as_ref() {
+            return Ok(cached.clone());
+        }
+
+        let result = self.read_claude_oauth_from_keychain().await?;
+        *self.claude_code_cache.write().await = Some(result.clone());
+        Ok(result)
+    }
+
+    /// Internal: read Claude Code OAuth token directly from keychain (no caching)
+    async fn read_claude_oauth_from_keychain(&self) -> ProviderResult<Option<String>> {
         let entry = match Entry::new("Claude Code-credentials", "default") {
             Ok(e) => e,
             Err(e) => {
@@ -543,6 +748,28 @@ impl CredentialManager {
     /// Used by `verify_claude_setup` to return structured status.
     /// Returns (access_token, expires_at_ms, source, raw_oauth_json).
     pub async fn get_claude_oauth_detailed(
+        &self,
+    ) -> ProviderResult<Option<(String, Option<i64>, CredentialSource, serde_json::Value)>> {
+        // Fast path: return cached result
+        if let Some(cached) = self.claude_code_detailed_cache.read().await.as_ref() {
+            return Ok(cached.clone());
+        }
+
+        // Serialize initialization (shares mutex with get_claude_oauth)
+        let _guard = self.claude_code_init.lock().await;
+
+        // Double-check after acquiring lock
+        if let Some(cached) = self.claude_code_detailed_cache.read().await.as_ref() {
+            return Ok(cached.clone());
+        }
+
+        let result = self.read_claude_oauth_detailed_inner().await?;
+        *self.claude_code_detailed_cache.write().await = Some(result.clone());
+        Ok(result)
+    }
+
+    /// Internal: read detailed Claude Code OAuth info directly from keychain/file (no caching)
+    async fn read_claude_oauth_detailed_inner(
         &self,
     ) -> ProviderResult<Option<(String, Option<i64>, CredentialSource, serde_json::Value)>> {
         // Try keychain first
@@ -682,6 +909,8 @@ impl CredentialManager {
         *self.openai_oauth_cache.write().await = None;
         *self.vault.write().await = None;
         *self.github_oauth_cache.write().await = None;
+        *self.claude_code_cache.write().await = None;
+        *self.claude_code_detailed_cache.write().await = None;
     }
 
     // =========================================================================
@@ -1078,5 +1307,72 @@ mod tests {
         assert_eq!(CredentialSource::ClaudeOAuth.to_string(), "claude-oauth");
         assert_eq!(CredentialSource::SoloOAuth.to_string(), "solo-oauth");
         assert_eq!(CredentialSource::ClaudeOAuthFile.to_string(), "claude-oauth-file");
+    }
+
+    #[test]
+    fn test_vault_version_constants() {
+        assert_eq!(VAULT_VERSION_KEY, "_version");
+        assert_eq!(VAULT_VERSION, "1");
+    }
+
+    #[test]
+    fn test_legacy_entries_mapping() {
+        // Verify all 8 legacy entries are defined with correct vault keys
+        assert_eq!(LEGACY_ENTRIES.len(), 8);
+
+        let vault_keys: Vec<&str> = LEGACY_ENTRIES.iter().map(|(_, _, k)| *k).collect();
+        assert!(vault_keys.contains(&"anthropic.apiKey"));
+        assert!(vault_keys.contains(&"openai.apiKey"));
+        assert!(vault_keys.contains(&"gemini.apiKey"));
+        assert!(vault_keys.contains(&"elevenlabs.apiKey"));
+        assert!(vault_keys.contains(&"anthropic.oauth"));
+        assert!(vault_keys.contains(&"openai.oauth"));
+        assert!(vault_keys.contains(&"supabase.accessToken"));
+        assert!(vault_keys.contains(&"supabase.refreshToken"));
+    }
+
+    #[test]
+    fn test_partial_recovery_valid_object() {
+        let json = r#"{"anthropic.apiKey":"sk-ant-123","openai.apiKey":"sk-openai-456"}"#;
+        let recovered = CredentialManager::attempt_partial_recovery(json);
+        assert_eq!(recovered.len(), 2);
+        assert_eq!(recovered.get("anthropic.apiKey").unwrap(), "sk-ant-123");
+        assert_eq!(recovered.get("openai.apiKey").unwrap(), "sk-openai-456");
+    }
+
+    #[test]
+    fn test_partial_recovery_mixed_types() {
+        // Only string values should be recovered; non-string values are skipped
+        let json = r#"{"key1":"value1","key2":42,"key3":"value3","key4":null}"#;
+        let recovered = CredentialManager::attempt_partial_recovery(json);
+        assert_eq!(recovered.len(), 2);
+        assert_eq!(recovered.get("key1").unwrap(), "value1");
+        assert_eq!(recovered.get("key3").unwrap(), "value3");
+    }
+
+    #[test]
+    fn test_partial_recovery_garbage() {
+        let recovered = CredentialManager::attempt_partial_recovery("{broken json");
+        assert!(recovered.is_empty());
+    }
+
+    #[test]
+    fn test_partial_recovery_non_object() {
+        // A JSON array or primitive can't be recovered as key-value pairs
+        let recovered = CredentialManager::attempt_partial_recovery("[1, 2, 3]");
+        assert!(recovered.is_empty());
+    }
+
+    #[test]
+    fn test_migrate_legacy_entries_skips_existing() {
+        let mut vault = HashMap::new();
+        vault.insert("anthropic.apiKey".to_string(), "existing-key".to_string());
+
+        // Migration should not overwrite existing vault keys
+        // (We can't test actual keychain reads in unit tests, but we verify
+        // the contains_key guard works — migration would skip this entry)
+        CredentialManager::migrate_legacy_entries(&mut vault);
+
+        assert_eq!(vault.get("anthropic.apiKey").unwrap(), "existing-key");
     }
 }

@@ -137,6 +137,18 @@ pub fn run() {
                 tracing::info!("Deep link handler registered");
             }
 
+            // Pre-warm credential vault — single keychain read before frontend mounts
+            {
+                use tauri::Manager;
+                let auth = app.state::<ProviderAuthState>();
+                let creds = Arc::clone(&auth.credentials);
+                tauri::async_runtime::spawn(async move {
+                    if let Err(e) = creds.pre_warm().await {
+                        tracing::warn!("Vault pre-warm failed: {}", e);
+                    }
+                });
+            }
+
             // Wire up agent event callbacks
             agent_commands::setup_event_callbacks(app.handle(), &session_manager);
 
