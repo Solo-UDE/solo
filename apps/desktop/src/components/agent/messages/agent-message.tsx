@@ -184,7 +184,7 @@ export const AgentMessage: FC<AgentMessageProps> = ({
                     />
                   ) : null;
                 case 'toolCall': {
-                  const toolIndex = content.blocks!.slice(0, i).filter(b => b.type === 'toolCall').length;
+                  const toolIndex = content.blocks!.slice(0, idx).filter(b => b.type === 'toolCall').length;
                   return renderToolWidget(
                     `block-${idx}`,
                     block.toolName,

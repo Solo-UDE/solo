@@ -295,6 +295,24 @@ fn fmt_kv(pairs: &[(&str, &str)]) -> String {
         .join("\n")
 }
 
+#[tauri::command]
+pub async fn agent_generate_session_title(
+    user_message: String,
+    assistant_message: String,
+    session_manager: State<'_, Arc<SessionManager>>,
+    provider_state: State<'_, ProviderAuthState>,
+) -> Result<String> {
+    let api_key = provider_state
+        .credentials
+        .get_credentials(ProviderType::Anthropic)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    session_manager
+        .generate_session_title(&user_message, &assistant_message, api_key)
+        .map_err(to_error)
+}
+
 // ============================================================================
 // Event Wiring
 // ============================================================================

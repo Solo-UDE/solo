@@ -40,6 +40,8 @@ export interface ChatInputContainerProps {
   onModeChange?: (mode: 'planning' | 'fast') => void;
   thinkingEnabled?: boolean;
   onThinkingChange?: (enabled: boolean) => void;
+  acceptEnabled?: boolean;
+  onAcceptChange?: (enabled: boolean) => void;
   planModeActive?: boolean;
   onPlanModeToggle?: () => void;
 }
@@ -55,6 +57,8 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
   onModeChange,
   thinkingEnabled = false,
   onThinkingChange,
+  acceptEnabled = false,
+  onAcceptChange,
   planModeActive = false,
   onPlanModeToggle,
 }) => {
