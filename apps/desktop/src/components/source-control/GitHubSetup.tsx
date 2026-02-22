@@ -129,7 +129,7 @@ export const GitHubSetup: FC<GitHubSetupProps> = ({ className }) => {
         />
         <div className="flex-1 min-w-0">
           <p className="text-xs font-medium text-foreground">{ghUser.login}</p>
-          <p className="text-2xs text-muted-foreground/60">Connected</p>
+          <p className="text-[10px] text-muted-foreground/50">Connected</p>
         </div>
         <IconButton
           variant="ghost"
@@ -144,7 +144,7 @@ export const GitHubSetup: FC<GitHubSetupProps> = ({ className }) => {
       {/* Create repo form */}
       <div className="space-y-3">
         <div>
-          <label className="text-2xs font-medium text-muted-foreground/60 uppercase tracking-wider mb-1 block">
+          <label className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider mb-1 block">
             Repository Name
           </label>
           <Input

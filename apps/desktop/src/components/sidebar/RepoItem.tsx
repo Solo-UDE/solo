@@ -75,18 +75,18 @@ export const RepoItem: FC<RepoItemProps> = ({ repo }) => {
         <Folder className="w-3.5 h-3.5 shrink-0" weight={isActive ? 'fill' : 'regular'} />
 
         {/* Repo name */}
-        <span className="text-sm font-medium truncate flex-1">{repo.name}</span>
+        <span className="text-xs font-medium truncate flex-1">{repo.name}</span>
 
         {/* Branch badge */}
         {repo.currentBranch && (
-          <span className="text-2xs text-muted-foreground/60 truncate max-w-[80px]">
+          <span className="text-[10px] text-muted-foreground/60 truncate max-w-[80px]">
             {repo.currentBranch}
           </span>
         )}
 
         {/* Worktree count badge */}
         {worktreeCount > 0 && (
-          <span className="text-2xs text-muted-foreground/60 tabular-nums">
+          <span className="text-[10px] text-muted-foreground/50 tabular-nums">
             {worktreeCount}
           </span>
         )}
@@ -97,7 +97,7 @@ export const RepoItem: FC<RepoItemProps> = ({ repo }) => {
           className={cn(
             'w-5 h-5 flex items-center justify-center rounded shrink-0',
             'opacity-0 group-hover:opacity-100 transition-opacity duration-150',
-            'text-muted-foreground/60 hover:text-foreground hover:bg-muted/60',
+            'text-muted-foreground/50 hover:text-foreground hover:bg-muted/60',
           )}
           title="Remove repository"
         >
@@ -142,9 +142,9 @@ export const RepoItem: FC<RepoItemProps> = ({ repo }) => {
 
               {/* Loading state */}
               {!repo._worktreesLoaded && (
-                <div className="flex items-center gap-2 h-7 px-2 text-muted-foreground/60">
+                <div className="flex items-center gap-2 h-7 px-2 text-muted-foreground/50">
                   <CircleNotch className="w-3 h-3 animate-spin" />
-                  <span className="text-xs">Loading...</span>
+                  <span className="text-[11px]">Loading...</span>
                 </div>
               )}
             </div>
@@ -184,7 +184,7 @@ const WorktreeRow: FC<WorktreeRowProps> = ({
         'text-xs transition-[background-color,color] duration-150',
         isActive
           ? 'bg-primary/10 text-foreground font-medium'
-          : 'text-muted-foreground hover:bg-muted/40 hover:text-foreground',
+          : 'text-muted-foreground/70 hover:bg-muted/40 hover:text-foreground',
       )}
     >
       <Icon

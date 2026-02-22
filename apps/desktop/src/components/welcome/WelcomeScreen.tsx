@@ -100,7 +100,7 @@ export function WelcomeScreen() {
         <SoloDecryptAnimation />
 
         {/* Tagline */}
-        <p className="text-xs text-muted-foreground/60 tracking-wide mt-4">
+        <p className="text-xs text-muted-foreground/50 tracking-wide mt-4">
           Your AI coding agent
         </p>
 
@@ -121,7 +121,7 @@ export function WelcomeScreen() {
           >
             <FolderOpen className="w-3.5 h-3.5" weight="duotone" />
             Open Project
-            <kbd className="ml-1 text-2xs opacity-60 font-normal">⌘O</kbd>
+            <kbd className="ml-1 text-[10px] opacity-60 font-normal">⌘O</kbd>
           </Button>
           <Button
             variant="secondary"
@@ -146,8 +146,8 @@ export function WelcomeScreen() {
           >
             <div className="rounded-xl bg-card/50 border border-border/30 p-3">
               <div className="flex items-center gap-1.5 mb-2">
-                <Clock className="w-3 h-3 text-muted-foreground/60" />
-                <span className="text-2xs font-medium text-muted-foreground/60 tracking-wide">
+                <Clock className="w-3 h-3 text-muted-foreground/50" />
+                <span className="text-[10px] font-medium text-muted-foreground/50 tracking-wide">
                   Recent Projects
                 </span>
               </div>
@@ -170,7 +170,7 @@ export function WelcomeScreen() {
                     <div className="flex-1 min-w-0 text-left">
                       <div className="text-foreground/80 truncate">{dirName(path)}</div>
                       <div
-                        className="text-2xs text-muted-foreground/60 truncate"
+                        className="text-[10px] text-muted-foreground/50 truncate"
                         title={path}
                       >
                         {truncatePath(path)}
@@ -194,7 +194,7 @@ export function WelcomeScreen() {
 
         {/* Version footer */}
         <div
-          className="absolute bottom-4 text-2xs text-muted-foreground/40"
+          className="absolute bottom-4 text-[10px] text-muted-foreground/30"
           style={{
             opacity: showContent ? 1 : 0,
             transition: 'opacity 400ms var(--ease-smooth) 200ms',

@@ -95,7 +95,7 @@ export const CreateWorktreePopover: FC<CreateWorktreePopoverProps> = ({ onClose 
           disabled={isCreating}
           className={cn(
             'w-full h-8 px-2.5 rounded-lg text-xs',
-            'bg-muted/40 border border-border/50 text-foreground placeholder:text-muted-foreground/60',
+            'bg-muted/40 border border-border/50 text-foreground placeholder:text-muted-foreground/50',
             'focus:bg-muted/60 focus:ring-1 focus:ring-ring/30 focus:outline-none',
             'disabled:opacity-50',
             'transition-colors duration-150',
@@ -147,7 +147,7 @@ export const CreateWorktreePopover: FC<CreateWorktreePopoverProps> = ({ onClose 
                     autoFocus
                     className={cn(
                       'w-full h-7 pl-7 pr-2 rounded-md text-xs',
-                      'bg-muted/40 border-none text-foreground placeholder:text-muted-foreground/60',
+                      'bg-muted/40 border-none text-foreground placeholder:text-muted-foreground/50',
                       'focus:outline-none',
                     )}
                   />
@@ -168,7 +168,7 @@ export const CreateWorktreePopover: FC<CreateWorktreePopoverProps> = ({ onClose 
                   )}
                 >
                   <span className="font-medium">HEAD</span>
-                  <span className="text-muted-foreground/60 text-2xs ml-auto">current</span>
+                  <span className="text-muted-foreground/50 text-[10px] ml-auto">current</span>
                 </button>
 
                 {filteredBranches.map((branch) => (
@@ -187,13 +187,13 @@ export const CreateWorktreePopover: FC<CreateWorktreePopoverProps> = ({ onClose 
                     <GitBranch className="w-3 h-3 shrink-0" />
                     <span className="truncate">{branch.name}</span>
                     {branch.is_head && (
-                      <span className="text-2xs text-primary ml-auto shrink-0">HEAD</span>
+                      <span className="text-[10px] text-primary ml-auto shrink-0">HEAD</span>
                     )}
                   </button>
                 ))}
 
                 {filteredBranches.length === 0 && branchFilter && (
-                  <div className="px-2.5 py-3 text-xs text-muted-foreground/60 text-center">
+                  <div className="px-2.5 py-3 text-xs text-muted-foreground/50 text-center">
                     No branches match
                   </div>
                 )}

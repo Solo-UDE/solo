@@ -215,7 +215,7 @@ const IconButton: FC<IconButtonProps> = ({ onClick, title, icon: Icon, disabled,
   >
     <Icon className={cn('w-3.5 h-3.5', loading && 'animate-spin')} weight="bold" />
     {badge != null && badge > 0 && (
-      <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-0.5 flex items-center justify-center rounded-full bg-primary text-primary-foreground text-2xs font-semibold leading-none">
+      <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-0.5 flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[9px] font-semibold leading-none">
         {badge}
       </span>
     )}
