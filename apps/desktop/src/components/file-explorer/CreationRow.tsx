@@ -70,7 +70,7 @@ export function CreationRow({ type, depth, style, onSubmit, onCancel }: Creation
           onBlur={commit}
           autoFocus
           placeholder={type === 'file' ? 'filename' : 'folder name'}
-          className="flex-1 min-w-0 px-1 py-0 text-xs font-medium bg-muted border border-primary rounded outline-none"
+          className="flex-1 min-w-0 px-1 py-0 text-sm font-medium bg-muted border border-primary rounded outline-none"
           onClick={(e) => e.stopPropagation()}
         />
       </div>

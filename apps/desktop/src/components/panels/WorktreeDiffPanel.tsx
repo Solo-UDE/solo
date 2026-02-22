@@ -83,7 +83,7 @@ export const WorktreeDiffPanel = ({
   if (entries.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-2 px-6">
-        <File className="w-8 h-8 text-muted-foreground/30" />
+        <File className="w-8 h-8 text-muted-foreground/40" />
         <p className="text-xs text-muted-foreground/60">No changes from base branch</p>
       </div>
     );
@@ -110,16 +110,16 @@ export const WorktreeDiffPanel = ({
               <Icon className={cn('w-3.5 h-3.5 shrink-0', config.color.split(' ')[0])} />
               <span className="text-xs text-foreground truncate">{fileName}</span>
               {dirPath && (
-                <span className="text-[10px] text-muted-foreground/50 truncate">{dirPath}</span>
+                <span className="text-2xs text-muted-foreground/60 truncate">{dirPath}</span>
               )}
-              <span className="ml-auto flex items-center gap-1.5 text-[10px] shrink-0">
+              <span className="ml-auto flex items-center gap-1.5 text-2xs shrink-0">
                 {entry.additions > 0 && (
                   <span className="text-emerald-400">+{entry.additions}</span>
                 )}
                 {entry.deletions > 0 && (
                   <span className="text-red-400">-{entry.deletions}</span>
                 )}
-                <span className={cn('px-1 py-0.5 rounded text-[9px] font-semibold', config.color)}>
+                <span className={cn('px-1 py-0.5 rounded text-2xs font-semibold', config.color)}>
                   {config.label}
                 </span>
               </span>

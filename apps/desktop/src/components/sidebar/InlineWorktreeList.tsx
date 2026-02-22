@@ -160,7 +160,7 @@ const WorktreeRow: FC<WorktreeRowProps> = ({
         'text-xs transition-[background-color,color] duration-150',
         isActive
           ? 'bg-primary/10 text-foreground font-medium'
-          : 'text-muted-foreground/70 hover:bg-muted/40 hover:text-foreground',
+          : 'text-muted-foreground hover:bg-muted/40 hover:text-foreground',
       )}
     >
       <Icon
@@ -174,7 +174,7 @@ const WorktreeRow: FC<WorktreeRowProps> = ({
         <Lock className="w-3 h-3 text-muted-foreground/40 shrink-0" />
       )}
       {worktree.is_dirty && (
-        <CircleDashed className="w-3 h-3 text-yellow-500/60 shrink-0" />
+        <CircleDashed className="w-3 h-3 text-warning-foreground/60 shrink-0" />
       )}
       {worktree.agent_session_id && (
         <Robot className="w-3 h-3 text-primary/60 shrink-0" />

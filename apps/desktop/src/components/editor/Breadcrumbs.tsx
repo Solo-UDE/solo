@@ -50,12 +50,12 @@ export function Breadcrumbs({
     <div
       className={`flex items-center justify-between h-7 px-3 bg-background/80 backdrop-blur-sm border-b border-border/20 ${className}`}
     >
-      <div className="flex items-center gap-1 text-[11px] whitespace-nowrap overflow-x-auto">
+      <div className="flex items-center gap-1 text-xs whitespace-nowrap overflow-x-auto">
         {/* Directory path */}
         {dirPath && (
           <>
-            <span className="text-muted-foreground/70 truncate max-w-[200px]">{dirPath}</span>
-            <CaretRight className="w-3 h-3 text-muted-foreground/50 shrink-0" />
+            <span className="text-muted-foreground truncate max-w-[200px]">{dirPath}</span>
+            <CaretRight className="w-3 h-3 text-muted-foreground/60 shrink-0" />
           </>
         )}
 
@@ -71,13 +71,13 @@ export function Breadcrumbs({
         {/* Symbol path */}
         {symbolPath.map((symbol, i) => (
           <div key={i} className="flex items-center gap-1">
-            <CaretRight className="w-3 h-3 text-muted-foreground/50 shrink-0" />
+            <CaretRight className="w-3 h-3 text-muted-foreground/60 shrink-0" />
             <button
               onClick={() => onSymbolClick?.(symbol)}
               className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors duration-150"
               title={`Go to ${symbol.name}`}
             >
-              <span className="font-mono text-[10px]">{getSymbolIcon(symbol.kind)}</span>
+              <span className="font-mono text-2xs">{getSymbolIcon(symbol.kind)}</span>
               <span>{symbol.name}</span>
             </button>
           </div>

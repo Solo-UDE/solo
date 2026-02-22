@@ -119,7 +119,7 @@ export const WorktreeSwitcher: FC<WorktreeSwitcherProps> = ({ onClose }) => {
     >
       {/* Branches section */}
       <div className="flex items-center justify-between px-2.5 py-1.5">
-        <span className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider">
+        <span className="text-2xs font-medium text-muted-foreground/60 uppercase tracking-wider">
           Branches
         </span>
         <button
@@ -153,7 +153,7 @@ export const WorktreeSwitcher: FC<WorktreeSwitcherProps> = ({ onClose }) => {
               disabled={isCreatingBranch}
               className={cn(
                 'flex-1 h-7 px-2 rounded-md text-xs',
-                'bg-muted/40 border-none text-foreground placeholder:text-muted-foreground/50',
+                'bg-muted/40 border-none text-foreground placeholder:text-muted-foreground/60',
                 'focus:bg-muted/60 focus:ring-1 focus:ring-ring/30 focus:outline-none',
                 'disabled:opacity-50',
                 'transition-colors duration-150',
@@ -164,7 +164,7 @@ export const WorktreeSwitcher: FC<WorktreeSwitcherProps> = ({ onClose }) => {
             )}
           </div>
           {branchCreateError && (
-            <p className="mt-1 px-1 text-[10px] text-destructive leading-tight">
+            <p className="mt-1 px-1 text-2xs text-destructive leading-tight">
               {branchCreateError}
             </p>
           )}
@@ -197,7 +197,7 @@ export const WorktreeSwitcher: FC<WorktreeSwitcherProps> = ({ onClose }) => {
 
               {/* Ahead/behind counts */}
               {(branch.ahead > 0 || branch.behind > 0) && (
-                <span className="flex items-center gap-1 text-[10px] text-muted-foreground/60 shrink-0">
+                <span className="flex items-center gap-1 text-2xs text-muted-foreground/60 shrink-0">
                   {branch.ahead > 0 && (
                     <span className="flex items-center gap-0.5">
                       <ArrowUp className="w-2.5 h-2.5" />

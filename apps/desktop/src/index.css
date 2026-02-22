@@ -117,6 +117,12 @@
 
 }
 
+/* Caption text size (10px/12px) - @utility guarantees class generation */
+@utility text-2xs {
+  font-size: 0.625rem;
+  line-height: 0.75rem;
+}
+
 /* =============================================================================
    LIGHT MODE (default)
    ============================================================================= */
