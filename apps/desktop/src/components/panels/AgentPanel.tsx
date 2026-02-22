@@ -3,10 +3,11 @@
  * Wraps the AgentWindow component for use in the panel system
  */
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { AgentWindow } from '@/components/agent';
 import { useAgentStore } from '@/stores/agentStore';
 import { useWorktreeStore } from '@/stores/worktreeStore';
+import { usePanelTabsStore } from '@/stores/panelTabsStore';
 import type { PanelProps } from '@/lib/panels/types';
 
 interface AgentPanelData {
@@ -49,6 +50,8 @@ export function AgentPanel({
 }: PanelProps<AgentPanelData>) {
   const sessionId = data?.sessionId;
   const worktreeId = data?.worktreeId;
+  const deletedRef = useRef(false);
+  const pendingDeleteRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Sync activeSessionId and active worktree when this tab is focused
   useEffect(() => {
@@ -80,6 +83,31 @@ export function AgentPanel({
 
     return unsubscribe;
   }, [sessionId, onTitleChange]);
+
+  // Auto-delete empty sessions on unmount (deferred to survive StrictMode double-mount)
+  useEffect(() => {
+    if (pendingDeleteRef.current !== null) {
+      clearTimeout(pendingDeleteRef.current);
+      pendingDeleteRef.current = null;
+    }
+
+    return () => {
+      if (sessionId && !deletedRef.current) {
+        pendingDeleteRef.current = setTimeout(() => {
+          // Only delete if the tab was actually closed, not just unmounted by a view transition
+          const tabStillExists = usePanelTabsStore.getState().instances.has(instanceId);
+          if (tabStillExists) return;
+
+          const store = useAgentStore.getState();
+          const messages = store.messages.get(sessionId);
+          if (!messages || messages.length === 0) {
+            deletedRef.current = true;
+            store.deleteSession(sessionId);
+          }
+        }, 50);
+      }
+    };
+  }, [sessionId]);
 
   return (
     <AgentWindow

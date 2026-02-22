@@ -18,6 +18,7 @@ export interface WebToolCardProps {
 	readonly prompt?: string;
 	readonly output?: string;
 	readonly status: ToolStatus;
+	readonly style?: React.CSSProperties;
 }
 
 export const WebToolCard: FC<WebToolCardProps> = ({
@@ -26,6 +27,7 @@ export const WebToolCard: FC<WebToolCardProps> = ({
 	url,
 	output,
 	status,
+	style,
 }) => {
 	const isSearch = toolName.toLowerCase() === 'websearch';
 	const display = query ?? url ?? '';
@@ -43,6 +45,7 @@ export const WebToolCard: FC<WebToolCardProps> = ({
 			primaryDisplay={display}
 			output={output}
 			defaultExpanded={false}
+			style={style}
 		/>
 	);
 };

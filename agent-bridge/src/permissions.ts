@@ -49,7 +49,7 @@ export class PermissionManager {
   private snapshotCallback?: SnapshotCallback;
   private alwaysAllowedTools = new Set<string>();
   private acceptModeGetter?: () => boolean;
-  private _policyMode: PolicyMode = 'ask-all';
+  private _policyMode: PolicyMode = 'smart';
   private _policyContext: PolicyContext = { isWorktreeSession: false };
 
   constructor(

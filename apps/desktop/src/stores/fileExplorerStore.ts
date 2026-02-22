@@ -399,7 +399,7 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
             if (index !== -1) {
               parent.children[index] = updatedEntry;
               // Re-sort children
-              parent.children.sort((a, b) => {
+              parent.children.sort((a: FileTreeEntry, b: FileTreeEntry) => {
                 if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1;
                 return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
               });
@@ -525,8 +525,8 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
       const parentPath = getParentPath(path);
       const state = get();
 
-      // Only refresh if parent is expanded
-      if (state.expanded.has(parentPath)) {
+      // Refresh if parent is expanded or is the root path (root is always visible)
+      if (state.expanded.has(parentPath) || parentPath === state.rootPath) {
         fs.readDirectory(parentPath, 1)
           .then((response) => {
             set((state) => {

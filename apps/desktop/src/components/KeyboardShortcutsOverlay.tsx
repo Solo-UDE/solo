@@ -101,10 +101,14 @@ export const KeyboardShortcutsOverlay = ({
                   <div className="space-y-0.5">
                     {category.bindings.map((binding) => {
                       const key = effectiveKeybindings[binding.id] ?? binding.defaultKey;
+                      const isImplemented = binding.implemented !== false;
                       return (
                         <div
                           key={binding.id}
-                          className="flex items-center justify-between py-1.5 px-1 rounded-md group"
+                          className={`flex items-center justify-between py-1.5 px-1 rounded-md group ${
+                            isImplemented ? '' : 'opacity-40'
+                          }`}
+                          title={isImplemented ? undefined : 'Coming soon'}
                         >
                           <span className="text-sm text-foreground/90 truncate pr-3">
                             {binding.label}

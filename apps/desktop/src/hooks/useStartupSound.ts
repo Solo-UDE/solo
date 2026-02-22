@@ -1,70 +1,95 @@
 import { useEffect, useRef } from 'react';
 
 /**
- * Plays ambient background audio while the WelcomeScreen is mounted.
+ * Plays ambient background audio on the WelcomeScreen for 10 seconds, then
+ * fades out. If the user opens a project before the 10s elapses, the audio
+ * fades out immediately on unmount.
  *
- * The audio loops continuously and fades out over 500ms when the component
- * unmounts (i.e. when the user opens a project). Uses HTMLAudioElement
- * which Tauri's WKWebView allows to autoplay without a user gesture.
- *
- * Only plays once per session — if the user returns to the welcome screen
- * (e.g. by closing a workspace), the ambient audio does not restart.
+ * Only plays once per session — returning to the welcome screen after closing
+ * a workspace will not replay the sound.
  *
  * Respects `prefers-reduced-motion`.
  */
 
 let hasPlayedThisSession = false;
 
-const FADE_OUT_MS = 500;
+const DURATION_MS = 5_000;
+const FADE_OUT_MS = 3_000;
+const FADE_STEPS = 1000;
 
 export const useStartupSound = () => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fadeRef = useRef<number | null>(null);
+  const timerRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (hasPlayedThisSession) return;
-    hasPlayedThisSession = true;
 
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      hasPlayedThisSession = true;
+      return;
+    }
+
+    // Defer the guard flag so StrictMode's second mount can still play.
+    // StrictMode: mount → unmount (clears deferred set) → remount (flag still false).
+    const guardTimer = window.setTimeout(() => {
+      hasPlayedThisSession = true;
+    }, 0);
 
     const audio = new Audio('/sounds/ambient-drone.mp3');
     audio.volume = 0.5;
-    audio.loop = true;
     audioRef.current = audio;
 
-    audio.play().catch((err) => {
-      console.warn('[startup-sound] Playback failed:', err);
-    });
-
-    return () => {
-      // Fade out smoothly instead of abrupt stop
+    const fadeOut = () => {
       const el = audioRef.current;
       if (!el) return;
 
+      // Already fading — don't stack intervals
+      if (fadeRef.current !== null) return;
+
       const startVol = el.volume;
-      const steps = 20;
-      const stepMs = FADE_OUT_MS / steps;
-      const volStep = startVol / steps;
-      let current = 0;
+      const stepMs = FADE_OUT_MS / FADE_STEPS;
+      const volStep = startVol / FADE_STEPS;
+      let step = 0;
 
       fadeRef.current = window.setInterval(() => {
-        current++;
-        el.volume = Math.max(0, startVol - volStep * current);
-        if (current >= steps) {
+        step++;
+        el.volume = Math.max(0, startVol - volStep * step);
+        if (step >= FADE_STEPS) {
           if (fadeRef.current !== null) clearInterval(fadeRef.current);
+          fadeRef.current = null;
           el.pause();
           el.src = '';
           audioRef.current = null;
         }
       }, stepMs);
     };
-  }, []);
 
-  // Clean up interval on unmount if fade is still running
-  useEffect(() => {
+    audio.play().catch((err) => {
+      console.warn('[startup-sound] Playback failed:', err);
+    });
+
+    // After (DURATION - FADE) ms, begin fading out
+    timerRef.current = window.setTimeout(fadeOut, DURATION_MS - FADE_OUT_MS);
+
     return () => {
+      clearTimeout(guardTimer);
+      // Cancel the scheduled fade-out
+      if (timerRef.current !== null) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+      // Cancel any in-progress fade interval
       if (fadeRef.current !== null) {
         clearInterval(fadeRef.current);
+        fadeRef.current = null;
+      }
+      // Stop audio immediately
+      const el = audioRef.current;
+      if (el) {
+        el.pause();
+        el.src = '';
+        audioRef.current = null;
       }
     };
   }, []);

@@ -80,6 +80,7 @@ export interface Attachment {
 	mimeType?: string;
 	thumbnailUrl?: string;
 	size?: number;
+	base64Data?: string; // Raw base64 for inline images (no data: prefix)
 }
 
 /** File mention from @-mention in Lexical editor */
@@ -166,11 +167,24 @@ function toContentBlocks(
 
 	if (attachments) {
 		for (const att of attachments) {
-			blocks.push({
-				type: att.type === 'image' ? 'image' : 'document',
-				name: att.name,
-				filePath: att.path,
-			});
+			if (att.type === 'image' && att.base64Data) {
+				// Inline image (sketch, clipboard paste)
+				blocks.push({
+					type: 'image',
+					name: att.name,
+					source: {
+						type: 'base64',
+						mediaType: att.mimeType || 'image/png',
+						data: att.base64Data,
+					},
+				});
+			} else {
+				blocks.push({
+					type: att.type === 'image' ? 'image' : 'document',
+					name: att.name,
+					filePath: att.path,
+				});
+			}
 		}
 	}
 
@@ -423,10 +437,11 @@ export const useAgentStore = create<AgentStore>()(
 					await backend.agentCreateSession(sessionId, {
 						model: agentModel,
 						resumeSessionId: session.sdkSessionId,
+						cwd: session.workspacePath,
 					});
 				} else {
 					// No SDK session to resume — create fresh bridge session
-					await backend.agentCreateSession(sessionId, { model: agentModel });
+					await backend.agentCreateSession(sessionId, { model: agentModel, cwd: session.workspacePath });
 				}
 
 				set((s) => {
@@ -442,7 +457,7 @@ export const useAgentStore = create<AgentStore>()(
 
 				// Auto-fork: create fresh bridge session, preserving message history
 				try {
-					await backend.agentCreateSession(sessionId, { model: agentModel });
+					await backend.agentCreateSession(sessionId, { model: agentModel, cwd: session.workspacePath });
 					set((s) => {
 						const sess = s.sessions.get(sessionId);
 						if (sess) {
@@ -517,7 +532,7 @@ export const useAgentStore = create<AgentStore>()(
 						id: sessionId,
 						createdAt: new Date(),
 						model: model || 'opus',
-						workspacePath,
+						workspacePath: cwd,
 						turnCount: 0,
 						resumable: false,
 						connectionState: 'active',
@@ -1028,6 +1043,37 @@ export const useAgentStore = create<AgentStore>()(
 			// Persist on result/error
 			if (message.type === 'result' || message.type === 'error') {
 				get().persistSessions(sessionId);
+			}
+
+			// Auto-generate title after first assistant turn completes
+			if (message.type === 'result') {
+				const currentSession = get().sessions.get(sessionId);
+				if (currentSession && !currentSession.name && currentSession.turnCount === 1) {
+					const sessionMessages = get().messages.get(sessionId) || [];
+					const firstUserMsg = sessionMessages.find((m) => m.role === 'user');
+					const firstAssistantMsg = sessionMessages.find(
+						(m) => m.role === 'assistant' && !m.isStreaming,
+					);
+					if (firstUserMsg && firstAssistantMsg) {
+						import('@tauri-apps/api/core').then(({ invoke }) => {
+							invoke<string>('agent_generate_session_title', {
+								userMessage: firstUserMsg.content,
+								assistantMessage: firstAssistantMsg.content,
+							})
+								.then((title) => {
+									if (title) {
+										const sess = get().sessions.get(sessionId);
+										if (sess && !sess.name) {
+											get().renameSession(sessionId, title);
+										}
+									}
+								})
+								.catch((err) => {
+									console.warn('[Agent] Title generation failed:', err);
+								});
+						});
+					}
+				}
 			}
 		},
 

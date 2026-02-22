@@ -62,6 +62,9 @@ pub struct TtsConfig {
 
     /// Similarity boost (0.0-1.0)
     pub similarity_boost: f32,
+
+    /// Speech speed multiplier (0.7-1.2, ElevenLabs range)
+    pub speed: f32,
 }
 
 impl Default for TtsConfig {
@@ -72,6 +75,7 @@ impl Default for TtsConfig {
             output_format: TtsOutputFormat::PcmS16le22050,
             stability: 0.5,
             similarity_boost: 0.75,
+            speed: 1.2,
         }
     }
 }

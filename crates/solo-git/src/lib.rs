@@ -328,7 +328,8 @@ impl WorktreeManager {
             .arg("worktree")
             .arg("remove");
         if force {
-            cmd.arg("--force");
+            // Double --force overrides both dirty-files and lock protection
+            cmd.arg("--force").arg("--force");
         }
         cmd.arg(wt_path);
 
@@ -438,8 +439,22 @@ impl WorktreeManager {
         if id == "main" {
             return Some(self.repo_path.clone());
         }
-        let config = WorktreeConfig::load(&self.config_path).ok()?;
-        config.get(id).map(|m| PathBuf::from(&m.path))
+
+        // Solo config first (worktrees created through Solo)
+        if let Ok(config) = WorktreeConfig::load(&self.config_path) {
+            if let Some(meta) = config.get(id) {
+                return Some(PathBuf::from(&meta.path));
+            }
+        }
+
+        // Fallback: check git2 worktrees by name
+        if let Ok(repo) = git2::Repository::open(&self.repo_path) {
+            if let Ok(wt) = repo.find_worktree(id) {
+                return Some(wt.path().to_path_buf());
+            }
+        }
+
+        None
     }
 
     /// Get the main repository path.
@@ -672,11 +687,13 @@ impl WorktreeManager {
         let head = wt_repo
             .head()
             .map_err(|_| GitError::Config("Could not resolve worktree HEAD".to_string()))?;
-        let commit = head
+        let wt_commit = head
             .peel_to_commit()
             .map_err(|_| GitError::Config("Worktree HEAD is not a commit".to_string()))?;
+        let commit_oid = wt_commit.id();
 
-        // Create the branch in the main repo so it's visible everywhere
+        // Create the branch in the main repo so it's visible everywhere.
+        // Re-resolve the commit via the main repo since libgit2 rejects cross-repo objects.
         let main_repo = git2::Repository::open(&self.repo_path)?;
         if main_repo
             .find_branch(branch_name, git2::BranchType::Local)
@@ -685,6 +702,7 @@ impl WorktreeManager {
             return Err(GitError::BranchAlreadyExists(branch_name.to_string()));
         }
 
+        let commit = main_repo.find_commit(commit_oid)?;
         main_repo.branch(branch_name, &commit, false)?;
         info!(id = %id, branch = %branch_name, "Promoted worktree to branch");
         Ok(())
@@ -825,5 +843,290 @@ mod tests {
         let (_dir, repo_path) = setup_test_repo();
         let mgr = WorktreeManager::new(&repo_path).unwrap();
         assert!(mgr.remove("main", false).is_err());
+    }
+
+    // -- Helper for diff tests --
+
+    fn commit_file(repo_path: &Path, name: &str, content: &str) {
+        std::fs::write(repo_path.join(name), content).unwrap();
+        Command::new("git")
+            .args(["add", name])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", &format!("add {}", name)])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+    }
+
+    fn create_test_worktree(mgr: &WorktreeManager, branch: &str) -> WorktreeInfo {
+        mgr.create(&CreateWorktreeRequest {
+            branch: branch.to_string(),
+            path: None,
+            create_branch: true,
+            base: None,
+        })
+        .unwrap()
+    }
+
+    // -- B. WorktreeManager tests — uncovered API methods --
+
+    #[test]
+    fn test_get_worktree() {
+        let (_dir, repo_path) = setup_test_repo();
+        let mgr = WorktreeManager::new(&repo_path).unwrap();
+        let info = create_test_worktree(&mgr, "feature-get");
+
+        let fetched = mgr.get(&info.id).unwrap();
+        assert_eq!(fetched.id, info.id);
+        assert_eq!(fetched.branch, Some("feature-get".to_string()));
+        assert!(!fetched.is_main);
+        assert!(!fetched.head_sha.is_empty());
+        assert!(fetched.created_at > 0);
+        assert!(Path::new(&fetched.path).exists());
+    }
+
+    /// Canonicalize a path for comparison (resolves macOS /var → /private/var symlink).
+    fn canon(p: &Path) -> PathBuf {
+        p.canonicalize().unwrap_or_else(|_| p.to_path_buf())
+    }
+
+    #[test]
+    fn test_worktree_path_returns_correct_paths() {
+        let (_dir, repo_path) = setup_test_repo();
+        let mgr = WorktreeManager::new(&repo_path).unwrap();
+
+        // "main" returns the repo path
+        let main_path = mgr.worktree_path("main").unwrap();
+        assert_eq!(canon(&main_path), canon(&repo_path));
+
+        let info = create_test_worktree(&mgr, "feature-path");
+
+        // Created worktree returns its path
+        let wt_path = mgr.worktree_path(&info.id);
+        assert!(wt_path.is_some());
+        assert_eq!(canon(&wt_path.unwrap()), canon(Path::new(&info.path)));
+
+        // Nonexistent returns None
+        assert!(mgr.worktree_path("nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_repo_path() {
+        let (_dir, repo_path) = setup_test_repo();
+        let mgr = WorktreeManager::new(&repo_path).unwrap();
+        assert_eq!(canon(mgr.repo_path()), canon(&repo_path));
+    }
+
+    // -- C. Agent session binding tests --
+
+    #[test]
+    fn test_agent_session_bind_and_find() {
+        let (_dir, repo_path) = setup_test_repo();
+        let mgr = WorktreeManager::new(&repo_path).unwrap();
+        let info = create_test_worktree(&mgr, "feature-agent");
+
+        mgr.set_agent_session(&info.id, "sess-abc").unwrap();
+        let found = mgr.find_by_agent_session("sess-abc").unwrap();
+        assert_eq!(found, Some(info.id));
+    }
+
+    #[test]
+    fn test_agent_session_clear() {
+        let (_dir, repo_path) = setup_test_repo();
+        let mgr = WorktreeManager::new(&repo_path).unwrap();
+        let info = create_test_worktree(&mgr, "feature-clear-agent");
+
+        mgr.set_agent_session(&info.id, "sess-xyz").unwrap();
+        mgr.clear_agent_session(&info.id).unwrap();
+
+        let found = mgr.find_by_agent_session("sess-xyz").unwrap();
+        assert_eq!(found, None);
+    }
+
+    #[test]
+    fn test_find_agent_session_no_match() {
+        let (_dir, repo_path) = setup_test_repo();
+        let mgr = WorktreeManager::new(&repo_path).unwrap();
+
+        let found = mgr.find_by_agent_session("nonexistent-session").unwrap();
+        assert_eq!(found, None);
+    }
+
+    // -- D. Setup commands tests --
+
+    #[test]
+    fn test_setup_commands_roundtrip() {
+        let (_dir, repo_path) = setup_test_repo();
+        let mgr = WorktreeManager::new(&repo_path).unwrap();
+
+        mgr.set_setup_commands(vec!["bun install".to_string(), "bun run build".to_string()])
+            .unwrap();
+        let cmds = mgr.get_setup_commands().unwrap();
+        assert_eq!(cmds, vec!["bun install", "bun run build"]);
+    }
+
+    #[test]
+    fn test_setup_commands_default_empty() {
+        let (_dir, repo_path) = setup_test_repo();
+        let mgr = WorktreeManager::new(&repo_path).unwrap();
+
+        let cmds = mgr.get_setup_commands().unwrap();
+        assert!(cmds.is_empty());
+    }
+
+    // -- E. Prune tests --
+
+    #[test]
+    fn test_prune_missing_directory() {
+        let (_dir, repo_path) = setup_test_repo();
+        let mgr = WorktreeManager::new(&repo_path).unwrap();
+        let info = create_test_worktree(&mgr, "feature-prune");
+
+        // Manually nuke the worktree directory
+        std::fs::remove_dir_all(&info.path).unwrap();
+
+        let pruned = mgr.prune_stale().unwrap();
+        assert!(pruned.contains(&info.id));
+
+        // Config should no longer reference this worktree
+        assert!(mgr.worktree_path(&info.id).is_none());
+    }
+
+    #[test]
+    fn test_prune_skips_locked() {
+        let (_dir, repo_path) = setup_test_repo();
+        let mgr = WorktreeManager::new(&repo_path).unwrap();
+        let info = create_test_worktree(&mgr, "feature-prune-lock");
+
+        mgr.lock(&info.id, Some("in use")).unwrap();
+
+        // Manually nuke the directory
+        std::fs::remove_dir_all(&info.path).unwrap();
+
+        let pruned = mgr.prune_stale().unwrap();
+        assert!(
+            !pruned.contains(&info.id),
+            "locked worktree should not be pruned"
+        );
+    }
+
+    // -- F. Diff and promote tests --
+
+    #[test]
+    fn test_diff_from_base() {
+        let (_dir, repo_path) = setup_test_repo();
+        let mgr = WorktreeManager::new(&repo_path).unwrap();
+        let info = create_test_worktree(&mgr, "feature-diff");
+
+        // Commit a new file in the worktree
+        let wt_path = PathBuf::from(&info.path);
+        commit_file(&wt_path, "new-file.txt", "hello world\nsecond line\n");
+
+        let entries = mgr.diff_from_base(&info.id).unwrap();
+        assert!(!entries.is_empty());
+
+        let entry = entries.iter().find(|e| e.path == "new-file.txt").unwrap();
+        assert_eq!(entry.status, "added");
+        assert!(entry.additions > 0);
+    }
+
+    #[test]
+    fn test_diff_main_returns_empty() {
+        let (_dir, repo_path) = setup_test_repo();
+        let mgr = WorktreeManager::new(&repo_path).unwrap();
+
+        let entries = mgr.diff_from_base("main").unwrap();
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn test_promote_to_branch() {
+        let (_dir, repo_path) = setup_test_repo();
+        let mgr = WorktreeManager::new(&repo_path).unwrap();
+        let info = create_test_worktree(&mgr, "feature-promote");
+
+        mgr.promote_to_branch(&info.id, "promoted-branch").unwrap();
+
+        // Verify the branch exists in the main repo
+        let repo = git2::Repository::open(&repo_path).unwrap();
+        assert!(repo
+            .find_branch("promoted-branch", git2::BranchType::Local)
+            .is_ok());
+    }
+
+    #[test]
+    fn test_promote_duplicate_branch_fails() {
+        let (_dir, repo_path) = setup_test_repo();
+        let mgr = WorktreeManager::new(&repo_path).unwrap();
+        let info = create_test_worktree(&mgr, "feature-promote-dup");
+
+        mgr.promote_to_branch(&info.id, "dup-branch").unwrap();
+        let result = mgr.promote_to_branch(&info.id, "dup-branch");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, GitError::BranchAlreadyExists(_)),
+            "expected BranchAlreadyExists, got: {:?}",
+            err
+        );
+    }
+
+    // -- G. Edge case / error tests --
+
+    #[test]
+    fn test_create_existing_branch_fails() {
+        let (_dir, repo_path) = setup_test_repo();
+        let mgr = WorktreeManager::new(&repo_path).unwrap();
+
+        create_test_worktree(&mgr, "feature-dup-branch");
+
+        let result = mgr.create(&CreateWorktreeRequest {
+            branch: "feature-dup-branch".to_string(),
+            path: None,
+            create_branch: true,
+            base: None,
+        });
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, GitError::BranchAlreadyExists(_)),
+            "expected BranchAlreadyExists, got: {:?}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_lock_main_fails() {
+        let (_dir, repo_path) = setup_test_repo();
+        let mgr = WorktreeManager::new(&repo_path).unwrap();
+        assert!(mgr.lock("main", None).is_err());
+    }
+
+    #[test]
+    fn test_unlock_main_fails() {
+        let (_dir, repo_path) = setup_test_repo();
+        let mgr = WorktreeManager::new(&repo_path).unwrap();
+        assert!(mgr.unlock("main").is_err());
+    }
+
+    #[test]
+    fn test_force_remove_locked() {
+        let (_dir, repo_path) = setup_test_repo();
+        let mgr = WorktreeManager::new(&repo_path).unwrap();
+        let info = create_test_worktree(&mgr, "feature-force-rm");
+
+        mgr.lock(&info.id, Some("locked for test")).unwrap();
+
+        // Non-force should fail
+        assert!(mgr.remove(&info.id, false).is_err());
+
+        // Force should succeed
+        mgr.remove(&info.id, true).unwrap();
+
+        let list = mgr.list().unwrap();
+        assert_eq!(list.len(), 1, "only main should remain");
     }
 }

@@ -14,6 +14,8 @@ bun.lockb
 
 # Generated files
 /apps/desktop/src/bindings/*.ts
+# ts-rs intermediate outputs (generated at wrong path during cargo test)
+crates/*/apps/
 
 # IDE
 .idea

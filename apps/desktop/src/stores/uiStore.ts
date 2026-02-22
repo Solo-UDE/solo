@@ -9,11 +9,16 @@ import { SIDEBAR, TERMINAL_SECTION } from '@/lib/constants';
 // Sidebar tab types
 export type SidebarTab = 'explorer' | 'sessions' | 'source-control';
 
+// Sidebar view modes
+export type SidebarView = 'repos' | 'worktree';
+
 // Settings tab types
 export type SettingsTabId = 'general' | 'editor' | 'terminal' | 'files' | 'shortcuts' | 'ai' | 'voice';
 
 interface UIState {
   leftSidebarWidth: number;
+  _previousSidebarWidth: number;
+  sidebarView: SidebarView;
   activeTab: SidebarTab;
   terminalPanelOpen: boolean;
   terminalPanelHeight: number;
@@ -28,6 +33,7 @@ interface UIActions {
   expandLeftSidebar: () => void;
   collapseLeftSidebar: () => void;
   setLeftSidebarWidth: (width: number) => void;
+  setSidebarView: (view: SidebarView) => void;
   setActiveTab: (tab: SidebarTab) => void;
   toggleTerminalPanel: () => void;
   setTerminalPanelHeight: (height: number) => void;
@@ -45,6 +51,8 @@ type UIStore = UIState & UIActions;
 export const useUIStore = create<UIStore>()(
   immer((set) => ({
     leftSidebarWidth: SIDEBAR.expanded,
+    _previousSidebarWidth: SIDEBAR.expanded,
+    sidebarView: 'repos' as SidebarView,
     activeTab: 'explorer' as SidebarTab,
     terminalPanelOpen: false,
     terminalPanelHeight: TERMINAL_SECTION.defaultHeight,
@@ -55,15 +63,18 @@ export const useUIStore = create<UIStore>()(
 
     toggleLeftSidebar: (): void => {
       set((state) => {
-        state.leftSidebarWidth = state.leftSidebarWidth > SIDEBAR.collapsed
-          ? SIDEBAR.collapsed
-          : SIDEBAR.expanded;
+        if (state.leftSidebarWidth > SIDEBAR.collapsed) {
+          state._previousSidebarWidth = state.leftSidebarWidth;
+          state.leftSidebarWidth = SIDEBAR.collapsed;
+        } else {
+          state.leftSidebarWidth = state._previousSidebarWidth;
+        }
       });
     },
 
     expandLeftSidebar: (): void => {
       set((state) => {
-        state.leftSidebarWidth = SIDEBAR.expanded;
+        state.leftSidebarWidth = state._previousSidebarWidth;
       });
     },
 
@@ -76,6 +87,15 @@ export const useUIStore = create<UIStore>()(
     setLeftSidebarWidth: (width: number): void => {
       set((state) => {
         state.leftSidebarWidth = width;
+        if (width > SIDEBAR.collapsed) {
+          state._previousSidebarWidth = width;
+        }
+      });
+    },
+
+    setSidebarView: (view: SidebarView): void => {
+      set((state) => {
+        state.sidebarView = view;
       });
     },
 

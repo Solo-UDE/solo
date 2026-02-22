@@ -17,6 +17,7 @@ export interface BashToolCardProps {
 	readonly description?: string;
 	readonly output?: string;
 	readonly status: ToolStatus;
+	readonly style?: React.CSSProperties;
 }
 
 export const BashToolCard: FC<BashToolCardProps> = ({
@@ -24,6 +25,7 @@ export const BashToolCard: FC<BashToolCardProps> = ({
 	description,
 	output,
 	status,
+	style,
 }) => {
 	const lineCount = output?.split('\n').filter(Boolean).length;
 
@@ -34,6 +36,7 @@ export const BashToolCard: FC<BashToolCardProps> = ({
 			icon={<Terminal className={`h-3.5 w-3.5 shrink-0 ${status === 'running' ? 'text-muted-foreground animate-pulse' : 'text-muted-foreground'}`} />}
 			label={status === 'running' ? 'Running Bash' : 'Ran Bash'}
 			output={output}
+			style={style}
 		>
 			<div className="space-y-1.5">
 				{/* Command display */}

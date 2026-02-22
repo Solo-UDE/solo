@@ -39,6 +39,7 @@ export interface ToolCardProps {
 	/** Start expanded (default: true for running/success, false otherwise) */
 	readonly defaultExpanded?: boolean;
 	readonly className?: string;
+	readonly style?: React.CSSProperties;
 }
 
 const StatusIcon: FC<{ status: ToolStatus }> = ({ status }) => {
@@ -76,6 +77,7 @@ export const ToolCard: FC<ToolCardProps> = ({
 	collapsible = true,
 	defaultExpanded,
 	className = '',
+	style,
 }) => {
 	const resolvedDefault = defaultExpanded ?? (status === 'running' || status === 'success');
 	const [isExpanded, setIsExpanded] = useState(resolvedDefault);
@@ -100,7 +102,8 @@ export const ToolCard: FC<ToolCardProps> = ({
 
 	return (
 		<div
-			className={`my-2 rounded-xl bg-card/60 backdrop-blur-sm border border-border/20 shadow-sm overflow-hidden transition-shadow duration-200 hover:shadow-md ${className}`}
+			className={`my-2 rounded-xl bg-card/60 backdrop-blur-sm border border-border/20 shadow-sm overflow-hidden transition-shadow duration-200 hover:shadow-md animate-in fade-in-0 slide-in-from-bottom-1 duration-200 fill-mode-both ${className}`}
+			style={style}
 		>
 			{/* Header */}
 			<button
