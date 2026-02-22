@@ -399,7 +399,7 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
             if (index !== -1) {
               parent.children[index] = updatedEntry;
               // Re-sort children
-              parent.children.sort((a, b) => {
+              parent.children.sort((a: FileTreeEntry, b: FileTreeEntry) => {
                 if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1;
                 return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
               });

@@ -12,7 +12,7 @@ import { useProviderStore } from "./stores/provider-store";
 import { useAgentStore } from "./stores/agentStore";
 import { useSettingsStore } from "./stores/settingsStore";
 import { useAuthStore, useUser } from "./stores/authStore";
-import { registerBuiltinPanels, BUILTIN_PANEL_TYPES } from "./lib/panels";
+import { registerBuiltinPanels, BUILTIN_PANEL_TYPES, DEFAULT_TILES } from "./lib/panels";
 import { SettingsView } from "./components/settings";
 import { useAutosave } from "./hooks/useAutosave";
 import { useColorScheme } from "./hooks/useColorScheme";
@@ -219,6 +219,9 @@ function AppContent() {
       // Cmd+N — new agent session
       if (e.key === 'n' && e.metaKey && !e.shiftKey && !e.ctrlKey) {
         e.preventDefault();
+        // Don't create sessions when workspace layout isn't visible
+        const currentRootPath = useFileExplorerStore.getState().rootPath;
+        if (!currentRootPath || settingsOpen) return;
         const model = useProviderStore.getState().selectedModel || undefined;
         useAgentStore.getState().createSession(model)
           .then((newSessionId) => {
@@ -234,6 +237,29 @@ function AppContent() {
       if (e.key === '?' && e.metaKey) {
         e.preventDefault();
         setShortcutsOverlayOpen((prev) => !prev);
+        return;
+      }
+
+      // Cmd+W — close current tab (terminal or panel)
+      if (e.key === 'w' && e.metaKey && !e.shiftKey) {
+        e.preventDefault();
+        const isTermOpen = useUIStore.getState().terminalPanelOpen;
+        const isEditorActive = document.activeElement?.closest('.monaco-editor');
+
+        if (isTermOpen && !isEditorActive) {
+          // Terminal is open and editor is NOT focused → close terminal tab
+          const { activeTerminalId: aid } = useTerminalStore.getState();
+          if (aid) {
+            killTerminal(aid).catch(() => {});
+            useTerminalStore.getState().removeTerminal(aid);
+            if (useTerminalStore.getState().terminals.size === 0) {
+              useUIStore.getState().toggleTerminalPanel();
+            }
+          }
+        } else {
+          // Close the active panel tab in the editor tile
+          usePanelTabsStore.getState().closeActiveTab(DEFAULT_TILES.editor);
+        }
         return;
       }
 
@@ -254,20 +280,6 @@ function AppContent() {
             useTerminalStore.getState().addTerminal(id, cwd, shell);
           })
           .catch((err) => console.error('Failed to create terminal:', err));
-        return;
-      }
-
-      // Cmd+W — close active terminal tab
-      if (e.key === 'w' && e.metaKey && !e.shiftKey) {
-        e.preventDefault();
-        const { activeTerminalId: aid } = useTerminalStore.getState();
-        if (aid) {
-          killTerminal(aid).catch(() => {});
-          useTerminalStore.getState().removeTerminal(aid);
-          if (useTerminalStore.getState().terminals.size === 0) {
-            useUIStore.getState().toggleTerminalPanel();
-          }
-        }
         return;
       }
 
@@ -344,40 +356,30 @@ function AppContent() {
     setLeftSidebarWidth(SIDEBAR.expanded);
   }, [setLeftSidebarWidth]);
 
-  // Terminal panel divider drag handlers
-  const handleTerminalDragStart = useCallback((e: React.MouseEvent) => {
+  // Terminal panel divider drag handlers — pointer capture for zero-lag dragging
+  const handleTerminalPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
     setIsDraggingTerminal(true);
     dragStartY.current = e.clientY;
-    dragStartHeight.current = terminalPanelHeight;
-  }, [terminalPanelHeight]);
+    dragStartHeight.current = useUIStore.getState().terminalPanelHeight;
+    document.body.classList.add('is-resizing-row');
+  }, []);
 
-  const handleTerminalDragMove = useCallback((e: MouseEvent) => {
-    if (!isDraggingTerminal) return;
+  const handleTerminalPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
     // Dragging up increases terminal height
     const delta = dragStartY.current - e.clientY;
     setTerminalPanelHeight(dragStartHeight.current + delta);
-  }, [isDraggingTerminal, setTerminalPanelHeight]);
+  }, [setTerminalPanelHeight]);
 
-  const handleTerminalDragEnd = useCallback(() => {
+  const handleTerminalPointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
+    document.body.classList.remove('is-resizing-row');
     setIsDraggingTerminal(false);
-  }, []);
-
-  // Attach global mouse events for terminal divider drag
-  useEffect(() => {
-    if (isDraggingTerminal) {
-      document.addEventListener('mousemove', handleTerminalDragMove);
-      document.addEventListener('mouseup', handleTerminalDragEnd);
-      document.body.style.cursor = 'row-resize';
-      document.body.style.userSelect = 'none';
-    }
-    return () => {
-      document.removeEventListener('mousemove', handleTerminalDragMove);
-      document.removeEventListener('mouseup', handleTerminalDragEnd);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    };
-  }, [isDraggingTerminal, handleTerminalDragMove, handleTerminalDragEnd]);
+    const delta = dragStartY.current - e.clientY;
+    setTerminalPanelHeight(dragStartHeight.current + delta);
+  }, [setTerminalPanelHeight]);
 
   return (
     <div className="h-screen w-screen bg-background text-foreground overflow-hidden relative">
@@ -385,7 +387,7 @@ function AppContent() {
       <div
         data-tauri-drag-region
         style={titlebarStyle}
-        className="absolute top-0 inset-x-0 h-[38px] flex items-center z-50 bg-background titlebar-glass"
+        className="absolute top-0 inset-x-0 h-[38px] flex items-center z-50 bg-background titlebar-glass border-b border-border/20"
       >
         <div className="flex-1 flex items-center gap-1.5 ml-1.5" data-tauri-drag-region>
           {(rootPath !== null || hasRepos) && (
@@ -399,7 +401,7 @@ function AppContent() {
             >
               <SidebarSimple
                 weight={isCollapsed ? 'regular' : 'fill'}
-                className={cn('w-3.5 h-3.5', isCollapsed ? 'text-muted-foreground' : 'text-primary')}
+                className={cn('w-5 h-5 -translate-y-px', isCollapsed ? 'text-muted-foreground' : 'text-primary')}
               />
             </button>
           )}
@@ -447,7 +449,7 @@ function AppContent() {
       </div>
 
       {/* Full-height content — animated view transitions */}
-      <AnimatePresence mode="wait">
+      <AnimatePresence mode="popLayout">
         {settingsOpen ? (
           <motion.div
             key="settings"
@@ -462,10 +464,10 @@ function AppContent() {
         ) : (
           <motion.div
             key="workspace"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15, ease: EASE_SMOOTH }}
+            initial={{ opacity: 0, x: -24 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -24 }}
+            transition={{ duration: 0.25, ease: EASE_SMOOTH }}
             className="flex h-full"
           >
             <DndProvider backend={HTML5Backend}>
@@ -494,10 +496,12 @@ function AppContent() {
                       <div className="overflow-hidden min-h-0">
                         <div
                           className={cn(
-                            'h-1.5 shrink-0 cursor-row-resize flex items-center justify-center hover:bg-primary/20 transition-colors',
-                            isDraggingTerminal && 'bg-primary/30',
+                            'h-1.5 shrink-0 cursor-row-resize flex items-center justify-center hover:bg-foreground/[0.06] transition-colors',
+                            isDraggingTerminal && 'bg-foreground/[0.08]',
                           )}
-                          onMouseDown={handleTerminalDragStart}
+                          onPointerDown={handleTerminalPointerDown}
+                          onPointerMove={handleTerminalPointerMove}
+                          onPointerUp={handleTerminalPointerUp}
                         >
                           <div className="w-8 h-px bg-border/60 rounded-full" />
                         </div>

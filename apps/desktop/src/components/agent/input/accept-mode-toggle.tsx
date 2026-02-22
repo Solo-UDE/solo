@@ -21,11 +21,14 @@ export const AcceptModeToggle: React.FC<AcceptModeToggleProps> = ({
       disabled={disabled}
       title={enabled ? 'Disable auto-approve' : 'Auto-approve all tool actions'}
       className={cn(
-        'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md transition-all duration-150',
-        'text-sm font-medium',
+        'inline-flex items-center gap-1.5 h-[30px] px-2.5 rounded-[8px]',
+        'text-xs font-medium',
+        'active:scale-[0.97]',
+        'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/30',
+        'transition-[transform,background-color,color] duration-200',
         enabled
-          ? 'bg-warning/10 text-warning border border-warning/20'
-          : 'border border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground',
+          ? 'glow-active text-primary'
+          : 'bg-transparent text-muted-foreground hover:bg-muted/60 hover:text-foreground',
         disabled && 'opacity-50 cursor-not-allowed',
       )}
     >

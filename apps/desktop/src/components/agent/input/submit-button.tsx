@@ -28,7 +28,7 @@ export const SubmitButton: React.FC<SubmitButtonProps> = ({
       `}
       aria-label="Submit message"
     >
-      <ArrowUp className="h-4 w-4" />
+      <ArrowUp weight="bold" className="h-4 w-4" />
     </IconButton>
   );
 };

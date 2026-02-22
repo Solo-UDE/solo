@@ -7,13 +7,16 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Editor, { OnMount, BeforeMount } from '@monaco-editor/react';
 import type * as Monaco from 'monaco-editor';
-import { WarningCircle } from '@phosphor-icons/react';
+import { WarningCircle, CaretRight } from '@phosphor-icons/react';
+import { FileIcon } from '@react-symbols/icons/utils';
 import { CodeSkeleton } from '@/components/ui/skeletons';
 import * as fs from '@/lib/tauri/fs';
 import { registerSoloTheme, SOLO_THEME_NAME, SOLO_LIGHT_THEME_NAME, registerSoloLightTheme } from '@/components/editor/theme';
 import { MarkdownEditor } from '@/components/editor/MarkdownEditor';
 import { MarkdownToggle } from '@/components/editor/MarkdownToggle';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useFileExplorerStore } from '@/stores/fileExplorerStore';
+import { useUIStore } from '@/stores/uiStore';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import type { PanelProps } from '@/lib/panels/types';
 import type { MarkdownMode } from '@/stores/editorStore';
@@ -30,6 +33,27 @@ function isMarkdownFile(path: string | undefined): boolean {
   if (!path) return false;
   const ext = path.split('.').pop()?.toLowerCase() ?? '';
   return ext === 'md' || ext === 'markdown';
+}
+
+interface BreadcrumbSegment {
+  label: string;
+  fullPath: string;
+  isLast: boolean;
+}
+
+function buildBreadcrumbSegments(filePath: string, rootPath: string | null): BreadcrumbSegment[] {
+  let displayPath = filePath;
+  if (rootPath && filePath.startsWith(rootPath)) {
+    displayPath = filePath.slice(rootPath.length).replace(/^\//, '');
+  }
+  const parts = displayPath.split('/').filter(Boolean);
+  const segments: BreadcrumbSegment[] = [];
+  let currentPath = rootPath ?? '';
+  for (let i = 0; i < parts.length; i++) {
+    currentPath = currentPath ? `${currentPath}/${parts[i]}` : parts[i];
+    segments.push({ label: parts[i], fullPath: currentPath, isLast: i === parts.length - 1 });
+  }
+  return segments;
 }
 
 /**
@@ -148,6 +172,27 @@ export function FileViewerPanel({
 
   // Check if current file is markdown
   const isMarkdown = useMemo(() => isMarkdownFile(filePath), [filePath]);
+
+  // Breadcrumb navigation
+  const rootPath = useFileExplorerStore((s) => s.rootPath);
+  const expandDirectory = useFileExplorerStore((s) => s.expandDirectory);
+  const selectFile = useFileExplorerStore((s) => s.selectFile);
+  const setActiveTab = useUIStore((s) => s.setActiveTab);
+
+  const breadcrumbSegments = useMemo(
+    () => (filePath ? buildBreadcrumbSegments(filePath, rootPath) : []),
+    [filePath, rootPath]
+  );
+
+  const handleBreadcrumbClick = useCallback(
+    async (segment: BreadcrumbSegment) => {
+      if (segment.isLast) return;
+      setActiveTab('explorer');
+      await expandDirectory(segment.fullPath);
+      selectFile(segment.fullPath);
+    },
+    [setActiveTab, expandDirectory, selectFile]
+  );
 
   // Update title based on file name
   useEffect(() => {
@@ -403,9 +448,36 @@ export function FileViewerPanel({
 
   return (
     <div className="flex flex-col h-full bg-background">
-      {/* Breadcrumb with markdown toggle */}
-      <div className="flex items-center justify-between h-6 px-3 bg-muted/30 border-b border-border/30 shrink-0">
-        <span className="text-[11px] text-muted-foreground truncate flex-1">{filePath}</span>
+      {/* Interactive breadcrumb with markdown toggle */}
+      <div className="flex items-center justify-between h-6 px-3 bg-background/40 backdrop-blur-md border-b border-white/[0.04] shrink-0">
+        <div className="flex items-center gap-1 overflow-x-auto scrollbar-none flex-1 min-w-0">
+          {breadcrumbSegments.length > 0 && (
+            <FileIcon
+              fileName={breadcrumbSegments[breadcrumbSegments.length - 1].label}
+              autoAssign
+              className="w-3.5 h-3.5 shrink-0"
+            />
+          )}
+          {breadcrumbSegments.map((segment, i) => (
+            <div key={segment.fullPath} className="flex items-center gap-1 shrink-0">
+              {i > 0 && (
+                <CaretRight className="w-2.5 h-2.5 text-muted-foreground/40 shrink-0" weight="bold" />
+              )}
+              {segment.isLast ? (
+                <span className="text-[11px] text-foreground/80 font-medium whitespace-nowrap">
+                  {segment.label}
+                </span>
+              ) : (
+                <button
+                  className="text-[11px] text-muted-foreground/60 hover:text-foreground transition-colors duration-100 whitespace-nowrap"
+                  onClick={() => handleBreadcrumbClick(segment)}
+                >
+                  {segment.label}
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
         {isMarkdown && (
           <MarkdownToggle
             mode={markdownMode}
@@ -428,12 +500,15 @@ export function FileViewerPanel({
       </div>
 
       {/* Status bar */}
-      <div className="flex items-center justify-between h-6 px-3 bg-primary text-primary-foreground text-[12px] shrink-0">
-        <div className="flex items-center gap-4">
-          <span>{language}</span>
-          <span>UTF-8</span>
+      <div className="flex items-center justify-between h-6 px-3 bg-background/30 backdrop-blur-md text-muted-foreground text-[11px] border-t border-white/[0.04] shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-primary/60 shrink-0" />
+            <span>{language}</span>
+          </div>
+          <span className="text-muted-foreground/50">UTF-8</span>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3 text-muted-foreground/60">
           <span>Ln {cursorPosition.line}, Col {cursorPosition.col}</span>
           <span>{lineCount} lines</span>
         </div>

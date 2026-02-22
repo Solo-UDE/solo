@@ -4,6 +4,7 @@ import { MessageActions } from './message-actions';
 import { MessageFeedback } from './message-feedback';
 import { NotifyUserCard } from './notify-user-card';
 import { ProceedIndicator } from './proceed-indicator';
+import { SoloAgentBadge } from './SoloAgentBadge';
 import { ThinkingBox } from './thinking-box';
 import { TodoToolWidget } from './tools';
 import { renderToolCard } from '../streaming/tool-registry';
@@ -81,7 +82,7 @@ const renderToolWidget = (
 export const AgentMessage: FC<AgentMessageProps> = ({
   content,
   timestamp,
-  agentName = 'Agent',
+  agentName: _agentName = 'Agent',
   onFeedback,
   onToolApproval,
   messageId,
@@ -114,7 +115,7 @@ export const AgentMessage: FC<AgentMessageProps> = ({
       <div className="flex-1 min-w-0 space-y-3">
         {/* Header */}
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-foreground">{agentName}</span>
+          <SoloAgentBadge />
           <span className="text-xs text-muted-foreground">{formatTime(timestamp)}</span>
           {content.autoProceed ? <ProceedIndicator /> : null}
         </div>

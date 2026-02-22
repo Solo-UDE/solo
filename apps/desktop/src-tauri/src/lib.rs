@@ -212,6 +212,7 @@ pub fn run() {
             agent_commands::agent_get_accept_mode,
             agent_commands::agent_set_tool_policy,
             agent_commands::agent_generate_commit_message,
+            agent_commands::agent_generate_session_title,
             // Provider/auth commands
             provider_commands::get_providers,
             provider_commands::get_active_provider,

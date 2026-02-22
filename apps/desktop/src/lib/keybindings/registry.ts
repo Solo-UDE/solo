@@ -8,6 +8,8 @@ export interface KeybindingDefinition {
   description?: string;
   defaultKey: string;
   category: string;
+  /** Whether this keybinding is currently functional. Defaults to true. */
+  implemented?: boolean;
 }
 
 export interface KeybindingCategory {
@@ -21,37 +23,44 @@ export const DEFAULT_KEYBINDINGS: KeybindingDefinition[] = [
   { id: 'agent.newSession', label: 'New Agent Session', description: 'Open a new agent session tab', defaultKey: 'Cmd+N', category: 'agent' },
 
   // File
-  { id: 'file.open', label: 'Open File', description: 'Open a file', defaultKey: 'Cmd+O', category: 'file' },
-  { id: 'file.openFolder', label: 'Open Folder', description: 'Open a folder', defaultKey: 'Cmd+Shift+O', category: 'file' },
+  { id: 'file.open', label: 'Open File', description: 'Open a file', defaultKey: 'Cmd+O', category: 'file', implemented: false },
+  { id: 'file.openFolder', label: 'Open Folder', description: 'Open a folder', defaultKey: 'Cmd+Shift+O', category: 'file', implemented: false },
   { id: 'file.closeTab', label: 'Close Tab', description: 'Close the current tab', defaultKey: 'Cmd+W', category: 'file' },
-  { id: 'file.closeAllTabs', label: 'Close All Tabs', description: 'Close all open tabs', defaultKey: 'Cmd+Shift+W', category: 'file' },
+  { id: 'file.closeAllTabs', label: 'Close All Tabs', description: 'Close all open tabs', defaultKey: 'Cmd+Shift+W', category: 'file', implemented: false },
 
-  // Editor
+  // Editor (handled natively by Monaco)
   { id: 'editor.save', label: 'Save File', description: 'Save the current file', defaultKey: 'Cmd+S', category: 'editor' },
-  { id: 'editor.saveAll', label: 'Save All', description: 'Save all open files', defaultKey: 'Cmd+Shift+S', category: 'editor' },
+  { id: 'editor.saveAll', label: 'Save All', description: 'Save all open files', defaultKey: 'Cmd+Shift+S', category: 'editor', implemented: false },
   { id: 'editor.undo', label: 'Undo', description: 'Undo last action', defaultKey: 'Cmd+Z', category: 'editor' },
   { id: 'editor.redo', label: 'Redo', description: 'Redo last undone action', defaultKey: 'Cmd+Shift+Z', category: 'editor' },
   { id: 'editor.find', label: 'Find', description: 'Open find dialog', defaultKey: 'Cmd+F', category: 'editor' },
-  { id: 'editor.replace', label: 'Find and Replace', description: 'Open find and replace dialog', defaultKey: 'Cmd+H', category: 'editor' },
-  { id: 'editor.format', label: 'Format Document', description: 'Format the current document', defaultKey: 'Cmd+Shift+F', category: 'editor' },
+  { id: 'editor.replace', label: 'Find and Replace', description: 'Open find and replace dialog', defaultKey: 'Cmd+H', category: 'editor', implemented: false },
+  { id: 'editor.format', label: 'Format Document', description: 'Format the current document', defaultKey: 'Cmd+Shift+F', category: 'editor', implemented: false },
   { id: 'editor.comment', label: 'Toggle Comment', description: 'Comment/uncomment selection', defaultKey: 'Cmd+/', category: 'editor' },
 
   // View
-  { id: 'view.toggleSidebar', label: 'Toggle Sidebar', description: 'Show/hide the sidebar', defaultKey: 'Cmd+B', category: 'view' },
-  { id: 'view.toggleTerminal', label: 'Toggle Terminal', description: 'Show/hide the terminal', defaultKey: 'Cmd+`', category: 'view' },
-  { id: 'view.zoomIn', label: 'Zoom In', description: 'Increase editor zoom', defaultKey: 'Cmd+=', category: 'view' },
-  { id: 'view.zoomOut', label: 'Zoom Out', description: 'Decrease editor zoom', defaultKey: 'Cmd+-', category: 'view' },
-  { id: 'view.resetZoom', label: 'Reset Zoom', description: 'Reset editor zoom', defaultKey: 'Cmd+0', category: 'view' },
+  { id: 'view.toggleSidebar', label: 'Toggle Sidebar', description: 'Show/hide the sidebar', defaultKey: 'Cmd+B', category: 'view', implemented: false },
+  { id: 'view.toggleTerminal', label: 'Toggle Terminal', description: 'Show/hide the terminal', defaultKey: 'Cmd+J', category: 'view' },
+  { id: 'view.zoomIn', label: 'Zoom In', description: 'Increase editor zoom', defaultKey: 'Cmd+=', category: 'view', implemented: false },
+  { id: 'view.zoomOut', label: 'Zoom Out', description: 'Decrease editor zoom', defaultKey: 'Cmd+-', category: 'view', implemented: false },
+  { id: 'view.resetZoom', label: 'Reset Zoom', description: 'Reset editor zoom', defaultKey: 'Cmd+0', category: 'view', implemented: false },
   { id: 'view.showShortcuts', label: 'Show Keyboard Shortcuts', description: 'Open keyboard shortcuts overlay', defaultKey: 'Cmd+Shift+/', category: 'view' },
 
+  // Terminal
+  { id: 'terminal.new', label: 'New Terminal', description: 'Create a new terminal tab', defaultKey: 'Cmd+T', category: 'terminal' },
+  { id: 'terminal.newSession', label: 'New Terminal Session', description: 'Open a new terminal session', defaultKey: 'Ctrl+Shift+`', category: 'terminal' },
+  { id: 'terminal.clear', label: 'Clear Terminal', description: 'Clear terminal output', defaultKey: 'Cmd+K', category: 'terminal' },
+
+  // Settings
+  { id: 'settings.open', label: 'Open Settings', description: 'Open settings panel', defaultKey: 'Cmd+,', category: 'settings' },
+
   // Navigation
-  { id: 'nav.goToFile', label: 'Go to File', description: 'Quick open file by name', defaultKey: 'Cmd+P', category: 'navigation' },
-  { id: 'nav.goToLine', label: 'Go to Line', description: 'Jump to a specific line', defaultKey: 'Cmd+G', category: 'navigation' },
-  { id: 'nav.goToSymbol', label: 'Go to Symbol', description: 'Jump to a symbol in file', defaultKey: 'Cmd+Shift+O', category: 'navigation' },
+  { id: 'nav.goToFile', label: 'Go to File', description: 'Quick open file by name', defaultKey: 'Cmd+P', category: 'navigation', implemented: false },
+  { id: 'nav.goToLine', label: 'Go to Line', description: 'Jump to a specific line', defaultKey: 'Cmd+G', category: 'navigation', implemented: false },
   { id: 'nav.nextTab', label: 'Next Tab', description: 'Switch to next tab', defaultKey: 'Cmd+Shift+]', category: 'navigation' },
   { id: 'nav.prevTab', label: 'Previous Tab', description: 'Switch to previous tab', defaultKey: 'Cmd+Shift+[', category: 'navigation' },
-  { id: 'nav.goBack', label: 'Go Back', description: 'Navigate back', defaultKey: 'Cmd+Alt+Left', category: 'navigation' },
-  { id: 'nav.goForward', label: 'Go Forward', description: 'Navigate forward', defaultKey: 'Cmd+Alt+Right', category: 'navigation' },
+  { id: 'nav.goBack', label: 'Go Back', description: 'Navigate back', defaultKey: 'Cmd+Alt+Left', category: 'navigation', implemented: false },
+  { id: 'nav.goForward', label: 'Go Forward', description: 'Navigate forward', defaultKey: 'Cmd+Alt+Right', category: 'navigation', implemented: false },
 ];
 
 export const KEYBINDING_CATEGORIES: KeybindingCategory[] = [
@@ -74,6 +83,16 @@ export const KEYBINDING_CATEGORIES: KeybindingCategory[] = [
     id: 'view',
     label: 'View',
     bindings: DEFAULT_KEYBINDINGS.filter((b) => b.category === 'view'),
+  },
+  {
+    id: 'terminal',
+    label: 'Terminal',
+    bindings: DEFAULT_KEYBINDINGS.filter((b) => b.category === 'terminal'),
+  },
+  {
+    id: 'settings',
+    label: 'Settings',
+    bindings: DEFAULT_KEYBINDINGS.filter((b) => b.category === 'settings'),
   },
   {
     id: 'navigation',

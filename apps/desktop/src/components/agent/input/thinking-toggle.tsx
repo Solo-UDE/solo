@@ -21,13 +21,19 @@ export const ThinkingToggle: React.FC<ThinkingToggleProps> = ({
       disabled={disabled}
       title={enabled ? 'Disable extended thinking' : 'Enable extended thinking'}
       className={cn(
-        'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md transition-all duration-150',
-        'text-sm font-medium',
+        'inline-flex items-center gap-1.5 h-[30px] px-2.5 rounded-[8px]',
+        'text-xs font-medium',
+        'active:scale-[0.97]',
+        'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/30',
+        'transition-[transform,background-color,color] duration-200',
         enabled
-          ? 'bg-primary/10 text-primary border border-primary/20'
-          : 'border border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground',
+          ? 'text-info'
+          : 'bg-transparent text-muted-foreground hover:bg-muted/60 hover:text-foreground',
         disabled && 'opacity-50 cursor-not-allowed',
       )}
+      style={enabled ? {
+        background: 'radial-gradient(ellipse 80% 50% at center, oklch(from var(--info) l c h / 15%) 0%, transparent 70%)',
+      } : undefined}
     >
       <Lightbulb className="h-4 w-4" weight={enabled ? 'fill' : 'regular'} />
       <span>Think</span>

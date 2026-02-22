@@ -228,7 +228,7 @@ export const useRepoStore = create<RepoStore>()(
     {
       name: 'solo-repos',
       partialize: (state) => ({
-        repos: Array.from(state.repos.entries()).map(([path, entry]) => ({
+        repos: Array.from(state.repos.entries()).map(([_path, entry]) => ({
           path: entry.path,
           name: entry.name,
           isExpanded: entry.isExpanded,
