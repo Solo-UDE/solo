@@ -25,6 +25,7 @@ import { useElevenLabsStream } from "./hooks/useElevenLabsStream";
 import { useTerminalStore, clearActiveTerminal, findInActiveTerminal } from "./stores/terminalStore";
 import { useFileExplorerStore } from "./stores/fileExplorerStore";
 import { useGitHubAccountsStore } from "./stores/githubAccountsStore";
+import { useRepoStore } from "./stores/repoStore";
 import { createTerminal, killTerminal } from "./lib/tauri/terminal";
 import { SIDEBAR } from "./lib/constants";
 import { cn } from "./lib/utils";
@@ -71,6 +72,7 @@ function AppContent() {
   const signOut = useAuthStore((state) => state.signOut);
   const user = useUser();
   const rootPath = useFileExplorerStore((s) => s.rootPath);
+  const hasRepos = useRepoStore((s) => s.repos.size > 0);
 
   // Get openPanel action directly from store to avoid selector subscription issues
   const openPanel = useMemo(() => usePanelTabsStore.getState().openPanel, []);
@@ -132,9 +134,16 @@ function AppContent() {
   useWorktreeStream();
   useElevenLabsStream();
 
-  // Load GitHub token from keychain so the icon rail shows auth status
+  // Load GitHub token from keychain so the header shows auth status
   useEffect(() => {
     useGitHubAccountsStore.getState().loadToken();
+  }, []);
+
+  // Restore active repo on startup (if persisted)
+  useEffect(() => {
+    useRepoStore.getState().restoreActiveRepo().catch((err) => {
+      console.error('Failed to restore active repo:', err);
+    });
   }, []);
 
   // Load persisted agent sessions on startup, then prune expired ones
@@ -379,7 +388,7 @@ function AppContent() {
         className="absolute top-0 inset-x-0 h-[38px] flex items-center z-50 bg-background titlebar-glass"
       >
         <div className="flex-1 flex items-center gap-1.5 ml-1.5" data-tauri-drag-region>
-          {rootPath !== null && (
+          {(rootPath !== null || hasRepos) && (
             <button
               onClick={toggleSidebar}
               className={cn(
@@ -413,7 +422,7 @@ function AppContent() {
               {user.email}
             </span>
           )}
-          {rootPath !== null && (
+          {(rootPath !== null || hasRepos) && (
             <TitlebarButton
               onClick={handleToggleTerminal}
               icon={<Terminal className={cn('w-4 h-4', terminalPanelOpen ? 'text-primary' : 'text-muted-foreground')} />}
@@ -439,18 +448,7 @@ function AppContent() {
 
       {/* Full-height content — animated view transitions */}
       <AnimatePresence mode="wait">
-        {rootPath === null && !settingsOpen ? (
-          <motion.div
-            key="welcome"
-            initial={{ opacity: 0, scale: 0.99 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.99 }}
-            transition={{ duration: 0.2, ease: EASE_SMOOTH }}
-            className="h-full"
-          >
-            <WelcomeScreen />
-          </motion.div>
-        ) : settingsOpen ? (
+        {settingsOpen ? (
           <motion.div
             key="settings"
             initial={{ opacity: 0, x: 24 }}
@@ -481,35 +479,41 @@ function AppContent() {
                 onDoubleClick={handleDoubleClick}
               />
 
-              {/* Right column: opaque background covers vibrancy for editor area */}
+              {/* Right column: editor area or welcome */}
               <div className="flex-1 flex flex-col overflow-hidden min-h-0 pt-[38px] bg-background">
-                <div className="flex-1 overflow-hidden min-h-0">
-                  <MosaicLayout />
-                </div>
-
-                <div className={cn(
-                  'grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]',
-                  terminalPanelOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]',
-                )}>
-                  <div className="overflow-hidden min-h-0">
-                    <div
-                      className={cn(
-                        'h-1.5 shrink-0 cursor-row-resize flex items-center justify-center hover:bg-primary/20 transition-colors',
-                        isDraggingTerminal && 'bg-primary/30',
-                      )}
-                      onMouseDown={handleTerminalDragStart}
-                    >
-                      <div className="w-8 h-px bg-border/60 rounded-full" />
+                {rootPath !== null ? (
+                  <>
+                    <div className="flex-1 overflow-hidden min-h-0">
+                      <MosaicLayout />
                     </div>
 
-                    <div
-                      className="overflow-hidden"
-                      style={{ height: terminalPanelHeight }}
-                    >
-                      <SidebarTerminal />
+                    <div className={cn(
+                      'grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]',
+                      terminalPanelOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]',
+                    )}>
+                      <div className="overflow-hidden min-h-0">
+                        <div
+                          className={cn(
+                            'h-1.5 shrink-0 cursor-row-resize flex items-center justify-center hover:bg-primary/20 transition-colors',
+                            isDraggingTerminal && 'bg-primary/30',
+                          )}
+                          onMouseDown={handleTerminalDragStart}
+                        >
+                          <div className="w-8 h-px bg-border/60 rounded-full" />
+                        </div>
+
+                        <div
+                          className="overflow-hidden"
+                          style={{ height: terminalPanelHeight }}
+                        >
+                          <SidebarTerminal />
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
+                  </>
+                ) : (
+                  <WelcomeScreen />
+                )}
               </div>
             </DndProvider>
           </motion.div>

@@ -9,12 +9,16 @@ import { SIDEBAR, TERMINAL_SECTION } from '@/lib/constants';
 // Sidebar tab types
 export type SidebarTab = 'explorer' | 'sessions' | 'source-control';
 
+// Sidebar view modes
+export type SidebarView = 'repos' | 'worktree';
+
 // Settings tab types
 export type SettingsTabId = 'general' | 'editor' | 'terminal' | 'files' | 'shortcuts' | 'ai' | 'voice';
 
 interface UIState {
   leftSidebarWidth: number;
   _previousSidebarWidth: number;
+  sidebarView: SidebarView;
   activeTab: SidebarTab;
   terminalPanelOpen: boolean;
   terminalPanelHeight: number;
@@ -29,6 +33,7 @@ interface UIActions {
   expandLeftSidebar: () => void;
   collapseLeftSidebar: () => void;
   setLeftSidebarWidth: (width: number) => void;
+  setSidebarView: (view: SidebarView) => void;
   setActiveTab: (tab: SidebarTab) => void;
   toggleTerminalPanel: () => void;
   setTerminalPanelHeight: (height: number) => void;
@@ -47,6 +52,7 @@ export const useUIStore = create<UIStore>()(
   immer((set) => ({
     leftSidebarWidth: SIDEBAR.expanded,
     _previousSidebarWidth: SIDEBAR.expanded,
+    sidebarView: 'repos' as SidebarView,
     activeTab: 'explorer' as SidebarTab,
     terminalPanelOpen: false,
     terminalPanelHeight: TERMINAL_SECTION.defaultHeight,
@@ -84,6 +90,12 @@ export const useUIStore = create<UIStore>()(
         if (width > SIDEBAR.collapsed) {
           state._previousSidebarWidth = width;
         }
+      });
+    },
+
+    setSidebarView: (view: SidebarView): void => {
+      set((state) => {
+        state.sidebarView = view;
       });
     },
 
