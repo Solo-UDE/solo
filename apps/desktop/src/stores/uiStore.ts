@@ -14,6 +14,7 @@ export type SettingsTabId = 'general' | 'editor' | 'terminal' | 'files' | 'short
 
 interface UIState {
   leftSidebarWidth: number;
+  _previousSidebarWidth: number;
   activeTab: SidebarTab;
   terminalPanelOpen: boolean;
   terminalPanelHeight: number;
@@ -45,6 +46,7 @@ type UIStore = UIState & UIActions;
 export const useUIStore = create<UIStore>()(
   immer((set) => ({
     leftSidebarWidth: SIDEBAR.expanded,
+    _previousSidebarWidth: SIDEBAR.expanded,
     activeTab: 'explorer' as SidebarTab,
     terminalPanelOpen: false,
     terminalPanelHeight: TERMINAL_SECTION.defaultHeight,
@@ -55,15 +57,18 @@ export const useUIStore = create<UIStore>()(
 
     toggleLeftSidebar: (): void => {
       set((state) => {
-        state.leftSidebarWidth = state.leftSidebarWidth > SIDEBAR.collapsed
-          ? SIDEBAR.collapsed
-          : SIDEBAR.expanded;
+        if (state.leftSidebarWidth > SIDEBAR.collapsed) {
+          state._previousSidebarWidth = state.leftSidebarWidth;
+          state.leftSidebarWidth = SIDEBAR.collapsed;
+        } else {
+          state.leftSidebarWidth = state._previousSidebarWidth;
+        }
       });
     },
 
     expandLeftSidebar: (): void => {
       set((state) => {
-        state.leftSidebarWidth = SIDEBAR.expanded;
+        state.leftSidebarWidth = state._previousSidebarWidth;
       });
     },
 
@@ -76,6 +81,9 @@ export const useUIStore = create<UIStore>()(
     setLeftSidebarWidth: (width: number): void => {
       set((state) => {
         state.leftSidebarWidth = width;
+        if (width > SIDEBAR.collapsed) {
+          state._previousSidebarWidth = width;
+        }
       });
     },
 
