@@ -37,6 +37,29 @@ interface SerializedPanelInstance {
 const STORAGE_KEY = 'solo-panel-layout';
 
 /**
+ * Prune mosaic tree branches that contain only empty tiles.
+ * When ephemeral panels (agent, terminal) are filtered out, their tiles
+ * become empty. Without pruning, these ghost tiles show "No panels open".
+ */
+function pruneMosaicTree(
+  tree: MosaicTree,
+  emptyTileIds: Set<TileId>,
+): MosaicTree {
+  if (tree === null) return null;
+  // Leaf node — a tile ID string
+  if (typeof tree === 'string') {
+    return emptyTileIds.has(tree) ? null : tree;
+  }
+  // Branch node — recurse into children
+  const first = pruneMosaicTree(tree.first, emptyTileIds);
+  const second = pruneMosaicTree(tree.second, emptyTileIds);
+  if (first === null && second === null) return null;
+  if (first === null) return second;
+  if (second === null) return first;
+  return { ...tree, first, second };
+}
+
+/**
  * Serialize panel instance for storage
  */
 function serializeInstance(instance: PanelInstance): SerializedPanelInstance {
@@ -119,11 +142,25 @@ export function serializeLayout(
     tileTabsObj[id] = { tabs: filteredTabs, activeTabId };
   });
 
+  // Prune tiles that became empty after filtering ephemeral panels
+  const emptyTileIds = new Set<TileId>();
+  for (const [id, state] of Object.entries(tileTabsObj)) {
+    if (state.tabs.length === 0) {
+      emptyTileIds.add(id);
+    }
+  }
+  const prunedTree = pruneMosaicTree(mosaicTree, emptyTileIds);
+  // Remove empty tile entries
+  for (const id of emptyTileIds) {
+    delete tilesObj[id];
+    delete tileTabsObj[id];
+  }
+
   return {
     version: PERSISTENCE.version,
     timestamp: Date.now(),
     layout: {
-      mosaicTree,
+      mosaicTree: prunedTree,
       tiles: tilesObj,
       nextTileId,
     },
@@ -182,8 +219,21 @@ export function deserializeLayout(persisted: PersistedLayout): {
       tileTabs.set(id, { tabs: filteredTabs, activeTabId });
     });
 
+    // Prune tiles that became empty after filtering ephemeral panels
+    const emptyTileIds = new Set<TileId>();
+    tileTabs.forEach((state, id) => {
+      if (state.tabs.length === 0) {
+        emptyTileIds.add(id);
+      }
+    });
+    const prunedTree = pruneMosaicTree(persisted.layout.mosaicTree, emptyTileIds);
+    for (const id of emptyTileIds) {
+      tiles.delete(id);
+      tileTabs.delete(id);
+    }
+
     return {
-      mosaicTree: persisted.layout.mosaicTree,
+      mosaicTree: prunedTree,
       tiles,
       nextTileId: persisted.layout.nextTileId,
       instances,

@@ -12,7 +12,7 @@ import { useProviderStore } from "./stores/provider-store";
 import { useAgentStore } from "./stores/agentStore";
 import { useSettingsStore } from "./stores/settingsStore";
 import { useAuthStore, useUser } from "./stores/authStore";
-import { registerBuiltinPanels, BUILTIN_PANEL_TYPES } from "./lib/panels";
+import { registerBuiltinPanels, BUILTIN_PANEL_TYPES, DEFAULT_TILES } from "./lib/panels";
 import { SettingsView } from "./components/settings";
 import { useAutosave } from "./hooks/useAutosave";
 import { useColorScheme } from "./hooks/useColorScheme";
@@ -210,6 +210,9 @@ function AppContent() {
       // Cmd+N — new agent session
       if (e.key === 'n' && e.metaKey && !e.shiftKey && !e.ctrlKey) {
         e.preventDefault();
+        // Don't create sessions when workspace layout isn't visible
+        const currentRootPath = useFileExplorerStore.getState().rootPath;
+        if (!currentRootPath || settingsOpen) return;
         const model = useProviderStore.getState().selectedModel || undefined;
         useAgentStore.getState().createSession(model)
           .then((newSessionId) => {
@@ -225,6 +228,29 @@ function AppContent() {
       if (e.key === '?' && e.metaKey) {
         e.preventDefault();
         setShortcutsOverlayOpen((prev) => !prev);
+        return;
+      }
+
+      // Cmd+W — close current tab (terminal or panel)
+      if (e.key === 'w' && e.metaKey && !e.shiftKey) {
+        e.preventDefault();
+        const isTermOpen = useUIStore.getState().terminalPanelOpen;
+        const isEditorActive = document.activeElement?.closest('.monaco-editor');
+
+        if (isTermOpen && !isEditorActive) {
+          // Terminal is open and editor is NOT focused → close terminal tab
+          const { activeTerminalId: aid } = useTerminalStore.getState();
+          if (aid) {
+            killTerminal(aid).catch(() => {});
+            useTerminalStore.getState().removeTerminal(aid);
+            if (useTerminalStore.getState().terminals.size === 0) {
+              useUIStore.getState().toggleTerminalPanel();
+            }
+          }
+        } else {
+          // Close the active panel tab in the editor tile
+          usePanelTabsStore.getState().closeActiveTab(DEFAULT_TILES.editor);
+        }
         return;
       }
 
@@ -245,20 +271,6 @@ function AppContent() {
             useTerminalStore.getState().addTerminal(id, cwd, shell);
           })
           .catch((err) => console.error('Failed to create terminal:', err));
-        return;
-      }
-
-      // Cmd+W — close active terminal tab
-      if (e.key === 'w' && e.metaKey && !e.shiftKey) {
-        e.preventDefault();
-        const { activeTerminalId: aid } = useTerminalStore.getState();
-        if (aid) {
-          killTerminal(aid).catch(() => {});
-          useTerminalStore.getState().removeTerminal(aid);
-          if (useTerminalStore.getState().terminals.size === 0) {
-            useUIStore.getState().toggleTerminalPanel();
-          }
-        }
         return;
       }
 
