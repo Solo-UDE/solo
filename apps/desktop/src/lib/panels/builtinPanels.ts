@@ -47,7 +47,10 @@ export function registerBuiltinPanels(): void {
     preferredRegion: 'editor',
   });
 
-  // Agent Panel (AI chat session)
+  // Agent Panel — no serialization: agent-bridge sessions can't survive app restarts
+  // because the backend sidecar starts fresh with no sessions. Session history (messages)
+  // is persisted independently to ~/.solo/sessions/ and accessible via session history UI.
+  // Serializing would create zombie tabs that throw "Session not found".
   panelRegistry.register({
     id: 'agent',
     displayName: 'Agent Session',
@@ -56,13 +59,10 @@ export function registerBuiltinPanels(): void {
     getDefaultTitle: (data) => {
       const sessionId = data.sessionId as string | undefined;
       if (!sessionId) return 'New Session';
-      // Will be updated dynamically by the panel
       return 'New Session';
     },
     allowMultiple: true,
     preferredRegion: 'editor',
-    serializeData: (data) => ({ sessionId: data.sessionId }),
-    deserializeData: (raw) => ({ sessionId: raw.sessionId as string | undefined }),
   });
 
   // Terminal Panel — no serialization: terminals can't survive app restarts

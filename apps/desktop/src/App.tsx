@@ -32,7 +32,9 @@ import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
 import { Toaster } from "sonner";
 import { WorkspaceSwitcher } from "./components/titlebar/WorkspaceSwitcher";
+import { TitlebarButton } from "./components/titlebar/TitlebarButton";
 import { WelcomeScreen } from "./components/welcome";
+import { KeyboardShortcutsOverlay } from "./components/KeyboardShortcutsOverlay";
 
 // Shared easing curve matching --ease-smooth
 const EASE_SMOOTH: [number, number, number, number] = [0.16, 1, 0.3, 1];
@@ -45,6 +47,9 @@ function AppContent() {
   const sidebarRef = useRef<HTMLElement>(null);
   const dragStartX = useRef<number>(0);
   const dragStartWidth = useRef<number>(0);
+
+  // Keyboard shortcuts overlay state
+  const [shortcutsOverlayOpen, setShortcutsOverlayOpen] = useState(false);
 
   // Terminal panel drag state
   const [isDraggingTerminal, setIsDraggingTerminal] = useState(false);
@@ -202,6 +207,27 @@ function AppContent() {
         return;
       }
 
+      // Cmd+N — new agent session
+      if (e.key === 'n' && e.metaKey && !e.shiftKey && !e.ctrlKey) {
+        e.preventDefault();
+        const model = useProviderStore.getState().selectedModel || undefined;
+        useAgentStore.getState().createSession(model)
+          .then((newSessionId) => {
+            if (newSessionId) {
+              usePanelTabsStore.getState().openPanel(BUILTIN_PANEL_TYPES.AGENT, { sessionId: newSessionId });
+            }
+          })
+          .catch((err) => console.error('Failed to create agent session:', err));
+        return;
+      }
+
+      // Cmd+? (Cmd+Shift+/) — toggle keyboard shortcuts overlay
+      if (e.key === '?' && e.metaKey) {
+        e.preventDefault();
+        setShortcutsOverlayOpen((prev) => !prev);
+        return;
+      }
+
       // Terminal-specific shortcuts (only when terminal panel is open)
       const isTerminalOpen = useUIStore.getState().terminalPanelOpen;
       if (!isTerminalOpen) return;
@@ -271,6 +297,12 @@ function AppContent() {
     const fileName = path.split('/').pop() ?? 'Untitled';
     openPanel(BUILTIN_PANEL_TYPES.FILE_VIEWER, { filePath: path, fileName });
   }, [openPanel]);
+
+  // Open Settings > Shortcuts from the overlay
+  const handleOpenShortcutsSettings = useCallback(() => {
+    setShortcutsOverlayOpen(false);
+    openSettings('shortcuts');
+  }, [openSettings]);
 
   // Sidebar resize handlers — direct DOM manipulation for zero-lag dragging
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
@@ -346,19 +378,19 @@ function AppContent() {
         style={titlebarStyle}
         className="absolute top-0 inset-x-0 h-[38px] flex items-center z-50 bg-background titlebar-glass"
       >
-        <div className="flex-1 flex items-center" data-tauri-drag-region>
+        <div className="flex-1 flex items-center gap-1.5 ml-1.5" data-tauri-drag-region>
           {rootPath !== null && (
             <button
               onClick={toggleSidebar}
               className={cn(
-                'p-1 rounded-lg hover:bg-foreground/[0.06] transition-[background-color,color] duration-150 ml-1.5',
+                'p-1 rounded-lg hover:bg-foreground/[0.06] transition-[background-color,color] duration-150',
                 !isCollapsed && 'glow-active',
               )}
               title={isCollapsed ? 'Expand Sidebar (⌘B)' : 'Collapse Sidebar (⌘B)'}
             >
               <SidebarSimple
                 weight={isCollapsed ? 'regular' : 'fill'}
-                className={cn('w-4 h-4', isCollapsed ? 'text-muted-foreground' : 'text-primary')}
+                className={cn('w-3.5 h-3.5', isCollapsed ? 'text-muted-foreground' : 'text-primary')}
               />
             </button>
           )}
@@ -382,31 +414,26 @@ function AppContent() {
             </span>
           )}
           {rootPath !== null && (
-            <button
+            <TitlebarButton
               onClick={handleToggleTerminal}
-              className={cn(
-                'p-1 rounded-lg hover:bg-foreground/[0.06] transition-[background-color,color] duration-150',
-                terminalPanelOpen && 'glow-active',
-              )}
+              icon={<Terminal className={cn('w-4 h-4', terminalPanelOpen ? 'text-primary' : 'text-muted-foreground')} />}
+              label="Terminal"
+              active={terminalPanelOpen}
               title="Toggle Terminal (⌘J)"
-            >
-              <Terminal className={cn('w-4 h-4', terminalPanelOpen ? 'text-primary' : 'text-muted-foreground')} />
-            </button>
+            />
           )}
-          <button
+          <TitlebarButton
             onClick={() => openSettings()}
-            className="p-1 rounded-lg hover:bg-foreground/[0.06] transition-[background-color,color] duration-150"
+            icon={<GearSix className="w-4 h-4 text-muted-foreground" />}
+            label="Settings"
             title="Settings (⌘,)"
-          >
-            <GearSix className="w-4 h-4 text-muted-foreground" />
-          </button>
-          <button
+          />
+          <TitlebarButton
             onClick={signOut}
-            className="p-1 rounded-lg hover:bg-foreground/[0.06] transition-[background-color,color] duration-150"
+            icon={<SignOut className="w-4 h-4 text-muted-foreground" />}
+            label="Sign Out"
             title="Sign out"
-          >
-            <SignOut className="w-4 h-4 text-muted-foreground" />
-          </button>
+          />
         </div>
       </div>
 
@@ -489,6 +516,11 @@ function AppContent() {
         )}
       </AnimatePresence>
 
+      <KeyboardShortcutsOverlay
+        open={shortcutsOverlayOpen}
+        onOpenChange={setShortcutsOverlayOpen}
+        onOpenSettings={handleOpenShortcutsSettings}
+      />
       <Toaster richColors position="bottom-right" theme={resolvedTheme} />
     </div>
   );

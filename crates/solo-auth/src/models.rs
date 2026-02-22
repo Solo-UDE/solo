@@ -208,6 +208,7 @@ pub fn get_models_for_provider(provider: ProviderType) -> &'static [AIModel] {
         ProviderType::Anthropic => &ANTHROPIC_MODELS,
         ProviderType::OpenAI => &OPENAI_MODELS,
         ProviderType::Gemini => &GEMINI_MODELS,
+        ProviderType::ElevenLabs => &[], // ElevenLabs is a voice provider, not an LLM
     }
 }
 

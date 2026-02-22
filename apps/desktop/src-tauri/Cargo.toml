@@ -56,9 +56,6 @@ git2.workspace = true
 tokio-tungstenite.workspace = true
 futures-util.workspace = true
 
-[target.'cfg(target_os = "macos")'.dependencies]
-security-framework = "2"
-
 # Agent bridge dependencies
 crossbeam-channel = "0.5"
 parking_lot = "0.12"

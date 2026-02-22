@@ -75,7 +75,9 @@ function deserializeInstance(serialized: SerializedPanelInstance): PanelInstance
 }
 
 /**
- * Serialize the current layout state for persistence
+ * Serialize the current layout state for persistence.
+ * Panels whose registration lacks serializeData are ephemeral (e.g. agent,
+ * terminal, git-diff) and are excluded — they can't survive app restarts.
  */
 export function serializeLayout(
   mosaicTree: MosaicTree,
@@ -85,20 +87,36 @@ export function serializeLayout(
   tileTabs: Map<TileId, TileTabState>,
   nextInstanceId: number
 ): PersistedLayout {
-  // Convert Maps to plain objects for JSON serialization
   const tilesObj: Record<TileId, TileConfig> = {};
   tiles.forEach((config, id) => {
     tilesObj[id] = config;
   });
 
-  const instancesObj: Record<string, SerializedPanelInstance> = {};
+  // Identify ephemeral panels (no serializeData → can't survive restart)
+  const excludedIds = new Set<string>();
   instances.forEach((instance, id) => {
-    instancesObj[id] = serializeInstance(instance);
+    const registration = panelRegistry.get(instance.panelType);
+    if (!registration?.serializeData) {
+      excludedIds.add(id);
+    }
   });
 
+  // Serialize only persistable instances
+  const instancesObj: Record<string, SerializedPanelInstance> = {};
+  instances.forEach((instance, id) => {
+    if (!excludedIds.has(id)) {
+      instancesObj[id] = serializeInstance(instance);
+    }
+  });
+
+  // Clean up tileTabs: remove references to excluded instances
   const tileTabsObj: Record<TileId, TileTabState> = {};
   tileTabs.forEach((state, id) => {
-    tileTabsObj[id] = state;
+    const filteredTabs = state.tabs.filter((tabId) => !excludedIds.has(tabId));
+    const activeTabId = (state.activeTabId && excludedIds.has(state.activeTabId))
+      ? (filteredTabs[0] ?? null)
+      : state.activeTabId;
+    tileTabsObj[id] = { tabs: filteredTabs, activeTabId };
   });
 
   return {
@@ -118,7 +136,9 @@ export function serializeLayout(
 }
 
 /**
- * Deserialize layout from storage
+ * Deserialize layout from storage.
+ * Filters out ephemeral panel types (no serializeData) to handle stale
+ * localStorage data from before non-persistable panels were excluded.
  */
 export function deserializeLayout(persisted: PersistedLayout): {
   mosaicTree: MosaicTree;
@@ -128,27 +148,38 @@ export function deserializeLayout(persisted: PersistedLayout): {
   tileTabs: Map<TileId, TileTabState>;
   nextInstanceId: number;
 } | null {
-  // Version check
   if (persisted.version !== PERSISTENCE.version) {
     console.warn(`Layout version mismatch: expected ${PERSISTENCE.version}, got ${persisted.version}`);
     return null;
   }
 
   try {
-    // Convert plain objects back to Maps
     const tiles = new Map<TileId, TileConfig>();
     Object.entries(persisted.layout.tiles).forEach(([id, config]) => {
       tiles.set(id, config);
     });
 
+    // Deserialize instances, filtering out ephemeral panel types
     const instances = new Map<string, PanelInstance>();
+    const excludedIds = new Set<string>();
+
     Object.entries(persisted.tabs.instances).forEach(([id, serialized]) => {
-      instances.set(id, deserializeInstance(serialized));
+      const registration = panelRegistry.get(serialized.panelType);
+      if (!registration?.serializeData) {
+        excludedIds.add(id);
+      } else {
+        instances.set(id, deserializeInstance(serialized));
+      }
     });
 
+    // Clean up tileTabs: remove references to excluded instances
     const tileTabs = new Map<TileId, TileTabState>();
     Object.entries(persisted.tabs.tileTabs).forEach(([id, state]) => {
-      tileTabs.set(id, state);
+      const filteredTabs = state.tabs.filter((tabId) => !excludedIds.has(tabId));
+      const activeTabId = (state.activeTabId && excludedIds.has(state.activeTabId))
+        ? (filteredTabs[0] ?? null)
+        : state.activeTabId;
+      tileTabs.set(id, { tabs: filteredTabs, activeTabId });
     });
 
     return {

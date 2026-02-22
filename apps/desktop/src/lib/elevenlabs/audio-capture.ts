@@ -31,6 +31,7 @@ export class AudioCapture {
   private audioContext: AudioContext | null = null;
   private workletNode: ScriptProcessorNode | null = null;
   private source: MediaStreamAudioSourceNode | null = null;
+  private _analyserNode: AnalyserNode | null = null;
   private options: Required<AudioCaptureOptions>;
   private _isRecording = false;
   private _actualSampleRate = 16000;
@@ -50,6 +51,11 @@ export class AudioCapture {
   /** The actual sample rate from the AudioContext (may differ from requested) */
   get actualSampleRate(): number {
     return this._actualSampleRate;
+  }
+
+  /** AnalyserNode for real-time frequency visualization (connected in parallel with PCM capture) */
+  get analyserNode(): AnalyserNode | null {
+    return this._analyserNode;
   }
 
   /** Request microphone permission and start capturing audio */
@@ -93,7 +99,13 @@ export class AudioCapture {
         this.options.onChunk(base64);
       };
 
+      // AnalyserNode for real-time frequency visualization (parallel path)
+      this._analyserNode = this.audioContext.createAnalyser();
+      this._analyserNode.fftSize = 256;
+      this._analyserNode.smoothingTimeConstant = 0.8;
+
       this.source.connect(this.workletNode);
+      this.source.connect(this._analyserNode);
       this.workletNode.connect(this.audioContext.destination);
 
       this._isRecording = true;
@@ -118,6 +130,10 @@ export class AudioCapture {
       this.workletNode.disconnect();
       this.workletNode.onaudioprocess = null;
       this.workletNode = null;
+    }
+    if (this._analyserNode) {
+      this._analyserNode.disconnect();
+      this._analyserNode = null;
     }
     if (this.source) {
       this.source.disconnect();

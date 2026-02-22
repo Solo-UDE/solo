@@ -69,7 +69,7 @@ interface FileTreeActions {
   // Initialization
   openFolder: () => Promise<void>;
   setRootPath: (path: string) => Promise<void>;
-  closeFolder: () => void;
+  closeFolder: () => Promise<void>;
 
   // Tree navigation
   expandDirectory: (path: string) => Promise<void>;
@@ -182,8 +182,8 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
       }
     },
 
-    closeFolder: () => {
-      fs.stopWatching().catch(console.error);
+    closeFolder: async () => {
+      await fs.stopWatching().catch(console.error);
 
       set((state) => {
         state.rootPath = null;
@@ -532,13 +532,28 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
             set((state) => {
               const parent = state.entries.get(parentPath);
               if (parent) {
+                // Collect old child paths before replacing
+                const oldChildPaths = new Set<string>(
+                  parent.children?.map((c: FileTreeEntry) => c.path as string) ?? [],
+                );
                 parent.children = response.entry.children;
-              }
 
-              // Add new children to entries map
-              if (response.entry.children) {
-                for (const child of response.entry.children) {
-                  state.entries.set(child.path, child);
+                // Add new children to entries map and track their paths
+                const newChildPaths = new Set<string>();
+                if (response.entry.children) {
+                  for (const child of response.entry.children) {
+                    state.entries.set(child.path, child);
+                    newChildPaths.add(child.path);
+                  }
+                }
+
+                // Remove entries no longer in the directory
+                for (const oldPath of oldChildPaths) {
+                  if (!newChildPaths.has(oldPath)) {
+                    state.entries.delete(oldPath);
+                    state.selected.delete(oldPath);
+                    state.expanded.delete(oldPath);
+                  }
                 }
               }
             });
@@ -564,9 +579,13 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
     },
 
     handleFileChanged: (path: string) => {
-      // File content changed - refresh metadata from the backend
       const entry = get().entries.get(path);
-      if (entry && !entry.is_dir) {
+      if (!entry) {
+        // Unknown file - treat as creation (macOS FSEvents can coalesce Create into Modify)
+        get().handleFileCreated(path);
+        return;
+      }
+      if (!entry.is_dir) {
         // Re-read the parent directory to get updated metadata
         const parentPath = getParentPath(path);
         fs.readDirectory(parentPath, 1)

@@ -8,7 +8,7 @@ import { SettingRow } from '../controls';
 import { PasswordInput } from '../controls';
 import { SelectDropdown } from '../controls';
 import { ToggleSwitch } from '../controls';
-import { setApiKey, hasApiKey } from '@/lib/tauri/elevenlabs';
+import { setApiKey, hasApiKey, clearApiKey } from '@/lib/tauri/elevenlabs';
 import { useElevenLabsStore } from '@/stores/elevenlabsStore';
 
 const LANGUAGE_OPTIONS = [
@@ -79,9 +79,8 @@ export function VoiceTab() {
     setApiKeyInput('');
     setSaved(false);
     setError(undefined);
-    // Set an empty key to clear it
     try {
-      await setApiKey('');
+      await clearApiKey();
       storeSetHasKey(false);
     } catch {
       // Ignore

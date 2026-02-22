@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use solo_auth::provider::ProviderType;
 use solo_elevenlabs::{
     ElevenLabsError, RealtimeSttClient, SttConfig, SttTranscriptEvent, TtsConfig, TtsStreamClient,
 };
@@ -12,12 +13,14 @@ use tauri::{AppHandle, Emitter, State};
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 
+use crate::provider_commands::ProviderAuthState;
+
 // =============================================================================
 // State
 // =============================================================================
 
 pub struct ElevenLabsState {
-    api_key: RwLock<Option<String>>,
+    // API key is now stored in CredentialManager (OS keychain) via ProviderAuthState
     stt_sessions: RwLock<HashMap<String, Arc<RealtimeSttClient>>>,
     tts_handles: RwLock<HashMap<String, JoinHandle<()>>>,
 }
@@ -25,7 +28,6 @@ pub struct ElevenLabsState {
 impl ElevenLabsState {
     pub fn new() -> Self {
         Self {
-            api_key: RwLock::new(None),
             stt_sessions: RwLock::new(HashMap::new()),
             tts_handles: RwLock::new(HashMap::new()),
         }
@@ -39,20 +41,45 @@ impl ElevenLabsState {
 #[tauri::command]
 pub async fn elevenlabs_set_api_key(
     api_key: String,
-    state: State<'_, ElevenLabsState>,
+    auth: State<'_, ProviderAuthState>,
 ) -> Result<(), String> {
     let trimmed = api_key.trim().to_string();
     tracing::info!("ElevenLabs API key set, length={}", trimmed.len());
-    *state.api_key.write().await = Some(trimmed);
+
+    if trimmed.is_empty() {
+        // Clear the key from keychain
+        auth.credentials
+            .clear_credentials(ProviderType::ElevenLabs)
+            .await
+            .map_err(|e| e.to_string())?;
+    } else {
+        // Store in OS keychain
+        auth.credentials
+            .set_credentials(ProviderType::ElevenLabs, &trimmed)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
     Ok(())
 }
 
 #[tauri::command]
 pub async fn elevenlabs_has_api_key(
-    state: State<'_, ElevenLabsState>,
+    auth: State<'_, ProviderAuthState>,
 ) -> Result<bool, String> {
-    let key = state.api_key.read().await;
-    Ok(key.as_ref().map_or(false, |k| !k.is_empty()))
+    Ok(auth
+        .credentials
+        .has_credentials(ProviderType::ElevenLabs)
+        .await)
+}
+
+#[tauri::command]
+pub async fn elevenlabs_clear_api_key(
+    auth: State<'_, ProviderAuthState>,
+) -> Result<(), String> {
+    auth.credentials
+        .clear_credentials(ProviderType::ElevenLabs)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 // =============================================================================
@@ -66,14 +93,15 @@ pub async fn elevenlabs_stt_start(
     language: Option<String>,
     sample_rate: Option<u32>,
     state: State<'_, ElevenLabsState>,
+    auth: State<'_, ProviderAuthState>,
 ) -> Result<(), String> {
     tracing::info!("[elevenlabs] stt_start called, session_id={session_id}, sample_rate={sample_rate:?}");
 
-    let api_key = state
-        .api_key
-        .read()
+    let api_key = auth
+        .credentials
+        .get_credentials(ProviderType::ElevenLabs)
         .await
-        .clone()
+        .map_err(|e| e.to_string())?
         .ok_or_else(|| {
             tracing::error!("[elevenlabs] No API key set!");
             ElevenLabsError::NoApiKey.to_string()
@@ -251,12 +279,13 @@ pub async fn elevenlabs_tts_speak(
     voice_id: Option<String>,
     model_id: Option<String>,
     state: State<'_, ElevenLabsState>,
+    auth: State<'_, ProviderAuthState>,
 ) -> Result<(), String> {
-    let api_key = state
-        .api_key
-        .read()
+    let api_key = auth
+        .credentials
+        .get_credentials(ProviderType::ElevenLabs)
         .await
-        .clone()
+        .map_err(|e| e.to_string())?
         .ok_or_else(|| ElevenLabsError::NoApiKey.to_string())?;
 
     // Cancel existing TTS for this session if any

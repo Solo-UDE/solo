@@ -17,6 +17,15 @@ export interface KeybindingCategory {
 }
 
 export const DEFAULT_KEYBINDINGS: KeybindingDefinition[] = [
+  // Agent
+  { id: 'agent.newSession', label: 'New Agent Session', description: 'Open a new agent session tab', defaultKey: 'Cmd+N', category: 'agent' },
+
+  // File
+  { id: 'file.open', label: 'Open File', description: 'Open a file', defaultKey: 'Cmd+O', category: 'file' },
+  { id: 'file.openFolder', label: 'Open Folder', description: 'Open a folder', defaultKey: 'Cmd+Shift+O', category: 'file' },
+  { id: 'file.closeTab', label: 'Close Tab', description: 'Close the current tab', defaultKey: 'Cmd+W', category: 'file' },
+  { id: 'file.closeAllTabs', label: 'Close All Tabs', description: 'Close all open tabs', defaultKey: 'Cmd+Shift+W', category: 'file' },
+
   // Editor
   { id: 'editor.save', label: 'Save File', description: 'Save the current file', defaultKey: 'Cmd+S', category: 'editor' },
   { id: 'editor.saveAll', label: 'Save All', description: 'Save all open files', defaultKey: 'Cmd+Shift+S', category: 'editor' },
@@ -27,19 +36,13 @@ export const DEFAULT_KEYBINDINGS: KeybindingDefinition[] = [
   { id: 'editor.format', label: 'Format Document', description: 'Format the current document', defaultKey: 'Cmd+Shift+F', category: 'editor' },
   { id: 'editor.comment', label: 'Toggle Comment', description: 'Comment/uncomment selection', defaultKey: 'Cmd+/', category: 'editor' },
 
-  // File
-  { id: 'file.new', label: 'New File', description: 'Create a new file', defaultKey: 'Cmd+N', category: 'file' },
-  { id: 'file.open', label: 'Open File', description: 'Open a file', defaultKey: 'Cmd+O', category: 'file' },
-  { id: 'file.openFolder', label: 'Open Folder', description: 'Open a folder', defaultKey: 'Cmd+Shift+O', category: 'file' },
-  { id: 'file.closeTab', label: 'Close Tab', description: 'Close the current tab', defaultKey: 'Cmd+W', category: 'file' },
-  { id: 'file.closeAllTabs', label: 'Close All Tabs', description: 'Close all open tabs', defaultKey: 'Cmd+Shift+W', category: 'file' },
-
   // View
   { id: 'view.toggleSidebar', label: 'Toggle Sidebar', description: 'Show/hide the sidebar', defaultKey: 'Cmd+B', category: 'view' },
   { id: 'view.toggleTerminal', label: 'Toggle Terminal', description: 'Show/hide the terminal', defaultKey: 'Cmd+`', category: 'view' },
   { id: 'view.zoomIn', label: 'Zoom In', description: 'Increase editor zoom', defaultKey: 'Cmd+=', category: 'view' },
   { id: 'view.zoomOut', label: 'Zoom Out', description: 'Decrease editor zoom', defaultKey: 'Cmd+-', category: 'view' },
   { id: 'view.resetZoom', label: 'Reset Zoom', description: 'Reset editor zoom', defaultKey: 'Cmd+0', category: 'view' },
+  { id: 'view.showShortcuts', label: 'Show Keyboard Shortcuts', description: 'Open keyboard shortcuts overlay', defaultKey: 'Cmd+Shift+/', category: 'view' },
 
   // Navigation
   { id: 'nav.goToFile', label: 'Go to File', description: 'Quick open file by name', defaultKey: 'Cmd+P', category: 'navigation' },
@@ -53,14 +56,19 @@ export const DEFAULT_KEYBINDINGS: KeybindingDefinition[] = [
 
 export const KEYBINDING_CATEGORIES: KeybindingCategory[] = [
   {
-    id: 'editor',
-    label: 'Editor',
-    bindings: DEFAULT_KEYBINDINGS.filter((b) => b.category === 'editor'),
+    id: 'agent',
+    label: 'Agent',
+    bindings: DEFAULT_KEYBINDINGS.filter((b) => b.category === 'agent'),
   },
   {
     id: 'file',
     label: 'File',
     bindings: DEFAULT_KEYBINDINGS.filter((b) => b.category === 'file'),
+  },
+  {
+    id: 'editor',
+    label: 'Editor',
+    bindings: DEFAULT_KEYBINDINGS.filter((b) => b.category === 'editor'),
   },
   {
     id: 'view',

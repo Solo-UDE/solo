@@ -3,8 +3,9 @@
  * Shows both Anthropic and OpenAI providers as separate cards
  */
 
-import { useCallback, useState, useEffect, useMemo } from 'react';
+import { useCallback, useState, useEffect, useMemo, useRef } from 'react';
 import { CheckCircle, WarningCircle, CircleNotch, Clock, Terminal, Sparkle, ArrowClockwise, XCircle, ShieldCheck, TreeStructure } from '@phosphor-icons/react';
+import { motion } from 'motion/react';
 import { ListSkeleton } from '../../ui/skeletons';
 import { useSettingsStore } from '../../../stores/settingsStore';
 import { useProviderStore, useOAuthPending } from '../../../stores/provider-store';
@@ -288,13 +289,24 @@ function ClaudeSetupDiagnostic() {
   const [status, setStatus] = useState<ClaudeSetupStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [resultKey, setResultKey] = useState(0);
+  const isFirstRun = useRef(true);
 
   const runCheck = useCallback(async () => {
+    const isRecheck = !isFirstRun.current;
+    isFirstRun.current = false;
     setLoading(true);
     setError(null);
+    if (isRecheck) {
+      setStatus(null);
+    }
     try {
-      const result = await verifyClaudeSetup();
+      const [result] = await Promise.all([
+        verifyClaudeSetup(),
+        isRecheck ? new Promise<void>((r) => setTimeout(r, 750)) : Promise.resolve(),
+      ]);
       setStatus(result);
+      setResultKey((k) => k + 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -307,11 +319,16 @@ function ClaudeSetupDiagnostic() {
     runCheck();
   }, [runCheck]);
 
-  const StatusRow = ({ label, children }: { label: string; children: React.ReactNode }) => (
-    <div className="flex items-center justify-between py-1.5">
+  const StatusRow = ({ label, children, index = 0 }: { label: string; children: React.ReactNode; index?: number }) => (
+    <motion.div
+      className="flex items-center justify-between py-1.5"
+      initial={{ opacity: 0, x: -6 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ type: 'spring', stiffness: 500, damping: 30, delay: index * 0.09 }}
+    >
       <span className="text-xs text-muted-foreground">{label}</span>
       <span className="text-xs font-mono">{children}</span>
-    </div>
+    </motion.div>
   );
 
   const StatusIcon = ({ ok }: { ok: boolean | null | undefined }) => {
@@ -332,15 +349,17 @@ function ClaudeSetupDiagnostic() {
           <ShieldCheck className="w-4 h-4 text-muted-foreground" />
           <span className="text-sm font-medium text-foreground">Claude Code Setup</span>
         </div>
-        <button
+        <motion.button
           type="button"
           onClick={runCheck}
           disabled={loading}
+          whileTap={{ scale: [1, 0.92, 1.05, 1] }}
+          transition={{ duration: 0.3 }}
           className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
         >
           <ArrowClockwise className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
           {loading ? 'Checking...' : 'Recheck'}
-        </button>
+        </motion.button>
       </div>
 
       {error && (
@@ -349,46 +368,52 @@ function ClaudeSetupDiagnostic() {
         </div>
       )}
 
+      {!status && loading && (
+        <div className="flex items-center justify-center py-6">
+          <span className="text-xs text-muted-foreground/60 animate-pulse">Scanning environment...</span>
+        </div>
+      )}
+
       {status && (
-        <div className="divide-y divide-border/50">
-          <StatusRow label="CLI installed">
+        <div key={resultKey} className="divide-y divide-border/50">
+          <StatusRow label="CLI installed" index={0}>
             <span className="flex items-center gap-1.5">
               <StatusIcon ok={status.cliInstalled} />
               {status.cliPath ?? 'Not found'}
             </span>
           </StatusRow>
-          <StatusRow label="Credentials">
+          <StatusRow label="Credentials" index={1}>
             <span className="flex items-center gap-1.5">
               <StatusIcon ok={status.credentialsFound} />
               {status.credentialSource ?? 'None'}
             </span>
           </StatusRow>
           {status.requiresCliMode && (
-            <StatusRow label="Mode">
+            <StatusRow label="Mode" index={2}>
               <span className="flex items-center gap-1.5">
                 <StatusIcon ok={status.cliModeAvailable} />
                 {status.cliModeAvailable ? 'CLI Mode (Subscription)' : 'CLI required'}
               </span>
             </StatusRow>
           )}
-          <StatusRow label="Token expiry">
+          <StatusRow label="Token expiry" index={3}>
             <span className="flex items-center gap-1.5">
               <StatusIcon ok={status.credentialsFound ? !status.tokenExpired : null} />
               {status.tokenExpiresInSeconds != null
                 ? status.tokenExpiresInSeconds > 0
                   ? formatExpiryTime(status.tokenExpiresInSeconds)
                   : 'Expired'
-                : '—'}
+                : '---'}
             </span>
           </StatusRow>
           {status.scopes && (
-            <StatusRow label="Scopes">
+            <StatusRow label="Scopes" index={4}>
               <span className="text-[10px] text-muted-foreground">
                 {status.scopes.join(', ')}
               </span>
             </StatusRow>
           )}
-          <StatusRow label="Status">
+          <StatusRow label="Status" index={5}>
             <span className="flex items-center gap-1.5">
               <StatusIcon ok={status.apiVerified} />
               {status.apiVerified === true
@@ -399,15 +424,25 @@ function ClaudeSetupDiagnostic() {
             </span>
           </StatusRow>
           {status.error && (
-            <div className="pt-1.5 text-[10px] text-destructive/80 break-all">
+            <motion.div
+              className="pt-1.5 text-[10px] text-destructive/80 break-all"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.5 }}
+            >
               {status.error}
-            </div>
+            </motion.div>
           )}
           {status.requiresCliMode && !status.cliInstalled && (
-            <div className="pt-2 text-[10px] text-warning bg-warning/10 px-2 py-1.5 rounded-none">
+            <motion.div
+              className="pt-2 text-[10px] text-warning bg-warning/10 px-2 py-1.5 rounded-none"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.5 }}
+            >
               Subscription tokens require the Claude CLI. Install with:<br />
               <code className="text-[10px]">npm i -g @anthropic-ai/claude-code</code>
-            </div>
+            </motion.div>
           )}
         </div>
       )}

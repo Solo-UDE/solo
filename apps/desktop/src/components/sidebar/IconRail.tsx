@@ -2,7 +2,7 @@
  * IconRail - 36px vertical icon strip with sliding accent indicator
  */
 
-import type { FC } from 'react';
+import { useState, type FC } from 'react';
 import { Files, ChatTeardrop, GitBranch, GithubLogo, SpinnerGap, SignOut } from '@phosphor-icons/react';
 import { motion } from 'motion/react';
 import { useUIStore } from '@/stores/uiStore';
@@ -20,6 +20,9 @@ const TABS: { key: SidebarTab; icon: typeof Files; label: string }[] = [
 export const IconRail: FC = () => {
   const activeTab = useUIStore((s) => s.activeTab);
   const setActiveTab = useUIStore((s) => s.setActiveTab);
+  const [showHint, setShowHint] = useState(
+    () => !localStorage.getItem('solo:sessions-discovered')
+  );
 
   const token = useGitHubAccountsStore((s) => s.token);
   const user = useGitHubAccountsStore((s) => s.user);
@@ -42,10 +45,17 @@ export const IconRail: FC = () => {
         <button
           key={key}
           role="tab"
+          data-tour={key}
           aria-selected={activeTab === key}
-          onClick={() => setActiveTab(key)}
+          onClick={() => {
+            setActiveTab(key);
+            if (key === 'sessions' && showHint) {
+              localStorage.setItem('solo:sessions-discovered', '1');
+              setShowHint(false);
+            }
+          }}
           className={cn(
-            'w-8 h-8 flex items-center justify-center rounded-lg',
+            'relative w-8 h-8 flex items-center justify-center rounded-lg',
             'transition-[transform,background-color,color] duration-200',
             'active:scale-95',
             activeTab === key
@@ -61,6 +71,12 @@ export const IconRail: FC = () => {
             weight={activeTab === key ? 'fill' : 'regular'}
             aria-hidden="true"
           />
+          {key === 'sessions' && showHint && (
+            <span
+              className="absolute top-1 right-1 w-[5px] h-[5px] rounded-full bg-primary shadow-[0_0_4px_1px] shadow-primary/40"
+              aria-hidden="true"
+            />
+          )}
         </button>
       ))}
 

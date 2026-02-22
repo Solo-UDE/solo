@@ -19,6 +19,8 @@ interface UIState {
   terminalPanelHeight: number;
   settingsOpen: boolean;
   settingsTab: SettingsTabId;
+  tourActive: boolean;
+  tourStep: number;
 }
 
 interface UIActions {
@@ -32,6 +34,10 @@ interface UIActions {
   openSettings: (tab?: SettingsTabId) => void;
   closeSettings: () => void;
   setSettingsTab: (tab: SettingsTabId) => void;
+  startTour: () => void;
+  nextTourStep: () => void;
+  prevTourStep: () => void;
+  endTour: () => void;
 }
 
 type UIStore = UIState & UIActions;
@@ -44,6 +50,8 @@ export const useUIStore = create<UIStore>()(
     terminalPanelHeight: TERMINAL_SECTION.defaultHeight,
     settingsOpen: false,
     settingsTab: 'general' as SettingsTabId,
+    tourActive: false,
+    tourStep: 0,
 
     toggleLeftSidebar: (): void => {
       set((state) => {
@@ -112,6 +120,34 @@ export const useUIStore = create<UIStore>()(
     setSettingsTab: (tab: SettingsTabId): void => {
       set((state) => {
         state.settingsTab = tab;
+      });
+    },
+
+    startTour: (): void => {
+      set((state) => {
+        state.tourActive = true;
+        state.tourStep = 0;
+      });
+    },
+
+    nextTourStep: (): void => {
+      set((state) => {
+        state.tourStep += 1;
+      });
+    },
+
+    prevTourStep: (): void => {
+      set((state) => {
+        if (state.tourStep > 0) {
+          state.tourStep -= 1;
+        }
+      });
+    },
+
+    endTour: (): void => {
+      set((state) => {
+        state.tourActive = false;
+        state.tourStep = 0;
       });
     },
   }))

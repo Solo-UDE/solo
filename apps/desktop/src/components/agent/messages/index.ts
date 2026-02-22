@@ -7,4 +7,3 @@ export { ToolCallBlock, type ToolCallBlockProps } from './tool-call-block';
 export { NotifyUserCard, type NotifyUserCardProps, type NotificationAction } from './notify-user-card';
 export { ProceedIndicator, type ProceedIndicatorProps } from './proceed-indicator';
 export { MessageFeedback, type MessageFeedbackProps } from './message-feedback';
-export { TurnProgress, type TurnProgressProps } from './turn-progress';
