@@ -9,7 +9,7 @@ import { Plus, ChatTeardrop, DotsThree, PencilSimple, Trash, MagnifyingGlass } f
 import { useAgentStore, useSessions, useActiveSessionId } from '@/stores/agentStore';
 import type { Message } from '@/stores/agentStore';
 import { usePanelTabsStore } from '@/stores/panelTabsStore';
-import { useWorktreeStore, useWorktreeBoundSessionIds } from '@/stores/worktreeStore';
+import { useWorktreeStore } from '@/stores/worktreeStore';
 import { useFileExplorerStore } from '@/stores/fileExplorerStore';
 import { BUILTIN_PANEL_TYPES } from '@/lib/panels/constants';
 import { useInlineRename } from '@/hooks/useInlineRename';
@@ -294,34 +294,27 @@ export const SessionList: FC<SessionListProps> = ({
   const renameSession = useAgentStore((state) => state.renameSession);
   const deleteSession = useAgentStore((state) => state.deleteSession);
 
-  // Workspace path scoping
-  const rootPath = useFileExplorerStore((s) => s.rootPath);
-
-  // Worktree scoping
+  // Workspace + worktree scoping — filters by repository path, then by worktree context
   const activeWorktreeId = useWorktreeStore((s) => s.activeWorktreeId);
-  const activeWorktreeMap = useWorktreeStore((s) => s.worktrees);
-  const boundSessionIds = useWorktreeBoundSessionIds();
+  const currentRootPath = useFileExplorerStore((s) => s.rootPath);
 
-  // Scope sessions by workspace path and active worktree
   const scopedSessions = useMemo(() => {
-    const activeWt = activeWorktreeId ? activeWorktreeMap.get(activeWorktreeId) : null;
-
-    // First filter by workspace path (startsWith handles worktree sub-paths)
-    const workspaceFiltered = rootPath
-      ? sessions.filter((session) =>
-          session.workspacePath && session.workspacePath.startsWith(rootPath))
-      : sessions;
-
-    // Then apply worktree scoping
-    return workspaceFiltered.filter((session) => {
-      if (activeWt) {
+    return sessions.filter((session) => {
+      // Filter by workspace (repository) — prevents cross-repo session bleed
+      if (currentRootPath && session.workspacePath) {
+        if (!session.workspacePath.startsWith(currentRootPath)) {
+          return false;
+        }
+      }
+      // Filter by worktree context
+      if (activeWorktreeId) {
         // In a worktree: show sessions bound to this worktree + unbound sessions
-        return session.id === activeWt.agent_session_id || !boundSessionIds.has(session.id);
+        return session.worktreeId === activeWorktreeId || !session.worktreeId;
       }
       // Main workspace: show only unbound sessions
-      return !boundSessionIds.has(session.id);
+      return !session.worktreeId;
     });
-  }, [sessions, rootPath, activeWorktreeId, activeWorktreeMap, boundSessionIds]);
+  }, [sessions, activeWorktreeId, currentRootPath]);
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('');

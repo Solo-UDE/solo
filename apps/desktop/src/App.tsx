@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { AnimatePresence, motion } from "motion/react";
-import { GearSix, SidebarSimple, SignOut, Terminal } from "@phosphor-icons/react";
+import { Bug, GearSix, SidebarSimple, SignOut, Terminal } from "@phosphor-icons/react";
 import { PrimarySidebar } from "./components/sidebar";
 import { SidebarTerminal } from "./components/sidebar";
 import { MosaicLayout } from "./components/panels";
@@ -36,6 +36,7 @@ import { WorkspaceSwitcher } from "./components/titlebar/WorkspaceSwitcher";
 import { TitlebarButton } from "./components/titlebar/TitlebarButton";
 import { WelcomeScreen } from "./components/welcome";
 import { KeyboardShortcutsOverlay } from "./components/KeyboardShortcutsOverlay";
+import { BugReportDialog } from "./components/bug-report/BugReportDialog";
 
 // Shared easing curve matching --ease-smooth
 const EASE_SMOOTH: [number, number, number, number] = [0.16, 1, 0.3, 1];
@@ -51,6 +52,9 @@ function AppContent() {
 
   // Keyboard shortcuts overlay state
   const [shortcutsOverlayOpen, setShortcutsOverlayOpen] = useState(false);
+
+  // Bug report dialog state
+  const [bugReportOpen, setBugReportOpen] = useState(false);
 
   // Terminal panel drag state
   const [isDraggingTerminal, setIsDraggingTerminal] = useState(false);
@@ -434,6 +438,12 @@ function AppContent() {
             />
           )}
           <TitlebarButton
+            onClick={() => setBugReportOpen(true)}
+            icon={<Bug className="w-4 h-4 text-muted-foreground" />}
+            label="Report Bug"
+            title="Report a Bug"
+          />
+          <TitlebarButton
             onClick={() => openSettings()}
             icon={<GearSix className="w-4 h-4 text-muted-foreground" />}
             label="Settings"
@@ -529,6 +539,7 @@ function AppContent() {
         onOpenChange={setShortcutsOverlayOpen}
         onOpenSettings={handleOpenShortcutsSettings}
       />
+      {bugReportOpen && <BugReportDialog onClose={() => setBugReportOpen(false)} />}
       <Toaster richColors position="bottom-right" theme={resolvedTheme} />
     </div>
   );

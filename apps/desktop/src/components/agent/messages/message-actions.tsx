@@ -1,4 +1,4 @@
-import { Check, Copy, ThumbsUp, ThumbsDown, SpeakerHigh, Stop } from '@phosphor-icons/react';
+import { Check, Copy, SpeakerHigh, Stop } from '@phosphor-icons/react';
 import { IconButton } from '@solo/ui';
 import { useState } from 'react';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
@@ -9,16 +9,12 @@ interface MessageActionsProps {
   readonly showDisclaimer?: boolean;
   readonly messageText?: string;
   readonly onCopy?: () => void;
-  readonly onLike?: () => void;
-  readonly onDislike?: () => void;
 }
 
 export const MessageActions: FC<MessageActionsProps> = ({
   showDisclaimer = false,
   messageText,
   onCopy,
-  onLike,
-  onDislike,
 }) => {
   const [copied, setCopied] = useState(false);
   const { isSpeaking, speak, stop } = useTextToSpeech();
@@ -63,26 +59,6 @@ export const MessageActions: FC<MessageActionsProps> = ({
           onClick={handleCopy}
         >
           {copied ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : <Copy className="h-3.5 w-3.5" aria-hidden="true" />}
-        </IconButton>
-        <IconButton
-          variant="ghost"
-          size="sm"
-          className="h-6 w-6"
-          aria-label="Like message"
-          title="Like"
-          onClick={onLike}
-        >
-          <ThumbsUp className="h-3.5 w-3.5" aria-hidden="true" />
-        </IconButton>
-        <IconButton
-          variant="ghost"
-          size="sm"
-          className="h-6 w-6"
-          aria-label="Dislike message"
-          title="Dislike"
-          onClick={onDislike}
-        >
-          <ThumbsDown className="h-3.5 w-3.5" aria-hidden="true" />
         </IconButton>
       </div>
       {showDisclaimer ? (

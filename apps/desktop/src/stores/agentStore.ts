@@ -128,6 +128,9 @@ export interface AgentSession {
 	turnCount?: number;
 	tags?: string[];
 	summary?: string;
+	// Worktree binding (persisted — survives workspace switches + app restarts)
+	worktreeId?: string;
+	worktreeBranch?: string;
 	// Connection lifecycle (transient — never persisted, always 'archived' on load)
 	connectionState: SessionConnectionState;
 	resumeError?: string;
@@ -288,6 +291,9 @@ interface AgentActions {
 	// Session lifecycle
 	ensureActive: (sessionId: string) => Promise<void>;
 	pruneExpiredSessions: (retentionDays: number) => Promise<void>;
+	archiveAllSessions: () => void;
+	saveActiveSessionForWorkspace: (workspacePath: string) => void;
+	restoreActiveSessionForWorkspace: (workspacePath: string) => void;
 
 	// Persistence
 	loadPersistedSessions: () => Promise<void>;
@@ -505,6 +511,49 @@ export const useAgentStore = create<AgentStore>()(
 			}
 		},
 
+		archiveAllSessions: () => {
+			// Disconnect bridge connections without deleting session data from memory or disk
+			for (const [sessionId, session] of get().sessions) {
+				if (session.connectionState === 'active' || session.connectionState === 'resuming') {
+					backend.agentDeleteSession(sessionId).catch(console.error);
+				}
+			}
+			set((state) => {
+				for (const session of state.sessions.values()) {
+					session.connectionState = 'archived';
+				}
+				state.activeSessionId = null;
+			});
+			// Flush all pending saves before switch
+			get().persistSessions();
+		},
+
+		saveActiveSessionForWorkspace: (workspacePath: string) => {
+			// Remember which session was active for this workspace so we can restore it later
+			const activeId = get().activeSessionId;
+			if (activeId) {
+				try {
+					localStorage.setItem(`solo-active-session:${workspacePath}`, activeId);
+				} catch {
+					// localStorage may be unavailable — non-critical
+				}
+			}
+		},
+
+		restoreActiveSessionForWorkspace: (workspacePath: string) => {
+			// Re-activate the session that was last used in this workspace
+			try {
+				const savedId = localStorage.getItem(`solo-active-session:${workspacePath}`);
+				if (savedId && get().sessions.has(savedId)) {
+					set((state) => {
+						state.activeSessionId = savedId;
+					});
+				}
+			} catch {
+				// localStorage may be unavailable — non-critical
+			}
+		},
+
 		// =================================================================
 		// Session Management
 		// =================================================================
@@ -533,6 +582,8 @@ export const useAgentStore = create<AgentStore>()(
 						createdAt: new Date(),
 						model: model || 'opus',
 						workspacePath: cwd,
+						worktreeId: activeWt?.id,
+						worktreeBranch: activeWt?.branch ?? undefined,
 						turnCount: 0,
 						resumable: false,
 						connectionState: 'active',
@@ -598,6 +649,8 @@ export const useAgentStore = create<AgentStore>()(
 						createdAt: new Date(),
 						model: model || sourceSession.model || 'opus',
 						workspacePath: sourceSession.workspacePath,
+						worktreeId: activeWt?.id ?? sourceSession.worktreeId,
+						worktreeBranch: (activeWt?.branch ?? sourceSession.worktreeBranch) ?? undefined,
 						turnCount: 0,
 						resumable: false,
 						connectionState: 'active',

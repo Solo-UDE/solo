@@ -153,6 +153,79 @@ export const listInstallations = async (
   return data.installations ?? [];
 };
 
+// ============================================================================
+// Bug Report API
+// ============================================================================
+
+export interface GitHubFileUploadResult {
+  download_url: string;
+  path: string;
+  sha: string;
+}
+
+export interface GitHubIssueResult {
+  html_url: string;
+  number: number;
+}
+
+/** Upload a file to a repository via the Contents API */
+export const uploadFileToRepo = async (
+  token: string,
+  owner: string,
+  repo: string,
+  path: string,
+  base64Content: string,
+  commitMessage: string,
+): Promise<GitHubFileUploadResult> => {
+  const res = await fetch(`${GITHUB_API}/repos/${owner}/${repo}/contents/${path}`, {
+    method: 'PUT',
+    headers: makeHeaders(token),
+    body: JSON.stringify({
+      message: commitMessage,
+      content: base64Content,
+    }),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Failed to upload file: ${res.status} ${body}`);
+  }
+  const data = await res.json();
+  return {
+    download_url: data.content.download_url,
+    path: data.content.path,
+    sha: data.content.sha,
+  };
+};
+
+/** Create a new issue on a repository */
+export const createIssue = async (
+  token: string,
+  owner: string,
+  repo: string,
+  title: string,
+  body: string,
+  labels?: string[],
+): Promise<GitHubIssueResult> => {
+  const res = await fetch(`${GITHUB_API}/repos/${owner}/${repo}/issues`, {
+    method: 'POST',
+    headers: makeHeaders(token),
+    body: JSON.stringify({
+      title,
+      body,
+      ...(labels && labels.length > 0 ? { labels } : {}),
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Failed to create issue: ${res.status} ${text}`);
+  }
+  const data = await res.json();
+  return {
+    html_url: data.html_url,
+    number: data.number,
+  };
+};
+
 /** Generate a commit message using AI (placeholder — delegates to agent) */
 export const generateCommitMessage = async (
   diff: string,

@@ -11,6 +11,7 @@ import { useGitStore } from './gitStore';
 import { useUIStore } from './uiStore';
 import { useFileExplorerStore } from './fileExplorerStore';
 import { killTerminal } from '@/lib/tauri/terminal';
+import { BUILTIN_PANEL_TYPES } from '@/lib/panels/constants';
 
 const MAX_RECENTS = 10;
 
@@ -53,8 +54,13 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
       },
 
       closeWorkspace: async () => {
-        // 1. Close all editor panels
-        usePanelTabsStore.getState().closeAll();
+        // 1. Close non-agent panels (preserve agent tabs for session persistence)
+        const panelState = usePanelTabsStore.getState();
+        for (const [instanceId, instance] of panelState.instances) {
+          if (instance.panelType !== BUILTIN_PANEL_TYPES.AGENT) {
+            panelState.closePanel(instanceId);
+          }
+        }
 
         // 2. Kill all terminal PTYs and clear store
         const terminals = useTerminalStore.getState().terminals;
@@ -67,14 +73,14 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
           useUIStore.getState().toggleTerminalPanel();
         }
 
-        // 3. Archive agent sessions (non-destructive - preserves data on disk)
+        // 3. Save active session context and archive bridge connections
         const { useAgentStore } = await import('./agentStore');
         const agentState = useAgentStore.getState();
         const currentRoot = useFileExplorerStore.getState().rootPath;
         if (currentRoot) {
           agentState.saveActiveSessionForWorkspace(currentRoot);
         }
-        await agentState.archiveSessions();
+        agentState.archiveAllSessions();
 
         // 4. Reset git state
         useGitStore.getState().reset();
@@ -84,8 +90,13 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
       },
 
       switchWorkspace: async (path: string) => {
-        // 1. Close all editor panels
-        usePanelTabsStore.getState().closeAll();
+        // 1. Close non-agent panels (preserve agent tabs for session persistence)
+        const panelState = usePanelTabsStore.getState();
+        for (const [instanceId, instance] of panelState.instances) {
+          if (instance.panelType !== BUILTIN_PANEL_TYPES.AGENT) {
+            panelState.closePanel(instanceId);
+          }
+        }
 
         // 2. Kill all terminal PTYs and clear store
         const terminals = useTerminalStore.getState().terminals;
@@ -98,14 +109,14 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
           useUIStore.getState().toggleTerminalPanel();
         }
 
-        // 3. Archive agent sessions and track active session per workspace
+        // 3. Save active session context and archive bridge connections
         const { useAgentStore } = await import('./agentStore');
         const agentState = useAgentStore.getState();
         const currentRoot = useFileExplorerStore.getState().rootPath;
         if (currentRoot) {
           agentState.saveActiveSessionForWorkspace(currentRoot);
         }
-        await agentState.archiveSessions();
+        agentState.archiveAllSessions();
 
         // 4. Reset git state
         useGitStore.getState().reset();

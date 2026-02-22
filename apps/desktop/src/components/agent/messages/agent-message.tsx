@@ -1,7 +1,6 @@
 import { AgentNarrative } from './agent-narrative';
 import { InterruptIndicator } from './interrupt-indicator';
 import { MessageActions } from './message-actions';
-import { MessageFeedback } from './message-feedback';
 import { NotifyUserCard } from './notify-user-card';
 import { ProceedIndicator } from './proceed-indicator';
 import { SoloAgentBadge } from './SoloAgentBadge';
@@ -54,7 +53,6 @@ export interface AgentMessageProps {
   content: AgentMessageContent;
   timestamp: Date;
   agentName?: string;
-  onFeedback?: (messageId: string, feedback: 'good' | 'bad') => void;
   onToolApproval?: (toolCallId: string, approved: boolean) => void;
   messageId?: string;
   className?: string;
@@ -83,9 +81,8 @@ export const AgentMessage: FC<AgentMessageProps> = ({
   content,
   timestamp,
   agentName: _agentName = 'Agent',
-  onFeedback,
   onToolApproval,
-  messageId,
+  messageId: _messageId,
   className = '',
 }) => {
   const formatTime = (date: Date): string => {
@@ -94,12 +91,6 @@ export const AgentMessage: FC<AgentMessageProps> = ({
       minute: '2-digit',
       hour12: true,
     }).format(date);
-  };
-
-  const handleFeedback = (feedback: 'good' | 'bad'): void => {
-    if (onFeedback && messageId) {
-      onFeedback(messageId, feedback);
-    }
   };
 
   // Use ordered blocks if available, otherwise fall back to legacy rendering
@@ -242,8 +233,6 @@ export const AgentMessage: FC<AgentMessageProps> = ({
           </div>
         ) : null}
 
-        {/* Feedback */}
-        {onFeedback && messageId ? <MessageFeedback onFeedback={handleFeedback} /> : null}
       </div>
     </div>
   );
