@@ -525,8 +525,8 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
       const parentPath = getParentPath(path);
       const state = get();
 
-      // Only refresh if parent is expanded
-      if (state.expanded.has(parentPath)) {
+      // Refresh if parent is expanded or is the root path (root is always visible)
+      if (state.expanded.has(parentPath) || parentPath === state.rootPath) {
         fs.readDirectory(parentPath, 1)
           .then((response) => {
             set((state) => {
