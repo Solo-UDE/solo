@@ -119,7 +119,7 @@ export const SidebarTerminal: FC = () => {
               onMouseDown={(e) => { if (e.button === 1) { e.preventDefault(); handleCloseTab(t.id); } }}
               onDoubleClick={() => rename.startRename(t.id, t.title)}
               className={cn(
-                'group relative flex items-center gap-1 px-3 py-2 text-[11px] max-w-40 shrink-0 cursor-pointer',
+                'group relative flex items-center gap-1 px-3 py-2 text-xs max-w-40 shrink-0 cursor-pointer',
                 'transition-colors duration-150 ease-[cubic-bezier(0.4,0,0.2,1)]',
                 !t.isAlive && 'opacity-60',
                 t.id === activeTerminalId
@@ -132,7 +132,7 @@ export const SidebarTerminal: FC = () => {
                 <input
                   {...rename.getInputProps()}
                   type="text"
-                  className="w-full min-w-[60px] bg-muted/50 outline-none ring-1 ring-primary/40 rounded-[4px] text-[11px] text-foreground px-1.5 py-0.5 -my-0.5 selection:bg-primary/20"
+                  className="w-full min-w-[60px] bg-muted/50 outline-none ring-1 ring-primary/40 rounded-[4px] text-xs text-foreground px-1.5 py-0.5 -my-0.5 selection:bg-primary/20"
                 />
               ) : (
                 <span className="truncate">{t.title}</span>

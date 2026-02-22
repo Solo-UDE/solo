@@ -273,7 +273,7 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
           </div>
           <div className="space-y-1">
             <p className="text-xs font-medium text-muted-foreground">Not a git repository</p>
-            <p className="text-[11px] text-muted-foreground/50 leading-relaxed">
+            <p className="text-xs text-muted-foreground/60 leading-relaxed">
               Open a folder with a <span className="text-muted-foreground/70">.git</span> directory, or initialize one.
             </p>
           </div>
@@ -292,7 +292,7 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
               placeholder="Commit message..."
               className={cn(
                 'w-full h-[72px] px-3 py-2 rounded-lg text-xs resize-none',
-                'bg-muted/40 border-none text-foreground placeholder:text-muted-foreground/50',
+                'bg-muted/40 border-none text-foreground placeholder:text-muted-foreground/60',
                 'focus:bg-muted/60 focus:ring-1 focus:ring-ring/30 focus:outline-none',
                 'transition-colors duration-150',
               )}
@@ -403,7 +403,7 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
                 )}
                 Push
                 {commitsAhead != null && commitsAhead > 0 && (
-                  <span className="px-1 py-0.5 rounded-full text-[10px] font-semibold bg-primary/10 text-primary">
+                  <span className="px-1 py-0.5 rounded-full text-2xs font-semibold bg-primary/10 text-primary">
                     {commitsAhead}
                   </span>
                 )}
@@ -454,7 +454,7 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
                   Staged Changes
                   <span
                     className={cn(
-                      'ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold',
+                      'ml-1 px-1.5 py-0.5 rounded-full text-2xs font-semibold',
                       'bg-emerald-400/10 text-emerald-400',
                     )}
                   >
@@ -507,7 +507,7 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
               {unstagedFiles.length > 0 && (
                 <span
                   className={cn(
-                    'ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold',
+                    'ml-1 px-1.5 py-0.5 rounded-full text-2xs font-semibold',
                     'bg-primary/10 text-primary',
                   )}
                 >
@@ -515,7 +515,7 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
                 </span>
               )}
               {changesSummary && (changesSummary.insertions > 0 || changesSummary.deletions > 0) && (
-                <span className="ml-1 flex items-center gap-1 text-[10px]">
+                <span className="ml-1 flex items-center gap-1 text-2xs">
                   {changesSummary.insertions > 0 && (
                     <span className="text-emerald-400">+{changesSummary.insertions}</span>
                   )}
@@ -574,7 +574,7 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
                     transition={{ duration: 0.15 }}
                   >
                     <Check className="w-4 h-4 text-muted-foreground/30 mb-0.5" weight="bold" />
-                    <p className="text-[11px] text-muted-foreground/50">No changes detected</p>
+                    <p className="text-xs text-muted-foreground/60">No changes detected</p>
                   </motion.div>
                 ) : (
                   <AnimatedList>

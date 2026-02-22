@@ -290,9 +290,9 @@ function EmptyTile() {
         <p className="text-muted-foreground/60 text-xs">Open a file from the explorer</p>
         <button
           onClick={handleNewChat}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-primary-foreground bg-primary rounded-lg hover:brightness-110 active:scale-[0.97] transition-all duration-200"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-primary-foreground bg-primary rounded-lg hover:brightness-110 active:scale-[0.97] transition-all duration-200"
         >
-          <ChatCircle className="w-3.5 h-3.5" weight="bold" />
+          <ChatCircle className="w-4 h-4" weight="bold" />
           New AI Chat
         </button>
       </div>

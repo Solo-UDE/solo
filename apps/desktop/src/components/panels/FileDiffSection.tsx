@@ -23,7 +23,7 @@ const statusBadgeClass: Record<string, string> = {
 const UnmodifiedGap = memo(({ count }: { count: number }) => {
   if (count <= 0) return null;
   return (
-    <div className="flex items-center justify-center h-6 text-[10px] text-muted-foreground/40 bg-muted/20 select-none">
+    <div className="flex items-center justify-center h-6 text-2xs text-muted-foreground/40 bg-muted/20 select-none">
       {count} unmodified line{count !== 1 ? 's' : ''}
     </div>
   );
@@ -132,10 +132,10 @@ export const FileDiffSection = memo(({ file, defaultOpen = true }: FileDiffSecti
         )}
         <span className="truncate text-foreground">{fileName}</span>
         {dirPath && (
-          <span className="truncate text-muted-foreground/50 text-[10px]">{dirPath}</span>
+          <span className="truncate text-muted-foreground/60 text-2xs">{dirPath}</span>
         )}
         <span className="ml-auto flex items-center gap-2 shrink-0">
-          <span className="flex items-center gap-1 text-[10px]">
+          <span className="flex items-center gap-1 text-2xs">
             {file.additions > 0 && (
               <span className="text-emerald-400">+{file.additions}</span>
             )}
@@ -145,7 +145,7 @@ export const FileDiffSection = memo(({ file, defaultOpen = true }: FileDiffSecti
           </span>
           <span
             className={cn(
-              'px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase',
+              'px-1.5 py-0.5 rounded text-2xs font-semibold uppercase',
               statusBadgeClass[file.status] ?? 'bg-muted/50 text-muted-foreground',
             )}
           >

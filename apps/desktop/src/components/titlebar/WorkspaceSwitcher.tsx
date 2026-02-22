@@ -131,7 +131,7 @@ export function WorkspaceSwitcher() {
           {dirName(rootPath)}
         </span>
         {activeRepo?.currentBranch && (
-          <span className="text-[10px] text-muted-foreground/60 bg-muted/30 px-1.5 py-0.5 rounded-full truncate max-w-[80px]">
+          <span className="text-2xs text-muted-foreground/60 bg-muted/30 px-1.5 py-0.5 rounded-full truncate max-w-[80px]">
             {activeRepo.currentBranch}
           </span>
         )}
@@ -167,7 +167,7 @@ export function WorkspaceSwitcher() {
                 <div className="text-xs font-medium text-foreground truncate">
                   {dirName(rootPath)}
                 </div>
-                <div className="text-[10px] text-muted-foreground/60 truncate" title={rootPath}>
+                <div className="text-2xs text-muted-foreground/60 truncate" title={rootPath}>
                   {truncatePath(rootPath)}
                 </div>
               </div>
@@ -196,8 +196,8 @@ export function WorkspaceSwitcher() {
           {filteredRecents.length > 0 && (
             <div className="px-1.5 py-1.5 max-h-[200px] overflow-y-auto">
               <div className="flex items-center gap-1.5 px-2 py-1 mb-0.5">
-                <Clock className="w-3 h-3 text-muted-foreground/50" />
-                <span className="text-[10px] font-medium text-muted-foreground/50">Recent</span>
+                <Clock className="w-3 h-3 text-muted-foreground/60" />
+                <span className="text-2xs font-medium text-muted-foreground/60">Recent</span>
               </div>
               {filteredRecents.map((path) => (
                 <button
@@ -208,7 +208,7 @@ export function WorkspaceSwitcher() {
                   <FolderSimple className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                   <div className="flex-1 min-w-0 text-left">
                     <div className="text-foreground/80 truncate">{dirName(path)}</div>
-                    <div className="text-[10px] text-muted-foreground/50 truncate" title={path}>
+                    <div className="text-2xs text-muted-foreground/60 truncate" title={path}>
                       {truncatePath(path)}
                     </div>
                   </div>

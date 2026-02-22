@@ -388,12 +388,12 @@ const WorktreeCard: FC<WorktreeCardProps> = ({
         <div className="mt-1">
           <button
             onClick={(e) => { e.stopPropagation(); setShowSetup(!showSetup); }}
-            className="text-[10px] text-muted-foreground/70 hover:text-muted-foreground"
+            className="text-2xs text-muted-foreground hover:text-muted-foreground"
           >
             {showSetup ? 'Hide setup output' : `Setup (${setupLines.length} lines)`}
           </button>
           {showSetup && (
-            <div className="mt-1 max-h-24 overflow-y-auto bg-black/20 rounded p-1.5 font-mono text-[10px] text-muted-foreground leading-tight">
+            <div className="mt-1 max-h-24 overflow-y-auto bg-black/20 rounded p-1.5 font-mono text-2xs text-muted-foreground leading-tight">
               {setupLines.map((line, i) => (
                 <div key={i} className="whitespace-pre-wrap break-all">{line}</div>
               ))}
