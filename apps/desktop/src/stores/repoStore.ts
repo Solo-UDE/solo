@@ -195,10 +195,11 @@ export const useRepoStore = create<RepoStore>()(
         const currentRepo = get().activeRepoPath;
 
         if (currentRepo !== repoPath) {
+          const { useGitStore } = await import('./gitStore');
+
           // Cache git stats for the repo we're leaving
           if (currentRepo) {
             try {
-              const { useGitStore } = await import('./gitStore');
               const gitState = useGitStore.getState();
               set((state) => {
                 const entry = state.repos.get(currentRepo);
@@ -210,7 +211,23 @@ export const useRepoStore = create<RepoStore>()(
               // Non-critical - just skip caching
             }
           }
-          await useWorkspaceStore.getState().switchWorkspace(repoPath);
+
+          // Light context switch -- only update file tree + git.
+          // Sessions, panels, and terminals are left untouched.
+          // switchWorkspace() is still used by WorkspaceSwitcher for full teardown.
+          useGitStore.getState().reset();
+
+          // Stop old file watcher, then switch to new root.
+          // setRootPath handles: setWorkspaceRoot() + startWatching() + readDirectory()
+          // rootPath goes from old -> new directly (never null, no flash)
+          await fsApi.stopWatching().catch(console.error);
+          await useFileExplorerStore.getState().setRootPath(repoPath);
+
+          // Track in recents
+          useWorkspaceStore.getState().addRecent(repoPath);
+
+          // Re-detect git
+          useGitStore.getState().startPolling();
         } else {
           // Same repo — ensure rootPath is set (may be null after app restart)
           const currentRoot = useFileExplorerStore.getState().rootPath;
@@ -237,6 +254,11 @@ export const useRepoStore = create<RepoStore>()(
 
         // 3. Update our state + expand the active repo
         set((state) => {
+          // Collapse the previously active repo when switching
+          if (state.activeRepoPath && state.activeRepoPath !== repoPath) {
+            const prevEntry = state.repos.get(state.activeRepoPath);
+            if (prevEntry) prevEntry.isExpanded = false;
+          }
           state.activeRepoPath = repoPath;
           state.activeWorktreeId = worktreeId;
           // Auto-expand the active repo in the accordion

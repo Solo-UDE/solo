@@ -10,6 +10,7 @@ import { useAgentStore, useSessions, useActiveSessionId } from '@/stores/agentSt
 import type { Message } from '@/stores/agentStore';
 import { usePanelTabsStore } from '@/stores/panelTabsStore';
 import { useWorktreeStore, useWorktreeBoundSessionIds } from '@/stores/worktreeStore';
+import { useFileExplorerStore } from '@/stores/fileExplorerStore';
 import { BUILTIN_PANEL_TYPES } from '@/lib/panels/constants';
 import { useInlineRename } from '@/hooks/useInlineRename';
 import { cn } from '@/lib/utils';
@@ -293,15 +294,26 @@ export const SessionList: FC<SessionListProps> = ({
   const renameSession = useAgentStore((state) => state.renameSession);
   const deleteSession = useAgentStore((state) => state.deleteSession);
 
+  // Workspace path scoping
+  const rootPath = useFileExplorerStore((s) => s.rootPath);
+
   // Worktree scoping
   const activeWorktreeId = useWorktreeStore((s) => s.activeWorktreeId);
   const activeWorktreeMap = useWorktreeStore((s) => s.worktrees);
   const boundSessionIds = useWorktreeBoundSessionIds();
 
-  // Scope sessions by active worktree
+  // Scope sessions by workspace path and active worktree
   const scopedSessions = useMemo(() => {
     const activeWt = activeWorktreeId ? activeWorktreeMap.get(activeWorktreeId) : null;
-    return sessions.filter((session) => {
+
+    // First filter by workspace path (startsWith handles worktree sub-paths)
+    const workspaceFiltered = rootPath
+      ? sessions.filter((session) =>
+          session.workspacePath && session.workspacePath.startsWith(rootPath))
+      : sessions;
+
+    // Then apply worktree scoping
+    return workspaceFiltered.filter((session) => {
       if (activeWt) {
         // In a worktree: show sessions bound to this worktree + unbound sessions
         return session.id === activeWt.agent_session_id || !boundSessionIds.has(session.id);
@@ -309,7 +321,7 @@ export const SessionList: FC<SessionListProps> = ({
       // Main workspace: show only unbound sessions
       return !boundSessionIds.has(session.id);
     });
-  }, [sessions, activeWorktreeId, activeWorktreeMap, boundSessionIds]);
+  }, [sessions, rootPath, activeWorktreeId, activeWorktreeMap, boundSessionIds]);
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
