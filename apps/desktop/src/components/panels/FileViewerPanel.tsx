@@ -464,12 +464,12 @@ export function FileViewerPanel({
                 <CaretRight className="w-2.5 h-2.5 text-muted-foreground/40 shrink-0" weight="bold" />
               )}
               {segment.isLast ? (
-                <span className="text-xs text-foreground/80 font-medium whitespace-nowrap">
+                <span className="text-[11px] text-foreground/80 font-medium whitespace-nowrap">
                   {segment.label}
                 </span>
               ) : (
                 <button
-                  className="text-xs text-muted-foreground/60 hover:text-foreground transition-colors duration-100 whitespace-nowrap"
+                  className="text-[11px] text-muted-foreground/60 hover:text-foreground transition-colors duration-100 whitespace-nowrap"
                   onClick={() => handleBreadcrumbClick(segment)}
                 >
                   {segment.label}
@@ -500,13 +500,13 @@ export function FileViewerPanel({
       </div>
 
       {/* Status bar */}
-      <div className="flex items-center justify-between h-6 px-3 bg-background/30 backdrop-blur-md text-muted-foreground text-xs border-t border-white/[0.04] shrink-0">
+      <div className="flex items-center justify-between h-6 px-3 bg-background/30 backdrop-blur-md text-muted-foreground text-[11px] border-t border-white/[0.04] shrink-0">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-primary/60 shrink-0" />
             <span>{language}</span>
           </div>
-          <span className="text-muted-foreground/60">UTF-8</span>
+          <span className="text-muted-foreground/50">UTF-8</span>
         </div>
         <div className="flex items-center gap-3 text-muted-foreground/60">
           <span>Ln {cursorPosition.line}, Col {cursorPosition.col}</span>

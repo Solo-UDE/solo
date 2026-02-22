@@ -89,20 +89,20 @@ export const RepoCard: FC<RepoCardProps> = ({ repo, isActive, children }) => {
             weight={isActive ? 'fill' : 'regular'}
           />
 
-          <span className="text-sm font-medium truncate flex-1">
+          <span className="text-xs font-medium truncate flex-1">
             {repo.name}
           </span>
 
           {/* Branch badge pill */}
           {repo.currentBranch && (
-            <span className="text-2xs text-muted-foreground/60 bg-muted/30 px-1.5 py-0.5 rounded-full truncate max-w-[80px]">
+            <span className="text-[10px] text-muted-foreground/60 bg-muted/30 px-1.5 py-0.5 rounded-full truncate max-w-[80px]">
               {repo.currentBranch}
             </span>
           )}
 
           {/* Worktree count badge */}
           {worktreeCount > 0 && (
-            <span className="text-2xs text-muted-foreground/60 tabular-nums">
+            <span className="text-[10px] text-muted-foreground/50 tabular-nums">
               {worktreeCount}
             </span>
           )}
@@ -113,7 +113,7 @@ export const RepoCard: FC<RepoCardProps> = ({ repo, isActive, children }) => {
             className={cn(
               'w-5 h-5 flex items-center justify-center rounded shrink-0',
               'opacity-0 group-hover:opacity-100 transition-opacity duration-150',
-              'text-muted-foreground/60 hover:text-foreground hover:bg-muted/60',
+              'text-muted-foreground/50 hover:text-foreground hover:bg-muted/60',
             )}
             title="Remove repository"
           >
@@ -123,7 +123,7 @@ export const RepoCard: FC<RepoCardProps> = ({ repo, isActive, children }) => {
 
         {/* Row 2: Status indicators (commits ahead, dirty worktrees) */}
         {hasStatus && (
-          <div className="flex items-center gap-1 h-4 pl-[30px] pr-2 pb-2 text-2xs text-muted-foreground/60">
+          <div className="flex items-center gap-1 h-4 pl-[30px] pr-2 pb-1 text-[10px] text-muted-foreground/60">
             {repo.cachedCommitsAhead > 0 && (
               <span className="flex items-center gap-0.5 text-emerald-400/80">
                 <ArrowUp className="w-2.5 h-2.5" />
@@ -131,10 +131,10 @@ export const RepoCard: FC<RepoCardProps> = ({ repo, isActive, children }) => {
               </span>
             )}
             {repo.cachedCommitsAhead > 0 && repo.dirtyWorktreeCount > 0 && (
-              <span className="text-muted-foreground/40">·</span>
+              <span className="text-muted-foreground/30">·</span>
             )}
             {repo.dirtyWorktreeCount > 0 && (
-              <span className="flex items-center gap-0.5 text-warning-foreground/80">
+              <span className="flex items-center gap-0.5 text-yellow-400/80">
                 <CircleDashed className="w-2.5 h-2.5" />
                 {repo.dirtyWorktreeCount} dirty
               </span>
@@ -144,9 +144,9 @@ export const RepoCard: FC<RepoCardProps> = ({ repo, isActive, children }) => {
 
         {/* Loading indicator */}
         {repo.isExpanded && !repo._worktreesLoaded && (
-          <div className="flex items-center gap-2 h-6 pl-[30px] pr-2 text-muted-foreground/60">
+          <div className="flex items-center gap-2 h-6 pl-[30px] pr-2 text-muted-foreground/50">
             <CircleNotch className="w-3 h-3 animate-spin" />
-            <span className="text-xs">Loading...</span>
+            <span className="text-[11px]">Loading...</span>
           </div>
         )}
       </div>

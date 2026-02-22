@@ -83,7 +83,7 @@ export const FileChangeItem: FC<FileChangeItemProps> = ({ file, onDiscard, onVie
       {/* Status badge */}
       <span
         className={cn(
-          'shrink-0 w-4 h-4 flex items-center justify-center rounded text-2xs font-bold',
+          'shrink-0 w-4 h-4 flex items-center justify-center rounded text-[10px] font-bold',
           STATUS_COLORS[file.status],
           STATUS_BG[file.status],
         )}
@@ -92,18 +92,18 @@ export const FileChangeItem: FC<FileChangeItemProps> = ({ file, onDiscard, onVie
       </span>
 
       {/* File name */}
-      <span className="text-sm text-foreground truncate flex-1">{fileName}</span>
+      <span className="text-xs text-foreground truncate flex-1">{fileName}</span>
 
       {/* Directory path */}
       {dirPath && (
-        <span className="text-2xs text-muted-foreground/60 truncate max-w-[80px] shrink-0">
+        <span className="text-[10px] text-muted-foreground/50 truncate max-w-[80px] shrink-0">
           {dirPath}
         </span>
       )}
 
       {/* Insertions / Deletions */}
       {(file.insertions > 0 || file.deletions > 0) && !isHovered && (
-        <span className="flex items-center gap-0.5 text-2xs shrink-0">
+        <span className="flex items-center gap-0.5 text-[10px] shrink-0">
           {file.insertions > 0 && (
             <span className="text-success">+{file.insertions}</span>
           )}
