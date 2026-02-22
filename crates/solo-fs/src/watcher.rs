@@ -120,7 +120,26 @@ impl FileWatcher {
                             if let Some((path, event_type, new_path)) = process_notify_event(&event)
                             {
                                 pending_events
-                                    .insert(path.clone(), (event_type, Instant::now(), new_path));
+                                    .entry(path.clone())
+                                    .and_modify(|(existing_type, timestamp, existing_new)| {
+                                        match (&*existing_type, &event_type) {
+                                            // Don't let Modified overwrite Created
+                                            // (macOS FSEvents fires both within ms)
+                                            (FileEventType::Created, FileEventType::Modified) => {}
+                                            // Deleted wins over everything else
+                                            (_, FileEventType::Deleted) => {
+                                                *existing_type = FileEventType::Deleted;
+                                                *existing_new = new_path.clone();
+                                            }
+                                            // All other transitions: take the newer event
+                                            _ => {
+                                                *existing_type = event_type.clone();
+                                                *existing_new = new_path.clone();
+                                            }
+                                        }
+                                        *timestamp = Instant::now();
+                                    })
+                                    .or_insert((event_type, Instant::now(), new_path));
                             }
                         }
                         Ok(None) => {

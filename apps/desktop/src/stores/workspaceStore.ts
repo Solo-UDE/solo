@@ -78,7 +78,7 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
         useGitStore.getState().reset();
 
         // 5. Close current folder (sets rootPath to null, stops file watcher)
-        useFileExplorerStore.getState().closeFolder();
+        await useFileExplorerStore.getState().closeFolder();
       },
 
       switchWorkspace: async (path: string) => {
@@ -107,7 +107,7 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
         useGitStore.getState().reset();
 
         // 5. Close current folder and open new one
-        useFileExplorerStore.getState().closeFolder();
+        await useFileExplorerStore.getState().closeFolder();
         await useFileExplorerStore.getState().setRootPath(path);
 
         // 6. Track in recents

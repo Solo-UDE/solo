@@ -240,6 +240,7 @@ interface AgentState {
 interface AgentActions {
 	// Session management
 	createSession: (model?: string) => Promise<string>;
+	forkSession: (sourceSessionId: string, model?: string) => Promise<string>;
 	setActiveSession: (sessionId: string) => void;
 	deleteSession: (sessionId: string) => void;
 	renameSession: (sessionId: string, name: string) => void;
@@ -543,6 +544,71 @@ export const useAgentStore = create<AgentStore>()(
 			} catch (error) {
 				const errorMsg = error instanceof Error ? error.message : String(error);
 				console.error(`Failed to create session: ${errorMsg}`);
+				throw error;
+			}
+		},
+
+		forkSession: async (sourceSessionId: string, model?: string) => {
+			const sourceSession = get().sessions.get(sourceSessionId);
+			if (!sourceSession) throw new Error(`Source session ${sourceSessionId} not found`);
+			if (!sourceSession.sdkSessionId) throw new Error('Source session has no SDK session ID to fork from');
+
+			const sessionId = generateSessionId();
+			const agentModel = toAgentModel(model || sourceSession.model || 'opus');
+
+			try {
+				const { useFileExplorerStore } = await import('@/stores/fileExplorerStore');
+				const workspacePath = useFileExplorerStore.getState().rootPath ?? undefined;
+
+				const { useWorktreeStore } = await import('@/stores/worktreeStore');
+				const worktreeState = useWorktreeStore.getState();
+				const activeWt = worktreeState.activeWorktreeId
+					? worktreeState.worktrees.get(worktreeState.activeWorktreeId)
+					: null;
+				const cwd = activeWt?.path ?? workspacePath;
+
+				await backend.agentCreateSession(sessionId, {
+					model: agentModel,
+					resumeSessionId: sourceSession.sdkSessionId,
+					forkSession: true,
+					cwd,
+				});
+
+				// Copy messages from source session for visual continuity
+				const sourceMessages = get().messages.get(sourceSessionId) || [];
+
+				set((state) => {
+					state.sessions.set(sessionId, {
+						id: sessionId,
+						createdAt: new Date(),
+						model: model || sourceSession.model || 'opus',
+						workspacePath: sourceSession.workspacePath,
+						turnCount: 0,
+						resumable: false,
+						connectionState: 'active',
+					});
+					state.messages.set(sessionId, [...sourceMessages]);
+					state.sessionStreaming.set(sessionId, createDefaultStreamState());
+				});
+
+				// Bind agent to active worktree
+				if (activeWt) {
+					import('@/lib/tauri/worktree').then(({ bindAgent }) => {
+						bindAgent(activeWt.id, sessionId).catch(console.error);
+					});
+				}
+
+				// Apply tool permission policy from settings
+				import('@/stores/settingsStore').then(({ useSettingsStore }) => {
+					const policy = useSettingsStore.getState().ai.toolPermissionPolicy;
+					backend.agentSetToolPolicy(sessionId, policy, !!activeWt).catch(console.error);
+				});
+
+				get().persistSessions(sessionId);
+				return sessionId;
+			} catch (error) {
+				const errorMsg = error instanceof Error ? error.message : String(error);
+				console.error(`Failed to fork session: ${errorMsg}`);
 				throw error;
 			}
 		},
