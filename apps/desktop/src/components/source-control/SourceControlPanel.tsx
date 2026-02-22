@@ -19,6 +19,7 @@ import {
   Minus,
   Plus,
   Sparkle,
+  Rows,
   TreeStructure,
 } from '@phosphor-icons/react';
 import { useGitStore } from '@/stores/gitStore';
@@ -174,6 +175,13 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
     },
     [handleCommit],
   );
+
+  // View all branch changes in unified diff panel
+  const handleViewBranchDiff = useCallback(() => {
+    openPanel(BUILTIN_PANEL_TYPES.BRANCH_DIFF, {
+      branch: repoStatus?.current_branch ?? undefined,
+    });
+  }, [openPanel, repoStatus?.current_branch]);
 
   // View file diff
   const handleViewDiff = useCallback(
@@ -529,27 +537,43 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
                   )}
                 </span>
               )}
-              {unstagedFiles.length > 0 && (
-                <span className="ml-auto flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <span onClick={handleStageAll}>
-                    <Plus
+              <span className="ml-auto flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                {changedFiles.length > 0 && (
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleViewBranchDiff();
+                    }}
+                    title="View all branch changes"
+                  >
+                    <Rows
                       className="w-3.5 h-3.5 text-muted-foreground hover:text-foreground transition-colors"
                       weight="bold"
                     />
                   </span>
-                  <span
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDiscardAll();
-                    }}
-                  >
-                    <ArrowCounterClockwise
-                      className="w-3.5 h-3.5 text-muted-foreground hover:text-destructive transition-colors"
-                      weight="bold"
-                    />
-                  </span>
-                </span>
-              )}
+                )}
+                {unstagedFiles.length > 0 && (
+                  <>
+                    <span onClick={handleStageAll}>
+                      <Plus
+                        className="w-3.5 h-3.5 text-muted-foreground hover:text-foreground transition-colors"
+                        weight="bold"
+                      />
+                    </span>
+                    <span
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDiscardAll();
+                      }}
+                    >
+                      <ArrowCounterClockwise
+                        className="w-3.5 h-3.5 text-muted-foreground hover:text-destructive transition-colors"
+                        weight="bold"
+                      />
+                    </span>
+                  </>
+                )}
+              </span>
             </button>
 
             {/* Unstaged file list */}

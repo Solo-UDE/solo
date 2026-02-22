@@ -19,6 +19,7 @@ export interface TaskToolCardProps {
 	readonly model?: string;
 	readonly output?: string;
 	readonly status: ToolStatus;
+	readonly style?: React.CSSProperties;
 }
 
 export const TaskToolCard: FC<TaskToolCardProps> = ({
@@ -27,6 +28,7 @@ export const TaskToolCard: FC<TaskToolCardProps> = ({
 	model,
 	output,
 	status,
+	style,
 }) => (
 	<ToolCard
 		toolName="Task"
@@ -36,6 +38,7 @@ export const TaskToolCard: FC<TaskToolCardProps> = ({
 		primaryDisplay={description}
 		output={output}
 		defaultExpanded={false}
+		style={style}
 	>
 		<div className="flex items-center gap-1.5">
 			<span className="text-[10px] px-1.5 py-0.5 rounded-md bg-muted/50 text-muted-foreground">

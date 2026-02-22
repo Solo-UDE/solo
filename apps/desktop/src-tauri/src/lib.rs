@@ -265,6 +265,7 @@ pub fn run() {
             git_commands::git_get_current_sha,
             git_commands::git_get_changes,
             git_commands::git_get_file_diff,
+            git_commands::git_get_branch_diff,
             git_commands::git_discard_file,
             git_commands::git_discard_all,
             git_commands::git_cleanup_locks,

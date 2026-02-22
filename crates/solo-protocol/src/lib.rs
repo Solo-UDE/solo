@@ -408,6 +408,51 @@ pub struct GitRepoStatus {
 }
 
 // =============================================================================
+// Unified Diff Protocol (for branch diff panel)
+// =============================================================================
+
+/// A single line in a unified diff
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct DiffLine {
+    /// Line kind: "context", "add", or "delete"
+    pub kind: String,
+    /// Line content (without leading +/- marker)
+    pub content: String,
+    /// Line number in old file (None for added lines)
+    pub old_line_no: Option<u32>,
+    /// Line number in new file (None for deleted lines)
+    pub new_line_no: Option<u32>,
+}
+
+/// A contiguous hunk of changes in a diff
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct DiffHunk {
+    pub old_start: u32,
+    pub new_start: u32,
+    pub old_lines: u32,
+    pub new_lines: u32,
+    pub lines: Vec<DiffLine>,
+}
+
+/// Full diff for a single file, with hunk-level detail
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct FileDiff {
+    /// Relative file path
+    pub path: String,
+    /// Change status: "added", "modified", "deleted", "renamed"
+    pub status: String,
+    /// Total lines added
+    pub additions: u32,
+    /// Total lines deleted
+    pub deletions: u32,
+    /// Diff hunks with line-level detail
+    pub hunks: Vec<DiffHunk>,
+}
+
+// =============================================================================
 // Worktree Protocol
 // =============================================================================
 

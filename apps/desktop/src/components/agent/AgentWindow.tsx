@@ -1,6 +1,5 @@
 import { useEffect, useCallback, useMemo, useRef, useState } from 'react';
 import { Plus, PencilSimpleLine, ArrowsSplit } from '@phosphor-icons/react';
-import { DebugPanel } from './debug/DebugPanel';
 
 import { MessageFeed } from './messages';
 import { ChatInputContainer } from './input';

@@ -60,4 +60,5 @@ export const BUILTIN_PANEL_TYPES = {
   TERMINAL: 'terminal',
   GIT_DIFF: 'git-diff',
   WORKTREE_DIFF: 'worktree-diff',
+  BRANCH_DIFF: 'branch-diff',
 } as const;

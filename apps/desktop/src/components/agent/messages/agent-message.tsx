@@ -13,7 +13,7 @@ import { ProgressTracker } from '../streaming/ProgressTracker';
 import { deriveProgressPhases } from '@/lib/deriveProgressPhases';
 import type { RenderBlock } from '../messageAdapter';
 
-import type { FC, ReactNode } from 'react';
+import type { CSSProperties, FC, ReactNode } from 'react';
 
 export interface PendingApproval {
   requestId: string;
@@ -66,6 +66,7 @@ const renderToolWidget = (
   toolInput: Record<string, unknown>,
   status: 'running' | 'success' | 'error',
   output?: string,
+  style?: CSSProperties,
 ): ReactNode => {
   // TodoWrite has unique props — handle separately
   if (toolName.toLowerCase() === 'todowrite') {
@@ -74,7 +75,7 @@ const renderToolWidget = (
   }
 
   // Use the registry for all other tools
-  return renderToolCard(key, toolName, toolInput, status, output);
+  return renderToolCard(key, toolName, toolInput, status, output, style);
 };
 
 export const AgentMessage: FC<AgentMessageProps> = ({
@@ -138,14 +139,17 @@ export const AgentMessage: FC<AgentMessageProps> = ({
                       isStreaming={block.isStreaming}
                     />
                   ) : null;
-                case 'toolCall':
+                case 'toolCall': {
+                  const toolIndex = content.blocks!.slice(0, i).filter(b => b.type === 'toolCall').length;
                   return renderToolWidget(
                     `block-${i}`,
                     block.toolName,
                     block.toolInput,
                     block.status,
                     block.output,
+                    toolIndex > 0 ? { animationDelay: `${toolIndex * 60}ms` } : undefined,
                   );
+                }
                 case 'approval':
                   return (
                     <ToolApprovalCard

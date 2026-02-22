@@ -80,6 +80,7 @@ export interface Attachment {
 	mimeType?: string;
 	thumbnailUrl?: string;
 	size?: number;
+	base64Data?: string; // Raw base64 for inline images (no data: prefix)
 }
 
 /** File mention from @-mention in Lexical editor */
@@ -166,11 +167,24 @@ function toContentBlocks(
 
 	if (attachments) {
 		for (const att of attachments) {
-			blocks.push({
-				type: att.type === 'image' ? 'image' : 'document',
-				name: att.name,
-				filePath: att.path,
-			});
+			if (att.type === 'image' && att.base64Data) {
+				// Inline image (sketch, clipboard paste)
+				blocks.push({
+					type: 'image',
+					name: att.name,
+					source: {
+						type: 'base64',
+						mediaType: att.mimeType || 'image/png',
+						data: att.base64Data,
+					},
+				});
+			} else {
+				blocks.push({
+					type: att.type === 'image' ? 'image' : 'document',
+					name: att.name,
+					filePath: att.path,
+				});
+			}
 		}
 	}
 

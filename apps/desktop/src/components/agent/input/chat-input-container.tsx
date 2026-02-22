@@ -1,5 +1,5 @@
-import React, { useRef, useState, useCallback, useEffect } from 'react';
-import { Stop } from '@phosphor-icons/react';
+import React, { useRef, useState, useCallback, useEffect, lazy, Suspense } from 'react';
+import { Stop, PaintBrush } from '@phosphor-icons/react';
 
 import { ContextMenu } from './context-menu';
 import { ContextTracker } from './context-tracker';
@@ -8,6 +8,11 @@ import { AcceptModeToggle } from './accept-mode-toggle';
 import { ThinkingToggle } from './thinking-toggle';
 import { AttachmentBar } from './AttachmentBar';
 import { DropZoneOverlay } from './DropZoneOverlay';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '../../ui/popover';
 
 import type { LexicalEditorHandle } from './lexical-editor';
 import type { FileMention, Attachment } from '../../../stores/agentStore';
@@ -19,6 +24,10 @@ import { useAttachmentStore } from '../../../stores/attachmentStore';
 import { useWorktreeList } from '../../../stores/worktreeStore';
 import { DEFAULT_MODEL_ID } from '../../../lib/constants';
 import { VoiceButton } from './voice-button';
+
+const LazySketchPopoverContent = lazy(() =>
+  import('./sketch/SketchPopoverContent').then((m) => ({ default: m.SketchPopoverContent })),
+);
 
 export interface ChatInputContainerProps {
   onSubmit: (content: string, mode: 'planning' | 'fast', model: string, attachments?: Attachment[], mentions?: FileMention[]) => void;
@@ -52,6 +61,7 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
   const [content, setContent] = useState('');
   const [mode, setMode] = useState<'planning' | 'fast'>('planning');
   const [mentions, setMentions] = useState<FileMention[]>([]);
+  const [sketchOpen, setSketchOpen] = useState(false);
   const selectedModel = useProviderStore((state) => state.selectedModel);
   const attachments = useAttachmentStore((s) => s.attachments);
   const clearAttachments = useAttachmentStore((s) => s.clear);
@@ -201,6 +211,31 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
                   <path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm0-160a72,72,0,1,0,72,72A72.08,72.08,0,0,0,128,56Zm0,128a56,56,0,1,1,56-56A56.06,56.06,0,0,1,128,184Z" />
                 </svg>
               </button>
+
+              {/* Sketch canvas */}
+              <Popover open={sketchOpen} onOpenChange={setSketchOpen}>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className="inline-flex items-center justify-center h-[30px] w-[30px] rounded-[8px] text-muted-foreground hover:bg-muted/60 hover:text-foreground active:scale-95 transition-[transform,background-color,color] duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                    aria-label="Sketch"
+                    title="Sketch"
+                    disabled={isAgentRunning}
+                  >
+                    <PaintBrush size={16} />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent
+                  side="top"
+                  align="end"
+                  sideOffset={8}
+                  className="w-auto p-0 bg-card/95 backdrop-blur-md border border-border/50 rounded-lg shadow-glass"
+                >
+                  <Suspense fallback={<div className="w-[640px] h-[440px] flex items-center justify-center text-muted-foreground text-sm">Loading canvas...</div>}>
+                    <LazySketchPopoverContent onClose={() => setSketchOpen(false)} />
+                  </Suspense>
+                </PopoverContent>
+              </Popover>
 
               {/* Submit / Stop */}
               {isAgentRunning ? (
