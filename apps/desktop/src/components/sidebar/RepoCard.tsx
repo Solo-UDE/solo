@@ -158,9 +158,12 @@ export const RepoCard: FC<RepoCardProps> = ({ repo, isActive, children }) => {
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+            transition={{
+              height: { duration: 0.3, ease: [0.25, 0.1, 0.25, 1.0] },
+              opacity: { duration: 0.2 },
+            }}
+            style={{ overflow: 'clip' }}
             className={cn(
-              'overflow-hidden',
               isActive && 'flex-1 min-h-0 flex flex-col',
             )}
           >

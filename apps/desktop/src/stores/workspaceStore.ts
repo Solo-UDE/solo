@@ -67,12 +67,14 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
           useUIStore.getState().toggleTerminalPanel();
         }
 
-        // 3. Reset agent sessions
+        // 3. Archive agent sessions (non-destructive - preserves data on disk)
         const { useAgentStore } = await import('./agentStore');
         const agentState = useAgentStore.getState();
-        for (const sessionId of agentState.sessions.keys()) {
-          agentState.deleteSession(sessionId);
+        const currentRoot = useFileExplorerStore.getState().rootPath;
+        if (currentRoot) {
+          agentState.saveActiveSessionForWorkspace(currentRoot);
         }
+        await agentState.archiveSessions();
 
         // 4. Reset git state
         useGitStore.getState().reset();
@@ -96,12 +98,14 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
           useUIStore.getState().toggleTerminalPanel();
         }
 
-        // 3. Reset agent sessions so new ones pick up the new workspace
+        // 3. Archive agent sessions and track active session per workspace
         const { useAgentStore } = await import('./agentStore');
         const agentState = useAgentStore.getState();
-        for (const sessionId of agentState.sessions.keys()) {
-          agentState.deleteSession(sessionId);
+        const currentRoot = useFileExplorerStore.getState().rootPath;
+        if (currentRoot) {
+          agentState.saveActiveSessionForWorkspace(currentRoot);
         }
+        await agentState.archiveSessions();
 
         // 4. Reset git state
         useGitStore.getState().reset();
@@ -109,6 +113,9 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
         // 5. Close current folder and open new one
         await useFileExplorerStore.getState().closeFolder();
         await useFileExplorerStore.getState().setRootPath(path);
+
+        // 5b. Restore active session for the new workspace
+        agentState.restoreActiveSessionForWorkspace(path);
 
         // 6. Track in recents
         get().addRecent(path);
