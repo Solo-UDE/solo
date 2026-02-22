@@ -2,7 +2,7 @@
  * SourceControlPanel — main sidebar panel for git source control
  */
 
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import type { FC } from 'react';
 import {
   ArrowDown,
@@ -59,8 +59,6 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
   const isGeneratingMessage = useGitStore((s) => s.isGeneratingMessage);
   const commitsAhead = useGitStore((s) => s.commitsAhead);
   const setCommitMessage = useGitStore((s) => s.setCommitMessage);
-  const startPolling = useGitStore((s) => s.startPolling);
-  const stopPolling = useGitStore((s) => s.stopPolling);
   const discardFile = useGitStore((s) => s.discardFile);
   const discardAll = useGitStore((s) => s.discardAll);
   const stageFile = useGitStore((s) => s.stageFile);
@@ -86,12 +84,6 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
     () => changedFiles.filter((f) => !f.is_staged),
     [changedFiles],
   );
-
-  // Start polling when mounted
-  useEffect(() => {
-    startPolling();
-    return () => stopPolling();
-  }, [startPolling, stopPolling]);
 
   // Handle commit message change
   const handleMessageChange = useCallback(
