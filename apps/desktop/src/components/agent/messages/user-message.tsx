@@ -40,7 +40,7 @@ export const UserMessage: FC<UserMessageProps> = ({
           <span className="text-sm font-medium text-primary">{userName}</span>
           <span className="text-xs text-muted-foreground">{formatTime(timestamp)}</span>
         </div>
-        <div className="text-sm text-white whitespace-pre-wrap break-words">
+        <div className="text-sm text-black dark:text-white whitespace-pre-wrap break-words">
           {content}
         </div>
 

@@ -95,9 +95,9 @@ const LETTERS: { grid: number[][]; colOffset: number }[] = [
 	{ grid: LETTER_T, colOffset: 51 },
 ];
 
-// Compact scale: 1.5px blocks, 0.5px gaps (2px per cell)
-const BLOCK_SIZE = 1.5;
-const GAP = 0.5;
+// Compact scale: 1.28px blocks, 0.43px gaps (1.71px per cell)
+const BLOCK_SIZE = 1.28;
+const GAP = 0.43;
 const CELL = BLOCK_SIZE + GAP;
 const GRID_COLS = 56;
 const GRID_ROWS = 7;

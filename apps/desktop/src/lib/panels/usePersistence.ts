@@ -13,18 +13,22 @@ import {
   createDebouncedSave,
 } from './persistence';
 
+// Module-level flag: survives component remounts (e.g. settings toggle),
+// only resets on full page reload (app restart) when we actually need to
+// restore from localStorage.
+let persistenceInitialized = false;
+
 /**
  * Hook to handle layout persistence
  * Should be called once at the root of the panel system
  */
 export function usePersistence() {
-  const isInitialized = useRef(false);
   const debouncedSaveRef = useRef(createDebouncedSave());
 
-  // Load persisted layout on mount
+  // Load persisted layout on mount (only on first app load, not on view transitions)
   useEffect(() => {
-    if (isInitialized.current) return;
-    isInitialized.current = true;
+    if (persistenceInitialized) return;
+    persistenceInitialized = true;
 
     const persisted = loadLayout();
     if (!persisted) return;
