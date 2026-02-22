@@ -46,6 +46,7 @@ impl TtsStreamClient {
         let body = json!({
             "text": text,
             "model_id": config.model_id,
+            "speed": config.speed,
             "voice_settings": {
                 "stability": config.stability,
                 "similarity_boost": config.similarity_boost
@@ -72,15 +73,36 @@ impl TtsStreamClient {
 
         let sample_rate = config.output_format.sample_rate();
         let mut stream = response.bytes_stream();
+        // PCM16 = 2 bytes/sample. HTTP chunks split at arbitrary byte
+        // boundaries, so carry any trailing odd byte to the next iteration
+        // to keep sample pairs aligned across the entire stream.
+        let mut remainder: Option<u8> = None;
 
         while let Some(chunk_result) = stream.next().await {
             match chunk_result {
                 Ok(bytes) => {
-                    let b64 = encode_base64_audio(&bytes);
-                    on_audio(TtsAudioEvent::AudioChunk {
-                        chunk: b64,
-                        sample_rate,
-                    });
+                    let mut aligned: Vec<u8> =
+                        if let Some(prev) = remainder.take() {
+                            let mut buf = Vec::with_capacity(1 + bytes.len());
+                            buf.push(prev);
+                            buf.extend_from_slice(&bytes);
+                            buf
+                        } else {
+                            bytes.to_vec()
+                        };
+
+                    // If odd length, save the trailing byte for next chunk
+                    if !aligned.len().is_multiple_of(2) {
+                        remainder = aligned.pop();
+                    }
+
+                    if !aligned.is_empty() {
+                        let b64 = encode_base64_audio(&aligned);
+                        on_audio(TtsAudioEvent::AudioChunk {
+                            chunk: b64,
+                            sample_rate,
+                        });
+                    }
                 }
                 Err(e) => {
                     on_audio(TtsAudioEvent::Error {

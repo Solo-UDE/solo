@@ -43,8 +43,9 @@ export const ttsSpeakText = (
   text: string,
   voiceId?: string,
   modelId?: string,
+  speed?: number,
 ) =>
-  invoke<void>('elevenlabs_tts_speak', { sessionId, text, voiceId, modelId });
+  invoke<void>('elevenlabs_tts_speak', { sessionId, text, voiceId, modelId, speed });
 
 export const ttsStop = (sessionId: string) =>
   invoke<void>('elevenlabs_tts_stop', { sessionId });
