@@ -408,6 +408,45 @@ pub struct GitRepoStatus {
 }
 
 // =============================================================================
+// GitHub Device Flow Protocol
+// =============================================================================
+
+/// Response from GitHub's device authorization endpoint
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct GitHubDeviceCodeResponse {
+    /// The code the user enters at verification_uri
+    pub user_code: String,
+    /// URL where user enters the code (typically https://github.com/login/device)
+    pub verification_uri: String,
+    /// Device code used for polling (not shown to user)
+    pub device_code: String,
+    /// Seconds until the code expires
+    pub expires_in: u32,
+    /// Minimum seconds between poll requests
+    pub interval: u32,
+}
+
+/// Result of polling for device authorization
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(tag = "status")]
+pub enum GitHubDevicePollResult {
+    /// Still waiting for user to authorize
+    #[serde(rename = "pending")]
+    Pending,
+    /// User authorized, token obtained and stored
+    #[serde(rename = "complete")]
+    Complete,
+    /// The code expired before authorization
+    #[serde(rename = "expired")]
+    Expired,
+    /// An error occurred
+    #[serde(rename = "error")]
+    Error { message: String },
+}
+
+// =============================================================================
 // Unified Diff Protocol (for branch diff panel)
 // =============================================================================
 
