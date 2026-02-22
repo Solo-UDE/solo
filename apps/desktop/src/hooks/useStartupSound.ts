@@ -15,7 +15,7 @@ let hasPlayedThisSession = false;
 
 const DURATION_MS = 5_000;
 const FADE_OUT_MS = 3_000;
-const FADE_STEPS = 60;
+const FADE_STEPS = 1000;
 
 export const useStartupSound = () => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
