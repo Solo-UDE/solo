@@ -5,7 +5,7 @@
  */
 
 import { useCallback, type FC, type ReactNode } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion } from 'motion/react';
 import {
   CaretRight,
   Folder,
@@ -152,25 +152,18 @@ export const RepoCard: FC<RepoCardProps> = ({ repo, isActive, children }) => {
       </div>
 
       {/* Expanded content (worktree list + tabs + panels) */}
-      <AnimatePresence initial={false}>
-        {repo.isExpanded && children && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{
-              height: { duration: 0.3, ease: [0.25, 0.1, 0.25, 1.0] },
-              opacity: { duration: 0.2 },
-            }}
-            style={{ overflow: 'clip' }}
-            className={cn(
-              isActive && 'flex-1 min-h-0 flex flex-col',
-            )}
-          >
-            {children}
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {repo.isExpanded && children && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ opacity: { duration: 0.15, ease: 'easeOut' } }}
+          className={cn(
+            isActive && 'flex-1 min-h-0 flex flex-col',
+          )}
+        >
+          {children}
+        </motion.div>
+      )}
     </div>
   );
 };

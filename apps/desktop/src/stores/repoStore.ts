@@ -254,6 +254,11 @@ export const useRepoStore = create<RepoStore>()(
 
         // 3. Update our state + expand the active repo
         set((state) => {
+          // Collapse the previously active repo when switching
+          if (state.activeRepoPath && state.activeRepoPath !== repoPath) {
+            const prevEntry = state.repos.get(state.activeRepoPath);
+            if (prevEntry) prevEntry.isExpanded = false;
+          }
           state.activeRepoPath = repoPath;
           state.activeWorktreeId = worktreeId;
           // Auto-expand the active repo in the accordion
