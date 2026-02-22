@@ -8,6 +8,7 @@ import { FolderOpen, CaretDown, Plus, X, FolderSimple, Clock } from '@phosphor-i
 import { toast } from 'sonner';
 import { useFileExplorerStore } from '@/stores/fileExplorerStore';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
+import { useActiveRepo } from '@/stores/repoStore';
 import { openFolderDialog } from '@/lib/tauri/fs';
 import { cn } from '@/lib/utils';
 
@@ -28,8 +29,10 @@ const truncatePath = (p: string, maxLen = 45) => {
 
 export function WorkspaceSwitcher() {
   const rootPath = useFileExplorerStore((s) => s.rootPath);
+  const activeRepo = useActiveRepo();
   const recentDirectories = useWorkspaceStore((s) => s.recentDirectories);
   const switchWorkspace = useWorkspaceStore((s) => s.switchWorkspace);
+  const closeWorkspace = useWorkspaceStore((s) => s.closeWorkspace);
   const removeRecent = useWorkspaceStore((s) => s.removeRecent);
 
   const [open, setOpen] = useState(false);
@@ -74,6 +77,12 @@ export function WorkspaceSwitcher() {
     await switchWorkspace(path);
     toast.success(`Opened ${dirName(path)}`);
   }, [switchWorkspace]);
+
+  const handleCloseFolder = useCallback(async () => {
+    setOpen(false);
+    await closeWorkspace();
+    toast.success('Folder closed');
+  }, [closeWorkspace]);
 
   const handleRemoveRecent = useCallback((e: React.MouseEvent, path: string) => {
     e.stopPropagation();
@@ -121,6 +130,11 @@ export function WorkspaceSwitcher() {
         <span className="text-xs font-medium text-foreground/80 max-w-[180px] truncate">
           {dirName(rootPath)}
         </span>
+        {activeRepo?.currentBranch && (
+          <span className="text-[10px] text-muted-foreground/60 bg-muted/30 px-1.5 py-0.5 rounded-full truncate max-w-[80px]">
+            {activeRepo.currentBranch}
+          </span>
+        )}
         <CaretDown
           className={cn(
             'w-2.5 h-2.5 text-muted-foreground/60 transition-transform duration-150',
@@ -168,6 +182,13 @@ export function WorkspaceSwitcher() {
             >
               <FolderSimple className="w-3.5 h-3.5 text-muted-foreground" />
               Open Folder...
+            </button>
+            <button
+              onClick={handleCloseFolder}
+              className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs text-foreground/80 hover:bg-muted/60 transition-colors duration-150"
+            >
+              <X className="w-3.5 h-3.5 text-muted-foreground" />
+              Close Folder
             </button>
           </div>
 

@@ -158,6 +158,16 @@ export interface GenerateCommitMessageRequest {
 }
 
 /**
+ * Generate a session title from the first exchange
+ */
+export interface GenerateSessionTitleRequest {
+  type: 'generate_session_title';
+  userMessage: string;
+  assistantMessage: string;
+  apiKey?: string;
+}
+
+/**
  * Shutdown the bridge
  */
 export interface ShutdownRequest {
@@ -184,6 +194,7 @@ export type BridgeRequest =
   | IsSessionReadyRequest
   | GetSDKSessionIdRequest
   | GenerateCommitMessageRequest
+  | GenerateSessionTitleRequest
   | ShutdownRequest;
 
 // ============================================================================

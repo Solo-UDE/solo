@@ -408,6 +408,90 @@ pub struct GitRepoStatus {
 }
 
 // =============================================================================
+// GitHub Device Flow Protocol
+// =============================================================================
+
+/// Response from GitHub's device authorization endpoint
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct GitHubDeviceCodeResponse {
+    /// The code the user enters at verification_uri
+    pub user_code: String,
+    /// URL where user enters the code (typically https://github.com/login/device)
+    pub verification_uri: String,
+    /// Device code used for polling (not shown to user)
+    pub device_code: String,
+    /// Seconds until the code expires
+    pub expires_in: u32,
+    /// Minimum seconds between poll requests
+    pub interval: u32,
+}
+
+/// Result of polling for device authorization
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(tag = "status")]
+pub enum GitHubDevicePollResult {
+    /// Still waiting for user to authorize
+    #[serde(rename = "pending")]
+    Pending,
+    /// User authorized, token obtained and stored
+    #[serde(rename = "complete")]
+    Complete,
+    /// The code expired before authorization
+    #[serde(rename = "expired")]
+    Expired,
+    /// An error occurred
+    #[serde(rename = "error")]
+    Error { message: String },
+}
+
+// =============================================================================
+// Unified Diff Protocol (for branch diff panel)
+// =============================================================================
+
+/// A single line in a unified diff
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct DiffLine {
+    /// Line kind: "context", "add", or "delete"
+    pub kind: String,
+    /// Line content (without leading +/- marker)
+    pub content: String,
+    /// Line number in old file (None for added lines)
+    pub old_line_no: Option<u32>,
+    /// Line number in new file (None for deleted lines)
+    pub new_line_no: Option<u32>,
+}
+
+/// A contiguous hunk of changes in a diff
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct DiffHunk {
+    pub old_start: u32,
+    pub new_start: u32,
+    pub old_lines: u32,
+    pub new_lines: u32,
+    pub lines: Vec<DiffLine>,
+}
+
+/// Full diff for a single file, with hunk-level detail
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct FileDiff {
+    /// Relative file path
+    pub path: String,
+    /// Change status: "added", "modified", "deleted", "renamed"
+    pub status: String,
+    /// Total lines added
+    pub additions: u32,
+    /// Total lines deleted
+    pub deletions: u32,
+    /// Diff hunks with line-level detail
+    pub hunks: Vec<DiffHunk>,
+}
+
+// =============================================================================
 // Worktree Protocol
 // =============================================================================
 

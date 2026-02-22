@@ -137,6 +137,18 @@ pub fn run() {
                 tracing::info!("Deep link handler registered");
             }
 
+            // Pre-warm credential vault — single keychain read before frontend mounts
+            {
+                use tauri::Manager;
+                let auth = app.state::<ProviderAuthState>();
+                let creds = Arc::clone(&auth.credentials);
+                tauri::async_runtime::spawn(async move {
+                    if let Err(e) = creds.pre_warm().await {
+                        tracing::warn!("Vault pre-warm failed: {}", e);
+                    }
+                });
+            }
+
             // Wire up agent event callbacks
             agent_commands::setup_event_callbacks(app.handle(), &session_manager);
 
@@ -200,6 +212,7 @@ pub fn run() {
             agent_commands::agent_get_accept_mode,
             agent_commands::agent_set_tool_policy,
             agent_commands::agent_generate_commit_message,
+            agent_commands::agent_generate_session_title,
             // Provider/auth commands
             provider_commands::get_providers,
             provider_commands::get_active_provider,
@@ -253,6 +266,7 @@ pub fn run() {
             git_commands::git_get_current_sha,
             git_commands::git_get_changes,
             git_commands::git_get_file_diff,
+            git_commands::git_get_branch_diff,
             git_commands::git_discard_file,
             git_commands::git_discard_all,
             git_commands::git_cleanup_locks,
@@ -274,6 +288,8 @@ pub fn run() {
             git_commands::github_complete_auth,
             git_commands::github_get_token,
             git_commands::github_disconnect,
+            git_commands::github_start_device_auth,
+            git_commands::github_poll_device_auth,
             // Session persistence commands
             session_commands::session_get_dir,
             session_commands::session_list_files,
@@ -300,6 +316,7 @@ pub fn run() {
             // ElevenLabs voice commands
             elevenlabs_commands::elevenlabs_set_api_key,
             elevenlabs_commands::elevenlabs_has_api_key,
+            elevenlabs_commands::elevenlabs_clear_api_key,
             elevenlabs_commands::elevenlabs_stt_start,
             elevenlabs_commands::elevenlabs_stt_send_audio,
             elevenlabs_commands::elevenlabs_stt_commit,

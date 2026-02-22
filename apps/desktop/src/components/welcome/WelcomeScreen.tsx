@@ -5,6 +5,8 @@ import SoloDecryptAnimation from '../agent/SoloDecryptAnimation';
 import { CloneDialog } from './CloneDialog';
 import { openFolderDialog } from '@/lib/tauri/fs';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
+import { useRepoStore } from '@/stores/repoStore';
+import { useStartupSound } from '@/hooks/useStartupSound';
 
 /** Extract the last segment of a path */
 const dirName = (p: string) => {
@@ -23,29 +25,41 @@ const truncatePath = (p: string, maxLen = 50) => {
 
 export function WelcomeScreen() {
   const recentDirectories = useWorkspaceStore((s) => s.recentDirectories);
-  const switchWorkspace = useWorkspaceStore((s) => s.switchWorkspace);
   const removeRecent = useWorkspaceStore((s) => s.removeRecent);
   const [cloneOpen, setCloneOpen] = useState(false);
   const [showContent, setShowContent] = useState(false);
 
-  // Reveal content after the decrypt animation assembles (~1.6s)
+  // Play startup sound on first mount (synced with decrypt animation)
+  useStartupSound();
+
+  // Reveal content after the decrypt animation assembles (~2.4s)
   useEffect(() => {
-    const t = setTimeout(() => setShowContent(true), 1600);
+    const t = setTimeout(() => setShowContent(true), 2400);
     return () => clearTimeout(t);
+  }, []);
+
+  // Open or select a repo via the repoStore (which internally calls switchWorkspace)
+  const openOrSelectRepo = useCallback(async (path: string) => {
+    const store = useRepoStore.getState();
+    if (store.repos.has(path)) {
+      await store.selectWorktree(path, null);
+    } else {
+      await store.addRepo(path);
+    }
   }, []);
 
   const handleOpenProject = useCallback(async () => {
     const path = await openFolderDialog();
     if (path) {
-      await switchWorkspace(path);
+      await openOrSelectRepo(path);
     }
-  }, [switchWorkspace]);
+  }, [openOrSelectRepo]);
 
   const handleSwitchTo = useCallback(
     async (path: string) => {
-      await switchWorkspace(path);
+      await openOrSelectRepo(path);
     },
-    [switchWorkspace],
+    [openOrSelectRepo],
   );
 
   const handleRemoveRecent = useCallback(
@@ -70,9 +84,17 @@ export function WelcomeScreen() {
 
   return (
     <>
-      <div className="relative bg-background flex-1 flex flex-col items-center justify-center h-[calc(100vh-38px)] mt-[38px] overflow-hidden select-none">
-        {/* Ambient primary glow behind animation */}
-        <div className="absolute top-[30%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[200px] rounded-full bg-primary/[0.06] blur-[80px] pointer-events-none" />
+      <div className="relative bg-background flex-1 flex flex-col items-center justify-center h-full overflow-hidden select-none">
+        {/* Animated glow — breathes continuously while welcome screen is visible */}
+        <div
+          className="absolute top-[30%] left-1/2 rounded-full pointer-events-none startup-glow"
+          style={{
+            width: 300,
+            height: 300,
+            background: 'radial-gradient(circle, var(--primary) 0%, transparent 70%)',
+            filter: 'blur(90px)',
+          }}
+        />
 
         {/* Solo decrypt animation */}
         <SoloDecryptAnimation />

@@ -14,11 +14,14 @@ export type SettingsTabId = 'general' | 'editor' | 'terminal' | 'files' | 'short
 
 interface UIState {
   leftSidebarWidth: number;
+  _previousSidebarWidth: number;
   activeTab: SidebarTab;
   terminalPanelOpen: boolean;
   terminalPanelHeight: number;
   settingsOpen: boolean;
   settingsTab: SettingsTabId;
+  tourActive: boolean;
+  tourStep: number;
 }
 
 interface UIActions {
@@ -32,6 +35,10 @@ interface UIActions {
   openSettings: (tab?: SettingsTabId) => void;
   closeSettings: () => void;
   setSettingsTab: (tab: SettingsTabId) => void;
+  startTour: () => void;
+  nextTourStep: () => void;
+  prevTourStep: () => void;
+  endTour: () => void;
 }
 
 type UIStore = UIState & UIActions;
@@ -39,23 +46,29 @@ type UIStore = UIState & UIActions;
 export const useUIStore = create<UIStore>()(
   immer((set) => ({
     leftSidebarWidth: SIDEBAR.expanded,
+    _previousSidebarWidth: SIDEBAR.expanded,
     activeTab: 'explorer' as SidebarTab,
     terminalPanelOpen: false,
     terminalPanelHeight: TERMINAL_SECTION.defaultHeight,
     settingsOpen: false,
     settingsTab: 'general' as SettingsTabId,
+    tourActive: false,
+    tourStep: 0,
 
     toggleLeftSidebar: (): void => {
       set((state) => {
-        state.leftSidebarWidth = state.leftSidebarWidth > SIDEBAR.collapsed
-          ? SIDEBAR.collapsed
-          : SIDEBAR.expanded;
+        if (state.leftSidebarWidth > SIDEBAR.collapsed) {
+          state._previousSidebarWidth = state.leftSidebarWidth;
+          state.leftSidebarWidth = SIDEBAR.collapsed;
+        } else {
+          state.leftSidebarWidth = state._previousSidebarWidth;
+        }
       });
     },
 
     expandLeftSidebar: (): void => {
       set((state) => {
-        state.leftSidebarWidth = SIDEBAR.expanded;
+        state.leftSidebarWidth = state._previousSidebarWidth;
       });
     },
 
@@ -68,6 +81,9 @@ export const useUIStore = create<UIStore>()(
     setLeftSidebarWidth: (width: number): void => {
       set((state) => {
         state.leftSidebarWidth = width;
+        if (width > SIDEBAR.collapsed) {
+          state._previousSidebarWidth = width;
+        }
       });
     },
 
@@ -112,6 +128,34 @@ export const useUIStore = create<UIStore>()(
     setSettingsTab: (tab: SettingsTabId): void => {
       set((state) => {
         state.settingsTab = tab;
+      });
+    },
+
+    startTour: (): void => {
+      set((state) => {
+        state.tourActive = true;
+        state.tourStep = 0;
+      });
+    },
+
+    nextTourStep: (): void => {
+      set((state) => {
+        state.tourStep += 1;
+      });
+    },
+
+    prevTourStep: (): void => {
+      set((state) => {
+        if (state.tourStep > 0) {
+          state.tourStep -= 1;
+        }
+      });
+    },
+
+    endTour: (): void => {
+      set((state) => {
+        state.tourActive = false;
+        state.tourStep = 0;
       });
     },
   }))

@@ -5,8 +5,12 @@
 
 import { useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react';
 import type { MosaicBranch } from 'react-mosaic-component';
+import { ChatCircle } from '@phosphor-icons/react';
 import { usePanelTabsStore, useTabsForTile, useActiveTabId } from '@/stores/panelTabsStore';
 import { usePanelLayoutStore } from '@/stores/panelLayoutStore';
+import { useAgentStore } from '@/stores/agentStore';
+import { useProviderStore } from '@/stores/provider-store';
+import { BUILTIN_PANEL_TYPES } from '@/lib/panels';
 import { TabBar } from './TabBar';
 import { PanelWrapper } from './PanelWrapper';
 import { TabContextMenu } from './TabContextMenu';
@@ -265,15 +269,32 @@ export function TabbedContainer({ tileId }: TabbedContainerProps) {
  * EmptyTile - Shown when a tile has no tabs
  */
 function EmptyTile() {
+  const openPanel = usePanelTabsStore((s) => s.openPanel);
+
+  const handleNewChat = useCallback(async () => {
+    try {
+      const model = useProviderStore.getState().selectedModel || undefined;
+      const sessionId = await useAgentStore.getState().createSession(model);
+      if (sessionId) {
+        openPanel(BUILTIN_PANEL_TYPES.AGENT, { sessionId });
+      }
+    } catch (err) {
+      console.error('Failed to create session:', err);
+    }
+  }, [openPanel]);
+
   return (
     <div className="h-full flex items-center justify-center">
-      <div className="text-center space-y-2 animate-slide-up">
-        <p className="text-muted-foreground text-sm">
-          No panels open
-        </p>
-        <p className="text-muted-foreground/60 text-xs">
-          Open a file from the explorer
-        </p>
+      <div className="text-center space-y-3 animate-slide-up">
+        <p className="text-muted-foreground text-sm">No panels open</p>
+        <p className="text-muted-foreground/60 text-xs">Open a file from the explorer</p>
+        <button
+          onClick={handleNewChat}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-primary-foreground bg-primary rounded-lg hover:brightness-110 active:scale-[0.97] transition-all duration-200"
+        >
+          <ChatCircle className="w-3.5 h-3.5" weight="bold" />
+          New AI Chat
+        </button>
       </div>
     </div>
   );

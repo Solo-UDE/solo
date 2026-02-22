@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { AnimatePresence, motion } from "motion/react";
-import { GearSix, SidebarSimple, SignOut, Terminal } from "@phosphor-icons/react";
+import { Bug, GearSix, SidebarSimple, SignOut, Terminal } from "@phosphor-icons/react";
 import { PrimarySidebar } from "./components/sidebar";
 import { SidebarTerminal } from "./components/sidebar";
 import { MosaicLayout } from "./components/panels";
@@ -25,6 +25,7 @@ import { useElevenLabsStream } from "./hooks/useElevenLabsStream";
 import { useTerminalStore, clearActiveTerminal, findInActiveTerminal } from "./stores/terminalStore";
 import { useFileExplorerStore } from "./stores/fileExplorerStore";
 import { useGitHubAccountsStore } from "./stores/githubAccountsStore";
+import { useRepoStore } from "./stores/repoStore";
 import { createTerminal, killTerminal } from "./lib/tauri/terminal";
 import { SIDEBAR } from "./lib/constants";
 import { cn } from "./lib/utils";
@@ -32,8 +33,10 @@ import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
 import { Toaster } from "sonner";
 import { WorkspaceSwitcher } from "./components/titlebar/WorkspaceSwitcher";
+import { TitlebarButton } from "./components/titlebar/TitlebarButton";
 import { WelcomeScreen } from "./components/welcome";
 import { KeyboardShortcutsOverlay } from "./components/KeyboardShortcutsOverlay";
+import { BugReportDialog } from "./components/bug-report/BugReportDialog";
 
 // Shared easing curve matching --ease-smooth
 const EASE_SMOOTH: [number, number, number, number] = [0.16, 1, 0.3, 1];
@@ -49,6 +52,9 @@ function AppContent() {
 
   // Keyboard shortcuts overlay state
   const [shortcutsOverlayOpen, setShortcutsOverlayOpen] = useState(false);
+
+  // Bug report dialog state
+  const [bugReportOpen, setBugReportOpen] = useState(false);
 
   // Terminal panel drag state
   const [isDraggingTerminal, setIsDraggingTerminal] = useState(false);
@@ -70,6 +76,7 @@ function AppContent() {
   const signOut = useAuthStore((state) => state.signOut);
   const user = useUser();
   const rootPath = useFileExplorerStore((s) => s.rootPath);
+  const hasRepos = useRepoStore((s) => s.repos.size > 0);
 
   // Get openPanel action directly from store to avoid selector subscription issues
   const openPanel = useMemo(() => usePanelTabsStore.getState().openPanel, []);
@@ -131,9 +138,16 @@ function AppContent() {
   useWorktreeStream();
   useElevenLabsStream();
 
-  // Load GitHub token from keychain so the icon rail shows auth status
+  // Load GitHub token from keychain so the header shows auth status
   useEffect(() => {
     useGitHubAccountsStore.getState().loadToken();
+  }, []);
+
+  // Restore active repo on startup (if persisted)
+  useEffect(() => {
+    useRepoStore.getState().restoreActiveRepo().catch((err) => {
+      console.error('Failed to restore active repo:', err);
+    });
   }, []);
 
   // Load persisted agent sessions on startup, then prune expired ones
@@ -346,40 +360,30 @@ function AppContent() {
     setLeftSidebarWidth(SIDEBAR.expanded);
   }, [setLeftSidebarWidth]);
 
-  // Terminal panel divider drag handlers
-  const handleTerminalDragStart = useCallback((e: React.MouseEvent) => {
+  // Terminal panel divider drag handlers — pointer capture for zero-lag dragging
+  const handleTerminalPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
     setIsDraggingTerminal(true);
     dragStartY.current = e.clientY;
-    dragStartHeight.current = terminalPanelHeight;
-  }, [terminalPanelHeight]);
+    dragStartHeight.current = useUIStore.getState().terminalPanelHeight;
+    document.body.classList.add('is-resizing-row');
+  }, []);
 
-  const handleTerminalDragMove = useCallback((e: MouseEvent) => {
-    if (!isDraggingTerminal) return;
+  const handleTerminalPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
     // Dragging up increases terminal height
     const delta = dragStartY.current - e.clientY;
     setTerminalPanelHeight(dragStartHeight.current + delta);
-  }, [isDraggingTerminal, setTerminalPanelHeight]);
+  }, [setTerminalPanelHeight]);
 
-  const handleTerminalDragEnd = useCallback(() => {
+  const handleTerminalPointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
+    document.body.classList.remove('is-resizing-row');
     setIsDraggingTerminal(false);
-  }, []);
-
-  // Attach global mouse events for terminal divider drag
-  useEffect(() => {
-    if (isDraggingTerminal) {
-      document.addEventListener('mousemove', handleTerminalDragMove);
-      document.addEventListener('mouseup', handleTerminalDragEnd);
-      document.body.style.cursor = 'row-resize';
-      document.body.style.userSelect = 'none';
-    }
-    return () => {
-      document.removeEventListener('mousemove', handleTerminalDragMove);
-      document.removeEventListener('mouseup', handleTerminalDragEnd);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    };
-  }, [isDraggingTerminal, handleTerminalDragMove, handleTerminalDragEnd]);
+    const delta = dragStartY.current - e.clientY;
+    setTerminalPanelHeight(dragStartHeight.current + delta);
+  }, [setTerminalPanelHeight]);
 
   return (
     <div className="h-screen w-screen bg-background text-foreground overflow-hidden relative">
@@ -387,21 +391,21 @@ function AppContent() {
       <div
         data-tauri-drag-region
         style={titlebarStyle}
-        className="absolute top-0 inset-x-0 h-[38px] flex items-center z-50 bg-background titlebar-glass"
+        className="absolute top-0 inset-x-0 h-[38px] flex items-center z-50 bg-background titlebar-glass border-b border-border/20"
       >
-        <div className="flex-1 flex items-center" data-tauri-drag-region>
-          {rootPath !== null && (
+        <div className="flex-1 flex items-center gap-1.5 ml-1.5" data-tauri-drag-region>
+          {(rootPath !== null || hasRepos) && (
             <button
               onClick={toggleSidebar}
               className={cn(
-                'p-1 rounded-lg hover:bg-foreground/[0.06] transition-[background-color,color] duration-150 ml-1.5',
+                'p-1 rounded-lg hover:bg-foreground/[0.06] transition-[background-color,color] duration-150',
                 !isCollapsed && 'glow-active',
               )}
               title={isCollapsed ? 'Expand Sidebar (⌘B)' : 'Collapse Sidebar (⌘B)'}
             >
               <SidebarSimple
                 weight={isCollapsed ? 'regular' : 'fill'}
-                className={cn('w-4 h-4', isCollapsed ? 'text-muted-foreground' : 'text-primary')}
+                className={cn('w-5 h-5 -translate-y-px', isCollapsed ? 'text-muted-foreground' : 'text-primary')}
               />
             </button>
           )}
@@ -424,49 +428,39 @@ function AppContent() {
               {user.email}
             </span>
           )}
-          {rootPath !== null && (
-            <button
+          {(rootPath !== null || hasRepos) && (
+            <TitlebarButton
               onClick={handleToggleTerminal}
-              className={cn(
-                'p-1 rounded-lg hover:bg-foreground/[0.06] transition-[background-color,color] duration-150',
-                terminalPanelOpen && 'glow-active',
-              )}
+              icon={<Terminal className={cn('w-4 h-4', terminalPanelOpen ? 'text-primary' : 'text-muted-foreground')} />}
+              label="Terminal"
+              active={terminalPanelOpen}
               title="Toggle Terminal (⌘J)"
-            >
-              <Terminal className={cn('w-4 h-4', terminalPanelOpen ? 'text-primary' : 'text-muted-foreground')} />
-            </button>
+            />
           )}
-          <button
+          <TitlebarButton
+            onClick={() => setBugReportOpen(true)}
+            icon={<Bug className="w-4 h-4 text-muted-foreground" />}
+            label="Report Bug"
+            title="Report a Bug"
+          />
+          <TitlebarButton
             onClick={() => openSettings()}
-            className="p-1 rounded-lg hover:bg-foreground/[0.06] transition-[background-color,color] duration-150"
+            icon={<GearSix className="w-4 h-4 text-muted-foreground" />}
+            label="Settings"
             title="Settings (⌘,)"
-          >
-            <GearSix className="w-4 h-4 text-muted-foreground" />
-          </button>
-          <button
+          />
+          <TitlebarButton
             onClick={signOut}
-            className="p-1 rounded-lg hover:bg-foreground/[0.06] transition-[background-color,color] duration-150"
+            icon={<SignOut className="w-4 h-4 text-muted-foreground" />}
+            label="Sign Out"
             title="Sign out"
-          >
-            <SignOut className="w-4 h-4 text-muted-foreground" />
-          </button>
+          />
         </div>
       </div>
 
       {/* Full-height content — animated view transitions */}
-      <AnimatePresence mode="wait">
-        {rootPath === null && !settingsOpen ? (
-          <motion.div
-            key="welcome"
-            initial={{ opacity: 0, scale: 0.99 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.99 }}
-            transition={{ duration: 0.2, ease: EASE_SMOOTH }}
-            className="h-full"
-          >
-            <WelcomeScreen />
-          </motion.div>
-        ) : settingsOpen ? (
+      <AnimatePresence mode="popLayout">
+        {settingsOpen ? (
           <motion.div
             key="settings"
             initial={{ opacity: 0, x: 24 }}
@@ -480,10 +474,10 @@ function AppContent() {
         ) : (
           <motion.div
             key="workspace"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15, ease: EASE_SMOOTH }}
+            initial={{ opacity: 0, x: -24 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -24 }}
+            transition={{ duration: 0.25, ease: EASE_SMOOTH }}
             className="flex h-full"
           >
             <DndProvider backend={HTML5Backend}>
@@ -497,35 +491,43 @@ function AppContent() {
                 onDoubleClick={handleDoubleClick}
               />
 
-              {/* Right column: opaque background covers vibrancy for editor area */}
+              {/* Right column: editor area or welcome */}
               <div className="flex-1 flex flex-col overflow-hidden min-h-0 pt-[38px] bg-background">
-                <div className="flex-1 overflow-hidden min-h-0">
-                  <MosaicLayout />
-                </div>
-
-                <div className={cn(
-                  'grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]',
-                  terminalPanelOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]',
-                )}>
-                  <div className="overflow-hidden min-h-0">
-                    <div
-                      className={cn(
-                        'h-1.5 shrink-0 cursor-row-resize flex items-center justify-center hover:bg-primary/20 transition-colors',
-                        isDraggingTerminal && 'bg-primary/30',
-                      )}
-                      onMouseDown={handleTerminalDragStart}
-                    >
-                      <div className="w-8 h-px bg-border/60 rounded-full" />
+                {rootPath !== null ? (
+                  <>
+                    <div className="flex-1 overflow-hidden min-h-0">
+                      <MosaicLayout />
                     </div>
 
-                    <div
-                      className="overflow-hidden"
-                      style={{ height: terminalPanelHeight }}
-                    >
-                      <SidebarTerminal />
+                    <div className={cn(
+                      'grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]',
+                      terminalPanelOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]',
+                    )}>
+                      <div className="overflow-hidden min-h-0">
+                        <div
+                          className={cn(
+                            'h-1.5 shrink-0 cursor-row-resize flex items-center justify-center hover:bg-foreground/[0.06] transition-colors',
+                            isDraggingTerminal && 'bg-foreground/[0.08]',
+                          )}
+                          onPointerDown={handleTerminalPointerDown}
+                          onPointerMove={handleTerminalPointerMove}
+                          onPointerUp={handleTerminalPointerUp}
+                        >
+                          <div className="w-8 h-px bg-border/60 rounded-full" />
+                        </div>
+
+                        <div
+                          className="overflow-hidden"
+                          style={{ height: terminalPanelHeight }}
+                        >
+                          <SidebarTerminal />
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
+                  </>
+                ) : (
+                  <WelcomeScreen />
+                )}
               </div>
             </DndProvider>
           </motion.div>
@@ -537,6 +539,7 @@ function AppContent() {
         onOpenChange={setShortcutsOverlayOpen}
         onOpenSettings={handleOpenShortcutsSettings}
       />
+      {bugReportOpen && <BugReportDialog onClose={() => setBugReportOpen(false)} />}
       <Toaster richColors position="bottom-right" theme={resolvedTheme} />
     </div>
   );

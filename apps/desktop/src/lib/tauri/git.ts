@@ -12,6 +12,7 @@ import type { BranchInfo } from '../../bindings/BranchInfo';
 import type { GitMergeResult } from '../../bindings/GitMergeResult';
 import type { StashEntry } from '../../bindings/StashEntry';
 import type { GitStashPopResult } from '../../bindings/GitStashPopResult';
+import type { FileDiff } from '../../bindings/FileDiff';
 
 export type { GitRepoStatus } from '../../bindings/GitRepoStatus';
 export type { GitChangesResponse } from '../../bindings/GitChangesResponse';
@@ -25,6 +26,9 @@ export type { BranchInfo } from '../../bindings/BranchInfo';
 export type { GitMergeResult } from '../../bindings/GitMergeResult';
 export type { StashEntry } from '../../bindings/StashEntry';
 export type { GitStashPopResult } from '../../bindings/GitStashPopResult';
+export type { FileDiff } from '../../bindings/FileDiff';
+export type { DiffHunk } from '../../bindings/DiffHunk';
+export type { DiffLine } from '../../bindings/DiffLine';
 
 /** Get git repository status */
 export const gitGetStatus = () =>
@@ -65,6 +69,10 @@ export const gitGetChanges = (branch?: string) =>
 /** Get old and new content for a file diff */
 export const gitGetFileDiff = (filePath: string, branch?: string) =>
   invoke<GitFileDiffResponse>('git_get_file_diff', { filePath, branch: branch ?? null });
+
+/** Get full unified diff for all branch changes */
+export const gitGetBranchDiff = (branch?: string) =>
+  invoke<FileDiff[]>('git_get_branch_diff', { branch: branch ?? null });
 
 /** Discard changes for a specific file */
 export const gitDiscardFile = (filePath: string, branch?: string) =>
@@ -158,3 +166,21 @@ export const githubGetToken = () =>
 /** Disconnect GitHub — clear stored token */
 export const githubDisconnect = () =>
   invoke<void>('github_disconnect');
+
+// =============================================================================
+// GitHub Device Flow (recommended — no secret, no callback server)
+// =============================================================================
+
+import type { GitHubDeviceCodeResponse } from '../../bindings/GitHubDeviceCodeResponse';
+import type { GitHubDevicePollResult } from '../../bindings/GitHubDevicePollResult';
+
+export type { GitHubDeviceCodeResponse } from '../../bindings/GitHubDeviceCodeResponse';
+export type { GitHubDevicePollResult } from '../../bindings/GitHubDevicePollResult';
+
+/** Start GitHub Device Flow — returns user_code to display and device_code for polling */
+export const githubStartDeviceAuth = () =>
+  invoke<GitHubDeviceCodeResponse>('github_start_device_auth');
+
+/** Poll for GitHub Device Flow completion */
+export const githubPollDeviceAuth = (deviceCode: string) =>
+  invoke<GitHubDevicePollResult>('github_poll_device_auth', { deviceCode });

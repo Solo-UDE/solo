@@ -42,5 +42,8 @@ export function base64ToInt16(b64: string): Int16Array {
   for (let i = 0; i < binary.length; i++) {
     bytes[i] = binary.charCodeAt(i);
   }
-  return new Int16Array(bytes.buffer);
+  // PCM16 = 2 bytes per sample. HTTP chunking can split at odd byte
+  // boundaries, so trim any trailing byte that isn't a complete sample.
+  const usableLength = bytes.byteLength & ~1;
+  return new Int16Array(bytes.buffer, 0, usableLength / 2);
 }

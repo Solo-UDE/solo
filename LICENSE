@@ -1,0 +1,92 @@
+Source Available License - Evaluation Only
+
+Copyright (c) 2026 Solo-UDE Contributors. All rights reserved.
+
+TERMS AND CONDITIONS
+
+1. DEFINITIONS
+
+   "Software" refers to all source code, object code, documentation, and
+   associated files contained in this repository.
+
+   "Copyright Holders" refers to Solo-UDE Contributors and their successors.
+
+   "You" refers to any individual or entity accessing this Software.
+
+2. GRANT OF RIGHTS
+
+   Subject to the terms of this license, the Copyright Holders grant You a
+   limited, non-exclusive, non-transferable, revocable right to:
+
+   a. View and read the source code of the Software for personal evaluation
+      and educational purposes only.
+
+   That is the full extent of rights granted. No other rights are granted,
+   whether express or implied.
+
+3. RESTRICTIONS
+
+   You may NOT, under any circumstances:
+
+   a. Copy, reproduce, or duplicate the Software or any portion thereof.
+   b. Modify, adapt, alter, or create derivative works based on the Software.
+   c. Distribute, publish, sublicense, sell, lease, or otherwise transfer the
+      Software or any portion thereof to any third party.
+   d. Use the Software, in whole or in part, for any commercial purpose.
+   e. Incorporate any portion of the Software into another project, product,
+      or service.
+   f. Remove, alter, or obscure any copyright notices, license terms, or
+      attribution contained in the Software.
+   g. Reverse engineer, decompile, or disassemble any compiled portions of
+      the Software, except to the extent required by applicable law.
+   h. Use the Software to train machine learning models, AI systems, or
+      similar technologies.
+
+4. INTELLECTUAL PROPERTY
+
+   All intellectual property rights in and to the Software, including but not
+   limited to copyrights, patents, trade secrets, and trademarks, remain the
+   exclusive property of the Copyright Holders. Nothing in this license shall
+   be construed as granting any license or right to any patent, trademark, or
+   other intellectual property of the Copyright Holders.
+
+5. HACKATHON EVALUATION CLAUSE
+
+   This Software is submitted as part of the 2026 Startup Week Buildathon.
+   Hackathon judges, organizers, and reviewers are granted temporary,
+   read-only access to the Software solely for the purpose of evaluating the
+   submission. This access does not extend beyond evaluation and does not
+   grant any rights described in Section 3.
+
+6. NO WARRANTY
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL
+   THE COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY,
+   WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF,
+   OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+   SOFTWARE.
+
+7. TERMINATION
+
+   This license is effective until terminated. The Copyright Holders may
+   terminate this license at any time, for any reason, without notice. Upon
+   termination, You must cease all use of the Software and destroy any copies
+   in Your possession. Any violation of the terms of this license results in
+   automatic and immediate termination of all rights granted herein.
+
+8. GOVERNING LAW
+
+   This license shall be governed by and construed in accordance with the
+   laws of the United States of America, without regard to conflict of law
+   principles.
+
+9. SEVERABILITY
+
+   If any provision of this license is held to be unenforceable or invalid,
+   that provision shall be enforced to the maximum extent possible, and the
+   remaining provisions shall remain in full force and effect.
+
+For licensing inquiries, contact the Copyright Holders through the repository's
+issue tracker or associated communication channels.

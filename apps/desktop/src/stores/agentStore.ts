@@ -80,6 +80,7 @@ export interface Attachment {
 	mimeType?: string;
 	thumbnailUrl?: string;
 	size?: number;
+	base64Data?: string; // Raw base64 for inline images (no data: prefix)
 }
 
 /** File mention from @-mention in Lexical editor */
@@ -127,6 +128,9 @@ export interface AgentSession {
 	turnCount?: number;
 	tags?: string[];
 	summary?: string;
+	// Worktree binding (persisted — survives workspace switches + app restarts)
+	worktreeId?: string;
+	worktreeBranch?: string;
 	// Connection lifecycle (transient — never persisted, always 'archived' on load)
 	connectionState: SessionConnectionState;
 	resumeError?: string;
@@ -168,11 +172,24 @@ function toContentBlocks(
 
 	if (attachments) {
 		for (const att of attachments) {
-			blocks.push({
-				type: att.type === 'image' ? 'image' : 'document',
-				name: att.name,
-				filePath: att.path,
-			});
+			if (att.type === 'image' && att.base64Data) {
+				// Inline image (sketch, clipboard paste)
+				blocks.push({
+					type: 'image',
+					name: att.name,
+					source: {
+						type: 'base64',
+						mediaType: att.mimeType || 'image/png',
+						data: att.base64Data,
+					},
+				});
+			} else {
+				blocks.push({
+					type: att.type === 'image' ? 'image' : 'document',
+					name: att.name,
+					filePath: att.path,
+				});
+			}
 		}
 	}
 
@@ -246,6 +263,7 @@ interface AgentState {
 interface AgentActions {
 	// Session management
 	createSession: (model?: string) => Promise<string>;
+	forkSession: (sourceSessionId: string, model?: string) => Promise<string>;
 	setActiveSession: (sessionId: string) => void;
 	deleteSession: (sessionId: string) => void;
 	renameSession: (sessionId: string, name: string) => void;
@@ -262,6 +280,7 @@ interface AgentActions {
 	// Mode management
 	setPlanMode: (sessionId: string, enabled: boolean) => Promise<void>;
 	setThinkingMode: (sessionId: string, enabled: boolean, maxTokens?: number) => Promise<void>;
+	setAcceptMode: (sessionId: string, enabled: boolean) => Promise<void>;
 
 	// Bridge event handlers
 	handleAgentMessage: (sessionId: string, message: BridgeAgentMessage) => void;
@@ -279,6 +298,9 @@ interface AgentActions {
 	// Session lifecycle
 	ensureActive: (sessionId: string) => Promise<void>;
 	pruneExpiredSessions: (retentionDays: number) => Promise<void>;
+	archiveAllSessions: () => void;
+	saveActiveSessionForWorkspace: (workspacePath: string) => void;
+	restoreActiveSessionForWorkspace: (workspacePath: string) => void;
 
 	// Persistence
 	loadPersistedSessions: () => Promise<void>;
@@ -429,10 +451,11 @@ export const useAgentStore = create<AgentStore>()(
 					await backend.agentCreateSession(sessionId, {
 						model: agentModel,
 						resumeSessionId: session.sdkSessionId,
+						cwd: session.workspacePath,
 					});
 				} else {
 					// No SDK session to resume — create fresh bridge session
-					await backend.agentCreateSession(sessionId, { model: agentModel });
+					await backend.agentCreateSession(sessionId, { model: agentModel, cwd: session.workspacePath });
 				}
 
 				set((s) => {
@@ -448,7 +471,7 @@ export const useAgentStore = create<AgentStore>()(
 
 				// Auto-fork: create fresh bridge session, preserving message history
 				try {
-					await backend.agentCreateSession(sessionId, { model: agentModel });
+					await backend.agentCreateSession(sessionId, { model: agentModel, cwd: session.workspacePath });
 					set((s) => {
 						const sess = s.sessions.get(sessionId);
 						if (sess) {
@@ -496,6 +519,49 @@ export const useAgentStore = create<AgentStore>()(
 			}
 		},
 
+		archiveAllSessions: () => {
+			// Disconnect bridge connections without deleting session data from memory or disk
+			for (const [sessionId, session] of get().sessions) {
+				if (session.connectionState === 'active' || session.connectionState === 'resuming') {
+					backend.agentDeleteSession(sessionId).catch(console.error);
+				}
+			}
+			set((state) => {
+				for (const session of state.sessions.values()) {
+					session.connectionState = 'archived';
+				}
+				state.activeSessionId = null;
+			});
+			// Flush all pending saves before switch
+			get().persistSessions();
+		},
+
+		saveActiveSessionForWorkspace: (workspacePath: string) => {
+			// Remember which session was active for this workspace so we can restore it later
+			const activeId = get().activeSessionId;
+			if (activeId) {
+				try {
+					localStorage.setItem(`solo-active-session:${workspacePath}`, activeId);
+				} catch {
+					// localStorage may be unavailable — non-critical
+				}
+			}
+		},
+
+		restoreActiveSessionForWorkspace: (workspacePath: string) => {
+			// Re-activate the session that was last used in this workspace
+			try {
+				const savedId = localStorage.getItem(`solo-active-session:${workspacePath}`);
+				if (savedId && get().sessions.has(savedId)) {
+					set((state) => {
+						state.activeSessionId = savedId;
+					});
+				}
+			} catch {
+				// localStorage may be unavailable — non-critical
+			}
+		},
+
 		// =================================================================
 		// Session Management
 		// =================================================================
@@ -523,7 +589,9 @@ export const useAgentStore = create<AgentStore>()(
 						id: sessionId,
 						createdAt: new Date(),
 						model: model || 'opus',
-						workspacePath,
+						workspacePath: cwd,
+						worktreeId: activeWt?.id,
+						worktreeBranch: activeWt?.branch ?? undefined,
 						turnCount: 0,
 						resumable: false,
 						connectionState: 'active',
@@ -553,6 +621,73 @@ export const useAgentStore = create<AgentStore>()(
 			} catch (error) {
 				const errorMsg = error instanceof Error ? error.message : String(error);
 				console.error(`Failed to create session: ${errorMsg}`);
+				throw error;
+			}
+		},
+
+		forkSession: async (sourceSessionId: string, model?: string) => {
+			const sourceSession = get().sessions.get(sourceSessionId);
+			if (!sourceSession) throw new Error(`Source session ${sourceSessionId} not found`);
+			if (!sourceSession.sdkSessionId) throw new Error('Source session has no SDK session ID to fork from');
+
+			const sessionId = generateSessionId();
+			const agentModel = toAgentModel(model || sourceSession.model || 'opus');
+
+			try {
+				const { useFileExplorerStore } = await import('@/stores/fileExplorerStore');
+				const workspacePath = useFileExplorerStore.getState().rootPath ?? undefined;
+
+				const { useWorktreeStore } = await import('@/stores/worktreeStore');
+				const worktreeState = useWorktreeStore.getState();
+				const activeWt = worktreeState.activeWorktreeId
+					? worktreeState.worktrees.get(worktreeState.activeWorktreeId)
+					: null;
+				const cwd = activeWt?.path ?? workspacePath;
+
+				await backend.agentCreateSession(sessionId, {
+					model: agentModel,
+					resumeSessionId: sourceSession.sdkSessionId,
+					forkSession: true,
+					cwd,
+				});
+
+				// Copy messages from source session for visual continuity
+				const sourceMessages = get().messages.get(sourceSessionId) || [];
+
+				set((state) => {
+					state.sessions.set(sessionId, {
+						id: sessionId,
+						createdAt: new Date(),
+						model: model || sourceSession.model || 'opus',
+						workspacePath: sourceSession.workspacePath,
+						worktreeId: activeWt?.id ?? sourceSession.worktreeId,
+						worktreeBranch: (activeWt?.branch ?? sourceSession.worktreeBranch) ?? undefined,
+						turnCount: 0,
+						resumable: false,
+						connectionState: 'active',
+					});
+					state.messages.set(sessionId, [...sourceMessages]);
+					state.sessionStreaming.set(sessionId, createDefaultStreamState());
+				});
+
+				// Bind agent to active worktree
+				if (activeWt) {
+					import('@/lib/tauri/worktree').then(({ bindAgent }) => {
+						bindAgent(activeWt.id, sessionId).catch(console.error);
+					});
+				}
+
+				// Apply tool permission policy from settings
+				import('@/stores/settingsStore').then(({ useSettingsStore }) => {
+					const policy = useSettingsStore.getState().ai.toolPermissionPolicy;
+					backend.agentSetToolPolicy(sessionId, policy, !!activeWt).catch(console.error);
+				});
+
+				get().persistSessions(sessionId);
+				return sessionId;
+			} catch (error) {
+				const errorMsg = error instanceof Error ? error.message : String(error);
+				console.error(`Failed to fork session: ${errorMsg}`);
 				throw error;
 			}
 		},
@@ -747,6 +882,14 @@ export const useAgentStore = create<AgentStore>()(
 				await backend.agentSetThinkingMode(sessionId, enabled, maxTokens);
 			} catch (error) {
 				console.error('Failed to set thinking mode:', error);
+			}
+		},
+
+		setAcceptMode: async (sessionId: string, enabled: boolean) => {
+			try {
+				await backend.agentSetAcceptMode(sessionId, enabled);
+			} catch (error) {
+				console.error('Failed to set accept mode:', error);
 			}
 		},
 
@@ -981,6 +1124,37 @@ export const useAgentStore = create<AgentStore>()(
 			// Persist on result/error
 			if (message.type === 'result' || message.type === 'error') {
 				get().persistSessions(sessionId);
+			}
+
+			// Auto-generate title after first assistant turn completes
+			if (message.type === 'result') {
+				const currentSession = get().sessions.get(sessionId);
+				if (currentSession && !currentSession.name && currentSession.turnCount === 1) {
+					const sessionMessages = get().messages.get(sessionId) || [];
+					const firstUserMsg = sessionMessages.find((m) => m.role === 'user');
+					const firstAssistantMsg = sessionMessages.find(
+						(m) => m.role === 'assistant' && !m.isStreaming,
+					);
+					if (firstUserMsg && firstAssistantMsg) {
+						import('@tauri-apps/api/core').then(({ invoke }) => {
+							invoke<string>('agent_generate_session_title', {
+								userMessage: firstUserMsg.content,
+								assistantMessage: firstAssistantMsg.content,
+							})
+								.then((title) => {
+									if (title) {
+										const sess = get().sessions.get(sessionId);
+										if (sess && !sess.name) {
+											get().renameSession(sessionId, title);
+										}
+									}
+								})
+								.catch((err) => {
+									console.warn('[Agent] Title generation failed:', err);
+								});
+						});
+					}
+				}
 			}
 		},
 

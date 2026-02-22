@@ -5,6 +5,7 @@
 
 import { useCallback, type MouseEvent } from 'react';
 import { useDrag, useDrop } from 'react-dnd';
+import { motion } from 'motion/react';
 import { X, PushPin } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import type { PanelInstance, TileId, PanelInstanceId, TabDragItem } from '@/lib/panels/types';
@@ -134,13 +135,13 @@ export function Tab({
       tabIndex={isActive ? 0 : -1}
       className={cn(
         'group relative flex items-center gap-1.5 h-[35px] px-3',
-        'border-r border-border/20',
+        'border-r border-white/[0.03]',
         'transition-[background-color,color] duration-150 ease-out',
         'cursor-pointer select-none',
         'shrink-0 min-w-[80px] max-w-[200px]',
         isActive
-          ? 'bg-card/60 text-foreground'
-          : 'bg-transparent text-muted-foreground hover:text-foreground hover:bg-muted/40',
+          ? 'bg-primary/10 backdrop-blur-md text-foreground shadow-[0_1px_4px_-1px_rgba(0,0,0,0.12)] rounded-t-lg'
+          : 'bg-transparent text-muted-foreground hover:text-foreground hover:bg-white/[0.04]',
         isDragging && 'opacity-50',
         isOver && !isDragging && 'bg-primary/10'
       )}
@@ -185,9 +186,16 @@ export function Tab({
         </button>
       )}
 
-      {/* Active tab indicator line */}
+      {/* Active tab indicator - animated sliding accent */}
       {isActive && (
-        <div className="absolute bottom-0 left-0 right-0 h-px bg-primary/60" />
+        <motion.div
+          layoutId={`tab-indicator-${tileId}`}
+          className="absolute bottom-0 left-1 right-1 h-[2.5px] rounded-full bg-primary/70"
+          style={{
+            boxShadow: '0 0 8px 0 oklch(from var(--primary) l c h / 30%)',
+          }}
+          transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+        />
       )}
     </div>
   );

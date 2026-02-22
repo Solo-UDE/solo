@@ -46,6 +46,8 @@ export interface UseAgentSessionReturn {
 	setPlanMode: (enabled: boolean) => Promise<void>;
 	/** Set thinking mode on the bridge */
 	setThinkingMode: (enabled: boolean, maxTokens?: number) => Promise<void>;
+	/** Set accept mode (auto-approve permissions) on the bridge */
+	setAcceptMode: (enabled: boolean) => Promise<void>;
 	/** Clear any error */
 	clearError: () => void;
 }
@@ -78,6 +80,7 @@ export function useAgentSession(
 	const storeClearError = useAgentStore((state) => state.clearError);
 	const storeSetPlanMode = useAgentStore((state) => state.setPlanMode);
 	const storeSetThinkingMode = useAgentStore((state) => state.setThinkingMode);
+	const storeSetAcceptMode = useAgentStore((state) => state.setAcceptMode);
 
 	// Track if we've attempted auto-creation
 	const autoCreated = useRef(false);
@@ -87,15 +90,40 @@ export function useAgentSession(
 		if (autoCreate && !propSessionId && !localSessionId && !autoCreated.current) {
 			autoCreated.current = true;
 
-			// Reuse the most recent existing session instead of creating a duplicate
+			// Reuse the most recent session matching the current workspace + worktree context
 			const existingSessions = useAgentStore.getState().sessions;
 			if (existingSessions.size > 0) {
-				const mostRecent = [...existingSessions.values()]
-					.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
-				if (mostRecent) {
-					setLocalSessionId(mostRecent.id);
-					return;
-				}
+				// Lazy imports to avoid circular deps
+				Promise.all([
+					import('@/stores/worktreeStore'),
+					import('@/stores/fileExplorerStore'),
+				]).then(([{ useWorktreeStore }, { useFileExplorerStore }]) => {
+					const currentWorktreeId = useWorktreeStore.getState().activeWorktreeId;
+					const currentRootPath = useFileExplorerStore.getState().rootPath;
+
+					const matching = [...existingSessions.values()]
+						.filter((s) => {
+							// Filter by workspace path (cross-repo scoping)
+							if (currentRootPath && s.workspacePath) {
+								if (!s.workspacePath.startsWith(currentRootPath)) return false;
+							}
+							if (currentWorktreeId) return s.worktreeId === currentWorktreeId;
+							// Main workspace: prefer unbound sessions
+							return !s.worktreeId;
+						})
+						.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+					if (matching.length > 0) {
+						setLocalSessionId(matching[0].id);
+						return;
+					}
+
+					// No matching session found — create new one
+					storeCreateSession(defaultModel)
+						.then((newId) => setLocalSessionId(newId))
+						.catch(console.error);
+				});
+				return;
 			}
 
 			storeCreateSession(defaultModel)
@@ -145,6 +173,12 @@ export function useAgentSession(
 		}
 	}, [storeSetThinkingMode, effectiveSessionId]);
 
+	const setAcceptMode = useCallback(async (enabled: boolean) => {
+		if (effectiveSessionId) {
+			await storeSetAcceptMode(effectiveSessionId, enabled);
+		}
+	}, [storeSetAcceptMode, effectiveSessionId]);
+
 	const clearError = useCallback(() => {
 		if (effectiveSessionId) {
 			storeClearError(effectiveSessionId);
@@ -163,6 +197,7 @@ export function useAgentSession(
 		setModel,
 		setPlanMode,
 		setThinkingMode,
+		setAcceptMode,
 		clearError,
 	};
 }

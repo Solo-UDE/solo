@@ -33,14 +33,14 @@ export const UserMessage: FC<UserMessageProps> = ({
   const fileAttachments = attachments?.filter((a) => a.type === 'file');
 
   return (
-    <div className={`flex gap-3 px-4 ${className}`}>
-      {/* Content */}
-      <div className="flex-1 min-w-0 space-y-1">
+    <div className={`flex justify-end px-4 ${className}`}>
+      {/* Card bubble */}
+      <div className="max-w-[85%] rounded-2xl border border-primary px-4 py-3 space-y-1">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-foreground">{userName}</span>
+          <span className="text-sm font-medium text-primary">{userName}</span>
           <span className="text-xs text-muted-foreground">{formatTime(timestamp)}</span>
         </div>
-        <div className="text-sm text-foreground whitespace-pre-wrap break-words">
+        <div className="text-sm text-black dark:text-white whitespace-pre-wrap break-words">
           {content}
         </div>
 

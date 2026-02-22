@@ -32,6 +32,9 @@
   /* Monospace font */
   --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
+  /* Chat message font */
+  --font-chat: "Atkinson Hyperlegible Next Variable", "Atkinson Hyperlegible Next", sans-serif;
+
   /* Base colors */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -186,28 +189,28 @@
   --file-text: oklch(0.50 0.03 60);
   --file-image: oklch(0.65 0.18 300);
 
-  /* Sidebar */
-  --sidebar: oklch(0.98 0.005 75);
+  /* Sidebar - chrome layer (slightly darker than content canvas for depth) */
+  --sidebar: oklch(0.96 0.008 72);
   --sidebar-foreground: oklch(0.25 0.02 60);
   --sidebar-border: oklch(0.92 0.01 70);
 
   /* Agent-specific */
-  --agent-user-bg: oklch(0.95 0.02 140 / 10%);
+  --agent-user-bg: oklch(0.68 0.17 140 / 80%);
   --agent-assistant-bg: oklch(0.96 0.008 70);
   --agent-tool-bg: oklch(0.94 0.01 70);
   --agent-streaming: oklch(0.68 0.17 140);
 
   /* Syntax highlighting tokens (light mode) */
-  --syntax-keyword: oklch(0.5 0.15 240);
-  --syntax-string: oklch(0.55 0.15 35);
-  --syntax-type: oklch(0.5 0.15 175);
-  --syntax-function: oklch(0.55 0.12 80);
-  --syntax-variable: oklch(0.45 0.1 220);
+  --syntax-keyword: oklch(0.48 0.20 240);
+  --syntax-string: oklch(0.52 0.19 35);
+  --syntax-type: oklch(0.48 0.17 175);
+  --syntax-function: oklch(0.50 0.16 80);
+  --syntax-variable: oklch(0.44 0.14 220);
   --syntax-comment: oklch(0.5 0.1 140);
-  --syntax-number: oklch(0.55 0.12 130);
-  --syntax-control: oklch(0.55 0.15 320);
+  --syntax-number: oklch(0.50 0.16 130);
+  --syntax-control: oklch(0.50 0.19 320);
   --syntax-operator: oklch(0.35 0.02 60);
-  --syntax-bracket: oklch(0.6 0.15 85);
+  --syntax-bracket: oklch(0.55 0.18 85);
 
 }
 
@@ -223,16 +226,16 @@ html.dark {
   --foreground: oklch(0.93 0.01 75);
 
   /* Syntax highlighting tokens */
-  --syntax-keyword: oklch(0.7 0.12 240);
-  --syntax-string: oklch(0.75 0.12 40);
-  --syntax-type: oklch(0.75 0.15 175);
-  --syntax-function: oklch(0.85 0.1 90);
-  --syntax-variable: oklch(0.8 0.08 220);
+  --syntax-keyword: oklch(0.68 0.18 240);
+  --syntax-string: oklch(0.72 0.18 40);
+  --syntax-type: oklch(0.72 0.18 175);
+  --syntax-function: oklch(0.78 0.16 90);
+  --syntax-variable: oklch(0.74 0.14 220);
   --syntax-comment: oklch(0.55 0.1 140);
-  --syntax-number: oklch(0.8 0.1 130);
-  --syntax-control: oklch(0.75 0.12 320);
+  --syntax-number: oklch(0.74 0.16 130);
+  --syntax-control: oklch(0.72 0.18 320);
   --syntax-operator: oklch(0.85 0.02 60);
-  --syntax-bracket: oklch(0.85 0.15 85);
+  --syntax-bracket: oklch(0.80 0.18 85);
 
   /* Card - slightly elevated */
   --card: oklch(0.20 0.015 58);
@@ -299,7 +302,7 @@ html.dark {
   --sidebar-border: oklch(1 0 0 / 10%);
 
   /* Agent-specific (dark mode) */
-  --agent-user-bg: oklch(0.86 0.14 135 / 10%);
+  --agent-user-bg: oklch(0.86 0.14 135 / 80%);
   --agent-assistant-bg: oklch(0.22 0.015 58);
   --agent-tool-bg: oklch(0.25 0.015 58);
   --agent-streaming: oklch(0.86 0.14 135);
@@ -331,22 +334,31 @@ html.dark {
   }
 }
 
+/* Base titlebar tone - chrome layer matching sidebar for frame effect */
+.titlebar-glass {
+  background: oklch(0.96 0.008 72);
+}
+
+html.dark .titlebar-glass {
+  background: oklch(0.18 0.012 58);
+}
+
 /* When native vibrancy is active, make sidebar and root backgrounds
    transparent so the NSVisualEffectView shows through. The data-vibrancy
    attribute is set from the Rust setup closure on macOS. */
 html[data-vibrancy] {
-  --sidebar: oklch(0.98 0.005 75);
+  --sidebar: oklch(0.96 0.008 72);
   --popover: oklch(1 0 0);
   --card: oklch(0.96 0.008 70 / 85%);
-  background-color: transparent !important;
+  background-color: oklch(0.98 0.005 75) !important;
 }
 
 html[data-vibrancy] #root > div {
-  background: transparent;
+  background: oklch(0.98 0.005 75);
 }
 
 html[data-vibrancy] .titlebar-glass {
-  background: oklch(0.98 0.005 75);
+  background: oklch(0.96 0.008 72);
 }
 
 html[data-vibrancy] .split-divider {
@@ -367,7 +379,7 @@ html.dark[data-vibrancy] #root > div {
 }
 
 html.dark[data-vibrancy] .titlebar-glass {
-  background: rgb(0 0 0 / 0.25);
+  background: oklch(0.16 0.012 60);
 }
 
 html.dark[data-vibrancy] .split-divider {
@@ -403,14 +415,12 @@ html[data-vibrancy] .terminal-panel .xterm-viewport {
   width: 1px;
   transform: translateX(-50%);
   background-color: var(--sidebar-border);
-  opacity: 0.4;
-  transition: all 200ms cubic-bezier(0.16, 1, 0.3, 1);
+  opacity: 0;
+  transition: opacity 200ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .split-divider:hover::before {
-  width: 4px;
-  background-color: var(--primary);
-  opacity: 1;
+  opacity: 0.6;
 }
 
 /* Kill all transitions during sidebar/split resize for zero-lag dragging */
@@ -420,6 +430,15 @@ body.is-resizing *::before,
 body.is-resizing *::after {
   transition: none !important;
   cursor: col-resize !important;
+  user-select: none !important;
+}
+
+body.is-resizing-row,
+body.is-resizing-row *,
+body.is-resizing-row *::before,
+body.is-resizing-row *::after {
+  transition: none !important;
+  cursor: row-resize !important;
   user-select: none !important;
 }
 
@@ -595,7 +614,7 @@ html.dark ::-webkit-scrollbar-thumb:hover {
 /* Inner glow for active toolbar buttons — radial green glow from center */
 .glow-active {
   background: radial-gradient(
-    ellipse at center,
+    ellipse 80% 50% at center,
     oklch(from var(--primary) l c h / 15%) 0%,
     transparent 70%
   );
@@ -703,6 +722,31 @@ html.dark .hover-lift:hover {
   50% { opacity: 1; transform: scale(1); }
 }
 
+/* Startup glow intro — fades in and scales up during the 3s decrypt animation */
+@keyframes startup-glow-intro {
+  0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.6); }
+  15%  { opacity: 0.04; transform: translate(-50%, -50%) scale(0.7); }
+  40%  { opacity: 0.08; transform: translate(-50%, -50%) scale(0.85); }
+  60%  { opacity: 0.18; transform: translate(-50%, -50%) scale(1.1); }
+  75%  { opacity: 0.12; transform: translate(-50%, -50%) scale(1.0); }
+  100% { opacity: 0.10; transform: translate(-50%, -50%) scale(1.0); }
+}
+
+/* Continuous breathing pulse — loops after the intro finishes */
+@keyframes startup-glow-breathe {
+  0%   { opacity: 0.10; transform: translate(-50%, -50%) scale(1.0); }
+  50%  { opacity: 0.16; transform: translate(-50%, -50%) scale(1.06); }
+  100% { opacity: 0.10; transform: translate(-50%, -50%) scale(1.0); }
+}
+
+.startup-glow {
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.6);
+  animation:
+    startup-glow-intro 3s ease-out forwards,
+    startup-glow-breathe 4s ease-in-out 3s infinite;
+}
+
 @keyframes shimmer {
   0% { background-position: 200% center; }
   100% { background-position: -200% center; }
@@ -734,14 +778,6 @@ html.dark .hover-lift:hover {
   animation: streaming-dot 1.2s ease-in-out infinite;
 }
 
-@keyframes pulse-ring {
-  0%, 100% { box-shadow: 0 0 0 0 oklch(from var(--destructive) l c h / 0.4); }
-  50% { box-shadow: 0 0 0 4px oklch(from var(--destructive) l c h / 0); }
-}
-
-.animate-pulse-ring {
-  animation: pulse-ring 1.5s ease-in-out infinite;
-}
 
 /* =============================================================================
    STREAMDOWN THEME OVERRIDES

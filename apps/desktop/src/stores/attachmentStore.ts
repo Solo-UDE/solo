@@ -29,8 +29,7 @@ export const useAttachmentStore = create<AttachmentStore>()(
 
 		addAttachment: (attachment: Attachment) => {
 			set((state) => {
-				// Avoid duplicates by path
-				if (!state.attachments.some((a) => a.path === attachment.path)) {
+				if (!state.attachments.some((a) => a.id === attachment.id)) {
 					state.attachments.push(attachment);
 				}
 			});

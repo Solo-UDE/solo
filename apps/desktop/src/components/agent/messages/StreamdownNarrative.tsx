@@ -3,7 +3,7 @@
  *
  * Replaces react-markdown + useStreamingText + fixUnterminatedFences
  * with a single component that handles all of these natively:
- * - Progressive text reveal (isAnimating + caret) with char-level blurIn
+ * - Progressive text reveal (isAnimating + caret) with word-level fadeIn
  * - Unterminated fence handling (built-in)
  * - Syntax highlighting (@streamdown/code with Shiki)
  * - Math rendering (@streamdown/math with KaTeX)
@@ -98,12 +98,12 @@ export const StreamdownNarrative: FC<StreamdownNarrativeProps> = ({
 			plugins={{ code, math, mermaid }}
 			isAnimating={isStreaming}
 			animated={{
-				animation: 'blurIn',
-				duration: 200,
+				animation: 'fadeIn',
+				duration: 130,
 				easing: 'ease-out',
-				sep: 'char',
+				sep: 'word',
 			}}
-			caret="block"
+			caret="circle"
 			shikiTheme={['github-light', 'github-dark']}
 			controls={{
 				table: true,

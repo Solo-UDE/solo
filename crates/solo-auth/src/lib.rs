@@ -15,5 +15,6 @@ pub use provider::{ProviderConfig, ProviderError, ProviderResult, ProviderStatus
 pub use oauth::{
     AuthMethodInfo, AuthType, GitHubOAuthConfig, OAuthFlowResult, OAuthMethod, OAuthState,
     OAuthToken, AnthropicOAuthConfig, OpenAIOAuthConfig,
+    DeviceCodeResponse, DevicePollResult,
     start_callback_server,
 };

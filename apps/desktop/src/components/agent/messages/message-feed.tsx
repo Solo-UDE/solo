@@ -73,6 +73,18 @@ export const MessageFeed: FC<MessageFeedProps> = ({
     };
   }, [scrollElement]);
 
+  // Reset auto-scroll when streaming starts (user submitted a new message)
+  const prevIsStreaming = useRef(false);
+  useEffect(() => {
+    if (isStreaming && !prevIsStreaming.current) {
+      shouldAutoScroll.current = true;
+      if (scrollElement) {
+        scrollElement.scrollTop = scrollElement.scrollHeight;
+      }
+    }
+    prevIsStreaming.current = isStreaming;
+  }, [isStreaming, scrollElement]);
+
   // Auto-scroll during streaming via interval
   useEffect(() => {
     if (!isStreaming || !shouldAutoScroll.current) return;

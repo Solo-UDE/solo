@@ -1,11 +1,10 @@
 import { AgentNarrative } from './agent-narrative';
 import { InterruptIndicator } from './interrupt-indicator';
 import { MessageActions } from './message-actions';
-import { MessageFeedback } from './message-feedback';
 import { NotifyUserCard } from './notify-user-card';
 import { ProceedIndicator } from './proceed-indicator';
+import { SoloAgentBadge } from './SoloAgentBadge';
 import { ThinkingBox } from './thinking-box';
-import { TurnProgress } from './turn-progress';
 import { TodoToolWidget } from './tools';
 import { renderToolCard } from '../streaming/tool-registry';
 import { StreamingSkeleton } from '../streaming/StreamingSkeleton';
@@ -16,7 +15,7 @@ import { ProgressTrackerItem } from '../streaming/ProgressTrackerItem';
 import { deriveProgressPhases, buildInterleavedTimeline } from '@/lib/deriveProgressPhases';
 import type { RenderBlock } from '../messageAdapter';
 
-import type { FC, ReactNode } from 'react';
+import type { CSSProperties, FC, ReactNode } from 'react';
 
 export interface PendingApproval {
   requestId: string;
@@ -56,7 +55,6 @@ export interface AgentMessageProps {
   content: AgentMessageContent;
   timestamp: Date;
   agentName?: string;
-  onFeedback?: (messageId: string, feedback: 'good' | 'bad') => void;
   onToolApproval?: (toolCallId: string, approved: boolean) => void;
   onAnswerQuestion?: (requestId: string, answers: Record<string, string>) => void;
   messageId?: string;
@@ -70,6 +68,7 @@ const renderToolWidget = (
   toolInput: Record<string, unknown>,
   status: 'running' | 'success' | 'error',
   output?: string,
+  style?: CSSProperties,
 ): ReactNode => {
   const name = toolName.toLowerCase();
 
@@ -110,14 +109,13 @@ const renderToolWidget = (
   }
 
   // Use the registry for all other tools
-  return renderToolCard(key, toolName, toolInput, status, output);
+  return renderToolCard(key, toolName, toolInput, status, output, style);
 };
 
 export const AgentMessage: FC<AgentMessageProps> = ({
   content,
   timestamp,
-  agentName = 'Agent',
-  onFeedback,
+  agentName: _agentName = 'Agent',
   onToolApproval,
   onAnswerQuestion,
   messageId,
@@ -129,12 +127,6 @@ export const AgentMessage: FC<AgentMessageProps> = ({
       minute: '2-digit',
       hour12: true,
     }).format(date);
-  };
-
-  const handleFeedback = (feedback: 'good' | 'bad'): void => {
-    if (onFeedback && messageId) {
-      onFeedback(messageId, feedback);
-    }
   };
 
   // Use ordered blocks if available, otherwise fall back to legacy rendering
@@ -154,7 +146,7 @@ export const AgentMessage: FC<AgentMessageProps> = ({
       <div className="flex-1 min-w-0 space-y-3">
         {/* Header */}
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-foreground">{agentName}</span>
+          <SoloAgentBadge />
           <span className="text-xs text-muted-foreground">{formatTime(timestamp)}</span>
           {content.autoProceed ? <ProceedIndicator /> : null}
         </div>
@@ -191,14 +183,17 @@ export const AgentMessage: FC<AgentMessageProps> = ({
                       isStreaming={block.isStreaming}
                     />
                   ) : null;
-                case 'toolCall':
+                case 'toolCall': {
+                  const toolIndex = content.blocks!.slice(0, i).filter(b => b.type === 'toolCall').length;
                   return renderToolWidget(
                     `block-${idx}`,
                     block.toolName,
                     block.toolInput,
                     block.status,
                     block.output,
+                    toolIndex > 0 ? { animationDelay: `${toolIndex * 60}ms` } : undefined,
                   );
+                }
                 case 'approval':
                   if (block.toolName.toLowerCase() === 'askuserquestion') {
                     return (
@@ -272,8 +267,6 @@ export const AgentMessage: FC<AgentMessageProps> = ({
           </>
         )}
 
-        {/* Turn progress indicator */}
-        {content.turnNumber ? <TurnProgress turnNumber={content.turnNumber} /> : null}
 
         {/* Message Actions (shown after message completes, not during streaming) */}
         {!content.isStreaming && !content.isInterrupted && content.isLastAssistantMessage !== undefined ? (
@@ -300,8 +293,6 @@ export const AgentMessage: FC<AgentMessageProps> = ({
           </div>
         ) : null}
 
-        {/* Feedback */}
-        {onFeedback && messageId ? <MessageFeedback onFeedback={handleFeedback} /> : null}
       </div>
     </div>
   );

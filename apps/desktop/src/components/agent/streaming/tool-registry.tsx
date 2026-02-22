@@ -12,7 +12,7 @@ import { WebToolCard } from './WebToolCard';
 import { TaskToolCard } from './TaskToolCard';
 import { ToolCard } from './ToolCard';
 
-import type { FC, ReactNode } from 'react';
+import type { CSSProperties, FC, ReactNode } from 'react';
 import type { ToolStatus } from './ToolCard';
 
 /** Props passed to every tool widget from the message renderer */
@@ -21,6 +21,7 @@ export interface ToolWidgetProps {
 	readonly toolInput: Record<string, unknown>;
 	readonly status: ToolStatus;
 	readonly output?: string;
+	readonly style?: CSSProperties;
 }
 
 /** Helper to extract string from tool input */
@@ -33,25 +34,27 @@ const getStr = (input: Record<string, unknown>, key: string, fallback = ''): str
 // Adapter wrappers — convert ToolWidgetProps to specialized card props
 // ---------------------------------------------------------------------------
 
-const BashAdapter: FC<ToolWidgetProps> = ({ toolInput, status, output }) => (
+const BashAdapter: FC<ToolWidgetProps> = ({ toolInput, status, output, style }) => (
 	<BashToolCard
 		command={getStr(toolInput, 'command')}
 		description={getStr(toolInput, 'description') || undefined}
 		output={output}
 		status={status}
+		style={style}
 	/>
 );
 
-const FileAdapter: FC<ToolWidgetProps> = ({ toolName, toolInput, status, output }) => (
+const FileAdapter: FC<ToolWidgetProps> = ({ toolName, toolInput, status, output, style }) => (
 	<FileToolCard
 		toolName={toolName}
 		filePath={getStr(toolInput, 'file_path', 'unknown')}
 		output={output}
 		status={status}
+		style={style}
 	/>
 );
 
-const SearchAdapter: FC<ToolWidgetProps> = ({ toolName, toolInput, status, output }) => (
+const SearchAdapter: FC<ToolWidgetProps> = ({ toolName, toolInput, status, output, style }) => (
 	<SearchToolCard
 		toolName={toolName}
 		pattern={getStr(toolInput, 'pattern', '*')}
@@ -61,10 +64,11 @@ const SearchAdapter: FC<ToolWidgetProps> = ({ toolName, toolInput, status, outpu
 		outputMode={getStr(toolInput, 'output_mode') || undefined}
 		glob={getStr(toolInput, 'glob') || undefined}
 		fileType={getStr(toolInput, 'type') || undefined}
+		style={style}
 	/>
 );
 
-const WebAdapter: FC<ToolWidgetProps> = ({ toolName, toolInput, status, output }) => (
+const WebAdapter: FC<ToolWidgetProps> = ({ toolName, toolInput, status, output, style }) => (
 	<WebToolCard
 		toolName={toolName}
 		query={getStr(toolInput, 'query') || undefined}
@@ -72,10 +76,11 @@ const WebAdapter: FC<ToolWidgetProps> = ({ toolName, toolInput, status, output }
 		prompt={getStr(toolInput, 'prompt') || undefined}
 		output={output}
 		status={status}
+		style={style}
 	/>
 );
 
-const TaskAdapter: FC<ToolWidgetProps> = ({ toolInput, status, output }) => (
+const TaskAdapter: FC<ToolWidgetProps> = ({ toolInput, status, output, style }) => (
 	<TaskToolCard
 		description={getStr(toolInput, 'description')}
 		prompt={getStr(toolInput, 'prompt') || undefined}
@@ -83,15 +88,17 @@ const TaskAdapter: FC<ToolWidgetProps> = ({ toolInput, status, output }) => (
 		model={getStr(toolInput, 'model') || undefined}
 		output={output}
 		status={status}
+		style={style}
 	/>
 );
 
-const GenericAdapter: FC<ToolWidgetProps> = ({ toolName, toolInput, status, output }) => (
+const GenericAdapter: FC<ToolWidgetProps> = ({ toolName, toolInput, status, output, style }) => (
 	<ToolCard
 		toolName={toolName}
 		status={status}
 		primaryDisplay={Object.values(toolInput).find((v) => typeof v === 'string') as string | undefined}
 		output={output}
+		style={style}
 	/>
 );
 
@@ -127,7 +134,8 @@ export const renderToolCard = (
 	toolInput: Record<string, unknown>,
 	status: ToolStatus,
 	output?: string,
+	style?: CSSProperties,
 ): ReactNode => {
 	const Widget = getToolWidget(toolName);
-	return <Widget key={key} toolName={toolName} toolInput={toolInput} status={status} output={output} />;
+	return <Widget key={key} toolName={toolName} toolInput={toolInput} status={status} output={output} style={style} />;
 };
