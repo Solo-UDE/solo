@@ -158,6 +158,24 @@ fn is_ssh_url(url: &str) -> bool {
     url.starts_with("git@") || url.starts_with("ssh://")
 }
 
+/// Convert any remote URL (SSH or HTTPS) to an authenticated HTTPS URL.
+///
+/// SSH URLs (`git@github.com:Owner/Repo.git`) are converted to HTTPS because
+/// desktop apps launched from Finder/Dock often lack SSH agent access, causing
+/// `git2` to hang indefinitely during credential negotiation.
+fn to_authenticated_https_url(url: &str, token: &str) -> String {
+    if is_ssh_url(url) {
+        // git@github.com:Owner/Repo.git → https://token@github.com/Owner/Repo.git
+        let without_prefix = url.strip_prefix("git@").unwrap_or(url);
+        let https_path = without_prefix.replacen(':', "/", 1);
+        format!("https://{}@{}", token, https_path)
+    } else {
+        url.replace("https://", &format!("https://{}@", token))
+    }
+}
+
+
+
 /// Build auth callbacks that handle both HTTPS (OAuth token) and SSH (agent).
 fn make_auth_callbacks(token: &str) -> RemoteCallbacks<'_> {
     let mut callbacks = RemoteCallbacks::new();
@@ -354,12 +372,8 @@ pub async fn git_push(
 
         let repo = ensure_local_repo_scope(&workspace_path)?;
 
-        // For HTTPS, embed token in URL; for SSH, the callback handles auth
-        let remote_url = if is_ssh_url(&github_repo_url) {
-            github_repo_url.clone()
-        } else {
-            github_repo_url.replace("https://", &format!("https://{}@", access_token))
-        };
+        // Always use authenticated HTTPS — SSH can hang in desktop apps without agent
+        let remote_url = to_authenticated_https_url(&github_repo_url, &access_token);
         upsert_remote(&repo, "github-integ", &remote_url)?;
 
         let result = (|| -> Result<GitPushResponse, String> {
@@ -481,11 +495,8 @@ pub async fn git_pull(
 
 		let mut repo = ensure_local_repo_scope(&workspace_path)?;
 
-		let remote_url = if is_ssh_url(&github_repo_url) {
-			github_repo_url.clone()
-		} else {
-			github_repo_url.replace("https://", &format!("https://{}@", access_token))
-		};
+		// Always use authenticated HTTPS — SSH can hang in desktop apps without agent
+		let remote_url = to_authenticated_https_url(&github_repo_url, &access_token);
 		upsert_remote(&repo, "github-integ", &remote_url)?;
 
 		let result = (|| -> Result<GitPullResponse, String> {
@@ -1639,11 +1650,8 @@ pub async fn git_fetch(
 
         let repo = ensure_local_repo_scope(&workspace_path)?;
 
-        let remote_url = if is_ssh_url(&github_repo_url) {
-            github_repo_url.clone()
-        } else {
-            github_repo_url.replace("https://", &format!("https://{}@", access_token))
-        };
+        // Always use authenticated HTTPS — SSH can hang in desktop apps without agent
+        let remote_url = to_authenticated_https_url(&github_repo_url, &access_token);
         upsert_remote(&repo, "github-integ", &remote_url)?;
 
         let result = (|| -> Result<(), String> {
