@@ -4,8 +4,6 @@
 
 import { createLogger } from './logger.js';
 import { localize } from './nls.js';
-import { evaluatePolicy } from './tool-policy.js';
-import type { PolicyMode, PolicyContext } from './tool-policy.js';
 
 import type { PermissionResult, PermissionUpdate } from '@anthropic-ai/claude-agent-sdk';
 
@@ -49,8 +47,6 @@ export class PermissionManager {
   private snapshotCallback?: SnapshotCallback;
   private alwaysAllowedTools = new Set<string>();
   private acceptModeGetter?: () => boolean;
-  private _policyMode: PolicyMode = 'smart';
-  private _policyContext: PolicyContext = { isWorktreeSession: false };
 
   constructor(
     requestCallback?: PermissionRequestCallback,
@@ -90,24 +86,6 @@ export class PermissionManager {
   }
 
   /**
-   * Set the tool permission policy mode.
-   */
-  setPolicyMode(mode: PolicyMode): void {
-    this._policyMode = mode;
-  }
-
-  getPolicyMode(): PolicyMode {
-    return this._policyMode;
-  }
-
-  /**
-   * Set the policy context (e.g., worktree session status).
-   */
-  setPolicyContext(context: Partial<PolicyContext>): void {
-    this._policyContext = { ...this._policyContext, ...context };
-  }
-
-  /**
    * Create permission callback for the SDK.
    * This uses the SDK's canUseTool API.
    */
@@ -133,24 +111,6 @@ export class PermissionManager {
           return {
             behavior: 'allow',
             updatedInput: toolInput,
-          };
-        }
-
-        // Evaluate tier-based policy (smart mode)
-        const policyDecision = evaluatePolicy(toolName, this._policyMode, this._policyContext);
-        if (policyDecision === 'auto-approve') {
-          logger.debug({ toolName, policyMode: this._policyMode }, 'Policy auto-approved tool');
-          return {
-            behavior: 'allow',
-            updatedInput: toolInput,
-          };
-        }
-        if (policyDecision === 'deny') {
-          logger.debug({ toolName, policyMode: this._policyMode }, 'Policy denied tool');
-          return {
-            behavior: 'deny',
-            message: localize('orbit.policyDenied', 'Tool denied by permission policy'),
-            interrupt: false,
           };
         }
 

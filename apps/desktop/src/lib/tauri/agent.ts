@@ -58,6 +58,7 @@ export async function listenToAgentEvents(
 		const h = handlers.onPermissionRequest;
 		unlistens.push(
 			await listen<AgentPermissionRequestEvent>('agent:permission_request', (event) => {
+				console.log('[DIAG] agent:permission_request received', event.payload.toolName, event.payload.requestId);
 				h({
 					sessionId: event.payload.sessionId,
 					toolName: event.payload.toolName,

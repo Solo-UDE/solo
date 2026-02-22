@@ -8,9 +8,10 @@ interface ProgressTrackerItemProps {
   label: string;
   status: 'active' | 'completed';
   isFirst: boolean;
+  preview?: string;
 }
 
-export const ProgressTrackerItem: FC<ProgressTrackerItemProps> = ({ label, status, isFirst }) => {
+export const ProgressTrackerItem: FC<ProgressTrackerItemProps> = ({ label, status, isFirst, preview }) => {
   return (
     <div
       className="flex flex-col"
@@ -56,14 +57,21 @@ export const ProgressTrackerItem: FC<ProgressTrackerItemProps> = ({ label, statu
           </div>
         )}
 
-        <span
-          className={`text-sm font-medium transition-colors ${
-            status === 'completed' ? 'text-primary' : 'text-muted-foreground'
-          }`}
-        >
-          {label}
-          {status === 'active' && <AgentAnimatedDots />}
-        </span>
+        <div className="flex flex-col">
+          <span
+            className={`text-sm font-medium transition-colors ${
+              status === 'completed' ? 'text-primary' : 'text-muted-foreground'
+            }`}
+          >
+            {label}
+            {status === 'active' && <AgentAnimatedDots />}
+          </span>
+          {preview ? (
+            <span className="text-[11px] text-muted-foreground/60 truncate max-w-[280px] font-mono mt-0.5">
+              {preview}
+            </span>
+          ) : null}
+        </div>
       </div>
     </div>
   );

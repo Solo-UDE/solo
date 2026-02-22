@@ -493,8 +493,22 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
       // Track subagent start times for duration
       const subagentStartTimes = new Map<string, number>();
 
+      // Safe read-only tools that are always auto-approved via PreToolUse hook.
+      // These never reach canUseTool, so no permission prompt is shown.
+      const SAFE_TOOLS = new Set([
+        'Read',
+        'Glob',
+        'Grep',
+        'WebSearch',
+        'WebFetch',
+        'Task',
+        'TodoWrite',
+        'ListMcpResourcesTool',
+        'ReadMcpResourceTool',
+      ]);
+
       options.hooks = {
-        // PreToolUse hook - auto-approve safe tools, log full input, let SDK handle others
+        // PreToolUse hook - auto-approve safe tools, let SDK handle others
         PreToolUse: [
           {
             // No matcher means match ALL tools
@@ -509,13 +523,12 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
                   {
                     toolName,
                     inputKeys: Object.keys(toolInput),
-                    inputPreview: JSON.stringify(toolInput).slice(0, 300),
                   },
                   'Hook: PreToolUse — tool requested'
                 );
 
-                // Auto-approve TodoWrite - it just updates UI, no file modifications
-                if (toolName === 'TodoWrite') {
+                // Auto-approve safe read-only tools — no file modifications, no side effects
+                if (SAFE_TOOLS.has(toolName)) {
                   logger.debug({ toolName }, 'Hook: PreToolUse — auto-approved (safe tool)');
                   return Promise.resolve({
                     hookSpecificOutput: {

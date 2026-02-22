@@ -30,6 +30,8 @@ export interface ChatInputContainerProps {
   onModeChange?: (mode: 'planning' | 'fast') => void;
   thinkingEnabled?: boolean;
   onThinkingChange?: (enabled: boolean) => void;
+  planModeActive?: boolean;
+  onPlanModeToggle?: () => void;
 }
 
 export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
@@ -43,6 +45,8 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
   onModeChange,
   thinkingEnabled = false,
   onThinkingChange,
+  planModeActive = false,
+  onPlanModeToggle,
 }) => {
   const [content, setContent] = useState('');
   const [mode, setMode] = useState<'planning' | 'fast'>('planning');
@@ -78,6 +82,11 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       handleSubmit();
+    }
+    // Shift+Tab toggles plan mode
+    if (event.key === 'Tab' && event.shiftKey) {
+      event.preventDefault();
+      onPlanModeToggle?.();
     }
   };
 
@@ -119,6 +128,24 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
 
           {/* Attachment chips/thumbnails */}
           <AttachmentBar />
+
+          {/* Plan mode badge */}
+          {planModeActive ? (
+            <div className="flex items-center gap-1.5 px-3 pt-1">
+              <button
+                type="button"
+                onClick={onPlanModeToggle}
+                className="inline-flex items-center gap-1 h-[22px] px-2 rounded-full bg-primary/15 text-primary text-[10px] font-semibold uppercase tracking-wider hover:bg-primary/25 active:scale-95 transition-all duration-150"
+                title="Plan mode active (Shift+Tab to toggle)"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" fill="currentColor" viewBox="0 0 256 256">
+                  <path d="M224,128a8,8,0,0,1-8,8H40a8,8,0,0,1,0-16H216A8,8,0,0,1,224,128ZM40,72H216a8,8,0,0,0,0-16H40a8,8,0,0,0,0,16ZM216,184H40a8,8,0,0,0,0,16H216a8,8,0,0,0,0-16Z" />
+                </svg>
+                Plan Mode
+                <kbd className="text-[8px] opacity-50 ml-0.5">⇧⇥</kbd>
+              </button>
+            </div>
+          ) : null}
 
           {/* Bottom Controls */}
           <div className="flex items-center justify-between px-3 pb-3 pt-1">

@@ -168,14 +168,26 @@ impl AgentBridge {
                         continue;
                     }
 
-                    // Log raw JSON from bridge for debugging
-                    tracing::debug!("[bridge:raw] {}", line);
+                    // Log raw JSON from bridge for debugging (pretty-printed)
+                    if tracing::enabled!(tracing::Level::DEBUG) {
+                        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&line) {
+                            tracing::debug!("[bridge:raw]\n{}", serde_json::to_string_pretty(&parsed).unwrap_or_else(|_| line.clone()));
+                        } else {
+                            tracing::debug!("[bridge:raw] {}", line);
+                        }
+                    }
 
                     match serde_json::from_str::<BridgeResponse>(&line) {
                         Ok(response) => {
                             // Check if it's an event or command response
                             if let Some(event) = response.as_event() {
-                                tracing::debug!("[bridge:event] {:?}", event);
+                                if tracing::enabled!(tracing::Level::DEBUG) {
+                                    tracing::debug!(
+                                        "[bridge:event]\n{}",
+                                        serde_json::to_string_pretty(&event)
+                                            .unwrap_or_else(|_| format!("{:?}", event))
+                                    );
+                                }
                                 // Fire event callback if set
                                 if let Some(callback) = event_callback {
                                     callback(event.clone());

@@ -6,7 +6,7 @@ import { SoloEmptyState } from './SoloDecryptAnimation';
 import { convertToMessageGroups } from './messageAdapter';
 import { useAgentSession } from '../../hooks/useAgentSession';
 import { useProviderStore } from '../../stores/provider-store';
-import { useAgentStore } from '../../stores/agentStore';
+import { useAgentStore, usePlanModeActive } from '../../stores/agentStore';
 import { usePanelTabsStore } from '../../stores/panelTabsStore';
 import { BUILTIN_PANEL_TYPES } from '../../lib/panels/constants';
 
@@ -141,6 +141,17 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 		[respondPermission]
 	);
 
+	// AskUserQuestion — submit answers back to bridge permission system
+	const handleAnswerQuestion = useCallback(
+		(requestId: string, answers: Record<string, string>) => {
+			respondPermission(requestId, 'approve', false, answers);
+		},
+		[respondPermission]
+	);
+
+	// Plan mode state from store (set by bridge events)
+	const planModeActive = usePlanModeActive(sessionId ?? null);
+
 	// Handle mode selector changes — sync to bridge
 	const handleModeChange = useCallback(
 		(mode: 'planning' | 'fast') => {
@@ -149,6 +160,11 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 		},
 		[setPlanMode]
 	);
+
+	// Plan mode toggle via keyboard shortcut (Shift+Tab)
+	const handlePlanModeToggle = useCallback(() => {
+		setPlanMode(!planModeActive);
+	}, [setPlanMode, planModeActive]);
 
 	// Handle thinking toggle — sync to bridge
 	const handleThinkingChange = useCallback(
@@ -233,6 +249,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 				autoScroll={true}
 				isStreaming={isRunning}
 				onToolApproval={handleToolApproval}
+				onAnswerQuestion={handleAnswerQuestion}
 				className="flex-1"
 			/>
 
@@ -274,6 +291,8 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 				onModeChange={handleModeChange}
 				thinkingEnabled={thinkingEnabled}
 				onThinkingChange={handleThinkingChange}
+				planModeActive={planModeActive}
+				onPlanModeToggle={handlePlanModeToggle}
 			/>
 		</div>
 	);

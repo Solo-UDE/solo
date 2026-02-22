@@ -95,15 +95,6 @@ function main(): void {
     });
   });
 
-  // Wire debug events to IPC
-  sessionManager.onDebugEvent((data) => {
-    sendEvent({
-      type: 'debug_event',
-      sessionId: data.sessionId,
-      event: data.event,
-    });
-  });
-
   // Handle incoming requests from stdin
   const rl = readline.createInterface({
     input: process.stdin,
@@ -250,11 +241,7 @@ async function handleRequest(
     }
 
     case 'set_tool_policy': {
-      sessionManager.setToolPolicy(
-        request.sessionId,
-        request.mode,
-        request.isWorktreeSession ?? false,
-      );
+      sessionManager.setToolPolicy(request.sessionId, request.mode, request.isWorktreeSession);
       sendResponse({ type: 'success', requestType: request.type });
       break;
     }

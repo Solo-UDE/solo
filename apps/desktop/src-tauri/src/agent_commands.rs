@@ -282,6 +282,20 @@ pub async fn agent_generate_commit_message(
 }
 
 // ============================================================================
+// Log Formatting Helpers
+// ============================================================================
+
+/// Format key-value pairs as aligned columns for log output
+fn fmt_kv(pairs: &[(&str, &str)]) -> String {
+    let max_key = pairs.iter().map(|(k, _)| k.len()).max().unwrap_or(0);
+    pairs
+        .iter()
+        .map(|(k, v)| format!("  {:<width$} : {}", k, v, width = max_key))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+// ============================================================================
 // Event Wiring
 // ============================================================================
 
@@ -296,7 +310,31 @@ pub fn setup_event_callbacks(app: &AppHandle, session_manager: &Arc<SessionManag
             session_id,
             message,
         } => {
-            tracing::debug!("[agent:emit] message session={} type={:?}", session_id, message.message_type);
+            if tracing::enabled!(tracing::Level::DEBUG) {
+                let type_str = format!("{:?}", message.message_type);
+                let mut pairs: Vec<(&str, &str)> = vec![
+                    ("session", &session_id),
+                    ("type", &type_str),
+                ];
+                let tool_name;
+                let tool_id;
+                let status_str;
+                if let Some(ref meta) = message.metadata {
+                    if let Some(ref name) = meta.tool_name {
+                        tool_name = name.clone();
+                        pairs.push(("tool", &tool_name));
+                    }
+                    if let Some(ref id) = meta.tool_id {
+                        tool_id = id.clone();
+                        pairs.push(("toolId", &tool_id));
+                    }
+                    if let Some(ref status) = meta.status {
+                        status_str = format!("{:?}", status);
+                        pairs.push(("status", &status_str));
+                    }
+                }
+                tracing::debug!("[agent:emit] AgentMessage\n{}", fmt_kv(&pairs));
+            }
             drop(app_handle.emit(
                 "agent:message",
                 serde_json::json!({
@@ -306,7 +344,16 @@ pub fn setup_event_callbacks(app: &AppHandle, session_manager: &Arc<SessionManag
             ));
         }
         BridgeEvent::PermissionRequest { request } => {
-            tracing::debug!("[agent:emit] permission session={} tool={}", request.session_id, request.tool_name);
+            if tracing::enabled!(tracing::Level::DEBUG) {
+                tracing::debug!(
+                    "[agent:emit] PermissionRequest\n{}",
+                    fmt_kv(&[
+                        ("session", &request.session_id),
+                        ("tool", &request.tool_name),
+                        ("requestId", &request.request_id),
+                    ])
+                );
+            }
             drop(app_handle.emit(
                 "agent:permission_request",
                 serde_json::json!({
@@ -318,7 +365,19 @@ pub fn setup_event_callbacks(app: &AppHandle, session_manager: &Arc<SessionManag
             ));
         }
         BridgeEvent::SessionInit { event: init_event } => {
-            tracing::debug!("[agent:emit] session_init session={} sdk_session={:?}", init_event.session_id, init_event.sdk_session_id);
+            if tracing::enabled!(tracing::Level::DEBUG) {
+                let resumed = init_event.is_resumed.to_string();
+                let forked = init_event.is_forked.to_string();
+                tracing::debug!(
+                    "[agent:emit] SessionInit\n{}",
+                    fmt_kv(&[
+                        ("session", &init_event.session_id),
+                        ("sdkSession", &init_event.sdk_session_id),
+                        ("resumed", &resumed),
+                        ("forked", &forked),
+                    ])
+                );
+            }
             drop(app_handle.emit(
                 "agent:session_init",
                 serde_json::json!({
@@ -333,7 +392,13 @@ pub fn setup_event_callbacks(app: &AppHandle, session_manager: &Arc<SessionManag
             session_id,
             enabled,
         } => {
-            tracing::debug!("[agent:emit] plan_mode_changed session={} enabled={}", session_id, enabled);
+            if tracing::enabled!(tracing::Level::DEBUG) {
+                let enabled_str = enabled.to_string();
+                tracing::debug!(
+                    "[agent:emit] PlanModeChanged\n{}",
+                    fmt_kv(&[("session", &session_id), ("enabled", &enabled_str)])
+                );
+            }
             drop(app_handle.emit(
                 "agent:plan_mode_changed",
                 serde_json::json!({
@@ -346,7 +411,13 @@ pub fn setup_event_callbacks(app: &AppHandle, session_manager: &Arc<SessionManag
             session_id,
             enabled,
         } => {
-            tracing::debug!("[agent:emit] accept_mode_changed session={} enabled={}", session_id, enabled);
+            if tracing::enabled!(tracing::Level::DEBUG) {
+                let enabled_str = enabled.to_string();
+                tracing::debug!(
+                    "[agent:emit] AcceptModeChanged\n{}",
+                    fmt_kv(&[("session", &session_id), ("enabled", &enabled_str)])
+                );
+            }
             drop(app_handle.emit(
                 "agent:accept_mode_changed",
                 serde_json::json!({
@@ -359,7 +430,13 @@ pub fn setup_event_callbacks(app: &AppHandle, session_manager: &Arc<SessionManag
             session_id,
             turn_number,
         } => {
-            tracing::debug!("[agent:emit] turn_start session={} turn={}", session_id, turn_number);
+            if tracing::enabled!(tracing::Level::DEBUG) {
+                let turn_str = turn_number.to_string();
+                tracing::debug!(
+                    "[agent:emit] TurnStart\n{}",
+                    fmt_kv(&[("session", &session_id), ("turn", &turn_str)])
+                );
+            }
             drop(app_handle.emit(
                 "agent:turn_start",
                 serde_json::json!({
@@ -369,7 +446,7 @@ pub fn setup_event_callbacks(app: &AppHandle, session_manager: &Arc<SessionManag
             ));
         }
         BridgeEvent::ErrorEvent { error } => {
-            tracing::debug!("[agent:emit] error message={}", error.message);
+            tracing::debug!("[agent:emit] ErrorEvent\n  message : {}", error.message);
             drop(app_handle.emit(
                 "agent:error",
                 serde_json::json!({
@@ -382,7 +459,18 @@ pub fn setup_event_callbacks(app: &AppHandle, session_manager: &Arc<SessionManag
             session_id,
             event,
         } => {
-            tracing::trace!("[agent:emit] debug session={} category={} name={}", session_id, event.category, event.name);
+            if tracing::enabled!(tracing::Level::TRACE) {
+                let data_str = serde_json::to_string_pretty(&event.data).unwrap_or_default();
+                tracing::trace!(
+                    "[agent:debug] {}::{}\n{}",
+                    event.category,
+                    event.name,
+                    fmt_kv(&[
+                        ("session", &session_id),
+                        ("data", &data_str),
+                    ])
+                );
+            }
             drop(app_handle.emit(
                 "agent:debug",
                 serde_json::json!({
