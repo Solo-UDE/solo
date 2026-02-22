@@ -7,6 +7,7 @@ import { useEffect, useRef } from 'react';
 import { AgentWindow } from '@/components/agent';
 import { useAgentStore } from '@/stores/agentStore';
 import { useWorktreeStore } from '@/stores/worktreeStore';
+import { usePanelTabsStore } from '@/stores/panelTabsStore';
 import type { PanelProps } from '@/lib/panels/types';
 
 interface AgentPanelData {
@@ -93,6 +94,10 @@ export function AgentPanel({
     return () => {
       if (sessionId && !deletedRef.current) {
         pendingDeleteRef.current = setTimeout(() => {
+          // Only delete if the tab was actually closed, not just unmounted by a view transition
+          const tabStillExists = usePanelTabsStore.getState().instances.has(instanceId);
+          if (tabStillExists) return;
+
           const store = useAgentStore.getState();
           const messages = store.messages.get(sessionId);
           if (!messages || messages.length === 0) {
