@@ -288,6 +288,8 @@ pub fn run() {
             git_commands::github_complete_auth,
             git_commands::github_get_token,
             git_commands::github_disconnect,
+            git_commands::github_start_device_auth,
+            git_commands::github_poll_device_auth,
             // Session persistence commands
             session_commands::session_get_dir,
             session_commands::session_list_files,

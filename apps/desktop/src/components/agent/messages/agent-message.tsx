@@ -82,7 +82,7 @@ const renderToolWidget = (
 export const AgentMessage: FC<AgentMessageProps> = ({
   content,
   timestamp,
-  agentName = 'Agent',
+  agentName: _agentName = 'Agent',
   onFeedback,
   onToolApproval,
   messageId,

@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Emitter, State};
 use tokio::sync::RwLock;
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 /// Application state for git operations
 pub struct GitState {
@@ -2164,4 +2164,62 @@ pub async fn github_disconnect(
         .clear_github_oauth_token()
         .await
         .map_err(|e| e.to_string())
+}
+
+// =============================================================================
+// GitHub Device Flow Commands
+// =============================================================================
+
+/// Start GitHub Device Flow — returns user_code and verification_uri for display
+#[tauri::command]
+pub async fn github_start_device_auth() -> Result<solo_protocol::GitHubDeviceCodeResponse, String> {
+    info!("Starting GitHub Device Flow");
+
+    let response = solo_auth::GitHubOAuthConfig::start_device_flow()
+        .await
+        .map_err(|e| {
+            error!("GitHub Device Flow start failed: {}", e);
+            e.to_string()
+        })?;
+
+    info!("GitHub Device Flow started — user_code: {}", response.user_code);
+
+    Ok(solo_protocol::GitHubDeviceCodeResponse {
+        user_code: response.user_code,
+        verification_uri: response.verification_uri,
+        device_code: response.device_code,
+        expires_in: response.expires_in,
+        interval: response.interval,
+    })
+}
+
+/// Poll for GitHub Device Flow completion — returns status
+#[tauri::command]
+pub async fn github_poll_device_auth(
+    device_code: String,
+    state: State<'_, crate::provider_commands::ProviderAuthState>,
+) -> Result<solo_protocol::GitHubDevicePollResult, String> {
+    let result = solo_auth::GitHubOAuthConfig::poll_device_token(&device_code)
+        .await
+        .map_err(|e| {
+            error!("GitHub Device Flow poll failed: {}", e);
+            e.to_string()
+        })?;
+
+    match result {
+        solo_auth::DevicePollResult::Complete(token) => {
+            state
+                .credentials
+                .set_github_oauth_token(token)
+                .await
+                .map_err(|e| e.to_string())?;
+            info!("GitHub Device Flow token stored successfully");
+            Ok(solo_protocol::GitHubDevicePollResult::Complete)
+        }
+        solo_auth::DevicePollResult::Pending => Ok(solo_protocol::GitHubDevicePollResult::Pending),
+        solo_auth::DevicePollResult::Expired => Ok(solo_protocol::GitHubDevicePollResult::Expired),
+        solo_auth::DevicePollResult::Error(msg) => {
+            Ok(solo_protocol::GitHubDevicePollResult::Error { message: msg })
+        }
+    }
 }

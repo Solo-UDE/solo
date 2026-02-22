@@ -166,3 +166,21 @@ export const githubGetToken = () =>
 /** Disconnect GitHub — clear stored token */
 export const githubDisconnect = () =>
   invoke<void>('github_disconnect');
+
+// =============================================================================
+// GitHub Device Flow (recommended — no secret, no callback server)
+// =============================================================================
+
+import type { GitHubDeviceCodeResponse } from '../../bindings/GitHubDeviceCodeResponse';
+import type { GitHubDevicePollResult } from '../../bindings/GitHubDevicePollResult';
+
+export type { GitHubDeviceCodeResponse } from '../../bindings/GitHubDeviceCodeResponse';
+export type { GitHubDevicePollResult } from '../../bindings/GitHubDevicePollResult';
+
+/** Start GitHub Device Flow — returns user_code to display and device_code for polling */
+export const githubStartDeviceAuth = () =>
+  invoke<GitHubDeviceCodeResponse>('github_start_device_auth');
+
+/** Poll for GitHub Device Flow completion */
+export const githubPollDeviceAuth = (deviceCode: string) =>
+  invoke<GitHubDevicePollResult>('github_poll_device_auth', { deviceCode });

@@ -439,8 +439,22 @@ impl WorktreeManager {
         if id == "main" {
             return Some(self.repo_path.clone());
         }
-        let config = WorktreeConfig::load(&self.config_path).ok()?;
-        config.get(id).map(|m| PathBuf::from(&m.path))
+
+        // Solo config first (worktrees created through Solo)
+        if let Ok(config) = WorktreeConfig::load(&self.config_path) {
+            if let Some(meta) = config.get(id) {
+                return Some(PathBuf::from(&meta.path));
+            }
+        }
+
+        // Fallback: check git2 worktrees by name
+        if let Ok(repo) = git2::Repository::open(&self.repo_path) {
+            if let Ok(wt) = repo.find_worktree(id) {
+                return Some(wt.path().to_path_buf());
+            }
+        }
+
+        None
     }
 
     /// Get the main repository path.

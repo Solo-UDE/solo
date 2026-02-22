@@ -1,7 +1,7 @@
 /**
  * GitHubSetup — UI for connecting GitHub, creating repos, and initial setup.
  *
- * Uses direct GitHub OAuth (not Supabase) for git operations.
+ * Uses GitHub Device Flow for authentication.
  */
 
 import { useState, useCallback, useEffect } from 'react';
@@ -112,7 +112,7 @@ export const GitHubSetup: FC<GitHubSetupProps> = ({ className }) => {
           ) : (
             <GithubLogo className="w-4 h-4" weight="bold" />
           )}
-          {isConnecting ? 'Connecting...' : 'Sign in with GitHub'}
+          {isConnecting ? 'Starting...' : 'Sign in with GitHub'}
         </Button>
       </div>
     );

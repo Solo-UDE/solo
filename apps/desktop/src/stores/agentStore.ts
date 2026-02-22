@@ -437,10 +437,11 @@ export const useAgentStore = create<AgentStore>()(
 					await backend.agentCreateSession(sessionId, {
 						model: agentModel,
 						resumeSessionId: session.sdkSessionId,
+						cwd: session.workspacePath,
 					});
 				} else {
 					// No SDK session to resume — create fresh bridge session
-					await backend.agentCreateSession(sessionId, { model: agentModel });
+					await backend.agentCreateSession(sessionId, { model: agentModel, cwd: session.workspacePath });
 				}
 
 				set((s) => {
@@ -456,7 +457,7 @@ export const useAgentStore = create<AgentStore>()(
 
 				// Auto-fork: create fresh bridge session, preserving message history
 				try {
-					await backend.agentCreateSession(sessionId, { model: agentModel });
+					await backend.agentCreateSession(sessionId, { model: agentModel, cwd: session.workspacePath });
 					set((s) => {
 						const sess = s.sessions.get(sessionId);
 						if (sess) {
@@ -531,7 +532,7 @@ export const useAgentStore = create<AgentStore>()(
 						id: sessionId,
 						createdAt: new Date(),
 						model: model || 'opus',
-						workspacePath,
+						workspacePath: cwd,
 						turnCount: 0,
 						resumable: false,
 						connectionState: 'active',
