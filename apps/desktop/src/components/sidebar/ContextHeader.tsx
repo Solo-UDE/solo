@@ -2,7 +2,7 @@
  * ContextHeader - Dynamic header showing branch/folder name + view-specific actions
  */
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useRef } from 'react';
 import type { FC } from 'react';
 import {
   GitBranch,
@@ -33,6 +33,8 @@ interface ContextHeaderProps {
 export const ContextHeader: FC<ContextHeaderProps> = ({ onNewSession }) => {
   const activeTab = useUIStore((s) => s.activeTab);
   const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [switcherAnchor, setSwitcherAnchor] = useState<{ top: number; left: number } | null>(null);
+  const branchTriggerRef = useRef<HTMLButtonElement>(null);
 
   // Git state
   const currentBranch = useGitStore((s) => s.currentBranch);
@@ -122,7 +124,17 @@ export const ContextHeader: FC<ContextHeaderProps> = ({ onNewSession }) => {
       {/* Left: Branch/folder name (clickable when git repo) */}
       <div className="relative flex items-center gap-1.5 min-w-0 flex-1">
         <button
-          onClick={() => isGitRepo && setSwitcherOpen((v) => !v)}
+          ref={branchTriggerRef}
+          onClick={() => {
+            if (!isGitRepo) return;
+            setSwitcherOpen((v) => {
+              if (!v && branchTriggerRef.current) {
+                const rect = branchTriggerRef.current.getBoundingClientRect();
+                setSwitcherAnchor({ top: rect.bottom + 4, left: rect.left });
+              }
+              return !v;
+            });
+          }}
           className={cn(
             'flex items-center gap-1.5 h-7 px-2 rounded-lg overflow-hidden max-w-full',
             'text-xs text-muted-foreground bg-muted/30',
@@ -145,8 +157,13 @@ export const ContextHeader: FC<ContextHeaderProps> = ({ onNewSession }) => {
           )}
         </button>
 
-        {/* Branch switcher dropdown */}
-        {switcherOpen && <WorktreeSwitcher onClose={() => setSwitcherOpen(false)} />}
+        {/* Branch switcher dropdown (portaled to body to escape sidebar overflow-hidden) */}
+        {switcherOpen && switcherAnchor && (
+          <WorktreeSwitcher
+            anchorRect={switcherAnchor}
+            onClose={() => setSwitcherOpen(false)}
+          />
+        )}
 
       </div>
 

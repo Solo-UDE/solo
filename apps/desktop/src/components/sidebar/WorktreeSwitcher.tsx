@@ -3,6 +3,7 @@
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import type { FC } from 'react';
 import {
   Plus,
@@ -17,10 +18,11 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 interface WorktreeSwitcherProps {
+  anchorRect: { top: number; left: number };
   onClose: () => void;
 }
 
-export const WorktreeSwitcher: FC<WorktreeSwitcherProps> = ({ onClose }) => {
+export const WorktreeSwitcher: FC<WorktreeSwitcherProps> = ({ anchorRect, onClose }) => {
   const popoverRef = useRef<HTMLDivElement>(null);
 
   // Branch state
@@ -107,11 +109,12 @@ export const WorktreeSwitcher: FC<WorktreeSwitcherProps> = ({ onClose }) => {
     setBranchCreateError('');
   }, []);
 
-  return (
+  return createPortal(
     <div
       ref={popoverRef}
+      style={{ top: anchorRect.top, left: anchorRect.left }}
       className={cn(
-        'absolute top-full left-0 mt-1 w-[260px] z-50',
+        'fixed w-[260px] z-50',
         'bg-card/95 backdrop-blur-md rounded-[14px] p-1.5',
         'shadow-[0_8px_32px_-8px_rgba(0,0,0,0.3)]',
         'animate-in fade-in slide-in-from-top-2 duration-150',
@@ -238,6 +241,7 @@ export const WorktreeSwitcher: FC<WorktreeSwitcherProps> = ({ onClose }) => {
         )}
       </div>
 
-    </div>
+    </div>,
+    document.body,
   );
 };
