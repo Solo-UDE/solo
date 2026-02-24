@@ -35,9 +35,7 @@ export function useAgentStream(options: UseAgentStreamOptions = {}): void {
 		onSessionInit: useAgentStore((s) => s.handleSessionInit),
 		onTurnStart: useAgentStore((s) => s.handleTurnStart),
 		onError: useAgentStore((s) => s.handleError),
-		onPlanModeChanged: (_sessionId: string, enabled: boolean) => {
-			console.log('[AgentStream] Plan mode changed:', enabled);
-		},
+		onPlanModeChanged: useAgentStore((s) => s.handlePlanModeChanged),
 		onAcceptModeChanged: (_sessionId: string, enabled: boolean) => {
 			console.log('[AgentStream] Accept mode changed:', enabled);
 		},

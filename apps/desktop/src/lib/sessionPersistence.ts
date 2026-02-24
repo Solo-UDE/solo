@@ -58,6 +58,8 @@ interface PersistedSessionFileV3 {
     sdkSessionId?: string;       // Claude SDK session ID for resume
     resumable: boolean;          // Whether bridge resume is possible
     workspacePath?: string;      // Project path for filtering
+    worktreeId?: string;         // Worktree binding (survives switches + restarts)
+    worktreeBranch?: string;     // Branch name for display/matching
     totalTokens?: number;        // Accumulated usage
     totalCost?: number;          // Accumulated cost (USD)
     turnCount: number;           // Completed assistant turns
@@ -115,6 +117,8 @@ function serializeSessionV3(
       sdkSessionId: session.sdkSessionId,
       resumable: !!(session.sdkSessionId && session.resumable),
       workspacePath: session.workspacePath,
+      worktreeId: session.worktreeId,
+      worktreeBranch: session.worktreeBranch,
       totalTokens: session.totalTokens,
       totalCost: session.totalCost,
       turnCount: session.turnCount ?? 0,
@@ -175,6 +179,8 @@ function deserializeSessionV3(file: PersistedSessionFileV3): {
       sdkSessionId: meta.sdkSessionId,
       resumable: meta.resumable,
       workspacePath: meta.workspacePath,
+      worktreeId: meta.worktreeId,
+      worktreeBranch: meta.worktreeBranch,
       lastActiveAt: meta.lastActiveAt,
       totalTokens: meta.totalTokens,
       totalCost: meta.totalCost,
