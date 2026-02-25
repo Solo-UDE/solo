@@ -307,6 +307,13 @@ pub enum BridgeRequest {
         #[serde(rename = "apiKey", skip_serializing_if = "Option::is_none")]
         api_key: Option<String>,
     },
+    RefineTranscript {
+        transcript: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        context: Option<String>,
+        #[serde(rename = "apiKey", skip_serializing_if = "Option::is_none")]
+        api_key: Option<String>,
+    },
     Shutdown,
 }
 

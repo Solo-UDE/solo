@@ -31,6 +31,7 @@ uuid = { version = "1.11", features = ["v4"] }
 tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-clipboard-manager = "2"
+tauri-plugin-macos-permissions = "2"
 
 tokio.workspace = true
 serde.workspace = true

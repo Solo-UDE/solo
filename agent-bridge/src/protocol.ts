@@ -157,6 +157,16 @@ export interface GenerateCommitMessageRequest {
 }
 
 /**
+ * Refine a voice transcript using LLM
+ */
+export interface RefineTranscriptRequest {
+  type: 'refine_transcript';
+  transcript: string;
+  context?: string;
+  apiKey?: string;
+}
+
+/**
  * Shutdown the bridge
  */
 export interface ShutdownRequest {
@@ -183,6 +193,7 @@ export type BridgeRequest =
   | IsSessionReadyRequest
   | GetSDKSessionIdRequest
   | GenerateCommitMessageRequest
+  | RefineTranscriptRequest
   | ShutdownRequest;
 
 // ============================================================================
