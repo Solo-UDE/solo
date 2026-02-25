@@ -19,6 +19,10 @@ interface VoiceButtonProps {
   onTranscript?: (text: string) => void;
   showSuggestion?: boolean;
   onSuggestionDismiss?: () => void;
+  /** Recent chat context for ElevenLabs previous_text transcription improvement */
+  previousText?: string;
+  /** Chat context for LLM-based refinement */
+  chatContext?: string;
 }
 
 export const VoiceButton: React.FC<VoiceButtonProps> = ({
@@ -26,15 +30,18 @@ export const VoiceButton: React.FC<VoiceButtonProps> = ({
   onTranscript,
   showSuggestion = false,
   onSuggestionDismiss,
+  previousText,
+  chatContext,
 }) => {
   const {
     isRecording,
+    isRefining,
     partialText,
     error,
     analyserNode,
     startRecording,
     stopRecording,
-  } = useVoiceInput({ onTranscript });
+  } = useVoiceInput({ onTranscript, previousText, chatContext });
 
   // Auto-dismiss suggestion after 5 seconds
   useEffect(() => {
@@ -58,11 +65,26 @@ export const VoiceButton: React.FC<VoiceButtonProps> = ({
 
   const tooltipText = error
     ? `Voice error: ${error}`
-    : isRecording
-      ? partialText || 'Listening...'
-      : 'Voice input';
+    : isRefining
+      ? 'Refining...'
+      : isRecording
+        ? partialText || 'Listening...'
+        : 'Voice input';
 
-  const isSuggestionVisible = showSuggestion && !isRecording;
+  const isSuggestionVisible = showSuggestion && !isRecording && !isRefining;
+
+  // Refining state - brief indicator while LLM processes transcript
+  if (isRefining) {
+    return (
+      <div
+        className="flex items-center gap-1.5 h-[30px] rounded-full bg-muted/60 px-2.5 animate-fade-in-scale"
+        title="Refining transcript..."
+      >
+        <div className="h-3 w-3 rounded-full border-2 border-foreground/30 border-t-foreground/80 animate-spin" />
+        <span className="text-xs font-medium text-muted-foreground">Refining…</span>
+      </div>
+    );
+  }
 
   // Recording state - expanded pill with waveform + stop button
   if (isRecording) {

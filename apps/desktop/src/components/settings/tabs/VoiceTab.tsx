@@ -9,7 +9,7 @@ import { PasswordInput } from '../controls';
 import { SelectDropdown } from '../controls';
 import { ToggleSwitch } from '../controls';
 import { setApiKey, hasApiKey, clearApiKey } from '@/lib/tauri/elevenlabs';
-import { useElevenLabsStore } from '@/stores/elevenlabsStore';
+import { useElevenLabsStore, useRefineEnabled } from '@/stores/elevenlabsStore';
 
 const LANGUAGE_OPTIONS = [
   { value: 'en', label: 'English' },
@@ -35,6 +35,8 @@ export function VoiceTab() {
 
   const hasKey = useElevenLabsStore((s) => s.hasApiKey);
   const storeSetHasKey = useElevenLabsStore((s) => s.setHasApiKey);
+  const refineEnabled = useRefineEnabled();
+  const setRefineEnabled = useElevenLabsStore((s) => s.setRefineEnabled);
 
   // Check if API key is already set on mount
   useEffect(() => {
@@ -141,6 +143,16 @@ export function VoiceTab() {
               value={language}
               options={LANGUAGE_OPTIONS}
               onChange={setLanguage}
+            />
+          </SettingRow>
+
+          <SettingRow
+            label="Refine with AI"
+            description="Use AI to clean up transcription errors, fix technical terms, and remove filler words before inserting text"
+          >
+            <ToggleSwitch
+              checked={refineEnabled}
+              onChange={setRefineEnabled}
             />
           </SettingRow>
         </div>

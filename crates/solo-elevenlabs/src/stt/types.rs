@@ -11,6 +11,8 @@ pub struct SttAudioMessage {
     pub audio_base_64: String,
     pub commit: bool,
     pub sample_rate: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub previous_text: Option<String>,
 }
 
 // =============================================================================

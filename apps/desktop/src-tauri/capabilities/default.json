@@ -10,6 +10,7 @@
     "dialog:allow-open",
     "dialog:default",
     "clipboard-manager:allow-write-text",
-    "clipboard-manager:allow-read-text"
+    "clipboard-manager:allow-read-text",
+    "macos-permissions:default"
   ]
 }

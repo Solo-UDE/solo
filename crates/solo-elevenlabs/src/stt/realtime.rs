@@ -104,16 +104,25 @@ impl RealtimeSttClient {
         // Writer task: forwards commands from cmd_tx to the WebSocket
         let ws_write_clone = Arc::clone(&ws_write);
         let closed_clone = Arc::clone(&closed);
+        let mut previous_text_for_first = config.previous_text.clone();
         let writer_handle = tokio::spawn(async move {
+            let mut is_first_chunk = true;
             while let Some(cmd) = cmd_rx.recv().await {
                 let msg = match &cmd {
                     ClientCommand::SendAudio(audio) => {
-                        // ElevenLabs format: input_audio_chunk with audio_base_64
+                        // Include previous_text only on the first audio chunk
+                        let pt = if is_first_chunk {
+                            is_first_chunk = false;
+                            previous_text_for_first.take()
+                        } else {
+                            None
+                        };
                         let msg = SttAudioMessage {
                             message_type: "input_audio_chunk",
                             audio_base_64: audio.clone(),
                             commit: false,
                             sample_rate,
+                            previous_text: pt,
                         };
                         serde_json::to_string(&msg).ok()
                     }
@@ -124,6 +133,7 @@ impl RealtimeSttClient {
                             audio_base_64: String::new(),
                             commit: true,
                             sample_rate,
+                            previous_text: None,
                         };
                         serde_json::to_string(&msg).ok()
                     }

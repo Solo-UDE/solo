@@ -15,6 +15,11 @@ pub struct SttConfig {
     /// Whether to enable endpoint detection (VAD).
     /// We use manual commit (push-to-talk), so this is false by default.
     pub enable_endpoint_detection: bool,
+
+    /// Text context sent with the first audio chunk to improve transcription accuracy.
+    /// ElevenLabs uses this to better recognize domain terms, proper nouns, and
+    /// technical vocabulary based on conversation context.
+    pub previous_text: Option<String>,
 }
 
 impl Default for SttConfig {
@@ -24,6 +29,7 @@ impl Default for SttConfig {
             sample_rate: 16000,
             encoding: AudioEncoding::PcmS16le,
             enable_endpoint_detection: false,
+            previous_text: None,
         }
     }
 }
