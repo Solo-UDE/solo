@@ -17,9 +17,9 @@ use tracing::{debug, error, info, warn};
 
 const BATCH_FLUSH_INTERVAL: Duration = Duration::from_millis(16);
 
-const SHELL_CONFIG_VERSION: &str = "# solo-shell-v1";
+const SHELL_CONFIG_VERSION: &str = "# solo-shell-v2";
 
-const ZSH_RC: &str = r#"# solo-shell-v1
+const ZSH_RC: &str = r#"# solo-shell-v2
 # Restore original ZDOTDIR for subshells
 if [[ -n "$_SOLO_ORIG_ZDOTDIR" ]]; then
   export ZDOTDIR="$_SOLO_ORIG_ZDOTDIR"
@@ -44,10 +44,10 @@ __solo_git_info() {
   echo " %F{cyan}git:(%F{red}${branch}%F{cyan})%f${dirty}"
 }
 
-precmd() { PROMPT="%F{cyan}→%f  %F{red}%n%f$(__solo_git_info) " }
+precmd() { PROMPT="%F{cyan}→%f  %F{red}%n%f %F{green}%~%f$(__solo_git_info) " }
 "#;
 
-const BASH_RC: &str = r#"# solo-shell-v1
+const BASH_RC: &str = r#"# solo-shell-v2
 [[ -f "${HOME}/.bashrc" ]] && source "${HOME}/.bashrc"
 [[ -z "$SOLO_TERMINAL" ]] && return
 
@@ -62,7 +62,7 @@ __solo_git_info() {
   echo " \[\e[36m\]git:(\[\e[31m\]${branch}\[\e[36m\])\[\e[0m\]${dirty}"
 }
 
-PROMPT_COMMAND='PS1="\[\e[36m\]→\[\e[0m\]  \[\e[31m\]\u\[\e[0m\]$(__solo_git_info) "'
+PROMPT_COMMAND='PS1="\[\e[36m\]→\[\e[0m\]  \[\e[31m\]\u\[\e[0m\] \[\e[32m\]\w\[\e[0m\]$(__solo_git_info) "'
 "#;
 
 fn solo_shell_dir() -> PathBuf {
