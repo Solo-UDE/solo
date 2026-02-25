@@ -80,6 +80,7 @@ export interface Attachment {
 	mimeType?: string;
 	thumbnailUrl?: string;
 	size?: number;
+	base64Data?: string; // Raw base64 for inline images (no data: prefix)
 }
 
 /** File mention from @-mention in Lexical editor */
@@ -127,6 +128,9 @@ export interface AgentSession {
 	turnCount?: number;
 	tags?: string[];
 	summary?: string;
+	// Worktree binding (persisted — survives workspace switches + app restarts)
+	worktreeId?: string;
+	worktreeBranch?: string;
 	// Connection lifecycle (transient — never persisted, always 'archived' on load)
 	connectionState: SessionConnectionState;
 	resumeError?: string;
@@ -135,6 +139,8 @@ export interface AgentSession {
 export interface SessionStreamState {
 	streamingMessageId: string | null;
 	streamingContent: string;
+	/** Per-segment text accumulator — resets after each tool_use block so text between tools gets separate blocks */
+	streamingSegmentContent: string;
 	streamingThinking: string;
 	thinkingStartTime: number | null;
 	activeToolCalls: Map<string, ToolCallState>;
@@ -166,11 +172,24 @@ function toContentBlocks(
 
 	if (attachments) {
 		for (const att of attachments) {
-			blocks.push({
-				type: att.type === 'image' ? 'image' : 'document',
-				name: att.name,
-				filePath: att.path,
-			});
+			if (att.type === 'image' && att.base64Data) {
+				// Inline image (sketch, clipboard paste)
+				blocks.push({
+					type: 'image',
+					name: att.name,
+					source: {
+						type: 'base64',
+						mediaType: att.mimeType || 'image/png',
+						data: att.base64Data,
+					},
+				});
+			} else {
+				blocks.push({
+					type: att.type === 'image' ? 'image' : 'document',
+					name: att.name,
+					filePath: att.path,
+				});
+			}
 		}
 	}
 
@@ -191,6 +210,7 @@ function createDefaultStreamState(): SessionStreamState {
 	return {
 		streamingMessageId: null,
 		streamingContent: '',
+		streamingSegmentContent: '',
 		streamingThinking: '',
 		thinkingStartTime: null,
 		activeToolCalls: new Map(),
@@ -235,11 +255,15 @@ interface AgentState {
 	// UI state
 	isAgentRunning: boolean;
 	error: string | null;
+
+	// Plan mode per session (sessionId -> boolean)
+	planModeActive: Map<string, boolean>;
 }
 
 interface AgentActions {
 	// Session management
 	createSession: (model?: string) => Promise<string>;
+	forkSession: (sourceSessionId: string, model?: string) => Promise<string>;
 	setActiveSession: (sessionId: string) => void;
 	deleteSession: (sessionId: string) => void;
 	renameSession: (sessionId: string, name: string) => void;
@@ -263,8 +287,9 @@ interface AgentActions {
 	handlePermissionRequest: (request: PermissionRequest) => void;
 	handleSessionInit: (sessionId: string, sdkSessionId: string, isResumed: boolean, isForked: boolean) => void;
 	handleTurnStart: (sessionId: string, turnNumber: number) => void;
+	handlePlanModeChanged: (sessionId: string, enabled: boolean) => void;
 	handleError: (message: string, stack?: string) => void;
-	respondPermission: (requestId: string, decision: 'approve' | 'deny', always?: boolean) => Promise<void>;
+	respondPermission: (requestId: string, decision: 'approve' | 'deny', always?: boolean, answers?: Record<string, string>) => Promise<void>;
 
 	// Abort / tool approval (compatibility with master's API surface)
 	abortSession: (sessionId: string) => Promise<void>;
@@ -273,6 +298,9 @@ interface AgentActions {
 	// Session lifecycle
 	ensureActive: (sessionId: string) => Promise<void>;
 	pruneExpiredSessions: (retentionDays: number) => Promise<void>;
+	archiveAllSessions: () => void;
+	saveActiveSessionForWorkspace: (workspacePath: string) => void;
+	restoreActiveSessionForWorkspace: (workspacePath: string) => void;
 
 	// Persistence
 	loadPersistedSessions: () => Promise<void>;
@@ -298,6 +326,7 @@ const initialState: AgentState = {
 	selectedModel: DEFAULT_MODEL_ID,
 	isAgentRunning: false,
 	error: null,
+	planModeActive: new Map(),
 };
 
 // Create per-session debounced save function (saves 1 second after last change)
@@ -422,10 +451,11 @@ export const useAgentStore = create<AgentStore>()(
 					await backend.agentCreateSession(sessionId, {
 						model: agentModel,
 						resumeSessionId: session.sdkSessionId,
+						cwd: session.workspacePath,
 					});
 				} else {
 					// No SDK session to resume — create fresh bridge session
-					await backend.agentCreateSession(sessionId, { model: agentModel });
+					await backend.agentCreateSession(sessionId, { model: agentModel, cwd: session.workspacePath });
 				}
 
 				set((s) => {
@@ -441,7 +471,7 @@ export const useAgentStore = create<AgentStore>()(
 
 				// Auto-fork: create fresh bridge session, preserving message history
 				try {
-					await backend.agentCreateSession(sessionId, { model: agentModel });
+					await backend.agentCreateSession(sessionId, { model: agentModel, cwd: session.workspacePath });
 					set((s) => {
 						const sess = s.sessions.get(sessionId);
 						if (sess) {
@@ -489,6 +519,49 @@ export const useAgentStore = create<AgentStore>()(
 			}
 		},
 
+		archiveAllSessions: () => {
+			// Disconnect bridge connections without deleting session data from memory or disk
+			for (const [sessionId, session] of get().sessions) {
+				if (session.connectionState === 'active' || session.connectionState === 'resuming') {
+					backend.agentDeleteSession(sessionId).catch(console.error);
+				}
+			}
+			set((state) => {
+				for (const session of state.sessions.values()) {
+					session.connectionState = 'archived';
+				}
+				state.activeSessionId = null;
+			});
+			// Flush all pending saves before switch
+			get().persistSessions();
+		},
+
+		saveActiveSessionForWorkspace: (workspacePath: string) => {
+			// Remember which session was active for this workspace so we can restore it later
+			const activeId = get().activeSessionId;
+			if (activeId) {
+				try {
+					localStorage.setItem(`solo-active-session:${workspacePath}`, activeId);
+				} catch {
+					// localStorage may be unavailable — non-critical
+				}
+			}
+		},
+
+		restoreActiveSessionForWorkspace: (workspacePath: string) => {
+			// Re-activate the session that was last used in this workspace
+			try {
+				const savedId = localStorage.getItem(`solo-active-session:${workspacePath}`);
+				if (savedId && get().sessions.has(savedId)) {
+					set((state) => {
+						state.activeSessionId = savedId;
+					});
+				}
+			} catch {
+				// localStorage may be unavailable — non-critical
+			}
+		},
+
 		// =================================================================
 		// Session Management
 		// =================================================================
@@ -516,7 +589,9 @@ export const useAgentStore = create<AgentStore>()(
 						id: sessionId,
 						createdAt: new Date(),
 						model: model || 'opus',
-						workspacePath,
+						workspacePath: cwd,
+						worktreeId: activeWt?.id,
+						worktreeBranch: activeWt?.branch ?? undefined,
 						turnCount: 0,
 						resumable: false,
 						connectionState: 'active',
@@ -526,6 +601,76 @@ export const useAgentStore = create<AgentStore>()(
 				});
 
 				// Bind agent to active worktree (auto-locks it)
+				if (activeWt) {
+					import('@/lib/tauri/worktree').then(({ bindAgent }) => {
+						bindAgent(activeWt.id, sessionId).catch(console.error);
+					});
+				}
+
+				// Apply tool permission policy from settings (fire-and-forget)
+				import('@/stores/settingsStore').then(({ useSettingsStore }) => {
+					const policy = useSettingsStore.getState().ai.toolPermissionPolicy ?? 'smart';
+					const isWorktree = !!activeWt;
+					backend.agentSetToolPolicy(sessionId, policy, isWorktree).catch((e) =>
+						console.warn('[Agent] set_tool_policy:', e)
+					);
+				});
+
+				get().persistSessions(sessionId);
+				return sessionId;
+			} catch (error) {
+				const errorMsg = error instanceof Error ? error.message : String(error);
+				console.error(`Failed to create session: ${errorMsg}`);
+				throw error;
+			}
+		},
+
+		forkSession: async (sourceSessionId: string, model?: string) => {
+			const sourceSession = get().sessions.get(sourceSessionId);
+			if (!sourceSession) throw new Error(`Source session ${sourceSessionId} not found`);
+			if (!sourceSession.sdkSessionId) throw new Error('Source session has no SDK session ID to fork from');
+
+			const sessionId = generateSessionId();
+			const agentModel = toAgentModel(model || sourceSession.model || 'opus');
+
+			try {
+				const { useFileExplorerStore } = await import('@/stores/fileExplorerStore');
+				const workspacePath = useFileExplorerStore.getState().rootPath ?? undefined;
+
+				const { useWorktreeStore } = await import('@/stores/worktreeStore');
+				const worktreeState = useWorktreeStore.getState();
+				const activeWt = worktreeState.activeWorktreeId
+					? worktreeState.worktrees.get(worktreeState.activeWorktreeId)
+					: null;
+				const cwd = activeWt?.path ?? workspacePath;
+
+				await backend.agentCreateSession(sessionId, {
+					model: agentModel,
+					resumeSessionId: sourceSession.sdkSessionId,
+					forkSession: true,
+					cwd,
+				});
+
+				// Copy messages from source session for visual continuity
+				const sourceMessages = get().messages.get(sourceSessionId) || [];
+
+				set((state) => {
+					state.sessions.set(sessionId, {
+						id: sessionId,
+						createdAt: new Date(),
+						model: model || sourceSession.model || 'opus',
+						workspacePath: sourceSession.workspacePath,
+						worktreeId: activeWt?.id ?? sourceSession.worktreeId,
+						worktreeBranch: (activeWt?.branch ?? sourceSession.worktreeBranch) ?? undefined,
+						turnCount: 0,
+						resumable: false,
+						connectionState: 'active',
+					});
+					state.messages.set(sessionId, [...sourceMessages]);
+					state.sessionStreaming.set(sessionId, createDefaultStreamState());
+				});
+
+				// Bind agent to active worktree
 				if (activeWt) {
 					import('@/lib/tauri/worktree').then(({ bindAgent }) => {
 						bindAgent(activeWt.id, sessionId).catch(console.error);
@@ -542,7 +687,7 @@ export const useAgentStore = create<AgentStore>()(
 				return sessionId;
 			} catch (error) {
 				const errorMsg = error instanceof Error ? error.message : String(error);
-				console.error(`Failed to create session: ${errorMsg}`);
+				console.error(`Failed to fork session: ${errorMsg}`);
 				throw error;
 			}
 		},
@@ -590,6 +735,7 @@ export const useAgentStore = create<AgentStore>()(
 					// Reset streaming state
 					streamState.streamingMessageId = null;
 					streamState.streamingContent = '';
+					streamState.streamingSegmentContent = '';
 					streamState.streamingThinking = '';
 					streamState.thinkingStartTime = null;
 					streamState.activeToolCalls = new Map();
@@ -677,6 +823,7 @@ export const useAgentStore = create<AgentStore>()(
 				const streamState = getOrCreateStreamState(state.sessionStreaming, sessionId);
 				streamState.streamingMessageId = assistantMessageId;
 				streamState.streamingContent = '';
+				streamState.streamingSegmentContent = '';
 				streamState.streamingThinking = '';
 				streamState.isStreaming = true;
 				streamState.error = null;
@@ -757,8 +904,9 @@ export const useAgentStore = create<AgentStore>()(
 
 				switch (message.type) {
 					case 'text': {
-						// Append text delta to streaming content
-						streamState.streamingContent += message.content;
+						// Append text delta to both accumulators
+						streamState.streamingContent += message.content;        // total (for msg.content)
+						streamState.streamingSegmentContent += message.content;  // per-block segment
 
 						if (messages && streamState.streamingMessageId) {
 							const msg = messages.find((m) => m.id === streamState.streamingMessageId);
@@ -766,11 +914,13 @@ export const useAgentStore = create<AgentStore>()(
 								msg.content = streamState.streamingContent;
 
 								// Ordered blocks: append to last text block or create new one
+								// Uses streamingSegmentContent so each text segment between tools
+								// gets its own block with proper markdown boundaries
 								const lastBlock = msg.blocks[msg.blocks.length - 1];
 								if (lastBlock && lastBlock.type === 'text') {
-									lastBlock.text = streamState.streamingContent;
+									lastBlock.text = streamState.streamingSegmentContent;
 								} else {
-									msg.blocks.push({ type: 'text', text: streamState.streamingContent });
+									msg.blocks.push({ type: 'text', text: streamState.streamingSegmentContent });
 								}
 							}
 						}
@@ -811,6 +961,7 @@ export const useAgentStore = create<AgentStore>()(
 
 						const toolId = meta.toolId;
 						const toolStatus = meta.status || 'running';
+						console.log('[DIAG] tool_use event', meta.toolName, toolId, 'status:', toolStatus);
 
 						if (messages && streamState.streamingMessageId) {
 							const msg = messages.find((m) => m.id === streamState.streamingMessageId);
@@ -820,8 +971,13 @@ export const useAgentStore = create<AgentStore>()(
 								// Try to find existing entry by toolId first
 								let tc = msg.toolCalls.find((t) => t.id === toolId);
 
-								if (!tc && toolStatus === 'running') {
-									// Check for a permission-created entry with same name
+								if (!tc) {
+									// Check for a permission-created entry with same name.
+									// Permission-created tools use requestId as their id, which differs
+									// from the SDK's toolId. This fallback links them together.
+									// Must run for ALL statuses (not just 'running') so completion
+									// events can also match — e.g. AskUserQuestion may skip the
+									// intermediate 'running' event from the SDK.
 									tc = [...msg.toolCalls].reverse().find(
 										(t) => t.name === meta.toolName &&
 											(t.status === 'awaiting-permission' || t.status === 'running')
@@ -844,18 +1000,22 @@ export const useAgentStore = create<AgentStore>()(
 										block.toolCall.status = tc.status;
 										if (meta.toolOutput) block.toolCall.output = meta.toolOutput;
 									}
-								} else if (toolStatus === 'running') {
-									// Brand new tool (no permission required)
+								} else if (toolStatus === 'awaiting-permission' || toolStatus === 'running') {
+									// New tool entry — awaiting-permission from bridge (then quick
+									// success for auto-approved, or permission_request for prompted)
 									const newTc: ToolCallState = {
 										id: toolId,
 										name: meta.toolName || 'unknown',
 										input: meta.toolInput,
-										status: 'running',
+										status: toolStatus as ToolCallState['status'],
 									};
 									msg.toolCalls.push(newTc);
 
 									// Push ordered block — this creates the interleaving
 									msg.blocks.push({ type: 'tool_use', toolCall: newTc });
+
+									// Reset segment content so the next text delta starts a fresh block
+									streamState.streamingSegmentContent = '';
 								}
 							}
 						}
@@ -928,6 +1088,7 @@ export const useAgentStore = create<AgentStore>()(
 						}
 						streamState.streamingMessageId = null;
 						streamState.streamingContent = '';
+						streamState.streamingSegmentContent = '';
 						streamState.streamingThinking = '';
 						streamState.thinkingStartTime = null;
 						streamState.activeToolCalls = new Map();
@@ -951,6 +1112,7 @@ export const useAgentStore = create<AgentStore>()(
 
 						streamState.streamingMessageId = null;
 						streamState.streamingContent = '';
+						streamState.streamingSegmentContent = '';
 						streamState.streamingThinking = '';
 						streamState.thinkingStartTime = null;
 						streamState.activeToolCalls = new Map();
@@ -963,9 +1125,41 @@ export const useAgentStore = create<AgentStore>()(
 			if (message.type === 'result' || message.type === 'error') {
 				get().persistSessions(sessionId);
 			}
+
+			// Auto-generate title after first assistant turn completes
+			if (message.type === 'result') {
+				const currentSession = get().sessions.get(sessionId);
+				if (currentSession && !currentSession.name && currentSession.turnCount === 1) {
+					const sessionMessages = get().messages.get(sessionId) || [];
+					const firstUserMsg = sessionMessages.find((m) => m.role === 'user');
+					const firstAssistantMsg = sessionMessages.find(
+						(m) => m.role === 'assistant' && !m.isStreaming,
+					);
+					if (firstUserMsg && firstAssistantMsg) {
+						import('@tauri-apps/api/core').then(({ invoke }) => {
+							invoke<string>('agent_generate_session_title', {
+								userMessage: firstUserMsg.content,
+								assistantMessage: firstAssistantMsg.content,
+							})
+								.then((title) => {
+									if (title) {
+										const sess = get().sessions.get(sessionId);
+										if (sess && !sess.name) {
+											get().renameSession(sessionId, title);
+										}
+									}
+								})
+								.catch((err) => {
+									console.warn('[Agent] Title generation failed:', err);
+								});
+						});
+					}
+				}
+			}
 		},
 
 		handlePermissionRequest: (request: PermissionRequest) => {
+			console.log('[DIAG] handlePermissionRequest called', request.toolName, request.requestId, request.sessionId);
 			set((state) => {
 				state.pendingPermissions.set(request.requestId, request);
 
@@ -977,25 +1171,51 @@ export const useAgentStore = create<AgentStore>()(
 						const msg = messages.find((m) => m.id === streamState.streamingMessageId);
 						if (msg) {
 							if (!msg.toolCalls) msg.toolCalls = [];
-							const newTc: ToolCallState = {
-								id: request.requestId,
-								name: request.toolName,
-								input: request.toolInput,
-								status: 'awaiting-permission',
-								requestId: request.requestId,
-							};
-							msg.toolCalls.push(newTc);
 
-							// Push ordered block for interleaving
-							msg.blocks.push({ type: 'tool_use', toolCall: newTc });
+							// Look for an existing entry created by tool_use event
+							// that hasn't been linked to a permission request yet
+							const existing = [...msg.toolCalls].reverse().find(
+								(t) => t.name === request.toolName &&
+									t.status === 'awaiting-permission' &&
+									!t.requestId
+							);
+
+							if (existing) {
+								// Link permission request to the existing tool_use entry
+								existing.requestId = request.requestId;
+								// Update the matching block too
+								const block = msg.blocks.find(
+									(b) => b.type === 'tool_use' && b.toolCall.id === existing.id
+								);
+								if (block && block.type === 'tool_use') {
+									block.toolCall.requestId = request.requestId;
+								}
+							} else {
+								// Fallback: create new entry (if permission_request arrives before tool_use)
+								const newTc: ToolCallState = {
+									id: request.requestId,
+									name: request.toolName,
+									input: request.toolInput,
+									status: 'awaiting-permission',
+									requestId: request.requestId,
+								};
+								msg.toolCalls.push(newTc);
+								msg.blocks.push({ type: 'tool_use', toolCall: newTc });
+							}
+							console.log('[DIAG] Permission entry created/linked, blocks:', msg.blocks.length, 'toolCalls:', msg.toolCalls?.length);
 						}
 					}
+
+					// Reset segment content so the next text delta starts a fresh block
+					streamState.streamingSegmentContent = '';
 				}
 			});
 		},
 
 		handleSessionInit: (sessionId: string, sdkSessionId: string, _isResumed: boolean, _isForked: boolean) => {
-			// Snapshot session + messages inside Immer for immediate persistence
+			// Snapshot session + messages inside Immer for immediate persistence.
+			// Must deep-clone to fully escape Immer proxies — after set() returns,
+			// all proxies are revoked and any retained references throw.
 			let sessionSnapshot: AgentSession | undefined;
 			let messagesSnapshot: Message[] = [];
 
@@ -1004,15 +1224,28 @@ export const useAgentStore = create<AgentStore>()(
 				if (session) {
 					session.sdkSessionId = sdkSessionId;
 					session.resumable = true;
-					// Snapshot current state for persistence outside Immer
-					sessionSnapshot = { ...session, createdAt: new Date(session.createdAt) };
-					messagesSnapshot = [...(state.messages.get(sessionId) || [])];
+					// JSON round-trip avoids DataCloneError that structuredClone throws
+					// on Immer proxy objects (Maps, Sets, Proxy wrappers from enableMapSet).
+					const rawSession = JSON.parse(JSON.stringify(session)) as AgentSession;
+					rawSession.createdAt = new Date(rawSession.createdAt);
+					sessionSnapshot = rawSession;
+					const rawMessages = JSON.parse(JSON.stringify(
+						state.messages.get(sessionId) || []
+					)) as Message[];
+					for (const m of rawMessages) {
+						m.timestamp = new Date(m.timestamp);
+					}
+					messagesSnapshot = rawMessages;
 				}
 			});
 
 			// Persist immediately (no debounce) — sdkSessionId is critical for resume
 			if (sessionSnapshot) {
-				saveSession(sessionSnapshot, messagesSnapshot);
+				try {
+					saveSession(sessionSnapshot, messagesSnapshot);
+				} catch (e) {
+					console.error('[handleSessionInit] Failed to persist session:', e);
+				}
 			}
 		},
 
@@ -1025,6 +1258,12 @@ export const useAgentStore = create<AgentStore>()(
 			});
 		},
 
+		handlePlanModeChanged: (sessionId: string, enabled: boolean) => {
+			set((state) => {
+				state.planModeActive.set(sessionId, enabled);
+			});
+		},
+
 		handleError: (message: string, _stack?: string) => {
 			console.error('[Agent bridge error]', message);
 			set((state) => {
@@ -1032,9 +1271,9 @@ export const useAgentStore = create<AgentStore>()(
 			});
 		},
 
-		respondPermission: async (requestId: string, decision: 'approve' | 'deny', always: boolean = false) => {
+		respondPermission: async (requestId: string, decision: 'approve' | 'deny', always: boolean = false, answers?: Record<string, string>) => {
 			try {
-				await backend.agentRespondPermission(requestId, decision, always);
+				await backend.agentRespondPermission(requestId, decision, always, answers);
 			} catch (error) {
 				console.error('Failed to respond to permission:', error);
 			}
@@ -1057,7 +1296,13 @@ export const useAgentStore = create<AgentStore>()(
 					state.pendingPermissions.delete(requestId);
 				}
 
-				const newStatus = decision === 'approve' ? 'running' as const : 'error' as const;
+				// AskUserQuestion is fully resolved once the user submits answers —
+				// the user's response IS the tool output, so mark as success immediately
+				// rather than waiting for a backend round-trip.
+				const isAskQuestion = request?.toolName?.toLowerCase() === 'askuserquestion';
+				const newStatus = decision === 'deny'
+					? 'error' as const
+					: (isAskQuestion ? 'success' as const : 'running' as const);
 				const denyOutput = decision === 'deny' ? 'Denied by user' : undefined;
 
 				// Update tool call status in the relevant message
@@ -1100,6 +1345,7 @@ export const useAgentStore = create<AgentStore>()(
 						if (decision === 'deny') {
 							streamState.streamingMessageId = null;
 							streamState.streamingContent = '';
+							streamState.streamingSegmentContent = '';
 							streamState.streamingThinking = '';
 							streamState.thinkingStartTime = null;
 							streamState.activeToolCalls = new Map();
@@ -1260,4 +1506,11 @@ export const usePendingToolApprovals = (): PermissionRequest[] => {
 
 export const useSelectedModel = (): string => {
 	return useAgentStore((state) => state.selectedModel);
+};
+
+export const usePlanModeActive = (sessionId: string | null): boolean => {
+	return useAgentStore((state) => {
+		if (!sessionId) return false;
+		return state.planModeActive.get(sessionId) ?? false;
+	});
 };

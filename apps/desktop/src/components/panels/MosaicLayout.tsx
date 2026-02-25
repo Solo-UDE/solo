@@ -34,12 +34,11 @@ export function MosaicLayout() {
       activateNextTab: state.activateNextTab,
       activatePrevTab: state.activatePrevTab,
       activateTabByIndex: state.activateTabByIndex,
-      closeActiveTab: state.closeActiveTab,
     };
   }, []);
 
   const { setMosaicTree, initializeDefaultLayout } = layoutActions;
-  const { activateNextTab, activatePrevTab, activateTabByIndex, closeActiveTab } = tabActions;
+  const { activateNextTab, activatePrevTab, activateTabByIndex } = tabActions;
 
   // Initialize default layout if no tree exists
   useEffect(() => {
@@ -54,12 +53,7 @@ export function MosaicLayout() {
       // Determine the target tile (focused or default)
       const targetTile = focusedTileId || DEFAULT_TILES.editor;
 
-      // Cmd+W - Close active tab
-      if (e.metaKey && e.key === 'w') {
-        e.preventDefault();
-        closeActiveTab(targetTile);
-        return;
-      }
+      // Cmd+W is handled globally in App.tsx (supports both terminal + editor tabs)
 
       // Ctrl+Tab / Ctrl+Shift+Tab - Next/Previous tab
       if (e.ctrlKey && e.key === 'Tab') {
@@ -85,7 +79,7 @@ export function MosaicLayout() {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [focusedTileId, activateNextTab, activatePrevTab, activateTabByIndex, closeActiveTab]);
+  }, [focusedTileId, activateNextTab, activatePrevTab, activateTabByIndex]);
 
   // Handle tree changes from mosaic (e.g., resize, drag)
   const handleChange = useCallback(

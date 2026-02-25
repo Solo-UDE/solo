@@ -90,15 +90,40 @@ export function useAgentSession(
 		if (autoCreate && !propSessionId && !localSessionId && !autoCreated.current) {
 			autoCreated.current = true;
 
-			// Reuse the most recent existing session instead of creating a duplicate
+			// Reuse the most recent session matching the current workspace + worktree context
 			const existingSessions = useAgentStore.getState().sessions;
 			if (existingSessions.size > 0) {
-				const mostRecent = [...existingSessions.values()]
-					.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
-				if (mostRecent) {
-					setLocalSessionId(mostRecent.id);
-					return;
-				}
+				// Lazy imports to avoid circular deps
+				Promise.all([
+					import('@/stores/worktreeStore'),
+					import('@/stores/fileExplorerStore'),
+				]).then(([{ useWorktreeStore }, { useFileExplorerStore }]) => {
+					const currentWorktreeId = useWorktreeStore.getState().activeWorktreeId;
+					const currentRootPath = useFileExplorerStore.getState().rootPath;
+
+					const matching = [...existingSessions.values()]
+						.filter((s) => {
+							// Filter by workspace path (cross-repo scoping)
+							if (currentRootPath && s.workspacePath) {
+								if (!s.workspacePath.startsWith(currentRootPath)) return false;
+							}
+							if (currentWorktreeId) return s.worktreeId === currentWorktreeId;
+							// Main workspace: prefer unbound sessions
+							return !s.worktreeId;
+						})
+						.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+					if (matching.length > 0) {
+						setLocalSessionId(matching[0].id);
+						return;
+					}
+
+					// No matching session found — create new one
+					storeCreateSession(defaultModel)
+						.then((newId) => setLocalSessionId(newId))
+						.catch(console.error);
+				});
+				return;
 			}
 
 			storeCreateSession(defaultModel)

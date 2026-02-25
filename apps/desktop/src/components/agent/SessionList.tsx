@@ -9,7 +9,8 @@ import { Plus, ChatTeardrop, DotsThree, PencilSimple, Trash, MagnifyingGlass } f
 import { useAgentStore, useSessions, useActiveSessionId } from '@/stores/agentStore';
 import type { Message } from '@/stores/agentStore';
 import { usePanelTabsStore } from '@/stores/panelTabsStore';
-import { useWorktreeStore, useWorktreeBoundSessionIds } from '@/stores/worktreeStore';
+import { useWorktreeStore } from '@/stores/worktreeStore';
+import { useFileExplorerStore } from '@/stores/fileExplorerStore';
 import { BUILTIN_PANEL_TYPES } from '@/lib/panels/constants';
 import { useInlineRename } from '@/hooks/useInlineRename';
 import { cn } from '@/lib/utils';
@@ -226,8 +227,8 @@ const SessionItem: FC<{
             />
           ) : (
             <>
-              <span className="text-sm truncate block">{title}</span>
-              <span className="text-xs text-muted-foreground/60 truncate block">
+              <span className="text-[12.5px] truncate block">{title}</span>
+              <span className="text-[11px] text-muted-foreground/60 truncate block">
                 {formatSessionDate(session.createdAt)}
               </span>
             </>
@@ -293,23 +294,27 @@ export const SessionList: FC<SessionListProps> = ({
   const renameSession = useAgentStore((state) => state.renameSession);
   const deleteSession = useAgentStore((state) => state.deleteSession);
 
-  // Worktree scoping
+  // Workspace + worktree scoping — filters by repository path, then by worktree context
   const activeWorktreeId = useWorktreeStore((s) => s.activeWorktreeId);
-  const activeWorktreeMap = useWorktreeStore((s) => s.worktrees);
-  const boundSessionIds = useWorktreeBoundSessionIds();
+  const currentRootPath = useFileExplorerStore((s) => s.rootPath);
 
-  // Scope sessions by active worktree
   const scopedSessions = useMemo(() => {
-    const activeWt = activeWorktreeId ? activeWorktreeMap.get(activeWorktreeId) : null;
     return sessions.filter((session) => {
-      if (activeWt) {
+      // Filter by workspace (repository) — prevents cross-repo session bleed
+      if (currentRootPath && session.workspacePath) {
+        if (!session.workspacePath.startsWith(currentRootPath)) {
+          return false;
+        }
+      }
+      // Filter by worktree context
+      if (activeWorktreeId) {
         // In a worktree: show sessions bound to this worktree + unbound sessions
-        return session.id === activeWt.agent_session_id || !boundSessionIds.has(session.id);
+        return session.worktreeId === activeWorktreeId || !session.worktreeId;
       }
       // Main workspace: show only unbound sessions
-      return !boundSessionIds.has(session.id);
+      return !session.worktreeId;
     });
-  }, [sessions, activeWorktreeId, activeWorktreeMap, boundSessionIds]);
+  }, [sessions, activeWorktreeId, currentRootPath]);
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('');

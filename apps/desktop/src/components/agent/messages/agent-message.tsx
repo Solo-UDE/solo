@@ -1,20 +1,21 @@
 import { AgentNarrative } from './agent-narrative';
 import { InterruptIndicator } from './interrupt-indicator';
 import { MessageActions } from './message-actions';
-import { MessageFeedback } from './message-feedback';
 import { NotifyUserCard } from './notify-user-card';
 import { ProceedIndicator } from './proceed-indicator';
+import { SoloAgentBadge } from './SoloAgentBadge';
 import { ThinkingBox } from './thinking-box';
-import { TurnProgress } from './turn-progress';
 import { TodoToolWidget } from './tools';
 import { renderToolCard } from '../streaming/tool-registry';
 import { StreamingSkeleton } from '../streaming/StreamingSkeleton';
 import { ToolApprovalCard } from '../streaming/ToolApprovalCard';
+import { AskUserQuestionCard } from '../streaming/AskUserQuestionCard';
 import { ProgressTracker } from '../streaming/ProgressTracker';
-import { deriveProgressPhases } from '@/lib/deriveProgressPhases';
+import { ProgressTrackerItem } from '../streaming/ProgressTrackerItem';
+import { deriveProgressPhases, buildInterleavedTimeline } from '@/lib/deriveProgressPhases';
 import type { RenderBlock } from '../messageAdapter';
 
-import type { FC, ReactNode } from 'react';
+import type { CSSProperties, FC, ReactNode } from 'react';
 
 export interface PendingApproval {
   requestId: string;
@@ -54,8 +55,8 @@ export interface AgentMessageProps {
   content: AgentMessageContent;
   timestamp: Date;
   agentName?: string;
-  onFeedback?: (messageId: string, feedback: 'good' | 'bad') => void;
   onToolApproval?: (toolCallId: string, approved: boolean) => void;
+  onAnswerQuestion?: (requestId: string, answers: Record<string, string>) => void;
   messageId?: string;
   className?: string;
 }
@@ -67,23 +68,56 @@ const renderToolWidget = (
   toolInput: Record<string, unknown>,
   status: 'running' | 'success' | 'error',
   output?: string,
+  style?: CSSProperties,
 ): ReactNode => {
-  // TodoWrite has unique props — handle separately
-  if (toolName.toLowerCase() === 'todowrite') {
+  const name = toolName.toLowerCase();
+
+  // TodoWrite and TaskCreate/TaskUpdate use the todo widget
+  if (name === 'todowrite' || name === 'taskcreate') {
+    // TodoWrite passes an array of todos; TaskCreate passes a single task
     const todosInput = toolInput['todos'];
-    return <TodoToolWidget key={key} todos={Array.isArray(todosInput) ? todosInput : undefined} isRunning={status === 'running'} />;
+    const todos = Array.isArray(todosInput)
+      ? todosInput
+      : [{ content: (toolInput['subject'] as string) || (toolInput['description'] as string), status: status === 'success' ? 'completed' : 'pending' }];
+    return <TodoToolWidget key={key} todos={todos} isRunning={status === 'running'} />;
+  }
+
+  if (name === 'taskupdate') {
+    const taskId = toolInput['taskId'] as string || '';
+    const newStatus = toolInput['status'] as string || '';
+    const subject = toolInput['subject'] as string || '';
+    const label = subject || `Task ${taskId}`;
+    return <TodoToolWidget key={key} todos={[{ content: label, status: newStatus || (status === 'success' ? 'completed' : 'pending') }]} isRunning={status === 'running'} />;
+  }
+
+  if (name === 'tasklist' || name === 'taskget') {
+    // Show output as a list if available, otherwise just the generic card
+    if (output) {
+      try {
+        const parsed = JSON.parse(output);
+        if (Array.isArray(parsed)) {
+          const todos = parsed.map((t: Record<string, unknown>) => ({
+            content: (t['subject'] as string) || (t['description'] as string) || JSON.stringify(t),
+            status: (t['status'] as string) || 'pending',
+            id: t['id'] as string,
+          }));
+          return <TodoToolWidget key={key} todos={todos} isRunning={false} />;
+        }
+      } catch { /* fall through to generic card */ }
+    }
+    return renderToolCard(key, toolName, toolInput, status, output);
   }
 
   // Use the registry for all other tools
-  return renderToolCard(key, toolName, toolInput, status, output);
+  return renderToolCard(key, toolName, toolInput, status, output, style);
 };
 
 export const AgentMessage: FC<AgentMessageProps> = ({
   content,
   timestamp,
-  agentName = 'Agent',
-  onFeedback,
+  agentName: _agentName = 'Agent',
   onToolApproval,
+  onAnswerQuestion,
   messageId,
   className = '',
 }) => {
@@ -95,16 +129,14 @@ export const AgentMessage: FC<AgentMessageProps> = ({
     }).format(date);
   };
 
-  const handleFeedback = (feedback: 'good' | 'bad'): void => {
-    if (onFeedback && messageId) {
-      onFeedback(messageId, feedback);
-    }
-  };
-
   // Use ordered blocks if available, otherwise fall back to legacy rendering
   const hasBlocks = content.blocks && content.blocks.length > 0;
 
-  const progressPhases = content.isStreaming
+  // Build interleaved timeline for block-based messages, legacy phases for fallback
+  const timeline = hasBlocks
+    ? buildInterleavedTimeline(content.blocks ?? [], !!content.isStreaming)
+    : [];
+  const legacyProgressPhases = !hasBlocks && content.isStreaming
     ? deriveProgressPhases(content.blocks ?? [], true)
     : [];
 
@@ -114,43 +146,69 @@ export const AgentMessage: FC<AgentMessageProps> = ({
       <div className="flex-1 min-w-0 space-y-3">
         {/* Header */}
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-foreground">{agentName}</span>
+          <SoloAgentBadge />
           <span className="text-xs text-muted-foreground">{formatTime(timestamp)}</span>
           {content.autoProceed ? <ProceedIndicator /> : null}
         </div>
 
-        {/* === Ordered Blocks Rendering === */}
+        {/* === Ordered Blocks Rendering (interleaved timeline) === */}
         {hasBlocks ? (
           <div className="space-y-3">
-            {/* Progress tracker — shows semantic phases derived from blocks */}
-            {progressPhases.length > 0 ? <ProgressTracker phases={progressPhases} /> : null}
-            {content.blocks!.map((block, i) => {
+            {timeline.map((entry) => {
+              if (entry.kind === 'progress') {
+                return (
+                  <ProgressTrackerItem
+                    key={entry.phase.id}
+                    label={entry.phase.label}
+                    status={entry.phase.status}
+                    isFirst={true}
+                    preview={entry.phase.preview}
+                  />
+                );
+              }
+              // entry.kind === 'content'
+              const block = entry.block;
+              const idx = entry.blockIndex;
               switch (block.type) {
                 case 'narrative':
                   return block.content ? (
-                    <AgentNarrative key={`block-${i}`} content={block.content} isStreaming={content.isStreaming} />
+                    <AgentNarrative key={`block-${idx}`} content={block.content} isStreaming={content.isStreaming} />
                   ) : null;
                 case 'thinking':
                   return block.content ? (
                     <ThinkingBox
-                      key={`block-${i}`}
+                      key={`block-${idx}`}
                       thinking={block.content}
                       thinkingDurationMs={block.durationMs}
                       isStreaming={block.isStreaming}
                     />
                   ) : null;
-                case 'toolCall':
+                case 'toolCall': {
+                  const toolIndex = content.blocks!.slice(0, idx).filter(b => b.type === 'toolCall').length;
                   return renderToolWidget(
-                    `block-${i}`,
+                    `block-${idx}`,
                     block.toolName,
                     block.toolInput,
                     block.status,
                     block.output,
+                    toolIndex > 0 ? { animationDelay: `${toolIndex * 60}ms` } : undefined,
                   );
+                }
                 case 'approval':
+                  if (block.toolName.toLowerCase() === 'askuserquestion') {
+                    return (
+                      <AskUserQuestionCard
+                        key={`block-${idx}`}
+                        requestId={block.requestId}
+                        toolInput={block.toolInput}
+                        onSubmit={(requestId, answers) => onAnswerQuestion?.(requestId, answers)}
+                        onReject={(requestId) => onToolApproval?.(requestId, false)}
+                      />
+                    );
+                  }
                   return (
                     <ToolApprovalCard
-                      key={`block-${i}`}
+                      key={`block-${idx}`}
                       requestId={block.requestId}
                       toolName={block.toolName}
                       toolInput={block.toolInput}
@@ -162,16 +220,13 @@ export const AgentMessage: FC<AgentMessageProps> = ({
                   return null;
               }
             })}
-
-            {/* Trailing gap is handled by deriveProgressPhases — it appends
-                an active "Reasoning" phase when the last block is completed. */}
           </div>
         ) : (
           /* === Legacy (non-block) Rendering === */
           <>
             {/* Progress tracker for pre-block streaming, fallback skeleton for legacy messages */}
             {content.isStreaming && !content.narrative && !content.toolCalls?.length ? (
-              progressPhases.length > 0 ? <ProgressTracker phases={progressPhases} /> : <StreamingSkeleton />
+              legacyProgressPhases.length > 0 ? <ProgressTracker phases={legacyProgressPhases} /> : <StreamingSkeleton />
             ) : null}
 
             {/* Narrative */}
@@ -212,8 +267,6 @@ export const AgentMessage: FC<AgentMessageProps> = ({
           </>
         )}
 
-        {/* Turn progress indicator */}
-        {content.turnNumber ? <TurnProgress turnNumber={content.turnNumber} /> : null}
 
         {/* Message Actions (shown after message completes, not during streaming) */}
         {!content.isStreaming && !content.isInterrupted && content.isLastAssistantMessage !== undefined ? (
@@ -240,8 +293,6 @@ export const AgentMessage: FC<AgentMessageProps> = ({
           </div>
         ) : null}
 
-        {/* Feedback */}
-        {onFeedback && messageId ? <MessageFeedback onFeedback={handleFeedback} /> : null}
       </div>
     </div>
   );

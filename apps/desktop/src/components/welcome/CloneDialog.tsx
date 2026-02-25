@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { X, FolderOpen, GitBranch, GithubLogo, SpinnerGap, Warning } from '@phosphor-icons/react';
+import { X, FolderOpen, GitBranch, GithubLogo, SpinnerGap, Warning, CircleNotch } from '@phosphor-icons/react';
 import { Button, IconButton, Input } from '@solo/ui';
 import { openFolderDialog } from '@/lib/tauri/fs';
 import { gitClone } from '@/lib/tauri/git';
@@ -185,8 +185,12 @@ export function CloneDialog({ onClose }: CloneDialogProps) {
                   disabled={isConnecting}
                   className="w-full h-8 text-xs"
                 >
-                  <GithubLogo className="w-3.5 h-3.5" weight="bold" />
-                  {isConnecting ? 'Connecting...' : 'Sign in with GitHub to clone private repos'}
+                  {isConnecting ? (
+                    <CircleNotch className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <GithubLogo className="w-3.5 h-3.5" weight="bold" />
+                  )}
+                  {isConnecting ? 'Waiting for authorization...' : 'Sign in with GitHub to clone private repos'}
                 </Button>
               )}
             </div>

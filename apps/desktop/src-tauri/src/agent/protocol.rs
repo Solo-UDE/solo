@@ -314,6 +314,14 @@ pub enum BridgeRequest {
         #[serde(rename = "apiKey", skip_serializing_if = "Option::is_none")]
         api_key: Option<String>,
     },
+    GenerateSessionTitle {
+        #[serde(rename = "userMessage")]
+        user_message: String,
+        #[serde(rename = "assistantMessage")]
+        assistant_message: String,
+        #[serde(rename = "apiKey", skip_serializing_if = "Option::is_none")]
+        api_key: Option<String>,
+    },
     Shutdown,
 }
 

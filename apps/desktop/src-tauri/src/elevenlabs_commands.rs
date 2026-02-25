@@ -280,6 +280,7 @@ pub async fn elevenlabs_tts_speak(
     text: String,
     voice_id: Option<String>,
     model_id: Option<String>,
+    speed: Option<f32>,
     state: State<'_, ElevenLabsState>,
     auth: State<'_, ProviderAuthState>,
 ) -> Result<(), String> {
@@ -301,6 +302,9 @@ pub async fn elevenlabs_tts_speak(
     }
     if let Some(mid) = model_id {
         config.model_id = mid;
+    }
+    if let Some(s) = speed {
+        config.speed = s;
     }
 
     let sid = session_id.clone();

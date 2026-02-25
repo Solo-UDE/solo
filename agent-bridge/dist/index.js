@@ -229,68 +229,13 @@ function localize(_key, message) {
   return message;
 }
 
-// src/tool-policy.ts
-var logger2 = createLogger("ToolPolicy");
-var TIER_0_TOOLS = /* @__PURE__ */ new Set([
-  "Read",
-  "Glob",
-  "Grep",
-  "WebSearch",
-  "WebFetch",
-  "Task",
-  "TodoWrite",
-  "AskUserQuestion",
-  "ListMcpResourcesTool",
-  "ReadMcpResourceTool"
-]);
-var TIER_1_TOOLS = /* @__PURE__ */ new Set([
-  "Write",
-  "Edit",
-  "NotebookEdit",
-  "ExitPlanMode"
-]);
-var TIER_2_TOOLS = /* @__PURE__ */ new Set([
-  "Bash",
-  "BashOutput",
-  "KillShell"
-]);
-function getToolTier(toolName) {
-  if (TIER_0_TOOLS.has(toolName)) return 0;
-  if (TIER_1_TOOLS.has(toolName)) return 1;
-  if (TIER_2_TOOLS.has(toolName)) return 2;
-  return 2;
-}
-function evaluatePolicy(toolName, mode, context) {
-  if (mode === "approve-all") return "auto-approve";
-  if (mode === "ask-all") return "prompt";
-  const tier = getToolTier(toolName);
-  switch (tier) {
-    case 0:
-      return "auto-approve";
-    case 1:
-      if (context.isWorktreeSession) {
-        logger2.debug({ toolName, tier }, "Auto-approving Tier 1 tool in worktree");
-        return "auto-approve";
-      }
-      return "prompt";
-    case 2:
-      return "prompt";
-    case 3:
-      return "deny";
-    default:
-      return "prompt";
-  }
-}
-
 // src/permissions.ts
-var logger3 = createLogger("PermissionManager");
+var logger2 = createLogger("PermissionManager");
 var PermissionManager = class {
   requestCallback;
   snapshotCallback;
   alwaysAllowedTools = /* @__PURE__ */ new Set();
   acceptModeGetter;
-  _policyMode = "ask-all";
-  _policyContext = { isWorktreeSession: false };
   constructor(requestCallback, snapshotCallback, acceptModeGetter) {
     if (requestCallback !== void 0) {
       this.requestCallback = requestCallback;
@@ -321,58 +266,27 @@ var PermissionManager = class {
     return this.alwaysAllowedTools.has(toolName);
   }
   /**
-   * Set the tool permission policy mode.
-   */
-  setPolicyMode(mode) {
-    this._policyMode = mode;
-  }
-  getPolicyMode() {
-    return this._policyMode;
-  }
-  /**
-   * Set the policy context (e.g., worktree session status).
-   */
-  setPolicyContext(context) {
-    this._policyContext = { ...this._policyContext, ...context };
-  }
-  /**
    * Create permission callback for the SDK.
    * This uses the SDK's canUseTool API.
    */
   createCallback() {
     return async (toolName, toolInput, options) => {
-      logger3.debug({ toolName, toolInput }, "Permission callback invoked");
+      logger2.debug({ toolName, toolInput }, "Permission callback invoked");
       try {
         const acceptModeActive = this.acceptModeGetter?.() ?? false;
-        logger3.debug({ toolName, acceptModeActive }, "Permission check");
+        logger2.debug({ toolName, acceptModeActive }, "Permission check");
         if (acceptModeActive) {
-          logger3.debug({ toolName }, "Accept mode active - auto-approving tool");
+          logger2.debug({ toolName }, "Accept mode active - auto-approving tool");
           return {
             behavior: "allow",
             updatedInput: toolInput
-          };
-        }
-        const policyDecision = evaluatePolicy(toolName, this._policyMode, this._policyContext);
-        if (policyDecision === "auto-approve") {
-          logger3.debug({ toolName, policyMode: this._policyMode }, "Policy auto-approved tool");
-          return {
-            behavior: "allow",
-            updatedInput: toolInput
-          };
-        }
-        if (policyDecision === "deny") {
-          logger3.debug({ toolName, policyMode: this._policyMode }, "Policy denied tool");
-          return {
-            behavior: "deny",
-            message: localize("orbit.policyDenied", "Tool denied by permission policy"),
-            interrupt: false
           };
         }
         if ((toolName === "Write" || toolName === "Edit") && this.snapshotCallback) {
           try {
             await this.snapshotCallback(toolName, toolInput, null);
           } catch (error) {
-            logger3.warn({ toolName, error }, "Failed to capture snapshot");
+            logger2.warn({ toolName, error }, "Failed to capture snapshot");
           }
         }
         if (this.isAlwaysAllowed(toolName)) {
@@ -395,7 +309,7 @@ var PermissionManager = class {
                   ...toolInput,
                   answers: result.answers
                 };
-                logger3.debug({ answers: result.answers }, "AskUserQuestion answers received");
+                logger2.debug({ answers: result.answers }, "AskUserQuestion answers received");
               }
               return {
                 behavior: "allow",
@@ -409,7 +323,7 @@ var PermissionManager = class {
               interrupt: false
             };
           } catch (error) {
-            logger3.error({ toolName, error }, "Permission request failed - DENYING");
+            logger2.error({ toolName, error }, "Permission request failed - DENYING");
             return {
               behavior: "deny",
               message: localize(
@@ -425,7 +339,7 @@ var PermissionManager = class {
           updatedInput: toolInput
         };
       } catch (error) {
-        logger3.error(
+        logger2.error(
           { error },
           "CRITICAL: Permission callback crashed - DENYING to prevent silent approval"
         );
@@ -726,7 +640,7 @@ function formatGeneric(resultContent) {
 }
 
 // src/agent.ts
-var logger4 = createLogger("OrbitAgent");
+var logger3 = createLogger("OrbitAgent");
 function isToolResultBlock(block) {
   if (typeof block !== "object" || block === null) {
     return false;
@@ -871,7 +785,7 @@ var OrbitAgent = class {
     this._mcpServers = config.mcpServers ?? {};
     this._outputFormat = config.outputFormat;
     this._agents = config.agents;
-    logger4.info(
+    logger3.info(
       {
         sessionMode: this._sessionMode,
         mcpServerCount: Object.keys(this._mcpServers).length,
@@ -886,11 +800,11 @@ var OrbitAgent = class {
    */
   registerMcpServer(name, server) {
     if (this.sessionActive) {
-      logger4.warn("Cannot register MCP server after session has started");
+      logger3.warn("Cannot register MCP server after session has started");
       return;
     }
     this._mcpServers[name] = server;
-    logger4.info({ name }, "MCP server registered");
+    logger3.info({ name }, "MCP server registered");
   }
   /**
    * Unregister an MCP server
@@ -899,7 +813,7 @@ var OrbitAgent = class {
     const { [name]: _removed, ...rest } = this._mcpServers;
     void _removed;
     this._mcpServers = rest;
-    logger4.info({ name }, "MCP server unregistered");
+    logger3.info({ name }, "MCP server unregistered");
   }
   /**
    * Set or remove the browser MCP server.
@@ -1031,22 +945,22 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
     if (this._thinkingMode && this._thinkingBudget > 0) {
       options.maxThinkingTokens = this._thinkingBudget;
       const modeName = this._thinkingBudget <= 4096 ? "think" : this._thinkingBudget <= 10240 ? "hard" : "ultra";
-      logger4.info(
+      logger3.info(
         { thinkingMode: modeName, thinkingBudget: this._thinkingBudget },
         "Extended thinking ENABLED"
       );
     } else {
-      logger4.info({ thinkingMode: "off" }, "Extended thinking DISABLED");
+      logger3.info({ thinkingMode: "off" }, "Extended thinking DISABLED");
     }
     if (this._sessionMode === "chat") {
       const chatTools = getAllowedToolsForMode("chat");
       options.allowedTools = chatTools;
-      logger4.info({ mode: "chat", tools: chatTools }, "Chat mode - read-only tools auto-approved");
+      logger3.info({ mode: "chat", tools: chatTools }, "Chat mode - read-only tools auto-approved");
     } else {
       const permissionCallback = this.permissionManager.createCallback();
-      logger4.debug("Using SDK permission flow with canUseTool callback");
+      logger3.debug("Using SDK permission flow with canUseTool callback");
       options.canUseTool = async (toolName, toolInput, canUseToolOptions) => {
-        logger4.debug({ toolName }, "canUseTool callback invoked");
+        logger3.debug({ toolName }, "canUseTool callback invoked");
         try {
           const result = await permissionCallback(toolName, toolInput, {
             signal: canUseToolOptions.signal,
@@ -1054,7 +968,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
           });
           return result;
         } catch (error) {
-          logger4.error({ toolName, error }, "canUseTool callback error");
+          logger3.error({ toolName, error }, "canUseTool callback error");
           return {
             behavior: "deny",
             message: "Permission request failed"
@@ -1062,8 +976,19 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
         }
       };
       const subagentStartTimes = /* @__PURE__ */ new Map();
+      const SAFE_TOOLS = /* @__PURE__ */ new Set([
+        "Read",
+        "Glob",
+        "Grep",
+        "WebSearch",
+        "WebFetch",
+        "Task",
+        "TodoWrite",
+        "ListMcpResourcesTool",
+        "ReadMcpResourceTool"
+      ]);
       options.hooks = {
-        // PreToolUse hook - auto-approve safe tools, log full input, let SDK handle others
+        // PreToolUse hook - auto-approve safe tools, let SDK handle others
         PreToolUse: [
           {
             // No matcher means match ALL tools
@@ -1074,16 +999,15 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
                 const preToolInput = input;
                 const toolName = preToolInput.tool_name;
                 const toolInput = preToolInput.tool_input;
-                logger4.info(
+                logger3.info(
                   {
                     toolName,
-                    inputKeys: Object.keys(toolInput),
-                    inputPreview: JSON.stringify(toolInput).slice(0, 300)
+                    inputKeys: Object.keys(toolInput)
                   },
                   "Hook: PreToolUse \u2014 tool requested"
                 );
-                if (toolName === "TodoWrite") {
-                  logger4.debug({ toolName }, "Hook: PreToolUse \u2014 auto-approved (safe tool)");
+                if (SAFE_TOOLS.has(toolName)) {
+                  logger3.debug({ toolName }, "Hook: PreToolUse \u2014 auto-approved (safe tool)");
                   return Promise.resolve({
                     hookSpecificOutput: {
                       hookEventName: "PreToolUse",
@@ -1092,7 +1016,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
                     }
                   });
                 }
-                logger4.debug({ toolName }, "Hook: PreToolUse \u2014 delegating to SDK permission flow");
+                logger3.debug({ toolName }, "Hook: PreToolUse \u2014 delegating to SDK permission flow");
                 return Promise.resolve({});
               }
             ]
@@ -1107,7 +1031,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
                 const postInput = input;
                 const response = postInput.tool_response;
                 const responseStr = typeof response === "string" ? response : JSON.stringify(response);
-                logger4.info(
+                logger3.info(
                   {
                     toolName: postInput.tool_name,
                     toolUseId,
@@ -1128,7 +1052,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
             hooks: [
               (input, toolUseId) => {
                 const failureInput = input;
-                logger4.warn(
+                logger3.warn(
                   {
                     toolName: failureInput.tool_name,
                     toolUseId,
@@ -1150,7 +1074,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
             hooks: [
               (input) => {
                 const notifInput = input;
-                logger4.info(
+                logger3.info(
                   {
                     message: notifInput.message,
                     title: notifInput.title
@@ -1169,7 +1093,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
             hooks: [
               (input) => {
                 const compactInput = input;
-                logger4.info(
+                logger3.info(
                   {
                     trigger: compactInput.trigger,
                     customInstructions: compactInput.custom_instructions ? `${compactInput.custom_instructions.slice(0, 100)}...` : void 0
@@ -1190,7 +1114,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
                 const startInput = input;
                 const agentId = startInput.agent_id;
                 subagentStartTimes.set(agentId, Date.now());
-                logger4.info(
+                logger3.info(
                   {
                     agentId,
                     agentType: startInput.agent_type
@@ -1209,7 +1133,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
             hooks: [
               (input) => {
                 const stopInput = input;
-                logger4.info(
+                logger3.info(
                   {
                     stopHookActive: stopInput.stop_hook_active
                   },
@@ -1227,7 +1151,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
             hooks: [
               (input) => {
                 const sessionInput = input;
-                logger4.info(
+                logger3.info(
                   {
                     source: sessionInput.source,
                     model: this.model ?? "sonnet",
@@ -1252,7 +1176,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
             hooks: [
               (input) => {
                 const sessionInput = input;
-                logger4.info(
+                logger3.info(
                   {
                     reason: sessionInput.reason
                   },
@@ -1267,17 +1191,17 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
     }
     if (this.model) {
       options.model = this.model;
-      logger4.info({ model: this.model }, "Using model");
+      logger3.info({ model: this.model }, "Using model");
     }
     if (this._fallbackModel) {
       options.fallbackModel = this._fallbackModel;
-      logger4.info({ fallbackModel: this._fallbackModel }, "Fallback model configured");
+      logger3.info({ fallbackModel: this._fallbackModel }, "Fallback model configured");
     }
     const permissionMode = this._acceptMode ? "acceptEdits" : this._planMode ? "plan" : "default";
     options.permissionMode = permissionMode;
-    logger4.info({ permissionMode }, "Permission mode set");
+    logger3.info({ permissionMode }, "Permission mode set");
     if (this._planMode) {
-      logger4.info("Plan mode ENABLED - SDK will restrict to read-only tools");
+      logger3.info("Plan mode ENABLED - SDK will restrict to read-only tools");
     }
     options.includePartialMessages = true;
     if (this._resumeSessionId) {
@@ -1285,28 +1209,28 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
       if (this._forkSession) {
         options.forkSession = true;
       }
-      logger4.info(
+      logger3.info(
         { resumeFrom: this._resumeSessionId, fork: this._forkSession },
         "Session resume/fork configured"
       );
     }
     if (Object.keys(this._mcpServers).length > 0) {
       options.mcpServers = this._mcpServers;
-      logger4.info({ servers: Object.keys(this._mcpServers) }, "MCP servers configured");
+      logger3.info({ servers: Object.keys(this._mcpServers) }, "MCP servers configured");
     }
     if (this._outputFormat) {
       options.outputFormat = this._outputFormat;
-      logger4.info({ type: this._outputFormat.type }, "Structured output format configured");
+      logger3.info({ type: this._outputFormat.type }, "Structured output format configured");
     }
     if (this._agents && Object.keys(this._agents).length > 0) {
       options.agents = this._agents;
-      logger4.info({ agents: Object.keys(this._agents) }, "Custom subagents configured");
+      logger3.info({ agents: Object.keys(this._agents) }, "Custom subagents configured");
     }
     return options;
   }
   startSession() {
     if (this.sessionActive) {
-      logger4.warn("Session already active");
+      logger3.warn("Session already active");
       return;
     }
     const currentPath = process.env.PATH ?? "";
@@ -1327,7 +1251,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
     ].filter((p) => !currentPath.includes(p));
     if (additionalPaths.length > 0) {
       process.env.PATH = [...additionalPaths, currentPath].join(":");
-      logger4.debug({ addedPaths: additionalPaths }, "Fixed PATH for Electron app");
+      logger3.debug({ addedPaths: additionalPaths }, "Fixed PATH for Electron app");
     }
     const credentials = ClaudeCredentials.getCredentials();
     if (!credentials.hasCredentials) {
@@ -1338,17 +1262,17 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
     if (credentials.type === "oauth") {
       delete process.env.ANTHROPIC_API_KEY;
       delete process.env.ANTHROPIC_AUTH_TOKEN;
-      logger4.info("Using Claude Code OAuth (CLI will read from Keychain)");
-      logger4.info("Note: Using your Claude subscription quota, not API credits");
+      logger3.info("Using Claude Code OAuth (CLI will read from Keychain)");
+      logger3.info("Note: Using your Claude subscription quota, not API credits");
     } else {
       const apiKey = process.env.ANTHROPIC_API_KEY;
       if (!apiKey) {
         throw new Error("API key was detected but is no longer available");
       }
-      logger4.info("Using API key from .env (will consume API credits)");
+      logger3.info("Using API key from .env (will consume API credits)");
     }
     process.env.CLAUDE_CODE_STREAM_CLOSE_TIMEOUT = "86400000";
-    logger4.debug(
+    logger3.debug(
       { thinkingMode: this._thinkingMode, thinkingBudget: this._thinkingBudget },
       "Starting session"
     );
@@ -1358,7 +1282,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
       prompt: this.messageQueue[Symbol.asyncIterator](),
       options: this._createOptions()
     });
-    logger4.info("Session started successfully");
+    logger3.info("Session started successfully");
   }
   /**
    * Check if the session is ready to receive messages
@@ -1371,7 +1295,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
       throw new Error("Session not started. Call startSession() first.");
     }
     const thinkingModeName = this._thinkingMode && this._thinkingBudget > 0 ? this._thinkingBudget <= 4096 ? "think" : this._thinkingBudget <= 10240 ? "hard" : "ultra" : "off";
-    logger4.info(
+    logger3.info(
       {
         model: this.model ?? "sonnet",
         thinkingMode: thinkingModeName,
@@ -1445,16 +1369,16 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
         yield message;
       }
     }
-    logger4.debug("Query session completed");
+    logger3.debug("Query session completed");
     this.sessionActive = false;
     this.currentQuery = null;
   }
   async stopSession() {
     if (!this.sessionActive) {
-      logger4.debug("Session not active");
+      logger3.debug("Session not active");
       return;
     }
-    logger4.debug("Stopping session");
+    logger3.debug("Stopping session");
     if (this.messageQueue) {
       this.messageQueue.stop();
       this.messageQueue = null;
@@ -1463,18 +1387,18 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
       try {
         await this.currentQuery.interrupt();
       } catch (error) {
-        logger4.error({ error }, "Error interrupting query");
+        logger3.error({ error }, "Error interrupting query");
       }
       this.currentQuery = null;
     }
     this.sessionActive = false;
-    logger4.info("Session stopped");
+    logger3.info("Session stopped");
   }
   async interrupt() {
     if (!this.currentQuery) {
       throw new Error("No active query to interrupt.");
     }
-    logger4.info("Interrupting current query");
+    logger3.info("Interrupting current query");
     await this.currentQuery.interrupt();
   }
   async setPermissionMode(mode) {
@@ -1495,7 +1419,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
       const budget = enabled && this._thinkingBudget > 0 ? this._thinkingBudget : null;
       await this.currentQuery.setMaxThinkingTokens(budget);
       const modeName = budget === null ? "off" : budget <= 4096 ? "think" : budget <= 10240 ? "hard" : "ultra";
-      logger4.info({ thinkingMode: modeName, budget }, "Thinking mode updated mid-session");
+      logger3.info({ thinkingMode: modeName, budget }, "Thinking mode updated mid-session");
     }
   }
   getThinkingMode() {
@@ -1506,7 +1430,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
     if (enabled) {
       this._acceptMode = false;
     }
-    logger4.info({ enabled }, "Plan mode changed - will apply to next session");
+    logger3.info({ enabled }, "Plan mode changed - will apply to next session");
   }
   getPlanMode() {
     return this._planMode;
@@ -1516,7 +1440,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
     if (enabled) {
       this._planMode = false;
     }
-    logger4.info({ enabled }, "Accept mode changed - will take effect on next tool use");
+    logger3.info({ enabled }, "Accept mode changed - will take effect on next tool use");
   }
   getAcceptMode() {
     return this._acceptMode;
@@ -1531,7 +1455,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
     this.model = model;
     if (this.currentQuery) {
       await this.currentQuery.setModel(model);
-      logger4.info({ model }, "Model updated mid-session via Query.setModel()");
+      logger3.info({ model }, "Model updated mid-session via Query.setModel()");
     }
   }
   getModel() {
@@ -1619,7 +1543,7 @@ var Emitter = class {
 };
 
 // src/session-manager.ts
-var logger5 = createLogger("SessionManager");
+var logger4 = createLogger("SessionManager");
 function isToolResultBlock2(block) {
   if (typeof block !== "object" || block === null) {
     return false;
@@ -1653,56 +1577,19 @@ var SessionManager = class extends Disposable {
   onAcceptModeChanged = this._onAcceptModeChanged.event;
   _onSessionInit = this._register(new Emitter());
   onSessionInit = this._onSessionInit.event;
-  /** Debug event emitter — routes structured events to IPC for the debug panel */
-  _onDebugEvent = this._register(
-    new Emitter()
-  );
-  onDebugEvent = this._onDebugEvent.event;
   // Session tracking
   activeSessions = /* @__PURE__ */ new Map();
   sessionConsumers = /* @__PURE__ */ new Map();
   permissionResolvers = /* @__PURE__ */ new Map();
   modePreferences = /* @__PURE__ */ new Map();
-  pendingTools = /* @__PURE__ */ new Map();
-  approvedToolNames = /* @__PURE__ */ new Map();
   sessionResumeState = /* @__PURE__ */ new Map();
   sessionInitFired = /* @__PURE__ */ new Set();
-  // Debug tracking
-  sessionTokenAccum = /* @__PURE__ */ new Map();
-  toolStartTimes = /* @__PURE__ */ new Map();
-  // toolUseId → Date.now()
-  sessionCorrelationIds = /* @__PURE__ */ new Map();
-  // sessionId → current correlationId
-  // ==========================================================================
-  // Debug Helpers
-  // ==========================================================================
-  emitDebug(sessionId, category, name, data, durationMs) {
-    const correlationId = this.sessionCorrelationIds.get(sessionId);
-    const event = {
-      category,
-      name,
-      data,
-      correlationId,
-      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-      durationMs
-    };
-    this._onDebugEvent.fire({ sessionId, event });
-  }
-  getOrCreateTokenAccum(sessionId) {
-    let accum = this.sessionTokenAccum.get(sessionId);
-    if (!accum) {
-      accum = {
-        inputTokens: 0,
-        outputTokens: 0,
-        cacheReadInputTokens: 0,
-        cacheCreationInputTokens: 0,
-        turnCount: 0,
-        totalCostUsd: 0
-      };
-      this.sessionTokenAccum.set(sessionId, accum);
-    }
-    return accum;
-  }
+  /**
+   * Per-session tool use maps — shared between the background consumer
+   * and the permission callback so the callback can look up the correct
+   * toolId when emitting 'running' status.
+   */
+  sessionToolUseMaps = /* @__PURE__ */ new Map();
   // ==========================================================================
   // Session Lifecycle
   // ==========================================================================
@@ -1713,15 +1600,10 @@ var SessionManager = class extends Disposable {
     if (this.activeSessions.has(sessionId)) {
       return;
     }
-    this.pendingTools.set(sessionId, /* @__PURE__ */ new Map());
-    this.approvedToolNames.set(sessionId, /* @__PURE__ */ new Set());
-    const permissionCallback = async (toolName, toolInput, context) => {
+    const toolUseMap = /* @__PURE__ */ new Map();
+    this.sessionToolUseMaps.set(sessionId, toolUseMap);
+    const permissionCallback = async (toolName, toolInput, _context) => {
       const requestId = randomUUID();
-      this.emitDebug(sessionId, "permission", "permission_requested", {
-        toolName,
-        toolInput: Object.keys(toolInput),
-        requestId
-      });
       this._onPermissionRequest.fire({
         sessionId,
         toolName,
@@ -1731,12 +1613,6 @@ var SessionManager = class extends Disposable {
       const result = await new Promise((resolve) => {
         this.permissionResolvers.set(requestId, resolve);
       });
-      this.emitDebug(sessionId, "permission", "permission_resolved", {
-        toolName,
-        decision: result.decision,
-        always: result.always,
-        requestId
-      });
       if (result.decision === "approve") {
         if (toolName === "ExitPlanMode") {
           agent.setPlanMode(false);
@@ -1744,23 +1620,20 @@ var SessionManager = class extends Disposable {
           prefs.planEnabled = false;
           this.modePreferences.set(sessionId, prefs);
         }
-        const approvedTools = this.approvedToolNames.get(sessionId);
-        if (approvedTools !== void 0) {
-          approvedTools.add(toolName);
-        }
-        const sessionPendingTools = this.pendingTools.get(sessionId);
-        if (sessionPendingTools !== void 0) {
-          for (const tool of sessionPendingTools.values()) {
-            if (tool.toolName === toolName) {
+        const sessionMap = this.sessionToolUseMaps.get(sessionId);
+        if (sessionMap) {
+          for (const [toolId, entry] of sessionMap) {
+            if (entry.name === toolName && !entry.permissionResolved) {
+              entry.permissionResolved = true;
               this._onAgentMessage.fire({
                 sessionId,
                 message: {
                   type: "tool_use",
                   content: `Tool ${toolName} running`,
                   metadata: {
-                    toolName: tool.toolName,
-                    toolId: tool.toolId,
-                    toolInput: tool.toolInput,
+                    toolName,
+                    toolId,
+                    toolInput: entry.input,
                     status: "running"
                   }
                 }
@@ -1786,19 +1659,7 @@ var SessionManager = class extends Disposable {
       resumeSessionId: config?.resumeSessionId,
       forkSession: config?.forkSession
     };
-    logger5.info({ sessionId, sessionMode: finalConfig.sessionMode }, "Creating session");
-    this.emitDebug(sessionId, "session", "session_creating", {
-      model: finalConfig.model ?? "sonnet",
-      thinkingEnabled: finalConfig.thinkingEnabled,
-      maxThinkingTokens: finalConfig.maxThinkingTokens,
-      planEnabled: finalConfig.planEnabled,
-      acceptEnabled: finalConfig.acceptEnabled,
-      critiqueEnabled: finalConfig.critiqueEnabled,
-      sessionMode: finalConfig.sessionMode,
-      cwd: finalConfig.cwd,
-      hasResumeId: !!finalConfig.resumeSessionId,
-      forkSession: finalConfig.forkSession
-    });
+    logger4.info({ sessionId, sessionMode: finalConfig.sessionMode }, "Creating session");
     const agent = new OrbitAgent(finalConfig);
     this.sessionResumeState.set(sessionId, {
       isResumed: !!config?.resumeSessionId,
@@ -1807,19 +1668,16 @@ var SessionManager = class extends Disposable {
     this.activeSessions.set(sessionId, agent);
     try {
       agent.startSession();
-      logger5.info({ sessionId }, "Session started successfully");
-      this.emitDebug(sessionId, "session", "session_started", { sessionId });
+      logger4.info({ sessionId }, "Session started successfully");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      logger5.error({ sessionId, error: errorMessage }, "Failed to start session");
-      this.emitDebug(sessionId, "session", "session_start_failed", { error: errorMessage });
+      logger4.error({ sessionId, error: errorMessage }, "Failed to start session");
       throw error;
     }
     this._startBackgroundConsumer(sessionId, agent);
   }
   /**
    * Start a background consumer for streaming messages.
-   * Logs ALL SDK event types for full observability.
    */
   _startBackgroundConsumer(sessionId, agent) {
     const state = { cancelled: false };
@@ -1829,20 +1687,14 @@ var SessionManager = class extends Disposable {
     this.sessionConsumers.set(sessionId, { cancel });
     void (async () => {
       try {
-        const toolUseMap = /* @__PURE__ */ new Map();
-        let streamBlockCount = 0;
-        let streamCharCount = 0;
+        const toolUseMap = this.sessionToolUseMaps.get(sessionId);
         for await (const rawMessage of agent.receiveResponse()) {
           if (state.cancelled) {
             break;
           }
           const sdkMessage = rawMessage;
           if (sdkMessage.type === "system") {
-            logger5.debug({ sessionId, subtype: sdkMessage.subtype }, "SDK system message");
-            this.emitDebug(sessionId, "sdk_state", "system_message", {
-              subtype: sdkMessage.subtype,
-              sessionId: sdkMessage.session_id
-            });
+            logger4.debug({ sessionId, subtype: sdkMessage.subtype }, "SDK system message");
             if (sdkMessage.subtype === "init" && sdkMessage.session_id !== void 0) {
               if (this.sessionInitFired.has(sessionId)) {
                 continue;
@@ -1864,99 +1716,31 @@ var SessionManager = class extends Disposable {
           if (sdkMessage.type === "stream_event") {
             const event = sdkMessage.event;
             if (event === void 0) continue;
-            switch (event.type) {
-              case "message_start":
-                logger5.debug({ sessionId }, "stream: message_start");
-                this.emitDebug(sessionId, "streaming", "message_start", {});
-                streamBlockCount = 0;
-                streamCharCount = 0;
-                break;
-              case "content_block_start":
-                streamBlockCount++;
-                logger5.debug(
-                  { sessionId, blockIndex: event.index, blockType: event.content_block?.type },
-                  "stream: content_block_start"
-                );
-                this.emitDebug(sessionId, "streaming", "content_block_start", {
-                  blockIndex: event.index,
-                  blockType: event.content_block?.type
-                });
-                break;
-              case "content_block_delta": {
-                const deltaType = event.delta?.type;
-                if (deltaType === "text_delta") {
-                  const textDelta = event.delta?.text;
-                  if (textDelta !== void 0) {
-                    streamCharCount += textDelta.length;
-                    this._onAgentMessage.fire({
-                      sessionId,
-                      message: { type: "text", content: textDelta }
-                    });
-                  }
-                } else if (deltaType === "thinking_delta") {
-                  const thinkingDelta = event.delta?.thinking;
-                  if (thinkingDelta !== void 0) {
-                    streamCharCount += thinkingDelta.length;
-                    this._onAgentMessage.fire({
-                      sessionId,
-                      message: { type: "thinking", content: thinkingDelta }
-                    });
-                  }
-                } else {
-                  logger5.debug(
-                    { sessionId, deltaType, blockIndex: event.index },
-                    "stream: unknown delta type"
-                  );
-                  this.emitDebug(sessionId, "streaming", "unknown_delta", {
-                    deltaType,
-                    blockIndex: event.index
+            if (event.type === "content_block_delta") {
+              const deltaType = event.delta?.type;
+              if (deltaType === "text_delta") {
+                const textDelta = event.delta?.text;
+                if (textDelta !== void 0) {
+                  this._onAgentMessage.fire({
+                    sessionId,
+                    message: { type: "text", content: textDelta }
                   });
                 }
-                break;
+              } else if (deltaType === "thinking_delta") {
+                const thinkingDelta = event.delta?.thinking;
+                if (thinkingDelta !== void 0) {
+                  this._onAgentMessage.fire({
+                    sessionId,
+                    message: { type: "thinking", content: thinkingDelta }
+                  });
+                }
               }
-              case "content_block_stop":
-                logger5.debug(
-                  { sessionId, blockIndex: event.index },
-                  "stream: content_block_stop"
-                );
-                this.emitDebug(sessionId, "streaming", "content_block_stop", {
-                  blockIndex: event.index
-                });
-                break;
-              case "message_delta":
-                logger5.debug({ sessionId }, "stream: message_delta");
-                this.emitDebug(sessionId, "streaming", "message_delta", {
-                  delta: event.delta
-                });
-                break;
-              case "message_stop":
-                logger5.debug(
-                  { sessionId, blockCount: streamBlockCount, charCount: streamCharCount },
-                  "stream: message_stop"
-                );
-                this.emitDebug(sessionId, "streaming", "message_stop", {
-                  totalBlocks: streamBlockCount,
-                  totalChars: streamCharCount
-                });
-                break;
-              default:
-                logger5.debug(
-                  { sessionId, eventType: event.type },
-                  "stream: unhandled event type"
-                );
-                this.emitDebug(sessionId, "streaming", `unhandled_${event.type}`, {
-                  eventType: event.type
-                });
             }
             continue;
           }
           if (sdkMessage.type === "assistant") {
             const content = sdkMessage.message?.content;
             if (content === void 0) continue;
-            logger5.debug(
-              { sessionId, blockCount: content.length },
-              "SDK assistant message"
-            );
             for (const block of content) {
               if (block.type === "text") {
                 continue;
@@ -1974,23 +1758,7 @@ var SessionManager = class extends Disposable {
               const toolName = getString(block.name, "unknown");
               const toolId = getString(block.id) || generateToolId();
               const toolInput = block.input ?? {};
-              this.toolStartTimes.set(toolId, Date.now());
-              logger5.info(
-                { sessionId, toolName, toolId },
-                "Tool use block received"
-              );
-              this.emitDebug(sessionId, "tool", "tool_use_start", {
-                toolName,
-                toolId,
-                inputKeys: Object.keys(toolInput),
-                inputPreview: JSON.stringify(toolInput).slice(0, 200)
-              });
-              const approvedTools = this.approvedToolNames.get(sessionId);
-              const wasAlreadyApproved = approvedTools?.has(toolName) ?? false;
-              if (wasAlreadyApproved && approvedTools !== void 0) {
-                approvedTools.delete(toolName);
-              }
-              const initialStatus = wasAlreadyApproved ? "running" : "awaiting-permission";
+              logger4.info({ sessionId, toolName, toolId }, "Tool use block received");
               const toolMessage = {
                 type: "tool_use",
                 content: `Using tool: ${toolName}`,
@@ -1998,24 +1766,14 @@ var SessionManager = class extends Disposable {
                   toolName,
                   toolId,
                   toolInput,
-                  status: initialStatus
+                  status: "awaiting-permission"
                 }
               };
               toolUseMap.set(toolId, {
                 name: toolName,
                 input: toolInput,
-                pendingMessages: [toolMessage]
+                permissionResolved: false
               });
-              if (!wasAlreadyApproved) {
-                const sessionPendingTools = this.pendingTools.get(sessionId);
-                if (sessionPendingTools !== void 0) {
-                  sessionPendingTools.set(toolId, {
-                    toolName,
-                    toolId,
-                    toolInput
-                  });
-                }
-              }
               this._onAgentMessage.fire({ sessionId, message: toolMessage });
             }
           } else if (sdkMessage.type === "user") {
@@ -2025,51 +1783,33 @@ var SessionManager = class extends Disposable {
               if (isToolResultBlock2(block)) {
                 const toolUseId = block.tool_use_id;
                 const toolInfo = toolUseMap.get(toolUseId);
-                const startTime = this.toolStartTimes.get(toolUseId);
-                const durationMs = startTime !== void 0 ? Date.now() - startTime : void 0;
-                this.toolStartTimes.delete(toolUseId);
                 if (toolInfo !== void 0) {
-                  const originalMessage = toolInfo.pendingMessages[0];
-                  if (originalMessage.type === "tool_use" && originalMessage.metadata !== void 0) {
-                    const toolOutput = typeof block.content === "string" ? block.content : JSON.stringify(block.content);
-                    const isError = block.is_error === true;
-                    const storedToolId = originalMessage.metadata.toolId;
-                    logger5.info(
-                      {
-                        sessionId,
-                        toolName: toolInfo.name,
-                        toolId: storedToolId,
-                        isError,
-                        durationMs,
-                        outputLength: toolOutput.length
-                      },
-                      "Tool result received"
-                    );
-                    this.emitDebug(sessionId, "tool", "tool_use_end", {
+                  const toolOutput = typeof block.content === "string" ? block.content : JSON.stringify(block.content);
+                  const isError = block.is_error === true;
+                  logger4.info(
+                    {
+                      sessionId,
                       toolName: toolInfo.name,
-                      toolId: storedToolId,
+                      toolId: toolUseId,
                       isError,
-                      outputPreview: toolOutput.slice(0, 500),
-                      outputLength: toolOutput.length,
-                      durationMs
-                    });
-                    const completedMessage = {
+                      outputLength: toolOutput.length
+                    },
+                    "Tool result received"
+                  );
+                  this._onAgentMessage.fire({
+                    sessionId,
+                    message: {
                       type: "tool_use",
                       content: isError ? `Tool ${toolInfo.name} failed` : `Tool ${toolInfo.name} completed`,
                       metadata: {
                         toolName: toolInfo.name,
-                        toolId: storedToolId,
+                        toolId: toolUseId,
                         toolInput: toolInfo.input,
                         toolOutput,
                         status: isError ? "error" : "success"
                       }
-                    };
-                    this._onAgentMessage.fire({ sessionId, message: completedMessage });
-                    const sessionPendingTools = this.pendingTools.get(sessionId);
-                    if (sessionPendingTools !== void 0 && storedToolId !== void 0) {
-                      sessionPendingTools.delete(storedToolId);
                     }
-                  }
+                  });
                   toolUseMap.delete(toolUseId);
                 }
               }
@@ -2077,41 +1817,15 @@ var SessionManager = class extends Disposable {
           } else {
             const resultMsg = sdkMessage;
             if (resultMsg.usage !== void 0) {
-              const accum = this.getOrCreateTokenAccum(sessionId);
-              accum.inputTokens += resultMsg.usage.input_tokens ?? 0;
-              accum.outputTokens += resultMsg.usage.output_tokens ?? 0;
-              accum.cacheReadInputTokens += resultMsg.usage.cache_read_input_tokens ?? 0;
-              accum.cacheCreationInputTokens += resultMsg.usage.cache_creation_input_tokens ?? 0;
-              accum.turnCount++;
-              accum.totalCostUsd += resultMsg.total_cost_usd ?? 0;
-              logger5.info(
+              logger4.info(
                 {
                   sessionId,
-                  turnTokens: {
-                    input: resultMsg.usage.input_tokens,
-                    output: resultMsg.usage.output_tokens,
-                    cacheRead: resultMsg.usage.cache_read_input_tokens
-                  },
-                  cumulativeTokens: {
-                    input: accum.inputTokens,
-                    output: accum.outputTokens,
-                    turns: accum.turnCount,
-                    cost: accum.totalCostUsd.toFixed(4)
-                  }
+                  inputTokens: resultMsg.usage.input_tokens,
+                  outputTokens: resultMsg.usage.output_tokens,
+                  cacheRead: resultMsg.usage.cache_read_input_tokens
                 },
                 "Turn complete \u2014 token usage"
               );
-              this.emitDebug(sessionId, "token", "turn_tokens", {
-                turn: {
-                  inputTokens: resultMsg.usage.input_tokens ?? 0,
-                  outputTokens: resultMsg.usage.output_tokens ?? 0,
-                  cacheReadInputTokens: resultMsg.usage.cache_read_input_tokens ?? 0,
-                  cacheCreationInputTokens: resultMsg.usage.cache_creation_input_tokens ?? 0,
-                  costUsd: resultMsg.total_cost_usd,
-                  durationMs: resultMsg.duration_ms
-                },
-                cumulative: { ...accum }
-              });
             }
             this._onAgentMessage.fire({
               sessionId,
@@ -2130,15 +1844,13 @@ var SessionManager = class extends Disposable {
                 resultSubtype: resultMsg.subtype
               }
             });
-            this.sessionCorrelationIds.delete(sessionId);
             setCorrelationId(void 0);
           }
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         const errorStack = error instanceof Error ? error.stack : "no stack";
-        logger5.error({ sessionId, error: errorMessage }, "Background consumer error");
-        this.emitDebug(sessionId, "sdk_state", "consumer_error", { error: errorMessage });
+        logger4.error({ sessionId, error: errorMessage }, "Background consumer error");
         this._onError.fire({ message: `[SDK Error] ${errorMessage}`, stack: errorStack });
       }
     })();
@@ -2157,13 +1869,9 @@ var SessionManager = class extends Disposable {
       await agent.stopSession();
       this.activeSessions.delete(sessionId);
     }
-    this.pendingTools.delete(sessionId);
-    this.approvedToolNames.delete(sessionId);
+    this.sessionToolUseMaps.delete(sessionId);
     this.sessionResumeState.delete(sessionId);
     this.sessionInitFired.delete(sessionId);
-    this.sessionTokenAccum.delete(sessionId);
-    this.sessionCorrelationIds.delete(sessionId);
-    this.emitDebug(sessionId, "session", "session_deleted", { sessionId });
   }
   /**
    * Check if a session is ready
@@ -2180,7 +1888,6 @@ var SessionManager = class extends Disposable {
     if (!agent) {
       throw new Error(`Session ${sessionId} not found`);
     }
-    this.emitDebug(sessionId, "sdk_state", "interrupt_requested", {});
     await agent.interrupt();
   }
   /**
@@ -2202,9 +1909,8 @@ var SessionManager = class extends Disposable {
       throw new Error(`Session ${sessionId} is not ready.`);
     }
     const correlationId = randomUUID();
-    this.sessionCorrelationIds.set(sessionId, correlationId);
     setCorrelationId(correlationId);
-    logger5.info(
+    logger4.info(
       {
         sessionId,
         correlationId: correlationId.slice(0, 8),
@@ -2213,12 +1919,6 @@ var SessionManager = class extends Disposable {
       },
       "Sending message"
     );
-    this.emitDebug(sessionId, "session", "message_sent", {
-      correlationId,
-      messageLength: message.length,
-      messagePreview: message.slice(0, 100),
-      attachmentCount: attachments?.length ?? 0
-    });
     agent.queueMessage(message, attachments);
   }
   /**
@@ -2340,15 +2040,35 @@ var SessionManager = class extends Disposable {
   }
   /**
    * Set tool permission policy for a session.
+   * - 'approve-all': auto-approve everything (sets accept mode)
+   * - 'smart': auto-approve read-only tools, prompt for writes
+   * - 'ask-all': prompt for every tool (default)
    */
-  setToolPolicy(sessionId, mode, isWorktreeSession) {
+  setToolPolicy(sessionId, mode, _isWorktreeSession) {
     const agent = this.activeSessions.get(sessionId);
-    if (agent) {
-      const pm = agent.getPermissionManager();
-      pm.setPolicyMode(mode);
-      pm.setPolicyContext({ isWorktreeSession });
+    if (mode === "approve-all") {
+      this.setAcceptMode(sessionId, true);
+      return;
     }
-    logger5.info({ sessionId, mode, isWorktreeSession }, "Tool policy updated");
+    if (agent) {
+      agent.setAcceptMode(false);
+    }
+    if (mode === "smart" && agent) {
+      const readOnlyTools = [
+        "Read",
+        "Glob",
+        "Grep",
+        "WebSearch",
+        "WebFetch",
+        "Task",
+        "TodoRead",
+        "TodoWrite"
+      ];
+      const pm = agent.getPermissionManager();
+      for (const tool of readOnlyTools) {
+        pm.addAlwaysAllowed(tool);
+      }
+    }
   }
   /**
    * Dispose the session manager
@@ -2364,20 +2084,18 @@ var SessionManager = class extends Disposable {
     this.sessionConsumers.clear();
     for (const [sessionId, agent] of this.activeSessions.entries()) {
       void agent.stopSession().catch((err) => {
-        logger5.error({ sessionId, error: err }, "Error stopping session");
+        logger4.error({ sessionId, error: err }, "Error stopping session");
       });
     }
     this.activeSessions.clear();
-    this.sessionTokenAccum.clear();
-    this.toolStartTimes.clear();
-    this.sessionCorrelationIds.clear();
+    this.sessionToolUseMaps.clear();
     super.dispose();
   }
 };
 
 // src/commit-message.ts
 import Anthropic from "@anthropic-ai/sdk";
-var logger6 = createLogger("CommitMessage");
+var logger5 = createLogger("CommitMessage");
 var SYSTEM_PROMPT = `You are a git commit message generator. Given a diff summary, generate a concise commit message following conventional commits format (type: description). Be specific about what changed. Output ONLY the commit message, no explanation.
 
 Rules:
@@ -2386,7 +2104,7 @@ Rules:
 - If changes span multiple areas, use the most significant type
 - Be specific: "fix: resolve null pointer in user auth flow" not "fix: bug fix"`;
 async function generateCommitMessage(diff, apiKey) {
-  logger6.info("Generating commit message...");
+  logger5.info("Generating commit message...");
   let resolvedKey = apiKey;
   if (!resolvedKey) {
     resolvedKey = ClaudeCredentials.getApiKeyFromEnv() ?? void 0;
@@ -2407,13 +2125,13 @@ ${diff}`
     }]
   });
   const text = response.content[0]?.type === "text" ? response.content[0].text.trim() : "";
-  logger6.info({ messageLength: text.length }, "Commit message generated");
+  logger5.info({ messageLength: text.length }, "Commit message generated");
   return text;
 }
 
 // src/refine-transcript.ts
 import Anthropic2 from "@anthropic-ai/sdk";
-var logger7 = createLogger("RefineTranscript");
+var logger6 = createLogger("RefineTranscript");
 var SYSTEM_PROMPT2 = `You are a speech-to-text transcript refiner for a coding IDE. Given a raw voice transcript, clean it up by:
 - Fixing obvious transcription errors (homophones, technical terms)
 - Correcting casing for proper nouns, programming terms, and file names
@@ -2425,7 +2143,7 @@ If context from recent chat messages is provided, use it to understand technical
 
 Output ONLY the refined transcript, nothing else. If the transcript is already clean, return it unchanged.`;
 async function refineTranscript(transcript, context, apiKey) {
-  logger7.info("Refining transcript...");
+  logger6.info("Refining transcript...");
   let resolvedKey = apiKey;
   if (!resolvedKey) {
     resolvedKey = ClaudeCredentials.getApiKeyFromEnv() ?? void 0;
@@ -2450,8 +2168,50 @@ ${context}`;
     messages: [{ role: "user", content: userContent }]
   });
   const text = response.content[0]?.type === "text" ? response.content[0].text.trim() : "";
-  logger7.info({ originalLength: transcript.length, refinedLength: text.length }, "Transcript refined");
+  logger6.info({ originalLength: transcript.length, refinedLength: text.length }, "Transcript refined");
   return text || transcript;
+}
+
+// src/session-title.ts
+import Anthropic3 from "@anthropic-ai/sdk";
+var logger7 = createLogger("SessionTitle");
+var SYSTEM_PROMPT3 = `You are a session title generator. Given a user message and an AI assistant response, generate a concise title that captures the essence of the conversation topic.
+
+Rules:
+- Keep the title under 50 characters
+- Use title case
+- Be specific and descriptive
+- Do not use quotes or special formatting
+- Do not start with "Help with" or "Question about"
+- Output ONLY the title, nothing else`;
+async function generateSessionTitle(userMessage, assistantMessage, apiKey) {
+  logger7.info("Generating session title...");
+  let resolvedKey = apiKey;
+  if (!resolvedKey) {
+    resolvedKey = ClaudeCredentials.getApiKeyFromEnv() ?? void 0;
+  }
+  if (!resolvedKey) {
+    throw new Error("No API key available. Set one in Settings > AI or set ANTHROPIC_API_KEY.");
+  }
+  const client = new Anthropic3({ apiKey: resolvedKey });
+  const truncatedUser = userMessage.slice(0, 500);
+  const truncatedAssistant = assistantMessage.slice(0, 500);
+  const response = await client.messages.create({
+    model: "claude-haiku-4-5-20251001",
+    max_tokens: 60,
+    system: SYSTEM_PROMPT3,
+    messages: [{
+      role: "user",
+      content: `User message:
+${truncatedUser}
+
+Assistant response:
+${truncatedAssistant}`
+    }]
+  });
+  const text = response.content[0]?.type === "text" ? response.content[0].text.trim() : "";
+  logger7.info({ titleLength: text.length }, "Session title generated");
+  return text;
 }
 
 // src/index.ts
@@ -2507,13 +2267,6 @@ function main() {
     sendEvent({
       type: "error_event",
       error
-    });
-  });
-  sessionManager.onDebugEvent((data) => {
-    sendEvent({
-      type: "debug_event",
-      sessionId: data.sessionId,
-      event: data.event
     });
   });
   const rl = readline.createInterface({
@@ -2632,11 +2385,7 @@ async function handleRequest(request, sessionManager) {
       break;
     }
     case "set_tool_policy": {
-      sessionManager.setToolPolicy(
-        request.sessionId,
-        request.mode,
-        request.isWorktreeSession ?? false
-      );
+      sessionManager.setToolPolicy(request.sessionId, request.mode, request.isWorktreeSession);
       sendResponse({ type: "success", requestType: request.type });
       break;
     }
@@ -2658,6 +2407,11 @@ async function handleRequest(request, sessionManager) {
     case "refine_transcript": {
       const refined = await refineTranscript(request.transcript, request.context, request.apiKey);
       sendResponse({ type: "string", requestType: request.type, value: refined });
+      break;
+    }
+    case "generate_session_title": {
+      const title = await generateSessionTitle(request.userMessage, request.assistantMessage, request.apiKey);
+      sendResponse({ type: "string", requestType: request.type, value: title });
       break;
     }
     case "shutdown": {

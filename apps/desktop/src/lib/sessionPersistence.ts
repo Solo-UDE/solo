@@ -7,7 +7,7 @@
  * Migration: on first startup, migrates any v2 localStorage data to filesystem.
  */
 
-import type { AgentSession, Message, ToolCallState, FileAttachment, ImageAttachment, Attachment, FileMention } from '@/stores/agentStore';
+import type { AgentSession, Message, ToolCallState, FileAttachment, ImageAttachment, Attachment, FileMention, ContentBlock } from '@/stores/agentStore';
 import {
   sessionListFiles,
   sessionReadFile,
@@ -58,6 +58,8 @@ interface PersistedSessionFileV3 {
     sdkSessionId?: string;       // Claude SDK session ID for resume
     resumable: boolean;          // Whether bridge resume is possible
     workspacePath?: string;      // Project path for filtering
+    worktreeId?: string;         // Worktree binding (survives switches + restarts)
+    worktreeBranch?: string;     // Branch name for display/matching
     totalTokens?: number;        // Accumulated usage
     totalCost?: number;          // Accumulated cost (USD)
     turnCount: number;           // Completed assistant turns
@@ -115,6 +117,8 @@ function serializeSessionV3(
       sdkSessionId: session.sdkSessionId,
       resumable: !!(session.sdkSessionId && session.resumable),
       workspacePath: session.workspacePath,
+      worktreeId: session.worktreeId,
+      worktreeBranch: session.worktreeBranch,
       totalTokens: session.totalTokens,
       totalCost: session.totalCost,
       turnCount: session.turnCount ?? 0,
@@ -139,6 +143,27 @@ function serializeSessionV3(
   };
 }
 
+/**
+ * Reconstruct ContentBlock[] from persisted message fields.
+ * Restores the interleaved block ordering so the UI renders
+ * thinking, text, and tool cards in chronological order.
+ */
+function reconstructBlocks(m: PersistedMessage): ContentBlock[] {
+  const blocks: ContentBlock[] = [];
+  if (m.thinkingContent) {
+    blocks.push({ type: 'thinking', text: m.thinkingContent });
+  }
+  if (m.content) {
+    blocks.push({ type: 'text', text: m.content });
+  }
+  if (m.toolCalls) {
+    for (const tc of m.toolCalls) {
+      blocks.push({ type: 'tool_use', toolCall: tc });
+    }
+  }
+  return blocks;
+}
+
 /** Deserialize a v3 file into session + messages */
 function deserializeSessionV3(file: PersistedSessionFileV3): {
   session: AgentSession;
@@ -154,6 +179,8 @@ function deserializeSessionV3(file: PersistedSessionFileV3): {
       sdkSessionId: meta.sdkSessionId,
       resumable: meta.resumable,
       workspacePath: meta.workspacePath,
+      worktreeId: meta.worktreeId,
+      worktreeBranch: meta.worktreeBranch,
       lastActiveAt: meta.lastActiveAt,
       totalTokens: meta.totalTokens,
       totalCost: meta.totalCost,
@@ -166,7 +193,7 @@ function deserializeSessionV3(file: PersistedSessionFileV3): {
       id: m.id,
       role: m.role,
       content: m.content,
-      blocks: [],
+      blocks: reconstructBlocks(m),
       timestamp: new Date(m.timestamp),
       mode: m.mode,
       toolCalls: m.toolCalls,
@@ -302,7 +329,7 @@ export async function migrateFromLocalStorage(): Promise<{
         id: m.id,
         role: m.role,
         content: m.content,
-        blocks: [],
+        blocks: reconstructBlocks(m),
         timestamp: new Date(m.timestamp),
         mode: m.mode,
         toolCalls: m.toolCalls,

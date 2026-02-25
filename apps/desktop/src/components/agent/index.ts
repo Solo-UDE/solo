@@ -13,7 +13,6 @@ export { MessageSection, type MessageSectionProps, type Message, type UserMessag
 export { ToolCallBlock, type ToolCallBlockProps } from './messages';
 export { NotifyUserCard, type NotifyUserCardProps, type NotificationAction } from './messages';
 export { ProceedIndicator, type ProceedIndicatorProps } from './messages';
-export { MessageFeedback, type MessageFeedbackProps } from './messages';
 
 // Input components
 export { ChatInputContainer, type ChatInputContainerProps } from './input';

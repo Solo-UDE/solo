@@ -30,19 +30,6 @@ export const refineTranscript = (transcript: string, context?: string) =>
 // Event Handlers
 // =============================================================================
 
-/** Debug event from the agent bridge */
-export interface AgentDebugEvent {
-	sessionId: string;
-	event: {
-		category: string;
-		name: string;
-		data: unknown;
-		correlationId?: string;
-		timestamp: string;
-		durationMs?: number;
-	};
-}
-
 export interface AgentEventHandlers {
 	onMessage?: (sessionId: string, message: BridgeAgentMessage) => void;
 	onPermissionRequest?: (request: PermissionRequest) => void;
@@ -52,7 +39,6 @@ export interface AgentEventHandlers {
 	onAcceptModeChanged?: (sessionId: string, enabled: boolean) => void;
 	onError?: (message: string, stack?: string) => void;
 	onReady?: () => void;
-	onDebugEvent?: (event: AgentDebugEvent) => void;
 }
 
 // =============================================================================
@@ -81,6 +67,7 @@ export async function listenToAgentEvents(
 		const h = handlers.onPermissionRequest;
 		unlistens.push(
 			await listen<AgentPermissionRequestEvent>('agent:permission_request', (event) => {
+				console.log('[DIAG] agent:permission_request received', event.payload.toolName, event.payload.requestId);
 				h({
 					sessionId: event.payload.sessionId,
 					toolName: event.payload.toolName,
@@ -146,15 +133,6 @@ export async function listenToAgentEvents(
 		unlistens.push(
 			await listen('agent:ready', () => {
 				h();
-			})
-		);
-	}
-
-	if (handlers.onDebugEvent) {
-		const h = handlers.onDebugEvent;
-		unlistens.push(
-			await listen<AgentDebugEvent>('agent:debug', (event) => {
-				h(event.payload);
 			})
 		);
 	}

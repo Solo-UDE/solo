@@ -17,9 +17,15 @@ export class AudioPlayback {
   private audioContext: AudioContext | null = null;
   private nextStartTime = 0;
   private _isPlaying = false;
+  private lastSource: AudioBufferSourceNode | null = null;
+  private _onEnded: (() => void) | null = null;
 
   get isPlaying(): boolean {
     return this._isPlaying;
+  }
+
+  set onEnded(cb: (() => void) | null) {
+    this._onEnded = cb;
   }
 
   /** Enqueue a base64-encoded PCM chunk for playback */
@@ -45,18 +51,39 @@ export class AudioPlayback {
     const startTime = Math.max(now, this.nextStartTime);
     source.start(startTime);
     this.nextStartTime = startTime + buffer.duration;
+
+    // Track the last source so we can detect when playback truly ends
+    this.lastSource = source;
+  }
+
+  /** Mark that no more chunks will arrive. Fires onEnded when the last buffer finishes. */
+  markStreamDone(): void {
+    if (this.lastSource && this._isPlaying) {
+      this.lastSource.onended = () => {
+        if (this._isPlaying) {
+          this._isPlaying = false;
+          this._onEnded?.();
+        }
+      };
+    } else if (!this.lastSource) {
+      // No audio was ever enqueued - fire immediately
+      this._isPlaying = false;
+      this._onEnded?.();
+    }
   }
 
   /** Start accepting and playing audio chunks */
   start(): void {
     this._isPlaying = true;
     this.nextStartTime = 0;
+    this.lastSource = null;
   }
 
   /** Stop playback and release resources */
   stop(): void {
     this._isPlaying = false;
     this.nextStartTime = 0;
+    this.lastSource = null;
     if (this.audioContext) {
       this.audioContext.close().catch(() => {});
       this.audioContext = null;

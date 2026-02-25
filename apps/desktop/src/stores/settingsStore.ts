@@ -416,6 +416,20 @@ export const useSettingsStore = create<SettingsStore>()(
       name: 'solo-settings',
       version: 3,
       storage: createJSONStorage(() => localStorage),
+      // Deep-merge at category level so new fields (e.g. ai.toolPermissionPolicy)
+      // aren't lost when persisted state predates their addition.
+      merge: (persistedState, currentState) => {
+        const persisted = persistedState as Partial<SettingsState>;
+        return {
+          ...currentState,
+          general: { ...(currentState as SettingsStore).general, ...persisted.general },
+          editor: { ...(currentState as SettingsStore).editor, ...persisted.editor },
+          files: { ...(currentState as SettingsStore).files, ...persisted.files },
+          shortcuts: persisted.shortcuts ?? (currentState as SettingsStore).shortcuts,
+          ai: { ...(currentState as SettingsStore).ai, ...persisted.ai },
+          terminal: { ...(currentState as SettingsStore).terminal, ...persisted.terminal },
+        } as SettingsStore;
+      },
       migrate: (persistedState, version) => {
         if (version === 1) {
           return migrateV1ToV2(persistedState);

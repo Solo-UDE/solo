@@ -23,6 +23,7 @@ export interface SearchToolCardProps {
 	readonly outputMode?: string;
 	readonly glob?: string;
 	readonly fileType?: string;
+	readonly style?: React.CSSProperties;
 }
 
 export const SearchToolCard: FC<SearchToolCardProps> = ({
@@ -34,6 +35,7 @@ export const SearchToolCard: FC<SearchToolCardProps> = ({
 	outputMode,
 	glob,
 	fileType,
+	style,
 }) => {
 	const results = output?.split('\n').filter(Boolean) ?? [];
 	const resultCount = results.length;
@@ -55,6 +57,7 @@ export const SearchToolCard: FC<SearchToolCardProps> = ({
 			primaryDisplay={pattern}
 			collapsible={resultCount > 0}
 			defaultExpanded={false}
+			style={style}
 		>
 			<div className="space-y-2">
 				{/* Qualifier badges */}

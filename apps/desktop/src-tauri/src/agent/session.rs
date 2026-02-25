@@ -350,6 +350,27 @@ impl SessionManager {
         })
     }
 
+    /// Generate a session title from the first user/assistant exchange
+    pub fn generate_session_title(
+        &self,
+        user_message: &str,
+        assistant_message: &str,
+        api_key: Option<String>,
+    ) -> Result<String> {
+        self.ensure_running()?;
+        let request = BridgeRequest::GenerateSessionTitle {
+            user_message: user_message.to_owned(),
+            assistant_message: assistant_message.to_owned(),
+            api_key,
+        };
+        let bridge = self.bridge.lock();
+        let response = bridge.send_request(&request)?;
+        let value = Self::check_response_string(response)?;
+        value.ok_or_else(|| {
+            BridgeError::ReceiveError("Bridge returned null session title".to_owned())
+        })
+    }
+
     /// Check if a session exists
     #[allow(dead_code)]
     pub fn has_session(&self, session_id: &str) -> bool {

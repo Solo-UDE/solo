@@ -81,15 +81,17 @@ for (const { grid, colOffset } of LETTERS) {
 
 const TOTAL_BLOCKS = BLOCKS.length; // 56
 
-// Animation phase durations
-const SCRAMBLE_DURATION = 1200;
-const ASSEMBLE_DURATION = 800;
+// Animation phase durations — tuned so the intro (scramble → assemble)
+// finishes at ~3.03s to match the startup sound duration.
+// Visual completion: SCRAMBLE + (55 × ASSEMBLE_STAGGER) + 540ms transition = 3030ms
+const SCRAMBLE_DURATION = 1500;
+const ASSEMBLE_DURATION = 1530;
 const HOLD_DURATION = 3000;
 const SCATTER_DURATION = 600;
 
 // Stagger delays
-const SCRAMBLE_STAGGER = 20; // ms per block
-const ASSEMBLE_STAGGER = 14; // ms per block
+const SCRAMBLE_STAGGER = 24; // ms per block
+const ASSEMBLE_STAGGER = 18; // ms per block
 
 // ─── Reduced motion hook ────────────────────────────────────────────────────
 const useReducedMotion = () => {
@@ -163,7 +165,7 @@ const SoloDecryptAnimation: FC = () => {
 
 			const delay = BLOCKS[i].index * ASSEMBLE_STAGGER;
 
-			el.style.transition = `transform 500ms var(--ease-smooth) ${delay}ms, opacity 400ms var(--ease-smooth) ${delay}ms`;
+			el.style.transition = `transform 540ms var(--ease-smooth) ${delay}ms, opacity 440ms var(--ease-smooth) ${delay}ms`;
 			el.style.transform = `translate(${BLOCKS[i].x}px, ${BLOCKS[i].y}px)`;
 			el.style.opacity = '1';
 		}
@@ -260,7 +262,7 @@ export const SoloEmptyState: FC<{
 }> = ({ onPromptClick }) => {
 	const [showButtons, setShowButtons] = useState(false);
 
-	// Show buttons after the first assemble phase completes (~2s)
+	// Show buttons after the first assemble phase completes (~3s)
 	useEffect(() => {
 		const timer = setTimeout(() => setShowButtons(true), SCRAMBLE_DURATION + ASSEMBLE_DURATION + 200);
 		return () => clearTimeout(timer);

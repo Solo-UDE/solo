@@ -2,7 +2,7 @@
  * SourceControlPanel — main sidebar panel for git source control
  */
 
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import type { FC } from 'react';
 import {
   ArrowDown,
@@ -19,17 +19,15 @@ import {
   Minus,
   Plus,
   Sparkle,
-  TreeStructure,
+  Rows,
 } from '@phosphor-icons/react';
 import { useGitStore } from '@/stores/gitStore';
 import { useGitHubAccountsStore } from '@/stores/githubAccountsStore';
 import { usePanelTabsStore } from '@/stores/panelTabsStore';
-import { useWorktreeList } from '@/stores/worktreeStore';
 import { BUILTIN_PANEL_TYPES } from '@/lib/panels';
 import { motion } from 'motion/react';
 import { FileChangeItem } from './FileChangeItem';
 import { GitHubSetup } from './GitHubSetup';
-import { WorktreePanel } from '../sidebar/WorktreePanel';
 import { AnimatedList } from '../ui/animated-list';
 import { ConfirmDialog } from '../ui/confirm-dialog';
 import { cn } from '@/lib/utils';
@@ -42,8 +40,6 @@ interface SourceControlPanelProps {
 export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) => {
   const [stagedOpen, setStagedOpen] = useState(true);
   const [changesOpen, setChangesOpen] = useState(true);
-  const [worktreesOpen, setWorktreesOpen] = useState(true);
-  const worktrees = useWorktreeList();
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
     title: string;
@@ -63,8 +59,6 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
   const isGeneratingMessage = useGitStore((s) => s.isGeneratingMessage);
   const commitsAhead = useGitStore((s) => s.commitsAhead);
   const setCommitMessage = useGitStore((s) => s.setCommitMessage);
-  const startPolling = useGitStore((s) => s.startPolling);
-  const stopPolling = useGitStore((s) => s.stopPolling);
   const discardFile = useGitStore((s) => s.discardFile);
   const discardAll = useGitStore((s) => s.discardAll);
   const stageFile = useGitStore((s) => s.stageFile);
@@ -90,12 +84,6 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
     () => changedFiles.filter((f) => !f.is_staged),
     [changedFiles],
   );
-
-  // Start polling when mounted
-  useEffect(() => {
-    startPolling();
-    return () => stopPolling();
-  }, [startPolling, stopPolling]);
 
   // Handle commit message change
   const handleMessageChange = useCallback(
@@ -174,6 +162,13 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
     },
     [handleCommit],
   );
+
+  // View all branch changes in unified diff panel
+  const handleViewBranchDiff = useCallback(() => {
+    openPanel(BUILTIN_PANEL_TYPES.BRANCH_DIFF, {
+      branch: repoStatus?.current_branch ?? undefined,
+    });
+  }, [openPanel, repoStatus?.current_branch]);
 
   // View file diff
   const handleViewDiff = useCallback(
@@ -529,27 +524,43 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
                   )}
                 </span>
               )}
-              {unstagedFiles.length > 0 && (
-                <span className="ml-auto flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <span onClick={handleStageAll}>
-                    <Plus
+              <span className="ml-auto flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                {changedFiles.length > 0 && (
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleViewBranchDiff();
+                    }}
+                    title="View all branch changes"
+                  >
+                    <Rows
                       className="w-3.5 h-3.5 text-muted-foreground hover:text-foreground transition-colors"
                       weight="bold"
                     />
                   </span>
-                  <span
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDiscardAll();
-                    }}
-                  >
-                    <ArrowCounterClockwise
-                      className="w-3.5 h-3.5 text-muted-foreground hover:text-destructive transition-colors"
-                      weight="bold"
-                    />
-                  </span>
-                </span>
-              )}
+                )}
+                {unstagedFiles.length > 0 && (
+                  <>
+                    <span onClick={handleStageAll}>
+                      <Plus
+                        className="w-3.5 h-3.5 text-muted-foreground hover:text-foreground transition-colors"
+                        weight="bold"
+                      />
+                    </span>
+                    <span
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDiscardAll();
+                      }}
+                    >
+                      <ArrowCounterClockwise
+                        className="w-3.5 h-3.5 text-muted-foreground hover:text-destructive transition-colors"
+                        weight="bold"
+                      />
+                    </span>
+                  </>
+                )}
+              </span>
             </button>
 
             {/* Unstaged file list */}
@@ -582,38 +593,6 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
               </div>
             )}
 
-            {/* Worktrees section — hidden when only the default worktree exists */}
-            {worktrees.length > 1 && (
-              <>
-                <button
-                  onClick={() => setWorktreesOpen((prev) => !prev)}
-                  className={cn(
-                    'group flex items-center gap-1.5 h-7 px-3 shrink-0',
-                    'text-xs font-medium text-muted-foreground',
-                    'hover:text-foreground transition-colors duration-150',
-                  )}
-                >
-                  {worktreesOpen ? (
-                    <CaretDown className="w-3 h-3" weight="bold" />
-                  ) : (
-                    <CaretRight className="w-3 h-3" weight="bold" />
-                  )}
-                  <TreeStructure className="w-3 h-3" />
-                  Worktrees
-                  <span
-                    className={cn(
-                      'ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold',
-                      'bg-primary/10 text-primary',
-                    )}
-                  >
-                    {worktrees.length}
-                  </span>
-                </button>
-                {worktreesOpen && (
-                  <WorktreePanel embedded className="px-0" />
-                )}
-              </>
-            )}
           </div>
         </>
       )}

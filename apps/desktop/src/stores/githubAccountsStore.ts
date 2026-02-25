@@ -2,6 +2,7 @@
  * GitHub Accounts Store — manages GitHub account, token, and installation state.
  *
  * Uses direct GitHub OAuth (not Supabase) for git operations.
+ * Primary auth method: GitHub Device Flow (no secret, no callback server).
  */
 
 import { create } from 'zustand';
@@ -9,13 +10,14 @@ import { immer } from 'zustand/middleware/immer';
 import type { GitHubAccount, GitHubInstallation } from '@/lib/github-api';
 import { getAuthenticatedUser, listInstallations } from '@/lib/github-api';
 import {
-  githubStartAuth,
-  githubCompleteAuth,
   githubGetToken,
   githubDisconnect,
+  githubStartDeviceAuth,
+  githubPollDeviceAuth,
 } from '@/lib/tauri/git';
-import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-shell';
+import { toast } from 'sonner';
+import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 
 interface GitHubAccountsState {
   user: GitHubAccount | null;
@@ -27,6 +29,10 @@ interface GitHubAccountsState {
   token: string | null;
   /** Whether a connect flow is in progress */
   isConnecting: boolean;
+  /** Device Flow: user code to display (e.g. "ABCD-1234") */
+  userCode: string | null;
+  /** Device Flow: URL where user enters the code */
+  verificationUri: string | null;
 }
 
 interface GitHubAccountsActions {
@@ -35,7 +41,7 @@ interface GitHubAccountsActions {
   setSelectedAccount: (account: GitHubAccount | null) => void;
   /** Load persisted token from keychain on app startup */
   loadToken: () => Promise<void>;
-  /** Start the GitHub OAuth flow (opens browser, waits for callback) */
+  /** Start the GitHub Device Flow (show code, poll for completion) */
   connectGitHub: () => Promise<void>;
   /** Disconnect GitHub and clear token */
   disconnectGitHub: () => Promise<void>;
@@ -51,6 +57,8 @@ export const useGitHubAccountsStore = create<GitHubAccountsState & GitHubAccount
     error: null,
     token: null,
     isConnecting: false,
+    userCode: null,
+    verificationUri: null,
 
     fetchUser: async (token: string) => {
       set((state) => {
@@ -108,40 +116,95 @@ export const useGitHubAccountsStore = create<GitHubAccountsState & GitHubAccount
       set((state) => {
         state.isConnecting = true;
         state.error = null;
+        state.userCode = null;
+        state.verificationUri = null;
       });
 
+      let toastId: string | number | undefined;
+
       try {
-        // 1. Start the OAuth flow (get auth URL with state)
-        const { auth_url, state: oauthState } = await githubStartAuth();
+        // 1. Start the Device Flow (get user_code + device_code)
+        const { user_code, verification_uri, device_code, expires_in, interval } =
+          await githubStartDeviceAuth();
 
-        // 2. Open browser to GitHub authorization page
-        try {
-          await open(auth_url);
-        } catch {
-          window.open(auth_url, '_blank');
-        }
-
-        // 3. Wait for the callback server to receive the code (backend validates state)
-        const [code] = await invoke<[string, string]>('wait_for_oauth_callback', { expectedState: oauthState });
-
-        // 5. Exchange code for token (stored in keychain by backend)
-        await githubCompleteAuth(code, oauthState);
-
-        // 6. Fetch the token back for frontend use
-        const token = await githubGetToken();
+        // 2. Store in state + show toast with the code
         set((state) => {
-          state.token = token;
-          state.isConnecting = false;
+          state.userCode = user_code;
+          state.verificationUri = verification_uri;
         });
 
-        // 7. Fetch user info
-        if (token) {
-          await get().fetchUser(token);
+        // Auto-copy code to clipboard
+        try {
+          await writeText(user_code);
+        } catch {
+          navigator.clipboard.writeText(user_code).catch(() => {});
         }
+
+        // Show persistent toast with the device code
+        toastId = toast(`Enter code at github.com/login/device`, {
+          description: `Your code: ${user_code} (copied to clipboard)`,
+          duration: Infinity,
+        });
+
+        // 3. Open verification URL in browser
+        try {
+          await open(verification_uri);
+        } catch {
+          window.open(verification_uri, '_blank');
+        }
+
+        // 4. Poll until authorized, expired, or error
+        const deadline = Date.now() + expires_in * 1000;
+        const pollInterval = interval * 1000;
+
+        while (Date.now() < deadline) {
+          await new Promise((r) => setTimeout(r, pollInterval));
+
+          // Check if we've been cancelled (disconnected while connecting)
+          if (!get().isConnecting) {
+            if (toastId) toast.dismiss(toastId);
+            return;
+          }
+
+          const result = await githubPollDeviceAuth(device_code);
+
+          if (result.status === 'complete') {
+            if (toastId) toast.dismiss(toastId);
+            // Token stored by backend — fetch it for frontend use
+            const token = await githubGetToken();
+            set((state) => {
+              state.token = token;
+              state.isConnecting = false;
+              state.userCode = null;
+              state.verificationUri = null;
+            });
+            if (token) {
+              await get().fetchUser(token);
+            }
+            toast.success('Connected to GitHub');
+            return;
+          }
+
+          if (result.status === 'expired') {
+            throw new Error('Device code expired. Please try again.');
+          }
+
+          if (result.status === 'error') {
+            throw new Error(result.message);
+          }
+
+          // status === 'pending' → continue polling
+        }
+
+        throw new Error('Timed out waiting for authorization.');
       } catch (err) {
+        if (toastId) toast.dismiss(toastId);
+        toast.error('GitHub sign in failed', { description: String(err) });
         set((state) => {
           state.error = String(err);
           state.isConnecting = false;
+          state.userCode = null;
+          state.verificationUri = null;
         });
       }
     },
@@ -154,6 +217,9 @@ export const useGitHubAccountsStore = create<GitHubAccountsState & GitHubAccount
           state.user = null;
           state.selectedAccount = null;
           state.installations = [];
+          state.isConnecting = false;
+          state.userCode = null;
+          state.verificationUri = null;
         });
       } catch (err) {
         console.error('Failed to disconnect GitHub:', err);
@@ -169,6 +235,8 @@ export const useGitHubAccountsStore = create<GitHubAccountsState & GitHubAccount
         state.error = null;
         state.token = null;
         state.isConnecting = false;
+        state.userCode = null;
+        state.verificationUri = null;
       });
     },
   })),

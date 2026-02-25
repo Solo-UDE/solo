@@ -14,8 +14,7 @@
 
 import { useEffect, useRef } from 'react';
 import { useAgentStore } from '../stores/agentStore';
-import { useDebugStore } from '../stores/debugStore';
-import { listenToAgentEvents, type AgentEventHandlers, type AgentDebugEvent } from '../lib/tauri/agent';
+import { listenToAgentEvents, type AgentEventHandlers } from '../lib/tauri/agent';
 import type { BridgeAgentMessage, PermissionRequest } from '../bindings';
 
 interface UseAgentStreamOptions {
@@ -36,14 +35,9 @@ export function useAgentStream(options: UseAgentStreamOptions = {}): void {
 		onSessionInit: useAgentStore((s) => s.handleSessionInit),
 		onTurnStart: useAgentStore((s) => s.handleTurnStart),
 		onError: useAgentStore((s) => s.handleError),
-		onPlanModeChanged: (_sessionId: string, enabled: boolean) => {
-			console.log('[AgentStream] Plan mode changed:', enabled);
-		},
+		onPlanModeChanged: useAgentStore((s) => s.handlePlanModeChanged),
 		onAcceptModeChanged: (_sessionId: string, enabled: boolean) => {
 			console.log('[AgentStream] Accept mode changed:', enabled);
-		},
-		onDebugEvent: (event: AgentDebugEvent) => {
-			useDebugStore.getState().addEvent(event);
 		},
 	};
 
@@ -69,8 +63,6 @@ export function useAgentStream(options: UseAgentStreamOptions = {}): void {
 				handlersRef.current.onPlanModeChanged?.(sessionId, enabled),
 			onAcceptModeChanged: (sessionId, enabled) =>
 				handlersRef.current.onAcceptModeChanged?.(sessionId, enabled),
-			onDebugEvent: (event) =>
-				handlersRef.current.onDebugEvent?.(event),
 		};
 
 		listenToAgentEvents(proxy)

@@ -34,7 +34,7 @@ interface FileTreeNodeProps {
   entry: FileTreeEntry;
   depth: number;
   isExpanded: boolean;
-  isSelected: boolean;
+  isActive: boolean;
   isLoading: boolean;
   isRenaming: boolean;
   style: React.CSSProperties;
@@ -109,7 +109,7 @@ export const FileTreeNode = memo(function FileTreeNode({
   entry,
   depth,
   isExpanded,
-  isSelected,
+  isActive,
   isLoading,
   isRenaming,
   style,
@@ -211,7 +211,7 @@ export const FileTreeNode = memo(function FileTreeNode({
     }
   }, [renameValue, entry.name, onRenameSubmit, onRenameCancel]);
 
-  const paddingLeft = depth * 16 + 8;
+  const paddingLeft = depth * 8;
 
   return (
     <div
@@ -220,7 +220,7 @@ export const FileTreeNode = memo(function FileTreeNode({
         group flex items-center h-7 px-2 cursor-pointer select-none
         hover:bg-muted/50 active:bg-muted/70
         transition-colors duration-100
-        ${isSelected ? 'bg-primary/20 hover:bg-primary/30' : ''}
+        ${isActive ? 'bg-primary/20 hover:bg-primary/30' : ''}
       `}
       onClick={onClick}
       onDoubleClick={onDoubleClick}
@@ -266,11 +266,11 @@ export const FileTreeNode = memo(function FileTreeNode({
             onBlur={handleRenameBlur}
             autoFocus
             aria-label={`Rename ${entry.name}`}
-            className="flex-1 min-w-0 px-1 py-0 text-sm bg-muted border border-primary rounded outline-none"
+            className="flex-1 min-w-0 px-1 py-0 text-xs font-medium bg-muted border border-primary rounded outline-none"
             onClick={(e) => e.stopPropagation()}
           />
         ) : (
-          <span className="truncate text-sm text-foreground">{entry.name}</span>
+          <span className="truncate text-xs font-medium text-foreground">{entry.name}</span>
         )}
       </div>
 

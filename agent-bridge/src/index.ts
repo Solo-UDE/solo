@@ -10,6 +10,7 @@ import { createLogger, configureFileLogging, setDebugCallback, shutdownFileLoggi
 import { SessionManager } from './session-manager.js';
 import { generateCommitMessage } from './commit-message.js';
 import { refineTranscript } from './refine-transcript.js';
+import { generateSessionTitle } from './session-title.js';
 
 import type { BridgeEvent, BridgeRequest, BridgeResponse, CommandResponse } from './protocol.js';
 import type { LogEntry } from './logger.js';
@@ -93,15 +94,6 @@ function main(): void {
     sendEvent({
       type: 'error_event',
       error,
-    });
-  });
-
-  // Wire debug events to IPC
-  sessionManager.onDebugEvent((data) => {
-    sendEvent({
-      type: 'debug_event',
-      sessionId: data.sessionId,
-      event: data.event,
     });
   });
 
@@ -251,11 +243,7 @@ async function handleRequest(
     }
 
     case 'set_tool_policy': {
-      sessionManager.setToolPolicy(
-        request.sessionId,
-        request.mode,
-        request.isWorktreeSession ?? false,
-      );
+      sessionManager.setToolPolicy(request.sessionId, request.mode, request.isWorktreeSession);
       sendResponse({ type: 'success', requestType: request.type });
       break;
     }
@@ -281,6 +269,12 @@ async function handleRequest(
     case 'refine_transcript': {
       const refined = await refineTranscript(request.transcript, request.context, request.apiKey);
       sendResponse({ type: 'string', requestType: request.type, value: refined });
+      break;
+    }
+
+    case 'generate_session_title': {
+      const title = await generateSessionTitle(request.userMessage, request.assistantMessage, request.apiKey);
+      sendResponse({ type: 'string', requestType: request.type, value: title });
       break;
     }
 

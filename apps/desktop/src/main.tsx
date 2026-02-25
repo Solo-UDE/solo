@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import "@fontsource-variable/inter";
+import "@fontsource-variable/atkinson-hyperlegible-next";
 import "katex/dist/katex.min.css";
 import "./index.css";
 
