@@ -29,7 +29,7 @@ tauri = "2.2"
 tauri-build = "2.0"
 
 # Git
-git2 = "0.19"
+git2 = "0.20"
 
 # Logging
 tracing = "0.1"
