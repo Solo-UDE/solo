@@ -8,6 +8,10 @@ export const SIDEBAR = {
   min: 220,
   max: 400,
   iconColumnWidth: 40,
+  /** Width of the repo icon rail (always visible) */
+  railWidth: 48,
+  /** Width of the repo rail when expanded to show details */
+  railExpandedWidth: 200,
 } as const;
 
 export const HEIGHTS = {
@@ -23,7 +27,7 @@ export const TERMINAL_SECTION = {
 } as const;
 
 export const TRANSITIONS = {
-  sidebar: '150ms ease-in-out',
+  sidebar: '200ms ease-in-out',
 } as const;
 
 /**

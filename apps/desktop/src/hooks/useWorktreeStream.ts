@@ -2,7 +2,8 @@
  * Singleton worktree event listener
  *
  * Listens for worktree backend events and dispatches to the worktree store.
- * Follows the same pattern as useAgentStream.
+ * Follows the same pattern as useGitStream: accesses store handlers via
+ * getState() inside the effect to avoid stale closures.
  * Retries with exponential backoff if the listener fails to attach.
  */
 
@@ -28,12 +29,6 @@ interface WorktreeEventPayload {
 const MAX_RETRIES = 5;
 
 export function useWorktreeStream(): void {
-	const handleProgress = useWorktreeStore((s) => s.handleWorktreeProgress);
-	const handleReady = useWorktreeStore((s) => s.handleWorktreeReady);
-	const handleError = useWorktreeStore((s) => s.handleWorktreeError);
-	const handleRemoved = useWorktreeStore((s) => s.handleWorktreeRemoved);
-	const handleSetupProgress = useWorktreeStore((s) => s.handleSetupProgress);
-
 	const cleanupRef = useRef<UnlistenFn | null>(null);
 	const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -45,27 +40,29 @@ export function useWorktreeStream(): void {
 
 			listen<WorktreeEventPayload>('backend-event', (event) => {
 				const payload = event.payload;
+				// Access handlers via getState() to avoid stale closures
+				const store = useWorktreeStore.getState();
 
 				switch (payload.type) {
 					case 'worktree:progress':
-						handleProgress(payload.payload.worktree_id, payload.payload.message ?? '');
+						store.handleWorktreeProgress(payload.payload.worktree_id, payload.payload.message ?? '');
 						break;
 					case 'worktree:ready':
 						if (payload.payload.info) {
-							handleReady(payload.payload.worktree_id, payload.payload.info);
+							store.handleWorktreeReady(payload.payload.worktree_id, payload.payload.info);
 						}
 						break;
 					case 'worktree:error':
-						handleError(
+						store.handleWorktreeError(
 							payload.payload.worktree_id,
 							payload.payload.error ?? 'Unknown error',
 						);
 						break;
 					case 'worktree:removed':
-						handleRemoved(payload.payload.worktree_id);
+						store.handleWorktreeRemoved(payload.payload.worktree_id);
 						break;
 					case 'worktree:setup_progress':
-						handleSetupProgress(
+						store.handleSetupProgress(
 							payload.payload.worktree_id,
 							payload.payload.output ?? '',
 							payload.payload.is_complete ?? false,
@@ -101,5 +98,5 @@ export function useWorktreeStream(): void {
 				cleanupRef.current = null;
 			}
 		};
-	}, [handleProgress, handleReady, handleError, handleRemoved, handleSetupProgress]);
+	}, []);
 }

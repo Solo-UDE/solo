@@ -59,7 +59,7 @@ export function registerBuiltinPanels(): void {
     getDefaultTitle: (data) => {
       const sessionId = data.sessionId as string | undefined;
       if (!sessionId) return 'New Session';
-      return 'New Session';
+      return `Session ${sessionId.slice(0, 8)}`;
     },
     allowMultiple: true,
     preferredRegion: 'editor',

@@ -16,6 +16,7 @@ interface UIState {
   leftSidebarWidth: number;
   _previousSidebarWidth: number;
   activeTab: SidebarTab;
+  railExpanded: boolean;
   terminalPanelOpen: boolean;
   terminalPanelHeight: number;
   settingsOpen: boolean;
@@ -30,6 +31,8 @@ interface UIActions {
   collapseLeftSidebar: () => void;
   setLeftSidebarWidth: (width: number) => void;
   setActiveTab: (tab: SidebarTab) => void;
+  toggleRailExpanded: () => void;
+  setRailExpanded: (expanded: boolean) => void;
   toggleTerminalPanel: () => void;
   setTerminalPanelHeight: (height: number) => void;
   openSettings: (tab?: SettingsTabId) => void;
@@ -48,6 +51,7 @@ export const useUIStore = create<UIStore>()(
     leftSidebarWidth: SIDEBAR.expanded,
     _previousSidebarWidth: SIDEBAR.expanded,
     activeTab: 'explorer' as SidebarTab,
+    railExpanded: false,
     terminalPanelOpen: false,
     terminalPanelHeight: TERMINAL_SECTION.defaultHeight,
     settingsOpen: false,
@@ -90,6 +94,18 @@ export const useUIStore = create<UIStore>()(
     setActiveTab: (tab: SidebarTab): void => {
       set((state) => {
         state.activeTab = tab;
+      });
+    },
+
+    toggleRailExpanded: (): void => {
+      set((state) => {
+        state.railExpanded = !state.railExpanded;
+      });
+    },
+
+    setRailExpanded: (expanded: boolean): void => {
+      set((state) => {
+        state.railExpanded = expanded;
       });
     },
 

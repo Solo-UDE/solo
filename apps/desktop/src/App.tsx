@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { AnimatePresence, motion } from "motion/react";
 import { Bug, GearSix, SidebarSimple, SignOut, Terminal } from "@phosphor-icons/react";
 import { PrimarySidebar } from "./components/sidebar";
+import { RepoRail } from "./components/sidebar/RepoRail";
 import { SidebarTerminal } from "./components/sidebar";
 import { MosaicLayout } from "./components/panels";
 import { AuthGuard } from "./components/auth";
@@ -37,6 +38,7 @@ import { TitlebarButton } from "./components/titlebar/TitlebarButton";
 import { WelcomeScreen } from "./components/welcome";
 import { KeyboardShortcutsOverlay } from "./components/KeyboardShortcutsOverlay";
 import { BugReportDialog } from "./components/bug-report/BugReportDialog";
+import { TabSwitcher } from "./components/panels/TabSwitcher";
 
 // Shared easing curve matching --ease-smooth
 const EASE_SMOOTH: [number, number, number, number] = [0.16, 1, 0.3, 1];
@@ -55,6 +57,9 @@ function AppContent() {
 
   // Bug report dialog state
   const [bugReportOpen, setBugReportOpen] = useState(false);
+
+  // Tab switcher (Cmd+Shift+T)
+  const [tabSwitcherOpen, setTabSwitcherOpen] = useState(false);
 
   // Terminal panel drag state
   const [isDraggingTerminal, setIsDraggingTerminal] = useState(false);
@@ -237,10 +242,17 @@ function AppContent() {
         return;
       }
 
-      // Cmd+? (Cmd+Shift+/) — toggle keyboard shortcuts overlay
+      // Cmd+? (Cmd+Shift+/) -- toggle keyboard shortcuts overlay
       if (e.key === '?' && e.metaKey) {
         e.preventDefault();
         setShortcutsOverlayOpen((prev) => !prev);
+        return;
+      }
+
+      // Cmd+Shift+T -- toggle tab switcher
+      if (e.key === 'T' && e.metaKey && e.shiftKey) {
+        e.preventDefault();
+        setTabSwitcherOpen((prev) => !prev);
         return;
       }
 
@@ -481,6 +493,10 @@ function AppContent() {
             className="flex h-full"
           >
             <DndProvider backend={HTML5Backend}>
+              {/* Repo icon rail - always visible when repos exist */}
+              {hasRepos && <RepoRail />}
+
+              {/* Content sidebar - collapsible */}
               <PrimarySidebar ref={sidebarRef} width={leftSidebarWidth} onFileOpen={handleFileOpen} />
 
               <div
@@ -540,6 +556,7 @@ function AppContent() {
         onOpenSettings={handleOpenShortcutsSettings}
       />
       {bugReportOpen && <BugReportDialog onClose={() => setBugReportOpen(false)} />}
+      <TabSwitcher open={tabSwitcherOpen} onClose={() => setTabSwitcherOpen(false)} />
       <Toaster richColors position="bottom-right" theme={resolvedTheme} />
     </div>
   );
