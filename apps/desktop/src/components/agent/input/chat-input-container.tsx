@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback, useEffect, lazy, Suspense } from 'react';
+import React, { useRef, useState, useCallback, useEffect, useMemo, lazy, Suspense } from 'react';
 import { Stop, PaintBrush } from '@phosphor-icons/react';
 
 import { ContextMenu } from './context-menu';
@@ -16,6 +16,7 @@ import {
 
 import type { LexicalEditorHandle } from './lexical-editor';
 import type { FileMention, Attachment } from '../../../stores/agentStore';
+import { useActiveSessionMessages } from '../../../stores/agentStore';
 import { ModeSelector } from './mode-selector';
 import { ModelPicker } from './model-picker';
 import { SubmitButton } from './submit-button';
@@ -73,6 +74,17 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
   const voiceSuggestionDismissedRef = useRef(false);
   const [showVoiceSuggestion, setShowVoiceSuggestion] = useState(false);
   const worktrees = useWorktreeList();
+  const sessionMessages = useActiveSessionMessages();
+
+  // Build context from recent chat messages for STT transcription improvement
+  const voiceContext = useMemo(() => {
+    const recent = sessionMessages.slice(-5);
+    if (recent.length === 0) return undefined;
+    return recent
+      .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
+      .join('\n')
+      .slice(0, 2000);
+  }, [sessionMessages]);
 
   const handleSubmit = (): void => {
     const hasContent = content.trim() || attachments.length > 0;
@@ -224,6 +236,8 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
                 onTranscript={handleVoiceTranscript}
                 showSuggestion={showVoiceSuggestion}
                 onSuggestionDismiss={handleDismissVoiceSuggestion}
+                previousText={voiceContext}
+                chatContext={voiceContext}
               />
 
               {/* Screen record (mock) */}

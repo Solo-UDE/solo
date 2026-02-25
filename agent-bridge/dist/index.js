@@ -229,68 +229,13 @@ function localize(_key, message) {
   return message;
 }
 
-// src/tool-policy.ts
-var logger2 = createLogger("ToolPolicy");
-var TIER_0_TOOLS = /* @__PURE__ */ new Set([
-  "Read",
-  "Glob",
-  "Grep",
-  "WebSearch",
-  "WebFetch",
-  "Task",
-  "TodoWrite",
-  "AskUserQuestion",
-  "ListMcpResourcesTool",
-  "ReadMcpResourceTool"
-]);
-var TIER_1_TOOLS = /* @__PURE__ */ new Set([
-  "Write",
-  "Edit",
-  "NotebookEdit",
-  "ExitPlanMode"
-]);
-var TIER_2_TOOLS = /* @__PURE__ */ new Set([
-  "Bash",
-  "BashOutput",
-  "KillShell"
-]);
-function getToolTier(toolName) {
-  if (TIER_0_TOOLS.has(toolName)) return 0;
-  if (TIER_1_TOOLS.has(toolName)) return 1;
-  if (TIER_2_TOOLS.has(toolName)) return 2;
-  return 2;
-}
-function evaluatePolicy(toolName, mode, context) {
-  if (mode === "approve-all") return "auto-approve";
-  if (mode === "ask-all") return "prompt";
-  const tier = getToolTier(toolName);
-  switch (tier) {
-    case 0:
-      return "auto-approve";
-    case 1:
-      if (context.isWorktreeSession) {
-        logger2.debug({ toolName, tier }, "Auto-approving Tier 1 tool in worktree");
-        return "auto-approve";
-      }
-      return "prompt";
-    case 2:
-      return "prompt";
-    case 3:
-      return "deny";
-    default:
-      return "prompt";
-  }
-}
-
 // src/permissions.ts
-var logger3 = createLogger("PermissionManager");
+var logger2 = createLogger("PermissionManager");
 var PermissionManager = class {
   requestCallback;
   snapshotCallback;
   alwaysAllowedTools = /* @__PURE__ */ new Set();
   acceptModeGetter;
-  _policyMode = "ask-all";
-  _policyContext = { isWorktreeSession: false };
   constructor(requestCallback, snapshotCallback, acceptModeGetter) {
     if (requestCallback !== void 0) {
       this.requestCallback = requestCallback;
@@ -321,58 +266,27 @@ var PermissionManager = class {
     return this.alwaysAllowedTools.has(toolName);
   }
   /**
-   * Set the tool permission policy mode.
-   */
-  setPolicyMode(mode) {
-    this._policyMode = mode;
-  }
-  getPolicyMode() {
-    return this._policyMode;
-  }
-  /**
-   * Set the policy context (e.g., worktree session status).
-   */
-  setPolicyContext(context) {
-    this._policyContext = { ...this._policyContext, ...context };
-  }
-  /**
    * Create permission callback for the SDK.
    * This uses the SDK's canUseTool API.
    */
   createCallback() {
     return async (toolName, toolInput, options) => {
-      logger3.debug({ toolName, toolInput }, "Permission callback invoked");
+      logger2.debug({ toolName, toolInput }, "Permission callback invoked");
       try {
         const acceptModeActive = this.acceptModeGetter?.() ?? false;
-        logger3.debug({ toolName, acceptModeActive }, "Permission check");
+        logger2.debug({ toolName, acceptModeActive }, "Permission check");
         if (acceptModeActive) {
-          logger3.debug({ toolName }, "Accept mode active - auto-approving tool");
+          logger2.debug({ toolName }, "Accept mode active - auto-approving tool");
           return {
             behavior: "allow",
             updatedInput: toolInput
-          };
-        }
-        const policyDecision = evaluatePolicy(toolName, this._policyMode, this._policyContext);
-        if (policyDecision === "auto-approve") {
-          logger3.debug({ toolName, policyMode: this._policyMode }, "Policy auto-approved tool");
-          return {
-            behavior: "allow",
-            updatedInput: toolInput
-          };
-        }
-        if (policyDecision === "deny") {
-          logger3.debug({ toolName, policyMode: this._policyMode }, "Policy denied tool");
-          return {
-            behavior: "deny",
-            message: localize("orbit.policyDenied", "Tool denied by permission policy"),
-            interrupt: false
           };
         }
         if ((toolName === "Write" || toolName === "Edit") && this.snapshotCallback) {
           try {
             await this.snapshotCallback(toolName, toolInput, null);
           } catch (error) {
-            logger3.warn({ toolName, error }, "Failed to capture snapshot");
+            logger2.warn({ toolName, error }, "Failed to capture snapshot");
           }
         }
         if (this.isAlwaysAllowed(toolName)) {
@@ -395,7 +309,7 @@ var PermissionManager = class {
                   ...toolInput,
                   answers: result.answers
                 };
-                logger3.debug({ answers: result.answers }, "AskUserQuestion answers received");
+                logger2.debug({ answers: result.answers }, "AskUserQuestion answers received");
               }
               return {
                 behavior: "allow",
@@ -409,7 +323,7 @@ var PermissionManager = class {
               interrupt: false
             };
           } catch (error) {
-            logger3.error({ toolName, error }, "Permission request failed - DENYING");
+            logger2.error({ toolName, error }, "Permission request failed - DENYING");
             return {
               behavior: "deny",
               message: localize(
@@ -425,7 +339,7 @@ var PermissionManager = class {
           updatedInput: toolInput
         };
       } catch (error) {
-        logger3.error(
+        logger2.error(
           { error },
           "CRITICAL: Permission callback crashed - DENYING to prevent silent approval"
         );
@@ -726,7 +640,7 @@ function formatGeneric(resultContent) {
 }
 
 // src/agent.ts
-var logger4 = createLogger("OrbitAgent");
+var logger3 = createLogger("OrbitAgent");
 function isToolResultBlock(block) {
   if (typeof block !== "object" || block === null) {
     return false;
@@ -871,7 +785,7 @@ var OrbitAgent = class {
     this._mcpServers = config.mcpServers ?? {};
     this._outputFormat = config.outputFormat;
     this._agents = config.agents;
-    logger4.info(
+    logger3.info(
       {
         sessionMode: this._sessionMode,
         mcpServerCount: Object.keys(this._mcpServers).length,
@@ -886,11 +800,11 @@ var OrbitAgent = class {
    */
   registerMcpServer(name, server) {
     if (this.sessionActive) {
-      logger4.warn("Cannot register MCP server after session has started");
+      logger3.warn("Cannot register MCP server after session has started");
       return;
     }
     this._mcpServers[name] = server;
-    logger4.info({ name }, "MCP server registered");
+    logger3.info({ name }, "MCP server registered");
   }
   /**
    * Unregister an MCP server
@@ -899,7 +813,7 @@ var OrbitAgent = class {
     const { [name]: _removed, ...rest } = this._mcpServers;
     void _removed;
     this._mcpServers = rest;
-    logger4.info({ name }, "MCP server unregistered");
+    logger3.info({ name }, "MCP server unregistered");
   }
   /**
    * Set or remove the browser MCP server.
@@ -1031,22 +945,22 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
     if (this._thinkingMode && this._thinkingBudget > 0) {
       options.maxThinkingTokens = this._thinkingBudget;
       const modeName = this._thinkingBudget <= 4096 ? "think" : this._thinkingBudget <= 10240 ? "hard" : "ultra";
-      logger4.info(
+      logger3.info(
         { thinkingMode: modeName, thinkingBudget: this._thinkingBudget },
         "Extended thinking ENABLED"
       );
     } else {
-      logger4.info({ thinkingMode: "off" }, "Extended thinking DISABLED");
+      logger3.info({ thinkingMode: "off" }, "Extended thinking DISABLED");
     }
     if (this._sessionMode === "chat") {
       const chatTools = getAllowedToolsForMode("chat");
       options.allowedTools = chatTools;
-      logger4.info({ mode: "chat", tools: chatTools }, "Chat mode - read-only tools auto-approved");
+      logger3.info({ mode: "chat", tools: chatTools }, "Chat mode - read-only tools auto-approved");
     } else {
       const permissionCallback = this.permissionManager.createCallback();
-      logger4.debug("Using SDK permission flow with canUseTool callback");
+      logger3.debug("Using SDK permission flow with canUseTool callback");
       options.canUseTool = async (toolName, toolInput, canUseToolOptions) => {
-        logger4.debug({ toolName }, "canUseTool callback invoked");
+        logger3.debug({ toolName }, "canUseTool callback invoked");
         try {
           const result = await permissionCallback(toolName, toolInput, {
             signal: canUseToolOptions.signal,
@@ -1054,7 +968,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
           });
           return result;
         } catch (error) {
-          logger4.error({ toolName, error }, "canUseTool callback error");
+          logger3.error({ toolName, error }, "canUseTool callback error");
           return {
             behavior: "deny",
             message: "Permission request failed"
@@ -1085,7 +999,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
                 const preToolInput = input;
                 const toolName = preToolInput.tool_name;
                 const toolInput = preToolInput.tool_input;
-                logger4.info(
+                logger3.info(
                   {
                     toolName,
                     inputKeys: Object.keys(toolInput)
@@ -1102,7 +1016,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
                     }
                   });
                 }
-                logger4.debug({ toolName }, "Hook: PreToolUse \u2014 delegating to SDK permission flow");
+                logger3.debug({ toolName }, "Hook: PreToolUse \u2014 delegating to SDK permission flow");
                 return Promise.resolve({});
               }
             ]
@@ -1117,7 +1031,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
                 const postInput = input;
                 const response = postInput.tool_response;
                 const responseStr = typeof response === "string" ? response : JSON.stringify(response);
-                logger4.info(
+                logger3.info(
                   {
                     toolName: postInput.tool_name,
                     toolUseId,
@@ -1138,7 +1052,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
             hooks: [
               (input, toolUseId) => {
                 const failureInput = input;
-                logger4.warn(
+                logger3.warn(
                   {
                     toolName: failureInput.tool_name,
                     toolUseId,
@@ -1160,7 +1074,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
             hooks: [
               (input) => {
                 const notifInput = input;
-                logger4.info(
+                logger3.info(
                   {
                     message: notifInput.message,
                     title: notifInput.title
@@ -1179,7 +1093,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
             hooks: [
               (input) => {
                 const compactInput = input;
-                logger4.info(
+                logger3.info(
                   {
                     trigger: compactInput.trigger,
                     customInstructions: compactInput.custom_instructions ? `${compactInput.custom_instructions.slice(0, 100)}...` : void 0
@@ -1200,7 +1114,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
                 const startInput = input;
                 const agentId = startInput.agent_id;
                 subagentStartTimes.set(agentId, Date.now());
-                logger4.info(
+                logger3.info(
                   {
                     agentId,
                     agentType: startInput.agent_type
@@ -1219,7 +1133,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
             hooks: [
               (input) => {
                 const stopInput = input;
-                logger4.info(
+                logger3.info(
                   {
                     stopHookActive: stopInput.stop_hook_active
                   },
@@ -1237,7 +1151,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
             hooks: [
               (input) => {
                 const sessionInput = input;
-                logger4.info(
+                logger3.info(
                   {
                     source: sessionInput.source,
                     model: this.model ?? "sonnet",
@@ -1262,7 +1176,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
             hooks: [
               (input) => {
                 const sessionInput = input;
-                logger4.info(
+                logger3.info(
                   {
                     reason: sessionInput.reason
                   },
@@ -1277,17 +1191,17 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
     }
     if (this.model) {
       options.model = this.model;
-      logger4.info({ model: this.model }, "Using model");
+      logger3.info({ model: this.model }, "Using model");
     }
     if (this._fallbackModel) {
       options.fallbackModel = this._fallbackModel;
-      logger4.info({ fallbackModel: this._fallbackModel }, "Fallback model configured");
+      logger3.info({ fallbackModel: this._fallbackModel }, "Fallback model configured");
     }
     const permissionMode = this._acceptMode ? "acceptEdits" : this._planMode ? "plan" : "default";
     options.permissionMode = permissionMode;
-    logger4.info({ permissionMode }, "Permission mode set");
+    logger3.info({ permissionMode }, "Permission mode set");
     if (this._planMode) {
-      logger4.info("Plan mode ENABLED - SDK will restrict to read-only tools");
+      logger3.info("Plan mode ENABLED - SDK will restrict to read-only tools");
     }
     options.includePartialMessages = true;
     if (this._resumeSessionId) {
@@ -1295,28 +1209,28 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
       if (this._forkSession) {
         options.forkSession = true;
       }
-      logger4.info(
+      logger3.info(
         { resumeFrom: this._resumeSessionId, fork: this._forkSession },
         "Session resume/fork configured"
       );
     }
     if (Object.keys(this._mcpServers).length > 0) {
       options.mcpServers = this._mcpServers;
-      logger4.info({ servers: Object.keys(this._mcpServers) }, "MCP servers configured");
+      logger3.info({ servers: Object.keys(this._mcpServers) }, "MCP servers configured");
     }
     if (this._outputFormat) {
       options.outputFormat = this._outputFormat;
-      logger4.info({ type: this._outputFormat.type }, "Structured output format configured");
+      logger3.info({ type: this._outputFormat.type }, "Structured output format configured");
     }
     if (this._agents && Object.keys(this._agents).length > 0) {
       options.agents = this._agents;
-      logger4.info({ agents: Object.keys(this._agents) }, "Custom subagents configured");
+      logger3.info({ agents: Object.keys(this._agents) }, "Custom subagents configured");
     }
     return options;
   }
   startSession() {
     if (this.sessionActive) {
-      logger4.warn("Session already active");
+      logger3.warn("Session already active");
       return;
     }
     const currentPath = process.env.PATH ?? "";
@@ -1337,7 +1251,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
     ].filter((p) => !currentPath.includes(p));
     if (additionalPaths.length > 0) {
       process.env.PATH = [...additionalPaths, currentPath].join(":");
-      logger4.debug({ addedPaths: additionalPaths }, "Fixed PATH for Electron app");
+      logger3.debug({ addedPaths: additionalPaths }, "Fixed PATH for Electron app");
     }
     const credentials = ClaudeCredentials.getCredentials();
     if (!credentials.hasCredentials) {
@@ -1348,17 +1262,17 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
     if (credentials.type === "oauth") {
       delete process.env.ANTHROPIC_API_KEY;
       delete process.env.ANTHROPIC_AUTH_TOKEN;
-      logger4.info("Using Claude Code OAuth (CLI will read from Keychain)");
-      logger4.info("Note: Using your Claude subscription quota, not API credits");
+      logger3.info("Using Claude Code OAuth (CLI will read from Keychain)");
+      logger3.info("Note: Using your Claude subscription quota, not API credits");
     } else {
       const apiKey = process.env.ANTHROPIC_API_KEY;
       if (!apiKey) {
         throw new Error("API key was detected but is no longer available");
       }
-      logger4.info("Using API key from .env (will consume API credits)");
+      logger3.info("Using API key from .env (will consume API credits)");
     }
     process.env.CLAUDE_CODE_STREAM_CLOSE_TIMEOUT = "86400000";
-    logger4.debug(
+    logger3.debug(
       { thinkingMode: this._thinkingMode, thinkingBudget: this._thinkingBudget },
       "Starting session"
     );
@@ -1368,7 +1282,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
       prompt: this.messageQueue[Symbol.asyncIterator](),
       options: this._createOptions()
     });
-    logger4.info("Session started successfully");
+    logger3.info("Session started successfully");
   }
   /**
    * Check if the session is ready to receive messages
@@ -1381,7 +1295,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
       throw new Error("Session not started. Call startSession() first.");
     }
     const thinkingModeName = this._thinkingMode && this._thinkingBudget > 0 ? this._thinkingBudget <= 4096 ? "think" : this._thinkingBudget <= 10240 ? "hard" : "ultra" : "off";
-    logger4.info(
+    logger3.info(
       {
         model: this.model ?? "sonnet",
         thinkingMode: thinkingModeName,
@@ -1455,16 +1369,16 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
         yield message;
       }
     }
-    logger4.debug("Query session completed");
+    logger3.debug("Query session completed");
     this.sessionActive = false;
     this.currentQuery = null;
   }
   async stopSession() {
     if (!this.sessionActive) {
-      logger4.debug("Session not active");
+      logger3.debug("Session not active");
       return;
     }
-    logger4.debug("Stopping session");
+    logger3.debug("Stopping session");
     if (this.messageQueue) {
       this.messageQueue.stop();
       this.messageQueue = null;
@@ -1473,18 +1387,18 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
       try {
         await this.currentQuery.interrupt();
       } catch (error) {
-        logger4.error({ error }, "Error interrupting query");
+        logger3.error({ error }, "Error interrupting query");
       }
       this.currentQuery = null;
     }
     this.sessionActive = false;
-    logger4.info("Session stopped");
+    logger3.info("Session stopped");
   }
   async interrupt() {
     if (!this.currentQuery) {
       throw new Error("No active query to interrupt.");
     }
-    logger4.info("Interrupting current query");
+    logger3.info("Interrupting current query");
     await this.currentQuery.interrupt();
   }
   async setPermissionMode(mode) {
@@ -1505,7 +1419,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
       const budget = enabled && this._thinkingBudget > 0 ? this._thinkingBudget : null;
       await this.currentQuery.setMaxThinkingTokens(budget);
       const modeName = budget === null ? "off" : budget <= 4096 ? "think" : budget <= 10240 ? "hard" : "ultra";
-      logger4.info({ thinkingMode: modeName, budget }, "Thinking mode updated mid-session");
+      logger3.info({ thinkingMode: modeName, budget }, "Thinking mode updated mid-session");
     }
   }
   getThinkingMode() {
@@ -1516,7 +1430,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
     if (enabled) {
       this._acceptMode = false;
     }
-    logger4.info({ enabled }, "Plan mode changed - will apply to next session");
+    logger3.info({ enabled }, "Plan mode changed - will apply to next session");
   }
   getPlanMode() {
     return this._planMode;
@@ -1526,7 +1440,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
     if (enabled) {
       this._planMode = false;
     }
-    logger4.info({ enabled }, "Accept mode changed - will take effect on next tool use");
+    logger3.info({ enabled }, "Accept mode changed - will take effect on next tool use");
   }
   getAcceptMode() {
     return this._acceptMode;
@@ -1541,7 +1455,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
     this.model = model;
     if (this.currentQuery) {
       await this.currentQuery.setModel(model);
-      logger4.info({ model }, "Model updated mid-session via Query.setModel()");
+      logger3.info({ model }, "Model updated mid-session via Query.setModel()");
     }
   }
   getModel() {
@@ -1629,7 +1543,7 @@ var Emitter = class {
 };
 
 // src/session-manager.ts
-var logger5 = createLogger("SessionManager");
+var logger4 = createLogger("SessionManager");
 function isToolResultBlock2(block) {
   if (typeof block !== "object" || block === null) {
     return false;
@@ -1996,7 +1910,7 @@ var SessionManager = class extends Disposable {
     }
     const correlationId = randomUUID();
     setCorrelationId(correlationId);
-    logger5.info(
+    logger4.info(
       {
         sessionId,
         correlationId: correlationId.slice(0, 8),
@@ -2170,7 +2084,7 @@ var SessionManager = class extends Disposable {
     this.sessionConsumers.clear();
     for (const [sessionId, agent] of this.activeSessions.entries()) {
       void agent.stopSession().catch((err) => {
-        logger5.error({ sessionId, error: err }, "Error stopping session");
+        logger4.error({ sessionId, error: err }, "Error stopping session");
       });
     }
     this.activeSessions.clear();
@@ -2181,7 +2095,7 @@ var SessionManager = class extends Disposable {
 
 // src/commit-message.ts
 import Anthropic from "@anthropic-ai/sdk";
-var logger6 = createLogger("CommitMessage");
+var logger5 = createLogger("CommitMessage");
 var SYSTEM_PROMPT = `You are a git commit message generator. Given a diff summary, generate a concise commit message following conventional commits format (type: description). Be specific about what changed. Output ONLY the commit message, no explanation.
 
 Rules:
@@ -2211,14 +2125,57 @@ ${diff}`
     }]
   });
   const text = response.content[0]?.type === "text" ? response.content[0].text.trim() : "";
-  logger6.info({ messageLength: text.length }, "Commit message generated");
+  logger5.info({ messageLength: text.length }, "Commit message generated");
   return text;
 }
 
-// src/session-title.ts
+// src/refine-transcript.ts
 import Anthropic2 from "@anthropic-ai/sdk";
+var logger6 = createLogger("RefineTranscript");
+var SYSTEM_PROMPT2 = `You are a speech-to-text transcript refiner for a coding IDE. Given a raw voice transcript, clean it up by:
+- Fixing obvious transcription errors (homophones, technical terms)
+- Correcting casing for proper nouns, programming terms, and file names
+- Removing filler words (um, uh, like) and false starts
+- Preserving the user's intent and meaning exactly
+- Keeping the natural speaking style (do not make it overly formal)
+
+If context from recent chat messages is provided, use it to understand technical terms and proper nouns.
+
+Output ONLY the refined transcript, nothing else. If the transcript is already clean, return it unchanged.`;
+async function refineTranscript(transcript, context, apiKey) {
+  logger6.info("Refining transcript...");
+  let resolvedKey = apiKey;
+  if (!resolvedKey) {
+    resolvedKey = ClaudeCredentials.getApiKeyFromEnv() ?? void 0;
+  }
+  if (!resolvedKey) {
+    throw new Error("No API key available for transcript refinement.");
+  }
+  const client = new Anthropic2({ apiKey: resolvedKey });
+  let userContent = `Refine this voice transcript:
+
+"${transcript}"`;
+  if (context) {
+    userContent += `
+
+Recent conversation context:
+${context}`;
+  }
+  const response = await client.messages.create({
+    model: "claude-haiku-4-5-20251001",
+    max_tokens: 500,
+    system: SYSTEM_PROMPT2,
+    messages: [{ role: "user", content: userContent }]
+  });
+  const text = response.content[0]?.type === "text" ? response.content[0].text.trim() : "";
+  logger6.info({ originalLength: transcript.length, refinedLength: text.length }, "Transcript refined");
+  return text || transcript;
+}
+
+// src/session-title.ts
+import Anthropic3 from "@anthropic-ai/sdk";
 var logger7 = createLogger("SessionTitle");
-var SYSTEM_PROMPT2 = `You are a session title generator. Given a user message and an AI assistant response, generate a concise title that captures the essence of the conversation topic.
+var SYSTEM_PROMPT3 = `You are a session title generator. Given a user message and an AI assistant response, generate a concise title that captures the essence of the conversation topic.
 
 Rules:
 - Keep the title under 50 characters
@@ -2236,13 +2193,13 @@ async function generateSessionTitle(userMessage, assistantMessage, apiKey) {
   if (!resolvedKey) {
     throw new Error("No API key available. Set one in Settings > AI or set ANTHROPIC_API_KEY.");
   }
-  const client = new Anthropic2({ apiKey: resolvedKey });
+  const client = new Anthropic3({ apiKey: resolvedKey });
   const truncatedUser = userMessage.slice(0, 500);
   const truncatedAssistant = assistantMessage.slice(0, 500);
   const response = await client.messages.create({
     model: "claude-haiku-4-5-20251001",
     max_tokens: 60,
-    system: SYSTEM_PROMPT2,
+    system: SYSTEM_PROMPT3,
     messages: [{
       role: "user",
       content: `User message:
@@ -2445,6 +2402,11 @@ async function handleRequest(request, sessionManager) {
     case "generate_commit_message": {
       const message = await generateCommitMessage(request.diff, request.apiKey);
       sendResponse({ type: "string", requestType: request.type, value: message });
+      break;
+    }
+    case "refine_transcript": {
+      const refined = await refineTranscript(request.transcript, request.context, request.apiKey);
+      sendResponse({ type: "string", requestType: request.type, value: refined });
       break;
     }
     case "generate_session_title": {

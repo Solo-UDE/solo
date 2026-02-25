@@ -92,6 +92,7 @@ pub async fn elevenlabs_stt_start(
     session_id: String,
     language: Option<String>,
     sample_rate: Option<u32>,
+    previous_text: Option<String>,
     state: State<'_, ElevenLabsState>,
     auth: State<'_, ProviderAuthState>,
 ) -> Result<(), String> {
@@ -117,6 +118,7 @@ pub async fn elevenlabs_stt_start(
     let config = SttConfig {
         language,
         sample_rate: sample_rate.unwrap_or(16000),
+        previous_text,
         ..SttConfig::default()
     };
 

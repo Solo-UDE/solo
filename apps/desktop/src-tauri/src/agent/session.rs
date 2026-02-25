@@ -329,6 +329,27 @@ impl SessionManager {
         })
     }
 
+    /// Refine a voice transcript using the AI bridge
+    pub fn refine_transcript(
+        &self,
+        transcript: &str,
+        context: Option<String>,
+        api_key: Option<String>,
+    ) -> Result<String> {
+        self.ensure_running()?;
+        let request = BridgeRequest::RefineTranscript {
+            transcript: transcript.to_owned(),
+            context,
+            api_key,
+        };
+        let bridge = self.bridge.lock();
+        let response = bridge.send_request(&request)?;
+        let value = Self::check_response_string(response)?;
+        value.ok_or_else(|| {
+            BridgeError::ReceiveError("Bridge returned null refined transcript".to_owned())
+        })
+    }
+
     /// Generate a session title from the first user/assistant exchange
     pub fn generate_session_title(
         &self,

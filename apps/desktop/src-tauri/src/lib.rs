@@ -97,6 +97,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_macos_permissions::init())
         .plugin(tauri_plugin_decorum::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
@@ -212,6 +213,7 @@ pub fn run() {
             agent_commands::agent_get_accept_mode,
             agent_commands::agent_set_tool_policy,
             agent_commands::agent_generate_commit_message,
+            agent_commands::agent_refine_transcript,
             agent_commands::agent_generate_session_title,
             // Provider/auth commands
             provider_commands::get_providers,
