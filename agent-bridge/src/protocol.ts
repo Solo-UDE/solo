@@ -158,6 +158,16 @@ export interface GenerateCommitMessageRequest {
 }
 
 /**
+ * Refine a voice transcript using LLM
+ */
+export interface RefineTranscriptRequest {
+  type: 'refine_transcript';
+  transcript: string;
+  context?: string;
+  apiKey?: string;
+}
+
+/**
  * Generate a session title from the first exchange
  */
 export interface GenerateSessionTitleRequest {
@@ -194,6 +204,7 @@ export type BridgeRequest =
   | IsSessionReadyRequest
   | GetSDKSessionIdRequest
   | GenerateCommitMessageRequest
+  | RefineTranscriptRequest
   | GenerateSessionTitleRequest
   | ShutdownRequest;
 

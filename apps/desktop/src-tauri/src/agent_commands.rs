@@ -281,6 +281,25 @@ pub async fn agent_generate_commit_message(
         .map_err(to_error)
 }
 
+/// Refine a voice transcript using LLM
+#[tauri::command]
+pub async fn agent_refine_transcript(
+    transcript: String,
+    context: Option<String>,
+    session_manager: State<'_, Arc<SessionManager>>,
+    provider_state: State<'_, ProviderAuthState>,
+) -> Result<String> {
+    let api_key = provider_state
+        .credentials
+        .get_credentials(ProviderType::Anthropic)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    session_manager
+        .refine_transcript(&transcript, context, api_key)
+        .map_err(to_error)
+}
+
 // ============================================================================
 // Log Formatting Helpers
 // ============================================================================

@@ -5,22 +5,30 @@
  * Returns recording state, partial text, and control functions.
  */
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { checkMicrophonePermission, requestMicrophonePermission } from 'tauri-plugin-macos-permissions-api';
 import { AudioCapture } from '@/lib/elevenlabs/audio-capture';
 import { sttStart, sttSendAudio, sttCommit, sttStop, hasApiKey } from '@/lib/tauri/elevenlabs';
-import { useSttSession } from '@/stores/elevenlabsStore';
+import { refineTranscript } from '@/lib/tauri/agent';
+import { useSttSession, useRefineEnabled } from '@/stores/elevenlabsStore';
 
 interface UseVoiceInputOptions {
   /** Callback when a final transcript is committed */
   onTranscript?: (text: string) => void;
   /** Language code for STT (default: "en") */
   language?: string;
+  /** Recent chat context to improve transcription accuracy (sent to ElevenLabs as previous_text) */
+  previousText?: string;
+  /** Chat context for LLM-based refinement */
+  chatContext?: string;
 }
 
 interface UseVoiceInputReturn {
   /** Whether currently recording */
   isRecording: boolean;
+  /** Whether the transcript is being refined by LLM */
+  isRefining: boolean;
   /** Current partial (interim) transcript text */
   partialText: string;
   /** Current committed transcript text */
@@ -42,9 +50,10 @@ let sessionCounter = 0;
 export function useVoiceInput(
   options: UseVoiceInputOptions = {},
 ): UseVoiceInputReturn {
-  const { onTranscript, language } = options;
+  const { onTranscript, language, previousText, chatContext } = options;
 
   const [isRecording, setIsRecording] = useState(false);
+  const [isRefining, setIsRefining] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string>();
   const [analyserNode, setAnalyserNode] = useState<AnalyserNode | null>(null);
@@ -54,15 +63,40 @@ export function useVoiceInput(
   const onTranscriptRef = useRef(onTranscript);
   onTranscriptRef.current = onTranscript;
 
+  const refineEnabled = useRefineEnabled();
+  const refineEnabledRef = useRef(refineEnabled);
+  refineEnabledRef.current = refineEnabled;
+  const chatContextRef = useRef(chatContext);
+  chatContextRef.current = chatContext;
+
   const sttSession = useSttSession(sessionId);
 
-  // When a committed transcript arrives, invoke the callback
+  // When a committed transcript arrives, optionally refine it via LLM then invoke callback
   const lastCommittedRef = useRef('');
-  if (sttSession.committedText && sttSession.committedText !== lastCommittedRef.current) {
+  useEffect(() => {
+    if (!sttSession.committedText || sttSession.committedText === lastCommittedRef.current) return;
     lastCommittedRef.current = sttSession.committedText;
-    console.log('[VoiceInput] Committed transcript, inserting:', sttSession.committedText);
-    onTranscriptRef.current?.(sttSession.committedText);
-  }
+    const rawText = sttSession.committedText;
+    let cancelled = false;
+
+    if (refineEnabledRef.current) {
+      setIsRefining(true);
+      console.log('[VoiceInput] Refining transcript via LLM...');
+      refineTranscript(rawText, chatContextRef.current)
+        .then((refined) => {
+          if (!cancelled) onTranscriptRef.current?.(refined);
+        })
+        .catch((err) => {
+          console.warn('[VoiceInput] Refinement failed, using raw:', err);
+          if (!cancelled) onTranscriptRef.current?.(rawText);
+        })
+        .finally(() => { if (!cancelled) setIsRefining(false); });
+    } else {
+      onTranscriptRef.current?.(rawText);
+    }
+
+    return () => { cancelled = true; };
+  }, [sttSession.committedText]);
 
   // Auto-stop recording when backend session errors or ends
   const lastStatusRef = useRef(sttSession.status);
@@ -100,15 +134,37 @@ export function useVoiceInput(
     sessionIdRef.current = sid;
     lastCommittedRef.current = '';
 
+    // Best-effort macOS mic permission request (non-blocking).
+    // If the Tauri plugin can't trigger the native dialog (e.g. in dev mode),
+    // fall through and let AudioCapture's getUserMedia() handle it instead.
+    try {
+      const micAllowed = await checkMicrophonePermission();
+      console.log('[VoiceInput] checkMicrophonePermission:', micAllowed);
+      if (!micAllowed) {
+        const granted = await requestMicrophonePermission();
+        console.log('[VoiceInput] requestMicrophonePermission:', granted);
+        // Don't return early — let AudioCapture try getUserMedia() as a fallback.
+        // It has its own NotAllowedError handling that shows the toast.
+      }
+    } catch (permErr) {
+      console.warn('[VoiceInput] macOS permission check unavailable:', permErr);
+    }
+
     try {
       // Step 1: Start mic capture FIRST to discover the actual sample rate
       // (macOS may give us 48000 instead of the requested 16000)
+      // Buffer chunks until the backend WebSocket is ready to avoid race condition.
+      let sttReady = false;
+      const pendingChunks: string[] = [];
+
       const capture = new AudioCapture({
         onChunk: (base64Audio) => {
           if (sessionIdRef.current) {
-            sttSendAudio(sessionIdRef.current, base64Audio).catch(() => {
-              // Ignore send errors after session is closed
-            });
+            if (sttReady) {
+              sttSendAudio(sessionIdRef.current, base64Audio).catch(() => {});
+            } else {
+              pendingChunks.push(base64Audio);
+            }
           }
         },
         onError: (err) => {
@@ -134,7 +190,14 @@ export function useVoiceInput(
       console.log(`[VoiceInput] Mic started, actual sample rate: ${actualRate}`);
 
       // Step 2: Open backend WebSocket with the ACTUAL sample rate
-      await sttStart(sid, language, actualRate);
+      // Pass previousText for ElevenLabs context-aware transcription
+      await sttStart(sid, language, actualRate, previousText);
+      sttReady = true;
+
+      // Flush any chunks that arrived while the WebSocket was connecting
+      for (const chunk of pendingChunks) {
+        sttSendAudio(sid, chunk).catch(() => {});
+      }
 
       setIsRecording(true);
     } catch (err) {
@@ -143,9 +206,11 @@ export function useVoiceInput(
       setIsRecording(false);
       setAnalyserNode(null);
 
-      // Clean up mic and session
+      // Clean up mic, session ID, and backend session
       captureRef.current?.stop();
       captureRef.current = null;
+      setSessionId(null);
+      sessionIdRef.current = null;
       sttStop(sid).catch(() => {});
 
       // Show contextual error toast
@@ -171,7 +236,7 @@ export function useVoiceInput(
         });
       }
     }
-  }, [isRecording, language]);
+  }, [isRecording, language, previousText]);
 
   const stopRecording = useCallback(async () => {
     if (!isRecording || !sessionIdRef.current) return;
@@ -202,9 +267,22 @@ export function useVoiceInput(
     setIsRecording(false);
   }, [isRecording]);
 
+  // Filter out ElevenLabs context echo from partials.
+  // When previous_text is sent, ElevenLabs echoes it back as the first partial
+  // before real speech starts. The committed transcript is clean but the UI
+  // flashes the raw context text without this filter.
+  const filteredPartialText = useMemo(() => {
+    if (!previousText || !sttSession.partialText) return sttSession.partialText;
+    if (sttSession.partialText.startsWith(previousText.substring(0, 30))) {
+      return '';
+    }
+    return sttSession.partialText;
+  }, [sttSession.partialText, previousText]);
+
   return {
     isRecording,
-    partialText: sttSession.partialText,
+    isRefining,
+    partialText: filteredPartialText,
     committedText: sttSession.committedText,
     status: sttSession.status,
     error: localError ?? sttSession.error,
