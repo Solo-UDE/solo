@@ -6,8 +6,11 @@
  */
 
 import { create } from 'zustand';
+import { enableMapSet } from 'immer';
 import { immer } from 'zustand/middleware/immer';
 import { skillsListAvailable } from '../lib/tauri/skills';
+
+enableMapSet();
 
 import type { SkillInfo } from '../lib/tauri/skills';
 
