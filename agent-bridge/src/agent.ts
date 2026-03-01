@@ -831,8 +831,9 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
     if (!credentials.hasCredentials) {
       throw new Error(
         'No credentials found. Please either:\n' +
-          '1. Log in to Claude Code CLI (OAuth token will be stored in macOS Keychain), OR\n' +
-          '2. Set ANTHROPIC_API_KEY in .env file'
+          '1. Run "claude login" to refresh OAuth token in macOS Keychain, OR\n' +
+          '2. Set ANTHROPIC_API_KEY in .env file\n' +
+          '(If you were previously logged in, the Keychain entry may be corrupt — re-login will fix it)'
       );
     }
 

@@ -10,7 +10,7 @@ const logger = createLogger('ClaudeCredentials');
 interface KeychainCredentials {
   claudeAiOauth?: {
     accessToken?: string;
-    expiresAt?: string;
+    expiresAt?: number | string;
   };
 }
 
@@ -63,9 +63,9 @@ function getOAuthTokenFromKeychain(): string | null {
       return null;
     }
 
-    // Validate token expiration
+    // Validate token expiration (expiresAt can be number or string from keychain)
     if (expiresAt !== undefined && expiresAt !== '') {
-      const expiryMs = parseInt(expiresAt, 10);
+      const expiryMs = typeof expiresAt === 'number' ? expiresAt : parseInt(expiresAt, 10);
       const expiryDate = new Date(expiryMs);
       const now = new Date();
 
@@ -79,9 +79,14 @@ function getOAuthTokenFromKeychain(): string | null {
 
     return accessToken;
   } catch (error) {
-    // Token not found in Keychain or parsing error
     if (error instanceof Error && error.message.includes('could not be found')) {
       logger.debug('Claude Code credentials not found in Keychain');
+    } else if (error instanceof SyntaxError) {
+      // JSON.parse failed — keychain data is corrupt/truncated
+      logger.error(
+        { error: error.message },
+        'Keychain credentials JSON is corrupt. Run "claude login" to refresh.'
+      );
     } else {
       logger.error({ error }, 'Error reading OAuth token from Keychain');
     }

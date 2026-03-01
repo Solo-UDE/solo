@@ -26,8 +26,13 @@ export const hasApiKey = () =>
 export const clearApiKey = () =>
   invoke<void>('elevenlabs_clear_api_key');
 
-export const sttStart = (sessionId: string, language?: string, sampleRate?: number) =>
-  invoke<void>('elevenlabs_stt_start', { sessionId, language, sampleRate });
+export const sttStart = (
+  sessionId: string,
+  language?: string,
+  sampleRate?: number,
+  previousText?: string,
+) =>
+  invoke<void>('elevenlabs_stt_start', { sessionId, language, sampleRate, previousText });
 
 export const sttSendAudio = (sessionId: string, audioBase64: string) =>
   invoke<void>('elevenlabs_stt_send_audio', { sessionId, audioBase64 });

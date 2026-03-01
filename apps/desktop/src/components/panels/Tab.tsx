@@ -1,17 +1,22 @@
 /**
  * Tab - Individual tab component with VS Code-style interactions
- * Supports click to activate, close button, middle-click close, dirty indicator
+ * Supports click to activate, close button, middle-click close, dirty indicator,
+ * tab type signatures, repo-colored active indicator, and ghost dimming.
  */
 
-import { useCallback, type MouseEvent } from 'react';
+import { useCallback, useMemo, type MouseEvent } from 'react';
 import { useDrag, useDrop } from 'react-dnd';
 import { motion } from 'motion/react';
-import { X, PushPin } from '@phosphor-icons/react';
+import { X, PushPin, ChatTeardrop } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import type { PanelInstance, TileId, PanelInstanceId, TabDragItem } from '@/lib/panels/types';
 import { DragItemTypes } from '@/lib/panels/types';
 import { useIsSessionStreaming } from '@/stores/agentStore';
 import { BUILTIN_PANEL_TYPES } from '@/lib/panels/constants';
+import { getRepoColorVar, getRepoColorMutedVar } from '@/lib/repoIdentity';
+import type { RepoColorName } from '@/lib/repoIdentity';
+import { getTabTypeVisuals } from '@/lib/panels/tabTypeVisuals';
+import { useIsGhostTab } from '@/hooks/useGhostTabs';
 
 interface TabProps {
   instance: PanelInstance;
@@ -19,6 +24,7 @@ interface TabProps {
   tileId: TileId;
   index: number;
   tabs: PanelInstance[];
+  repoColor?: RepoColorName | null;
   onActivate: () => void;
   onClose: () => void;
   onReorder: (fromIndex: number, toIndex: number) => void;
@@ -32,6 +38,7 @@ export function Tab({
   tileId,
   index,
   tabs,
+  repoColor,
   onActivate,
   onClose,
   onReorder,
@@ -127,37 +134,78 @@ export function Tab({
     : null;
   const isSessionCurrentlyStreaming = useIsSessionStreaming(agentSessionId);
 
+  // B2: Tab type visual signatures
+  const visuals = useMemo(
+    () => getTabTypeVisuals(instance, isSessionCurrentlyStreaming),
+    [instance, isSessionCurrentlyStreaming],
+  );
+
+  // Phase C: Ghost tab detection
+  const isGhost = useIsGhostTab(instance.id);
+  const ghostActive = isGhost && !isActive;
+
   return (
-    <div
+    <motion.div
       ref={combinedRef}
       role="tab"
       aria-selected={isActive}
       tabIndex={isActive ? 0 : -1}
+      animate={{
+        opacity: ghostActive ? 0.5 : isDragging ? 0.5 : 1,
+        scale: ghostActive ? 0.97 : 1,
+      }}
+      transition={{ type: 'spring', stiffness: 400, damping: 30 }}
       className={cn(
-        'group relative flex items-center gap-1.5 h-[35px] px-3',
-        'border-r border-white/[0.03]',
-        'transition-[background-color,color] duration-150 ease-out',
+        'group relative flex items-center gap-1.5 h-[32px] px-3',
+        'transition-[color,background-color,box-shadow] duration-150 ease-out',
         'cursor-pointer select-none',
         'shrink-0 min-w-[80px] max-w-[200px]',
+        'rounded-md bg-black/50',
         isActive
-          ? 'bg-primary/10 backdrop-blur-md text-foreground shadow-[0_1px_4px_-1px_rgba(0,0,0,0.12)] rounded-t-lg'
-          : 'bg-transparent text-muted-foreground hover:text-foreground hover:bg-white/[0.04]',
-        isDragging && 'opacity-50',
-        isOver && !isDragging && 'bg-primary/10'
+          ? 'text-foreground'
+          : 'text-muted-foreground hover:text-foreground hover:bg-black/70',
+        isOver && !isDragging && 'bg-white/[0.06]',
       )}
+      style={{
+        backgroundColor: isActive
+          ? repoColor
+            ? `color-mix(in oklch, ${getRepoColorMutedVar(repoColor)} 50%, transparent)`
+            : undefined
+          : undefined,
+        boxShadow: isActive
+          ? repoColor
+            ? `inset 0 0 0 1px color-mix(in oklch, ${getRepoColorVar(repoColor)} 25%, transparent), 0 0 8px 0 color-mix(in oklch, ${getRepoColorVar(repoColor)} 12%, transparent)`
+            : 'inset 0 0 0 1px oklch(from var(--primary) l c h / 15%), 0 0 8px 0 oklch(from var(--primary) l c h / 12%)'
+          : 'inset 0 0 0 1px oklch(from var(--primary) l c h / 8%)',
+      }}
       onClick={onActivate}
       onMouseDown={handleMouseDown}
       onContextMenu={handleContextMenu}
     >
+      {/* B2: Language dot for file tabs */}
+      {visuals.languageDot && (
+        <span
+          className="w-2 h-2 rounded-full shrink-0"
+          style={{ backgroundColor: visuals.languageDot }}
+        />
+      )}
+
       {/* Streaming indicator (pulsing dot) takes priority over dirty indicator */}
-      {isSessionCurrentlyStreaming ? (
+      {!visuals.languageDot && isSessionCurrentlyStreaming ? (
         <span className="w-2 h-2 rounded-full bg-primary animate-pulse shrink-0" />
-      ) : instance.isDirty ? (
+      ) : !visuals.languageDot && instance.isDirty ? (
         <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
       ) : null}
 
-      {/* Tab title */}
-      <span className="text-sm truncate flex-1">{instance.title}</span>
+      {/* Session icon for agent tabs */}
+      {isAgentTab && (
+        <ChatTeardrop className="w-3 h-3 shrink-0 text-muted-foreground" weight="fill" />
+      )}
+
+      {/* Tab title - B2: apply type-specific class */}
+      <span className={cn('text-[12px] truncate flex-1', visuals.titleClass)}>
+        {instance.title}
+      </span>
 
       {/* Pin icon for pinned tabs, close button for unpinned */}
       {instance.isPinned ? (
@@ -186,17 +234,6 @@ export function Tab({
         </button>
       )}
 
-      {/* Active tab indicator - animated sliding accent */}
-      {isActive && (
-        <motion.div
-          layoutId={`tab-indicator-${tileId}`}
-          className="absolute bottom-0 left-1 right-1 h-[2.5px] rounded-full bg-primary/70"
-          style={{
-            boxShadow: '0 0 8px 0 oklch(from var(--primary) l c h / 30%)',
-          }}
-          transition={{ type: 'spring', stiffness: 500, damping: 35 }}
-        />
-      )}
-    </div>
+    </motion.div>
   );
 }

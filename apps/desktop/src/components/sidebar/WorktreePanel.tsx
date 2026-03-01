@@ -19,9 +19,13 @@ interface WorktreePanelProps {
   className?: string;
   /** When true, hides the header bar (parent provides the section header) */
   embedded?: boolean;
+  /** Parent-controlled create form visibility (for embedded mode) */
+  showCreate?: boolean;
+  /** Callback when create form visibility changes internally */
+  onShowCreateChange?: (show: boolean) => void;
 }
 
-export const WorktreePanel: FC<WorktreePanelProps> = ({ className, embedded }) => {
+export const WorktreePanel: FC<WorktreePanelProps> = ({ className, embedded, showCreate, onShowCreateChange }) => {
   const worktrees = useWorktreeList();
   const activeWorktreeId = useWorktreeStore((s) => s.activeWorktreeId);
   const isLoading = useWorktreeStore((s) => s.isLoading);
@@ -37,7 +41,13 @@ export const WorktreePanel: FC<WorktreePanelProps> = ({ className, embedded }) =
   const setupProgress = useWorktreeStore((s) => s.setupProgress);
   const startAgentInWorktree = useWorktreeStore((s) => s.startAgentInWorktree);
 
-  const [showCreateForm, setShowCreateForm] = useState(false);
+  // Controlled/uncontrolled pattern for create form visibility
+  const [internalShowCreate, setInternalShowCreate] = useState(false);
+  const showCreateForm = showCreate !== undefined ? showCreate : internalShowCreate;
+  const setShowCreateForm = (show: boolean) => {
+    if (onShowCreateChange) onShowCreateChange(show);
+    setInternalShowCreate(show);
+  };
   const [branchName, setBranchName] = useState('');
   const [createBranch, setCreateBranch] = useState(true);
   const [baseBranch, setBaseBranch] = useState('');

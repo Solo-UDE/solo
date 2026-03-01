@@ -5,6 +5,7 @@
  * Each event type has its own Tauri channel (not a single BackendEvent union).
  */
 
+import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type {
 	AgentMessageEvent,
@@ -16,6 +17,14 @@ import type {
 	BridgeAgentMessage,
 	PermissionRequest,
 } from '../../bindings';
+
+// =============================================================================
+// Commands (invoke wrappers)
+// =============================================================================
+
+/** Refine a voice transcript using LLM (calls through the agent bridge) */
+export const refineTranscript = (transcript: string, context?: string) =>
+	invoke<string>('agent_refine_transcript', { transcript, context });
 
 // =============================================================================
 // Event Handlers

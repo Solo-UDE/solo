@@ -33,12 +33,15 @@ interface TtsSession {
 
 interface ElevenLabsState {
   hasApiKey: boolean;
+  /** Whether to refine voice transcripts with AI before insertion */
+  refineEnabled: boolean;
   sttSessions: Map<string, SttSession>;
   ttsSessions: Map<string, TtsSession>;
 }
 
 interface ElevenLabsActions {
   setHasApiKey: (has: boolean) => void;
+  setRefineEnabled: (enabled: boolean) => void;
 
   // STT event handlers (called by useElevenLabsStream)
   handleSttPartial: (event: ElevenLabsSttPartialEvent) => void;
@@ -61,12 +64,18 @@ interface ElevenLabsActions {
 export const useElevenLabsStore = create<ElevenLabsState & ElevenLabsActions>()(
   immer((set) => ({
     hasApiKey: false,
+    refineEnabled: false,
     sttSessions: new Map(),
     ttsSessions: new Map(),
 
     setHasApiKey: (has) =>
       set((state) => {
         state.hasApiKey = has;
+      }),
+
+    setRefineEnabled: (enabled) =>
+      set((state) => {
+        state.refineEnabled = enabled;
       }),
 
     handleSttPartial: (event) => {
@@ -189,3 +198,6 @@ export const useTtsSession = (sessionId: string | null) =>
   useElevenLabsStore((s) =>
     sessionId ? s.ttsSessions.get(sessionId) ?? EMPTY_TTS : EMPTY_TTS,
   );
+
+export const useRefineEnabled = () =>
+  useElevenLabsStore((s) => s.refineEnabled);
