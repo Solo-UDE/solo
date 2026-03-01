@@ -462,6 +462,9 @@ pub async fn verify_claude_setup(
 ) -> Result<ClaudeSetupStatus, String> {
     info!("Verifying Claude Code setup");
 
+    // Clear credential cache so we always read fresh from keychain/file
+    state.credentials.clear_cache().await;
+
     let mut status = ClaudeSetupStatus {
         cli_installed: false,
         cli_path: None,
