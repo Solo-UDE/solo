@@ -70,7 +70,7 @@ export function buildContentBlocks(
         type: 'document',
         source: {
           type: 'base64',
-          media_type: attachment.source.media_type as DocumentMediaType,
+          media_type: attachment.source.mediaType as DocumentMediaType,
           data: attachment.source.data,
         },
       });
@@ -80,7 +80,7 @@ export function buildContentBlocks(
         type: 'image',
         source: {
           type: 'base64',
-          media_type: attachment.source.media_type as ImageMediaType,
+          media_type: attachment.source.mediaType as ImageMediaType,
           data: attachment.source.data,
         },
       });
@@ -89,9 +89,22 @@ export function buildContentBlocks(
       const block = readImageFromPath(attachment.filePath);
       if (block) contentBlocks.push(block);
     } else if (attachment.type === 'document' && attachment.filePath && !attachment.source) {
-      // Document (PDF) from filesystem — read and base64-encode
-      const block = readDocumentFromPath(attachment.filePath);
-      if (block) contentBlocks.push(block);
+      // Try as binary document (PDF) first, fall back to text for code/markup files
+      const docBlock = readDocumentFromPath(attachment.filePath);
+      if (docBlock) {
+        contentBlocks.push(docBlock);
+      } else {
+        // Not a PDF — read as text (code files, markdown, config, etc.)
+        const fileContent = readTextFromPath(attachment.filePath);
+        if (fileContent !== null) {
+          const name = attachment.name ?? path.basename(attachment.filePath);
+          const languageHint = getLanguageHint(name);
+          contentBlocks.push({
+            type: 'text',
+            text: `File: ${name}\n\`\`\`${languageHint}\n${fileContent}\n\`\`\``,
+          });
+        }
+      }
     } else if (attachment.type === 'text') {
       // Text content with metadata
       let textContent = '';
