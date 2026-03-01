@@ -9,7 +9,7 @@ description = "Git operations for Solo IDE, including worktree management"
 solo-core = { path = "../solo-core" }
 solo-protocol = { path = "../solo-protocol" }
 
-git2 = "0.19"
+git2 = "0.20.4"
 tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true

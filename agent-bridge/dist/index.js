@@ -140,9 +140,15 @@ import { randomUUID } from "crypto";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 
 // src/credentials.ts
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
+import { readFileSync } from "fs";
+import { join as join2 } from "path";
+import { homedir as homedir2 } from "os";
 var logger = createLogger("ClaudeCredentials");
-function isKeychainCredentials(value) {
+var CLAUDE_CODE_OAUTH_CLIENT_ID = "claude-desktop";
+var CLAUDE_CODE_TOKEN_ENDPOINT = "https://api.anthropic.com/v1/oauth/token";
+var EXPIRY_BUFFER_MS = 3e5;
+function isClaudeCredentialsFile(value) {
   if (typeof value !== "object" || value === null) {
     return false;
   }
@@ -155,44 +161,105 @@ function isKeychainCredentials(value) {
   }
   return true;
 }
-function getOAuthTokenFromKeychain() {
+async function refreshOAuthToken(refreshToken) {
   try {
-    const output = execSync('security find-generic-password -s "Claude Code-credentials" -w', {
-      encoding: "utf-8"
-    }).trim();
-    const parsed = JSON.parse(output);
-    if (!isKeychainCredentials(parsed)) {
-      logger.debug("Invalid credentials structure in Keychain");
+    const body = new URLSearchParams({
+      grant_type: "refresh_token",
+      client_id: CLAUDE_CODE_OAUTH_CLIENT_ID,
+      refresh_token: refreshToken
+    });
+    const resp = await fetch(CLAUDE_CODE_TOKEN_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+      signal: AbortSignal.timeout(15e3)
+    });
+    if (!resp.ok) {
+      logger.warn({ status: resp.status }, "Claude Code token refresh failed");
       return null;
     }
-    const claudeAuth = parsed.claudeAiOauth;
-    if (claudeAuth === void 0) {
-      logger.debug("No Claude OAuth credentials found in Keychain");
-      return null;
+    const data = await resp.json();
+    const accessToken = data.access_token;
+    if (typeof accessToken === "string" && accessToken !== "") {
+      logger.info("Successfully refreshed Claude Code OAuth token");
+      return accessToken;
     }
-    const accessToken = claudeAuth.accessToken;
-    const expiresAt = claudeAuth.expiresAt;
-    if (accessToken === void 0 || accessToken === "") {
-      logger.debug("OAuth token missing in Keychain credentials");
-      return null;
-    }
-    if (expiresAt !== void 0 && expiresAt !== "") {
-      const expiryMs = parseInt(expiresAt, 10);
-      const expiryDate = new Date(expiryMs);
-      const now = /* @__PURE__ */ new Date();
-      if (now >= expiryDate) {
-        logger.warn({ expiryDate: expiryDate.toISOString() }, "Claude Code OAuth token expired");
-        return null;
-      }
-      logger.debug({ expiryDate: expiryDate.toISOString() }, "OAuth token valid");
-    }
-    return accessToken;
+    logger.warn("Token refresh response missing access_token");
+    return null;
   } catch (error) {
-    if (error instanceof Error && error.message.includes("could not be found")) {
-      logger.debug("Claude Code credentials not found in Keychain");
-    } else {
-      logger.error({ error }, "Error reading OAuth token from Keychain");
+    logger.error({ error }, "Error refreshing OAuth token");
+    return null;
+  }
+}
+function isTokenExpired(expiryMs) {
+  return Date.now() >= expiryMs - EXPIRY_BUFFER_MS;
+}
+async function resolveOAuthFromParsed(parsed, source) {
+  const claudeAuth = parsed.claudeAiOauth;
+  if (claudeAuth === void 0) {
+    logger.debug(`No Claude OAuth credentials in ${source}`);
+    return null;
+  }
+  const accessToken = claudeAuth.accessToken;
+  const expiresAt = claudeAuth.expiresAt;
+  if (accessToken === void 0 || accessToken === "") {
+    logger.debug(`OAuth token missing in ${source} credentials`);
+    return null;
+  }
+  if (expiresAt !== void 0 && expiresAt !== "") {
+    const expiryMs = typeof expiresAt === "number" ? expiresAt : parseInt(expiresAt, 10);
+    if (isTokenExpired(expiryMs)) {
+      logger.warn({ expiryDate: new Date(expiryMs).toISOString() }, `OAuth token expired in ${source}, attempting refresh`);
+      const refreshToken = claudeAuth.refreshToken;
+      if (refreshToken !== void 0 && refreshToken !== "") {
+        const newToken = await refreshOAuthToken(refreshToken);
+        if (newToken !== null) {
+          return newToken;
+        }
+        logger.warn(`Failed to refresh OAuth token from ${source}`);
+      } else {
+        logger.debug(`No refreshToken in ${source} credentials`);
+      }
+      return null;
     }
+    logger.debug({ expiryDate: new Date(expiryMs).toISOString() }, `OAuth token valid from ${source}`);
+  }
+  return accessToken;
+}
+async function getOAuthTokenFromFile() {
+  try {
+    const credPath = join2(homedir2(), ".claude", ".credentials.json");
+    const content = readFileSync(credPath, "utf-8");
+    const parsed = JSON.parse(content);
+    if (!isClaudeCredentialsFile(parsed)) {
+      logger.debug("Invalid credentials structure in ~/.claude/.credentials.json");
+      return null;
+    }
+    return resolveOAuthFromParsed(parsed, "~/.claude/.credentials.json");
+  } catch {
+    logger.debug("Could not read ~/.claude/.credentials.json");
+    return null;
+  }
+}
+async function getOAuthTokenFromKeychain() {
+  if (process.platform !== "darwin") {
+    logger.debug("Keychain lookup skipped \u2014 not macOS");
+    return null;
+  }
+  try {
+    const raw = execFileSync(
+      "security",
+      ["find-generic-password", "-s", "Claude Code-credentials", "-w"],
+      { encoding: "utf-8", timeout: 5e3, stdio: ["pipe", "pipe", "pipe"] }
+    ).trim();
+    const parsed = JSON.parse(raw);
+    if (!isClaudeCredentialsFile(parsed)) {
+      logger.debug("Invalid credentials structure in macOS Keychain");
+      return null;
+    }
+    return resolveOAuthFromParsed(parsed, "macOS Keychain");
+  } catch {
+    logger.debug("Could not read credentials from macOS Keychain");
     return null;
   }
 }
@@ -204,10 +271,15 @@ function getApiKeyFromEnv() {
   }
   return apiKey;
 }
-function getCredentials() {
-  const oauthToken = getOAuthTokenFromKeychain();
-  if (oauthToken !== null) {
-    logger.info("OAuth token available from Claude Code Keychain");
+async function getCredentials() {
+  const fileToken = await getOAuthTokenFromFile();
+  if (fileToken !== null) {
+    logger.info("OAuth token available from ~/.claude/.credentials.json");
+    return { type: "oauth", hasCredentials: true };
+  }
+  const keychainToken = await getOAuthTokenFromKeychain();
+  if (keychainToken !== null) {
+    logger.info("OAuth token available from macOS Keychain");
     return { type: "oauth", hasCredentials: true };
   }
   const apiKey = getApiKeyFromEnv();
@@ -215,10 +287,11 @@ function getCredentials() {
     logger.info("API key available from environment");
     return { type: "apikey", hasCredentials: true };
   }
-  logger.error("No credentials found (checked Keychain and .env)");
+  logger.error("No credentials found (checked ~/.claude/.credentials.json, macOS Keychain, and env)");
   return { type: "apikey", hasCredentials: false };
 }
 var ClaudeCredentials = {
+  getOAuthTokenFromFile,
   getOAuthTokenFromKeychain,
   getApiKeyFromEnv,
   getCredentials
@@ -1333,7 +1406,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
     }
     return options;
   }
-  startSession() {
+  async startSession() {
     if (this.sessionActive) {
       logger3.warn("Session already active");
       return;
@@ -1358,16 +1431,16 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
       process.env.PATH = [...additionalPaths, currentPath].join(":");
       logger3.debug({ addedPaths: additionalPaths }, "Fixed PATH for Electron app");
     }
-    const credentials = ClaudeCredentials.getCredentials();
+    const credentials = await ClaudeCredentials.getCredentials();
     if (!credentials.hasCredentials) {
       throw new Error(
-        "No credentials found. Please either:\n1. Log in to Claude Code CLI (OAuth token will be stored in macOS Keychain), OR\n2. Set ANTHROPIC_API_KEY in .env file"
+        'No credentials found. Please either:\n1. Run "claude login" to set up OAuth credentials in ~/.claude/.credentials.json, OR\n2. Set ANTHROPIC_API_KEY in .env file'
       );
     }
     if (credentials.type === "oauth") {
       delete process.env.ANTHROPIC_API_KEY;
       delete process.env.ANTHROPIC_AUTH_TOKEN;
-      logger3.info("Using Claude Code OAuth (CLI will read from Keychain)");
+      logger3.info("Using Claude Code OAuth (CLI reads from ~/.claude/.credentials.json)");
       logger3.info("Note: Using your Claude subscription quota, not API credits");
     } else {
       const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -1701,7 +1774,7 @@ var SessionManager = class extends Disposable {
   /**
    * Create a new agent session
    */
-  createSession(sessionId, config) {
+  async createSession(sessionId, config) {
     if (this.activeSessions.has(sessionId)) {
       return;
     }
@@ -1772,7 +1845,7 @@ var SessionManager = class extends Disposable {
     });
     this.activeSessions.set(sessionId, agent);
     try {
-      agent.startSession();
+      await agent.startSession();
       logger4.info({ sessionId }, "Session started successfully");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -2430,7 +2503,7 @@ function main() {
 async function handleRequest(request, sessionManager) {
   switch (request.type) {
     case "create_session": {
-      sessionManager.createSession(request.sessionId, request.config);
+      await sessionManager.createSession(request.sessionId, request.config);
       sendResponse({ type: "success", requestType: request.type });
       break;
     }

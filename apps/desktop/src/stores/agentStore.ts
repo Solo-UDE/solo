@@ -54,7 +54,7 @@ export interface ToolCallState {
 export type ContentBlock =
 	| { type: 'text'; text: string }
 	| { type: 'thinking'; text: string }
-	| { type: 'tool_use'; toolCall: ToolCallState };
+	| { type: 'tool_use'; toolCallIndex: number };
 
 export interface FileAttachment {
 	name: string;
@@ -258,6 +258,9 @@ interface AgentState {
 
 	// Plan mode per session (sessionId -> boolean)
 	planModeActive: Map<string, boolean>;
+
+	// Accept mode per session (sessionId -> boolean), synced from backend events
+	acceptModeActive: Map<string, boolean>;
 }
 
 interface AgentActions {
@@ -266,7 +269,7 @@ interface AgentActions {
 	forkSession: (sourceSessionId: string, model?: string) => Promise<string>;
 	setActiveSession: (sessionId: string) => void;
 	deleteSession: (sessionId: string) => void;
-	renameSession: (sessionId: string, name: string) => void;
+	renameSession: (sessionId: string, name: string, source?: 'user' | 'auto') => void;
 	setModel: (sessionId: string, model: string) => Promise<void>;
 	interrupt: (sessionId: string) => Promise<void>;
 
@@ -288,6 +291,7 @@ interface AgentActions {
 	handleSessionInit: (sessionId: string, sdkSessionId: string, isResumed: boolean, isForked: boolean) => void;
 	handleTurnStart: (sessionId: string, turnNumber: number) => void;
 	handlePlanModeChanged: (sessionId: string, enabled: boolean) => void;
+	handleAcceptModeChanged: (sessionId: string, enabled: boolean) => void;
 	handleError: (message: string, stack?: string) => void;
 	respondPermission: (requestId: string, decision: 'approve' | 'deny', always?: boolean, answers?: Record<string, string>) => Promise<void>;
 
@@ -327,10 +331,15 @@ const initialState: AgentState = {
 	isAgentRunning: false,
 	error: null,
 	planModeActive: new Map(),
+	acceptModeActive: new Map(),
 };
 
 // Create per-session debounced save function (saves 1 second after last change)
 const debouncedSave = createDebouncedSessionSave(1000);
+
+/** Module-level lock set for preventing concurrent ensureActive() calls per session.
+ *  JS is single-threaded for sync code, so Set.add/has/delete are atomic. */
+const _resumingLocks = new Set<string>();
 
 /** Helper: persist a specific session or all sessions */
 function doPersist(sessionId?: string): void {
@@ -401,21 +410,25 @@ export const useAgentStore = create<AgentStore>()(
 			if (!session) throw new Error(`Session ${sessionId} not found`);
 			if (session.connectionState === 'active') return;
 
-			// If already resuming, wait for completion (poll up to 15s)
-			if (session.connectionState === 'resuming') {
+			// If already resuming (state or lock), wait for completion (poll up to 15s)
+			if (session.connectionState === 'resuming' || _resumingLocks.has(sessionId)) {
 				const maxWait = 15000;
 				const start = Date.now();
 				while (Date.now() - start < maxWait) {
 					await new Promise((r) => setTimeout(r, 200));
 					const current = get().sessions.get(sessionId);
 					if (!current || current.connectionState === 'active') return;
-					if (current.connectionState !== 'resuming') break;
+					if (current.connectionState !== 'resuming' && !_resumingLocks.has(sessionId)) break;
 				}
 				const current = get().sessions.get(sessionId);
 				if (current?.connectionState === 'active') return;
 				throw new Error('Session resume timed out');
 			}
 
+			// Acquire resumption lock to prevent concurrent resume attempts
+			_resumingLocks.add(sessionId);
+
+			// Stale sessions (from bridge crash) proceed through normal resume flow
 			// Mark as resuming
 			set((s) => {
 				const sess = s.sessions.get(sessionId);
@@ -446,53 +459,58 @@ export const useAgentStore = create<AgentStore>()(
 			const agentModel = toAgentModel(session.model || 'opus');
 
 			try {
-				// Attempt resume with persisted SDK session ID
-				if (session.sdkSessionId && session.resumable) {
-					await backend.agentCreateSession(sessionId, {
-						model: agentModel,
-						resumeSessionId: session.sdkSessionId,
-						cwd: session.workspacePath,
-					});
-				} else {
-					// No SDK session to resume — create fresh bridge session
-					await backend.agentCreateSession(sessionId, { model: agentModel, cwd: session.workspacePath });
-				}
-
-				set((s) => {
-					const sess = s.sessions.get(sessionId);
-					if (sess) {
-						sess.connectionState = 'active';
-						sess.resumeError = undefined;
-					}
-				});
-			} catch (error) {
-				const errorMsg = error instanceof Error ? error.message : String(error);
-				console.error(`[Agent] Resume failed for ${sessionId}: ${errorMsg}`);
-
-				// Auto-fork: create fresh bridge session, preserving message history
 				try {
-					await backend.agentCreateSession(sessionId, { model: agentModel, cwd: session.workspacePath });
+					// Attempt resume with persisted SDK session ID
+					if (session.sdkSessionId && session.resumable) {
+						await backend.agentCreateSession(sessionId, {
+							model: agentModel,
+							resumeSessionId: session.sdkSessionId,
+							cwd: session.workspacePath,
+						});
+					} else {
+						// No SDK session to resume — create fresh bridge session
+						await backend.agentCreateSession(sessionId, { model: agentModel, cwd: session.workspacePath });
+					}
+
 					set((s) => {
 						const sess = s.sessions.get(sessionId);
 						if (sess) {
 							sess.connectionState = 'active';
-							sess.resumable = false;
-							sess.sdkSessionId = undefined;
 							sess.resumeError = undefined;
 						}
 					});
-				} catch (forkError) {
-					const forkMsg = forkError instanceof Error ? forkError.message : String(forkError);
-					console.error(`[Agent] Fork also failed for ${sessionId}: ${forkMsg}`);
-					set((s) => {
-						const sess = s.sessions.get(sessionId);
-						if (sess) {
-							sess.connectionState = 'archived';
-							sess.resumeError = forkMsg;
-						}
-					});
-					throw forkError;
+				} catch (error) {
+					const errorMsg = error instanceof Error ? error.message : String(error);
+					console.error(`[Agent] Resume failed for ${sessionId}: ${errorMsg}`);
+
+					// Auto-fork: create fresh bridge session, preserving message history
+					try {
+						await backend.agentCreateSession(sessionId, { model: agentModel, cwd: session.workspacePath });
+						set((s) => {
+							const sess = s.sessions.get(sessionId);
+							if (sess) {
+								sess.connectionState = 'active';
+								sess.resumable = false;
+								sess.sdkSessionId = undefined;
+								sess.resumeError = undefined;
+							}
+						});
+					} catch (forkError) {
+						const forkMsg = forkError instanceof Error ? forkError.message : String(forkError);
+						console.error(`[Agent] Fork also failed for ${sessionId}: ${forkMsg}`);
+						set((s) => {
+							const sess = s.sessions.get(sessionId);
+							if (sess) {
+								sess.connectionState = 'archived';
+								sess.resumeError = forkMsg;
+							}
+						});
+						throw forkError;
+					}
 				}
+			} finally {
+				// Always release the resumption lock
+				_resumingLocks.delete(sessionId);
 			}
 		},
 
@@ -532,8 +550,8 @@ export const useAgentStore = create<AgentStore>()(
 				}
 				state.activeSessionId = null;
 			});
-			// Flush all pending saves before switch
-			get().persistSessions();
+			// Flush all pending debounced saves immediately (not schedule new ones)
+			debouncedSave.flush();
 		},
 
 		saveActiveSessionForWorkspace: (workspacePath: string) => {
@@ -775,12 +793,14 @@ export const useAgentStore = create<AgentStore>()(
 			});
 		},
 
-		renameSession: (sessionId: string, name: string) => {
+		renameSession: (sessionId: string, name: string, source: 'user' | 'auto' = 'user') => {
 			set((state) => {
 				const session = state.sessions.get(sessionId);
 				if (session) {
 					const trimmed = name.trim();
 					session.name = trimmed || undefined;
+					// Track who set the name so auto-title doesn't overwrite user renames
+					(session as AgentSession & { nameSetBy?: 'user' | 'auto' }).nameSetBy = source;
 				}
 			});
 			get().persistSessions(sessionId);
@@ -801,6 +821,12 @@ export const useAgentStore = create<AgentStore>()(
 
 			// Lazy resume: ensure bridge connection before sending
 			await get().ensureActive(sessionId);
+
+			// Defensive: verify session is actually active after ensureActive returns
+			const currentSession = get().sessions.get(sessionId);
+			if (!currentSession || currentSession.connectionState !== 'active') {
+				throw new Error(`Session ${sessionId} is not active after resume (state: ${currentSession?.connectionState ?? 'deleted'})`);
+			}
 
 			// Add user message
 			get().addUserMessage(sessionId, content, mode, attachments, mentions);
@@ -969,40 +995,29 @@ export const useAgentStore = create<AgentStore>()(
 								if (!msg.toolCalls) msg.toolCalls = [];
 
 								// Try to find existing entry by toolId first
-								let tc = msg.toolCalls.find((t) => t.id === toolId);
+								let tcIndex = msg.toolCalls.findIndex((t) => t.id === toolId);
 
-								if (!tc) {
+								if (tcIndex === -1) {
 									// Check for a permission-created entry with same name.
 									// Permission-created tools use requestId as their id, which differs
 									// from the SDK's toolId. This fallback links them together.
-									// Must run for ALL statuses (not just 'running') so completion
-									// events can also match — e.g. AskUserQuestion may skip the
-									// intermediate 'running' event from the SDK.
-									tc = [...msg.toolCalls].reverse().find(
+									const reverseIndex = [...msg.toolCalls].reverse().findIndex(
 										(t) => t.name === meta.toolName &&
 											(t.status === 'awaiting-permission' || t.status === 'running')
 									);
-									if (tc) {
+									if (reverseIndex !== -1) {
+										tcIndex = msg.toolCalls.length - 1 - reverseIndex;
 										// Link permission entry to real tool ID
-										tc.id = toolId;
+										msg.toolCalls[tcIndex].id = toolId;
 									}
 								}
 
-								if (tc) {
-									tc.status = toolStatus as ToolCallState['status'];
-									if (meta.toolOutput) tc.output = meta.toolOutput;
-
-									// Update the matching block too
-									const block = msg.blocks.find(
-										(b) => b.type === 'tool_use' && b.toolCall.id === tc!.id
-									);
-									if (block && block.type === 'tool_use') {
-										block.toolCall.status = tc.status;
-										if (meta.toolOutput) block.toolCall.output = meta.toolOutput;
-									}
+								if (tcIndex !== -1) {
+									// Update existing entry — single source of truth
+									msg.toolCalls[tcIndex].status = toolStatus as ToolCallState['status'];
+									if (meta.toolOutput) msg.toolCalls[tcIndex].output = meta.toolOutput;
 								} else if (toolStatus === 'awaiting-permission' || toolStatus === 'running') {
-									// New tool entry — awaiting-permission from bridge (then quick
-									// success for auto-approved, or permission_request for prompted)
+									// New tool entry
 									const newTc: ToolCallState = {
 										id: toolId,
 										name: meta.toolName || 'unknown',
@@ -1011,8 +1026,8 @@ export const useAgentStore = create<AgentStore>()(
 									};
 									msg.toolCalls.push(newTc);
 
-									// Push ordered block — this creates the interleaving
-									msg.blocks.push({ type: 'tool_use', toolCall: newTc });
+									// Push ordered block with index reference (no copy)
+									msg.blocks.push({ type: 'tool_use', toolCallIndex: msg.toolCalls.length - 1 });
 
 									// Reset segment content so the next text delta starts a fresh block
 									streamState.streamingSegmentContent = '';
@@ -1144,8 +1159,10 @@ export const useAgentStore = create<AgentStore>()(
 								.then((title) => {
 									if (title) {
 										const sess = get().sessions.get(sessionId);
-										if (sess && !sess.name) {
-											get().renameSession(sessionId, title);
+										// Only set auto-title if user hasn't manually renamed
+										const nameSetBy = (sess as AgentSession & { nameSetBy?: string } | undefined)?.nameSetBy;
+										if (sess && (!sess.name || nameSetBy !== 'user')) {
+											get().renameSession(sessionId, title, 'auto');
 										}
 									}
 								})
@@ -1174,22 +1191,17 @@ export const useAgentStore = create<AgentStore>()(
 
 							// Look for an existing entry created by tool_use event
 							// that hasn't been linked to a permission request yet
-							const existing = [...msg.toolCalls].reverse().find(
+							const existingIndex = [...msg.toolCalls].reverse().findIndex(
 								(t) => t.name === request.toolName &&
 									t.status === 'awaiting-permission' &&
 									!t.requestId
 							);
 
-							if (existing) {
+							if (existingIndex !== -1) {
+								const realIndex = msg.toolCalls.length - 1 - existingIndex;
 								// Link permission request to the existing tool_use entry
-								existing.requestId = request.requestId;
-								// Update the matching block too
-								const block = msg.blocks.find(
-									(b) => b.type === 'tool_use' && b.toolCall.id === existing.id
-								);
-								if (block && block.type === 'tool_use') {
-									block.toolCall.requestId = request.requestId;
-								}
+								// Single source of truth — blocks reference by index
+								msg.toolCalls[realIndex].requestId = request.requestId;
 							} else {
 								// Fallback: create new entry (if permission_request arrives before tool_use)
 								const newTc: ToolCallState = {
@@ -1200,7 +1212,7 @@ export const useAgentStore = create<AgentStore>()(
 									requestId: request.requestId,
 								};
 								msg.toolCalls.push(newTc);
-								msg.blocks.push({ type: 'tool_use', toolCall: newTc });
+								msg.blocks.push({ type: 'tool_use', toolCallIndex: msg.toolCalls.length - 1 });
 							}
 							console.log('[DIAG] Permission entry created/linked, blocks:', msg.blocks.length, 'toolCalls:', msg.toolCalls?.length);
 						}
@@ -1264,10 +1276,48 @@ export const useAgentStore = create<AgentStore>()(
 			});
 		},
 
+		handleAcceptModeChanged: (sessionId: string, enabled: boolean) => {
+			set((state) => {
+				state.acceptModeActive.set(sessionId, enabled);
+			});
+		},
+
 		handleError: (message: string, _stack?: string) => {
 			console.error('[Agent bridge error]', message);
 			set((state) => {
 				state.error = message;
+
+				// On sidecar crash, mark all active/resuming sessions as stale
+				// so ensureActive() knows to re-establish the bridge connection
+				if (message.includes('exited unexpectedly')) {
+					for (const session of state.sessions.values()) {
+						if (session.connectionState === 'active' || session.connectionState === 'resuming') {
+							session.connectionState = 'stale';
+						}
+					}
+					// Clear all streaming states — the bridge is dead
+					for (const [sessionId, streamState] of state.sessionStreaming) {
+						if (streamState.isStreaming && streamState.streamingMessageId) {
+							const messages = state.messages.get(sessionId);
+							if (messages) {
+								const msg = messages.find((m) => m.id === streamState.streamingMessageId);
+								if (msg) {
+									msg.isStreaming = false;
+									msg.isInterrupted = true;
+								}
+							}
+						}
+						streamState.streamingMessageId = null;
+						streamState.streamingContent = '';
+						streamState.streamingSegmentContent = '';
+						streamState.streamingThinking = '';
+						streamState.thinkingStartTime = null;
+						streamState.activeToolCalls = new Map();
+						streamState.isStreaming = false;
+					}
+					// Clear all pending permissions — they can't be answered anymore
+					state.pendingPermissions.clear();
+				}
 			});
 		},
 
@@ -1306,6 +1356,7 @@ export const useAgentStore = create<AgentStore>()(
 				const denyOutput = decision === 'deny' ? 'Denied by user' : undefined;
 
 				// Update tool call status in the relevant message
+				// Single source of truth: only update msg.toolCalls (blocks reference by index)
 				if (request) {
 					const streamState = state.sessionStreaming.get(request.sessionId);
 					if (streamState) {
@@ -1313,7 +1364,6 @@ export const useAgentStore = create<AgentStore>()(
 						if (messages && streamState.streamingMessageId) {
 							const msg = messages.find((m) => m.id === streamState.streamingMessageId);
 							if (msg) {
-								// Update flat toolCalls array
 								if (msg.toolCalls) {
 									const tc = msg.toolCalls.find(
 										(t) => t.requestId === requestId
@@ -1322,15 +1372,6 @@ export const useAgentStore = create<AgentStore>()(
 										tc.status = newStatus;
 										if (denyOutput) tc.output = denyOutput;
 									}
-								}
-
-								// Update the matching block (Immer treats these as separate objects)
-								const block = msg.blocks.find(
-									(b) => b.type === 'tool_use' && b.toolCall.requestId === requestId
-								);
-								if (block && block.type === 'tool_use') {
-									block.toolCall.status = newStatus;
-									if (denyOutput) block.toolCall.output = denyOutput;
 								}
 
 								// On deny: mark message as interrupted
@@ -1468,7 +1509,7 @@ export const useSessions = (): AgentSession[] => {
 		const key = entries.map(s => {
 			const msgs = state.messages.get(s.id);
 			const lastTs = (msgs && msgs.length > 0) ? msgs[msgs.length - 1].timestamp.getTime() : 0;
-			return `${s.id}:${s.name || ''}:${lastTs}`;
+			return `${s.id}:${s.name || ''}:${s.connectionState}:${lastTs}`;
 		}).join(',');
 
 		if (key === _sessionsCache.key) {
@@ -1512,5 +1553,25 @@ export const usePlanModeActive = (sessionId: string | null): boolean => {
 	return useAgentStore((state) => {
 		if (!sessionId) return false;
 		return state.planModeActive.get(sessionId) ?? false;
+	});
+};
+
+export const useAcceptModeActive = (sessionId: string | null): boolean => {
+	return useAgentStore((state) => {
+		if (!sessionId) return false;
+		return state.acceptModeActive.get(sessionId) ?? false;
+	});
+};
+
+/** Find the first pending AskUserQuestion permission for a given session */
+export const useActiveAskUserQuestion = (sessionId: string | null): PermissionRequest | null => {
+	return useAgentStore((state) => {
+		if (!sessionId) return null;
+		for (const perm of state.pendingPermissions.values()) {
+			if (perm.sessionId === sessionId && perm.toolName.toLowerCase() === 'askuserquestion') {
+				return perm;
+			}
+		}
+		return null;
 	});
 };

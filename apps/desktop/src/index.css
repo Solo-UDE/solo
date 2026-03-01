@@ -115,6 +115,38 @@
   --color-syntax-operator: var(--syntax-operator);
   --color-syntax-bracket: var(--syntax-bracket);
 
+  /* Repo identity colors */
+  --color-repo-blue: var(--repo-blue);
+  --color-repo-blue-muted: var(--repo-blue-muted);
+  --color-repo-blue-fg: var(--repo-blue-fg);
+  --color-repo-orange: var(--repo-orange);
+  --color-repo-orange-muted: var(--repo-orange-muted);
+  --color-repo-orange-fg: var(--repo-orange-fg);
+  --color-repo-emerald: var(--repo-emerald);
+  --color-repo-emerald-muted: var(--repo-emerald-muted);
+  --color-repo-emerald-fg: var(--repo-emerald-fg);
+  --color-repo-violet: var(--repo-violet);
+  --color-repo-violet-muted: var(--repo-violet-muted);
+  --color-repo-violet-fg: var(--repo-violet-fg);
+  --color-repo-rose: var(--repo-rose);
+  --color-repo-rose-muted: var(--repo-rose-muted);
+  --color-repo-rose-fg: var(--repo-rose-fg);
+  --color-repo-amber: var(--repo-amber);
+  --color-repo-amber-muted: var(--repo-amber-muted);
+  --color-repo-amber-fg: var(--repo-amber-fg);
+  --color-repo-cyan: var(--repo-cyan);
+  --color-repo-cyan-muted: var(--repo-cyan-muted);
+  --color-repo-cyan-fg: var(--repo-cyan-fg);
+  --color-repo-teal: var(--repo-teal);
+  --color-repo-teal-muted: var(--repo-teal-muted);
+  --color-repo-teal-fg: var(--repo-teal-fg);
+  --color-repo-pink: var(--repo-pink);
+  --color-repo-pink-muted: var(--repo-pink-muted);
+  --color-repo-pink-fg: var(--repo-pink-fg);
+  --color-repo-lime: var(--repo-lime);
+  --color-repo-lime-muted: var(--repo-lime-muted);
+  --color-repo-lime-fg: var(--repo-lime-fg);
+
 }
 
 /* =============================================================================
@@ -199,6 +231,38 @@
   --agent-assistant-bg: oklch(0.96 0.008 70);
   --agent-tool-bg: oklch(0.94 0.01 70);
   --agent-streaming: oklch(0.68 0.17 140);
+
+  /* Repo identity colors (light mode) */
+  --repo-blue: oklch(0.55 0.18 250);
+  --repo-blue-muted: oklch(0.55 0.18 250 / 12%);
+  --repo-blue-fg: oklch(0.40 0.15 250);
+  --repo-orange: oklch(0.65 0.18 55);
+  --repo-orange-muted: oklch(0.65 0.18 55 / 12%);
+  --repo-orange-fg: oklch(0.48 0.15 55);
+  --repo-emerald: oklch(0.60 0.17 160);
+  --repo-emerald-muted: oklch(0.60 0.17 160 / 12%);
+  --repo-emerald-fg: oklch(0.42 0.14 160);
+  --repo-violet: oklch(0.55 0.20 290);
+  --repo-violet-muted: oklch(0.55 0.20 290 / 12%);
+  --repo-violet-fg: oklch(0.40 0.17 290);
+  --repo-rose: oklch(0.60 0.20 15);
+  --repo-rose-muted: oklch(0.60 0.20 15 / 12%);
+  --repo-rose-fg: oklch(0.45 0.17 15);
+  --repo-amber: oklch(0.70 0.16 80);
+  --repo-amber-muted: oklch(0.70 0.16 80 / 12%);
+  --repo-amber-fg: oklch(0.50 0.14 80);
+  --repo-cyan: oklch(0.60 0.14 210);
+  --repo-cyan-muted: oklch(0.60 0.14 210 / 12%);
+  --repo-cyan-fg: oklch(0.42 0.12 210);
+  --repo-teal: oklch(0.60 0.14 180);
+  --repo-teal-muted: oklch(0.60 0.14 180 / 12%);
+  --repo-teal-fg: oklch(0.42 0.12 180);
+  --repo-pink: oklch(0.62 0.20 340);
+  --repo-pink-muted: oklch(0.62 0.20 340 / 12%);
+  --repo-pink-fg: oklch(0.45 0.17 340);
+  --repo-lime: oklch(0.65 0.18 130);
+  --repo-lime-muted: oklch(0.65 0.18 130 / 12%);
+  --repo-lime-fg: oklch(0.45 0.15 130);
 
   /* Syntax highlighting tokens (light mode) */
   --syntax-keyword: oklch(0.48 0.20 240);
@@ -295,6 +359,38 @@ html.dark {
   --file-config: oklch(0.80 0.18 90);
   --file-text: oklch(0.65 0.03 60);
   --file-image: oklch(0.60 0.18 300);
+
+  /* Repo identity colors (dark mode) - brighter for dark backgrounds */
+  --repo-blue: oklch(0.70 0.16 250);
+  --repo-blue-muted: oklch(0.70 0.16 250 / 15%);
+  --repo-blue-fg: oklch(0.80 0.12 250);
+  --repo-orange: oklch(0.75 0.16 55);
+  --repo-orange-muted: oklch(0.75 0.16 55 / 15%);
+  --repo-orange-fg: oklch(0.85 0.12 55);
+  --repo-emerald: oklch(0.72 0.15 160);
+  --repo-emerald-muted: oklch(0.72 0.15 160 / 15%);
+  --repo-emerald-fg: oklch(0.82 0.12 160);
+  --repo-violet: oklch(0.70 0.18 290);
+  --repo-violet-muted: oklch(0.70 0.18 290 / 15%);
+  --repo-violet-fg: oklch(0.82 0.14 290);
+  --repo-rose: oklch(0.72 0.18 15);
+  --repo-rose-muted: oklch(0.72 0.18 15 / 15%);
+  --repo-rose-fg: oklch(0.85 0.14 15);
+  --repo-amber: oklch(0.80 0.14 80);
+  --repo-amber-muted: oklch(0.80 0.14 80 / 15%);
+  --repo-amber-fg: oklch(0.88 0.10 80);
+  --repo-cyan: oklch(0.72 0.12 210);
+  --repo-cyan-muted: oklch(0.72 0.12 210 / 15%);
+  --repo-cyan-fg: oklch(0.82 0.10 210);
+  --repo-teal: oklch(0.72 0.12 180);
+  --repo-teal-muted: oklch(0.72 0.12 180 / 15%);
+  --repo-teal-fg: oklch(0.82 0.10 180);
+  --repo-pink: oklch(0.74 0.18 340);
+  --repo-pink-muted: oklch(0.74 0.18 340 / 15%);
+  --repo-pink-fg: oklch(0.85 0.14 340);
+  --repo-lime: oklch(0.76 0.16 130);
+  --repo-lime-muted: oklch(0.76 0.16 130 / 15%);
+  --repo-lime-fg: oklch(0.86 0.12 130);
 
   /* Sidebar - warm dark */
   --sidebar: oklch(0.18 0.012 58);
@@ -467,14 +563,24 @@ button,
 
 ::-webkit-scrollbar-thumb {
   background: oklch(0.55 0.02 60 / 50%);
-  border-radius: 4px;
+  border-radius: 9999px;
   border: 2px solid transparent;
   background-clip: padding-box;
+  box-shadow: 0 0 6px 1px oklch(0.55 0.02 60 / 15%);
+}
+
+/* Tab bar - hidden scrollbar (webkit override) */
+.tab-scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+.tab-scrollbar-none {
+  scrollbar-width: none;
 }
 
 ::-webkit-scrollbar-thumb:hover {
   background: oklch(0.55 0.02 60 / 70%);
   background-clip: padding-box;
+  box-shadow: 0 0 8px 2px oklch(0.55 0.02 60 / 25%);
 }
 
 ::-webkit-scrollbar-corner {
@@ -483,13 +589,20 @@ button,
 
 /* Dark mode scrollbar */
 html.dark ::-webkit-scrollbar-thumb {
-  background: oklch(0.65 0.02 60 / 40%);
+  background: oklch(0.65 0.02 60 / 50%);
   background-clip: padding-box;
+  box-shadow: 0 0 6px 1px oklch(0.65 0.02 60 / 15%);
 }
 
 html.dark ::-webkit-scrollbar-thumb:hover {
   background: oklch(0.65 0.02 60 / 60%);
   background-clip: padding-box;
+  box-shadow: 0 0 8px 2px oklch(0.65 0.02 60 / 20%);
+}
+
+/* Monaco editor scrollbar — pill-shaped thumb */
+.monaco-scrollable-element > .scrollbar > .slider {
+  border-radius: 9999px !important;
 }
 
 /* =============================================================================

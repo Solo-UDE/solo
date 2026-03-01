@@ -12,6 +12,8 @@ import type { WorktreeInfo } from '../bindings';
 import * as worktreeApi from '../lib/tauri/worktree';
 import * as fsApi from '../lib/tauri/fs';
 import { gitGetStatus } from '../lib/tauri/git';
+import { pickRandomIcon, pickRandomColor } from '../lib/repoIdentity';
+import type { RepoIconName, RepoColorName } from '../lib/repoIdentity';
 
 enableMapSet();
 
@@ -46,12 +48,18 @@ export interface RepoEntry {
   cachedCommitsAhead: number;
   /** Cached commits behind (persisted when switching away) */
   cachedCommitsBehind: number;
+  /** Phosphor icon name for visual identity */
+  icon: RepoIconName;
+  /** Color token for visual identity */
+  color: RepoColorName;
 }
 
 interface RepoState {
   repos: Map<string, RepoEntry>;
   activeRepoPath: string | null;
   activeWorktreeId: string | null;
+  /** True while a repo/worktree context switch is in flight */
+  isSwitching: boolean;
   /** Guards against concurrent context switches */
   _switchSeq: number;
 }
@@ -76,12 +84,20 @@ export const useRepoStore = create<RepoStore>()(
       repos: new Map(),
       activeRepoPath: null,
       activeWorktreeId: null,
+      isSwitching: false,
       _switchSeq: 0,
 
       addRepo: async (path: string) => {
         if (get().repos.has(path)) return;
 
         const name = path.split('/').pop() ?? path;
+
+        // Pick unique icon + color, avoiding duplicates where possible
+        const existingRepos = Array.from(get().repos.values());
+        const usedIcons = existingRepos.map((r) => r.icon).filter(Boolean);
+        const usedColors = existingRepos.map((r) => r.color).filter(Boolean);
+        const icon = pickRandomIcon(usedIcons);
+        const color = pickRandomColor(usedColors);
 
         set((state) => {
           state.repos.set(path, {
@@ -95,6 +111,8 @@ export const useRepoStore = create<RepoStore>()(
             hasActiveAgent: false,
             cachedCommitsAhead: 0,
             cachedCommitsBehind: 0,
+            icon,
+            color,
           });
         });
 
@@ -184,7 +202,10 @@ export const useRepoStore = create<RepoStore>()(
 
       selectWorktree: async (repoPath: string, worktreeId: string | null) => {
         // Increment switch sequence to detect stale switches
-        set((state) => { state._switchSeq += 1; });
+        set((state) => {
+          state._switchSeq += 1;
+          state.isSwitching = true;
+        });
         const seq = get()._switchSeq;
 
         const { useWorkspaceStore } = await import('./workspaceStore');
@@ -221,7 +242,10 @@ export const useRepoStore = create<RepoStore>()(
           // setRootPath handles: setWorkspaceRoot() + startWatching() + readDirectory()
           // rootPath goes from old -> new directly (never null, no flash)
           await fsApi.stopWatching().catch(console.error);
+          if (get()._switchSeq !== seq) return;
+
           await useFileExplorerStore.getState().setRootPath(repoPath);
+          if (get()._switchSeq !== seq) return;
 
           // Track in recents
           useWorkspaceStore.getState().addRecent(repoPath);
@@ -240,6 +264,7 @@ export const useRepoStore = create<RepoStore>()(
         if (get()._switchSeq !== seq) return;
 
         // 2. Activate the worktree (null = main workspace)
+        let effectiveWorktreeId = worktreeId;
         try {
           if (worktreeId) {
             await useWorktreeStore.getState().setActive(worktreeId);
@@ -248,6 +273,8 @@ export const useRepoStore = create<RepoStore>()(
           }
         } catch (err) {
           console.error('Failed to set active worktree:', err);
+          // Use the worktreeStore's actual state to stay in sync
+          effectiveWorktreeId = useWorktreeStore.getState().activeWorktreeId;
         }
 
         if (get()._switchSeq !== seq) return;
@@ -260,14 +287,20 @@ export const useRepoStore = create<RepoStore>()(
             if (prevEntry) prevEntry.isExpanded = false;
           }
           state.activeRepoPath = repoPath;
-          state.activeWorktreeId = worktreeId;
+          state.activeWorktreeId = effectiveWorktreeId;
           // Auto-expand the active repo in the accordion
           const entry = state.repos.get(repoPath);
           if (entry) entry.isExpanded = true;
         });
 
         // 4. Refresh the worktree list for the repo we just activated
-        await get().refreshWorktrees(repoPath);
+        try {
+          await get().refreshWorktrees(repoPath);
+        } finally {
+          if (get()._switchSeq === seq) {
+            set((state) => { state.isSwitching = false; });
+          }
+        }
       },
 
       restoreActiveRepo: async () => {
@@ -296,19 +329,28 @@ export const useRepoStore = create<RepoStore>()(
           isExpanded: entry.isExpanded,
           cachedCommitsAhead: entry.cachedCommitsAhead,
           cachedCommitsBehind: entry.cachedCommitsBehind,
+          icon: entry.icon,
+          color: entry.color,
         })),
         activeRepoPath: state.activeRepoPath,
         activeWorktreeId: state.activeWorktreeId,
       }),
       merge: (persisted, current) => {
         const p = persisted as {
-          repos?: { path: string; name: string; isExpanded: boolean; cachedCommitsAhead?: number; cachedCommitsBehind?: number }[];
+          repos?: { path: string; name: string; isExpanded: boolean; cachedCommitsAhead?: number; cachedCommitsBehind?: number; icon?: RepoIconName; color?: RepoColorName }[];
           activeRepoPath?: string | null;
           activeWorktreeId?: string | null;
         };
         const repoMap = new Map<string, RepoEntry>();
+        const usedIcons: string[] = [];
+        const usedColors: string[] = [];
         if (p?.repos) {
           for (const r of p.repos) {
+            // Assign identity if missing (migration from old persisted data)
+            const icon = r.icon ?? pickRandomIcon(usedIcons);
+            const color = r.color ?? pickRandomColor(usedColors);
+            usedIcons.push(icon);
+            usedColors.push(color);
             repoMap.set(r.path, {
               path: r.path,
               name: r.name,
@@ -320,6 +362,8 @@ export const useRepoStore = create<RepoStore>()(
               hasActiveAgent: false,
               cachedCommitsAhead: r.cachedCommitsAhead ?? 0,
               cachedCommitsBehind: r.cachedCommitsBehind ?? 0,
+              icon,
+              color,
             });
           }
         }

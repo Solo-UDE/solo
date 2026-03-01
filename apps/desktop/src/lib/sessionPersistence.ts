@@ -147,6 +147,7 @@ function serializeSessionV3(
  * Reconstruct ContentBlock[] from persisted message fields.
  * Restores the interleaved block ordering so the UI renders
  * thinking, text, and tool cards in chronological order.
+ * Tool use blocks store an index into the toolCalls array (single source of truth).
  */
 function reconstructBlocks(m: PersistedMessage): ContentBlock[] {
   const blocks: ContentBlock[] = [];
@@ -157,8 +158,8 @@ function reconstructBlocks(m: PersistedMessage): ContentBlock[] {
     blocks.push({ type: 'text', text: m.content });
   }
   if (m.toolCalls) {
-    for (const tc of m.toolCalls) {
-      blocks.push({ type: 'tool_use', toolCall: tc });
+    for (let i = 0; i < m.toolCalls.length; i++) {
+      blocks.push({ type: 'tool_use', toolCallIndex: i });
     }
   }
   return blocks;

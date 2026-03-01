@@ -51,6 +51,12 @@ export interface PanelInstance {
   isPinned: boolean;
   /** Panel-specific data passed to the component */
   data: Record<string, unknown>;
+  /** Which repo this tab belongs to (null for non-repo panels like Welcome) */
+  repoPath?: string;
+  /** Which worktree this tab belongs to (null = main worktree) */
+  worktreeId?: string | null;
+  /** Timestamp of last activation (for recency sorting and ghost tab detection) */
+  lastAccessed: number;
 }
 
 /** Tab state for a single tile */
