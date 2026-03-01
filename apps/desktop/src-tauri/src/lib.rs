@@ -40,6 +40,7 @@ mod git_commands;
 mod parse_commands;
 mod provider_commands;
 mod session_commands;
+mod skills_commands;
 mod terminal_commands;
 mod worktree_commands;
 
@@ -315,6 +316,8 @@ pub fn run() {
             worktree_commands::worktree_promote,
             worktree_commands::worktree_set_setup_commands,
             worktree_commands::worktree_get_setup_commands,
+            // Skills commands
+            skills_commands::skills_list_available,
             // ElevenLabs voice commands
             elevenlabs_commands::elevenlabs_set_api_key,
             elevenlabs_commands::elevenlabs_has_api_key,

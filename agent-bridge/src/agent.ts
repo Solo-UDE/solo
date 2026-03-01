@@ -8,6 +8,7 @@ import { ClaudeCredentials } from './credentials.js';
 import { createLogger } from './logger.js';
 import { PermissionManager } from './permissions.js';
 import { getAllowedToolsForMode } from './session-mode.js';
+import { loadSkills, formatSkillsForPrompt } from './skills.js';
 import { buildContentBlocks } from './utils/content.js';
 import { formatToolResult } from './utils/formatter.js';
 
@@ -434,7 +435,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
 ### When to Use DevTools vs Browser Tools
 - **Browser tools (mcp__browser__)**: Page interaction, navigation, clicking, typing
 - **DevTools tools (mcp__orbit-devtools__)**: Deep inspection, debugging, storage, performance analysis
-`,
+` + formatSkillsForPrompt(loadSkills(this.cwd)),
       },
       // Working directory
       cwd: this.cwd,

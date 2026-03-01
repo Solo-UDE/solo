@@ -18,6 +18,7 @@ import {
 	createDebouncedSessionSave,
 } from '../lib/sessionPersistence';
 import { DEFAULT_MODEL_ID } from '../lib/constants';
+import { useSkillStore } from './skillStore';
 
 // Enable Map and Set support in Immer
 enableMapSet();
@@ -169,6 +170,20 @@ function toContentBlocks(
 	mentions?: FileMention[],
 ): AttachmentContentBlock[] | undefined {
 	const blocks: AttachmentContentBlock[] = [];
+
+	// Inject attached skill content as text blocks (before other attachments).
+	// Omit `name` so buildContentBlocks treats it as plain text, not a code-fenced file.
+	const { available, attached } = useSkillStore.getState();
+	const activeSkills = available.filter((s) => attached.has(s.name));
+	if (activeSkills.length > 0) {
+		const skillText = activeSkills
+			.map((s) => `<skill name="${s.name}">\n${s.content}\n</skill>`)
+			.join('\n\n');
+		blocks.push({
+			type: 'text',
+			text: `The user has attached the following skills as instructions for this message. Follow these skill instructions:\n\n${skillText}`,
+		});
+	}
 
 	if (attachments) {
 		for (const att of attachments) {
