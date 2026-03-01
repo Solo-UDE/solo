@@ -41,7 +41,7 @@ export const MessageSection: FC<MessageSectionProps> = ({
   return (
     <section
       data-section-index={sectionIndex}
-      className={`py-4 space-y-4 max-w-4xl mx-auto ${className}`}
+      className={`py-3 space-y-3 max-w-3xl mx-auto ${className}`}
     >
       {messages.map((message) => {
         if (message.type === 'user') {

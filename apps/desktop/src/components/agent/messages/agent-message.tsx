@@ -9,7 +9,7 @@ import { TodoToolWidget } from './tools';
 import { renderToolCard } from '../streaming/tool-registry';
 import { StreamingSkeleton } from '../streaming/StreamingSkeleton';
 import { ToolApprovalCard } from '../streaming/ToolApprovalCard';
-import { AskUserQuestionCard } from '../streaming/AskUserQuestionCard';
+import { ChatCircleDots } from '@phosphor-icons/react';
 import { ProgressTracker } from '../streaming/ProgressTracker';
 import { ProgressTrackerItem } from '../streaming/ProgressTrackerItem';
 import { deriveProgressPhases, buildInterleavedTimeline } from '@/lib/deriveProgressPhases';
@@ -117,8 +117,8 @@ export const AgentMessage: FC<AgentMessageProps> = ({
   timestamp,
   agentName: _agentName = 'Agent',
   onToolApproval,
-  onAnswerQuestion,
-  messageId,
+  onAnswerQuestion: _onAnswerQuestion,
+  messageId: _messageId,
   className = '',
 }) => {
   const formatTime = (date: Date): string => {
@@ -141,9 +141,9 @@ export const AgentMessage: FC<AgentMessageProps> = ({
     : [];
 
   return (
-    <div className={`flex gap-3 px-4 animate-in fade-in-0 slide-in-from-bottom-2 duration-200 ${className}`}>
+    <div className={`flex gap-2.5 px-3 animate-in fade-in-0 slide-in-from-bottom-2 duration-200 ${className}`}>
       {/* Content */}
-      <div className="flex-1 min-w-0 space-y-3">
+      <div className="flex-1 min-w-0 space-y-2.5">
         {/* Header */}
         <div className="flex items-center gap-2">
           <SoloAgentBadge />
@@ -197,13 +197,13 @@ export const AgentMessage: FC<AgentMessageProps> = ({
                 case 'approval':
                   if (block.toolName.toLowerCase() === 'askuserquestion') {
                     return (
-                      <AskUserQuestionCard
+                      <div
                         key={`block-${idx}`}
-                        requestId={block.requestId}
-                        toolInput={block.toolInput}
-                        onSubmit={(requestId, answers) => onAnswerQuestion?.(requestId, answers)}
-                        onReject={(requestId) => onToolApproval?.(requestId, false)}
-                      />
+                        className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/5 border border-primary/15 text-xs text-primary/70"
+                      >
+                        <ChatCircleDots className="h-3.5 w-3.5 shrink-0" weight="fill" />
+                        <span>Waiting for your answer below...</span>
+                      </div>
                     );
                   }
                   return (

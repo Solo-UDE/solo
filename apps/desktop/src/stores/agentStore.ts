@@ -1514,3 +1514,16 @@ export const usePlanModeActive = (sessionId: string | null): boolean => {
 		return state.planModeActive.get(sessionId) ?? false;
 	});
 };
+
+/** Find the first pending AskUserQuestion permission for a given session */
+export const useActiveAskUserQuestion = (sessionId: string | null): PermissionRequest | null => {
+	return useAgentStore((state) => {
+		if (!sessionId) return null;
+		for (const perm of state.pendingPermissions.values()) {
+			if (perm.sessionId === sessionId && perm.toolName.toLowerCase() === 'askuserquestion') {
+				return perm;
+			}
+		}
+		return null;
+	});
+};

@@ -160,11 +160,11 @@ export function Tab({
         'transition-[color,background-color,box-shadow] duration-150 ease-out',
         'cursor-pointer select-none',
         'shrink-0 min-w-[80px] max-w-[200px]',
-        'rounded-md bg-black/50',
+        'rounded-md bg-foreground/[0.06]',
         isActive
           ? 'text-foreground'
-          : 'text-muted-foreground hover:text-foreground hover:bg-black/70',
-        isOver && !isDragging && 'bg-white/[0.06]',
+          : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.10]',
+        isOver && !isDragging && 'bg-foreground/[0.12]',
       )}
       style={{
         backgroundColor: isActive
