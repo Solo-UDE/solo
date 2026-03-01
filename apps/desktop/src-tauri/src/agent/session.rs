@@ -371,6 +371,17 @@ impl SessionManager {
         })
     }
 
+    /// Clear all tracked sessions after a bridge crash.
+    /// The sidecar has exited, so none of these sessions are valid anymore.
+    pub fn clear_sessions_on_crash(&self) {
+        let mut sessions = self.active_sessions.lock();
+        let count = sessions.len();
+        sessions.clear();
+        if count > 0 {
+            tracing::warn!("Cleared {count} active sessions after bridge crash");
+        }
+    }
+
     /// Check if a session exists
     #[allow(dead_code)]
     pub fn has_session(&self, session_id: &str) -> bool {
