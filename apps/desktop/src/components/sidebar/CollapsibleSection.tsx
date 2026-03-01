@@ -32,11 +32,18 @@ export const CollapsibleSection: FC<CollapsibleSectionProps> = ({
   return (
     <div className={cn('flex flex-col min-h-0', open && 'flex-1', className)}>
       {/* Section header */}
-      <button
-        type="button"
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => setOpen((prev) => !prev)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setOpen((prev) => !prev);
+          }
+        }}
         className={cn(
-          'group flex items-center gap-1.5 h-7 px-2 w-full',
+          'group flex items-center gap-1.5 h-7 px-2 w-full cursor-pointer',
           'text-xs font-medium text-muted-foreground/80',
           'hover:text-foreground hover:bg-muted/30',
           'transition-colors duration-150',
@@ -66,7 +73,7 @@ export const CollapsibleSection: FC<CollapsibleSectionProps> = ({
             {actions}
           </div>
         )}
-      </button>
+      </div>
 
       {/* Animated content */}
       <AnimatePresence initial={false}>

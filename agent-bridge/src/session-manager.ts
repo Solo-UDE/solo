@@ -310,7 +310,7 @@ export class SessionManager extends Disposable {
   /**
    * Create a new agent session
    */
-  createSession(sessionId: string, config?: SessionConfig): void {
+  async createSession(sessionId: string, config?: SessionConfig): Promise<void> {
     if (this.activeSessions.has(sessionId)) {
       return;
     }
@@ -416,7 +416,7 @@ export class SessionManager extends Disposable {
     this.activeSessions.set(sessionId, agent);
 
     try {
-      agent.startSession();
+      await agent.startSession();
       logger.info({ sessionId }, 'Session started successfully');
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
