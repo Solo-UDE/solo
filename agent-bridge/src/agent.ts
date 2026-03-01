@@ -792,13 +792,13 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
     return options;
   }
 
-  startSession(): void {
+  async startSession(): Promise<void> {
     /**
      * Start a persistent streaming session with Claude.
      * Creates a message queue and starts the query with streaming input.
      *
      * Authentication priority:
-     * 1. OAuth token from macOS Keychain (same as Claude Code CLI)
+     * 1. OAuth token from ~/.claude/.credentials.json (same as Claude Code CLI)
      * 2. API key from .env file (fallback)
      */
 
@@ -826,12 +826,12 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
     }
 
     // Get credentials with OAuth-first priority
-    const credentials = ClaudeCredentials.getCredentials();
+    const credentials = await ClaudeCredentials.getCredentials();
 
     if (!credentials.hasCredentials) {
       throw new Error(
         'No credentials found. Please either:\n' +
-          '1. Log in to Claude Code CLI (OAuth token will be stored in macOS Keychain), OR\n' +
+          '1. Run "claude login" to set up OAuth credentials in ~/.claude/.credentials.json, OR\n' +
           '2. Set ANTHROPIC_API_KEY in .env file'
       );
     }
@@ -839,11 +839,11 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
     // Handle OAuth token case
     if (credentials.type === 'oauth') {
       // Clear environment variables to force SDK to spawn Claude CLI
-      // The CLI subprocess will read OAuth token from Keychain internally
+      // The CLI subprocess reads OAuth token from ~/.claude/.credentials.json
       delete process.env.ANTHROPIC_API_KEY;
       delete process.env.ANTHROPIC_AUTH_TOKEN;
 
-      logger.info('Using Claude Code OAuth (CLI will read from Keychain)');
+      logger.info('Using Claude Code OAuth (CLI reads from ~/.claude/.credentials.json)');
       logger.info('Note: Using your Claude subscription quota, not API credits');
     } else {
       // API key fallback case

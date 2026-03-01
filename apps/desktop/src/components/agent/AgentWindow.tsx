@@ -7,7 +7,8 @@ import { SoloEmptyState } from './SoloDecryptAnimation';
 import { convertToMessageGroups } from './messageAdapter';
 import { useAgentSession } from '../../hooks/useAgentSession';
 import { useProviderStore } from '../../stores/provider-store';
-import { useAgentStore, usePlanModeActive } from '../../stores/agentStore';
+import { useAgentStore, usePlanModeActive, useActiveAskUserQuestion } from '../../stores/agentStore';
+import { AskUserQuestionCard } from './streaming/AskUserQuestionCard';
 import { usePanelTabsStore } from '../../stores/panelTabsStore';
 import { BUILTIN_PANEL_TYPES } from '../../lib/panels/constants';
 import {
@@ -155,6 +156,9 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 	// Plan mode state from store (set by bridge events)
 	const planModeActive = usePlanModeActive(sessionId ?? null);
 
+	// Active AskUserQuestion (floated above input)
+	const activeQuestion = useActiveAskUserQuestion(sessionId ?? null);
+
 	// Handle mode selector changes — sync to bridge
 	const handleModeChange = useCallback(
 		(mode: 'planning' | 'fast') => {
@@ -227,7 +231,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 	if (messages.length === 0) {
 		return (
 			<div
-				className={`relative flex flex-col h-full bg-background ${className}`}
+				className={`relative flex flex-col h-full bg-background rounded-2xl overflow-hidden ${className}`}
 				data-instance-id={instanceId}
 				style={{ fontFamily: 'var(--font-chat)' }}
 			>
@@ -265,7 +269,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 
 	return (
 		<div
-			className={`relative flex flex-col h-full bg-background ${className}`}
+			className={`relative flex flex-col h-full bg-background rounded-2xl overflow-hidden ${className}`}
 			data-instance-id={instanceId}
 			style={{ fontFamily: 'var(--font-chat)' }}
 		>
@@ -336,6 +340,18 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 							Dismiss
 						</button>
 					</div>
+				</div>
+			)}
+
+			{/* AskUserQuestion — floated above input */}
+			{activeQuestion && (
+				<div className="max-w-3xl mx-auto px-3 pb-1">
+					<AskUserQuestionCard
+						requestId={activeQuestion.requestId}
+						toolInput={activeQuestion.toolInput}
+						onSubmit={handleAnswerQuestion}
+						onReject={(id) => handleToolApproval(id, false)}
+					/>
 				</div>
 			)}
 

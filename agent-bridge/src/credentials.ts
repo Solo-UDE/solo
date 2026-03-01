@@ -1,23 +1,32 @@
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
+import { readFileSync } from 'fs';
+import { join } from 'path';
+import { homedir } from 'os';
 
 import { createLogger } from './logger.js';
 
 const logger = createLogger('ClaudeCredentials');
 
+// Mirror constants from Rust credentials.rs
+const CLAUDE_CODE_OAUTH_CLIENT_ID = 'claude-desktop';
+const CLAUDE_CODE_TOKEN_ENDPOINT = 'https://api.anthropic.com/v1/oauth/token';
+const EXPIRY_BUFFER_MS = 300_000; // 5 minutes — same as Rust side
+
 /**
- * Keychain credentials structure from Claude Code CLI
+ * Credentials file structure from Claude Code CLI (~/.claude/.credentials.json)
  */
-interface KeychainCredentials {
+interface ClaudeCredentialsFile {
   claudeAiOauth?: {
     accessToken?: string;
-    expiresAt?: string;
+    refreshToken?: string;
+    expiresAt?: number | string;
   };
 }
 
 /**
- * Type guard to check if parsed JSON is valid KeychainCredentials
+ * Type guard to check if parsed JSON is valid ClaudeCredentialsFile
  */
-function isKeychainCredentials(value: unknown): value is KeychainCredentials {
+function isClaudeCredentialsFile(value: unknown): value is ClaudeCredentialsFile {
   if (typeof value !== 'object' || value === null) {
     return false;
   }
@@ -32,59 +41,153 @@ function isKeychainCredentials(value: unknown): value is KeychainCredentials {
 }
 
 /**
- * Reads OAuth token from macOS Keychain where Claude Code CLI stores credentials
- * @returns OAuth access token if valid and not expired, null otherwise
+ * Refresh an expired OAuth token using the refresh_token grant.
+ * Mirrors Rust `refresh_claude_code_token()` in credentials.rs.
+ * @returns New access token on success, null on any failure
  */
-function getOAuthTokenFromKeychain(): string | null {
+async function refreshOAuthToken(refreshToken: string): Promise<string | null> {
   try {
-    // Execute macOS security command to read from Keychain
-    const output = execSync('security find-generic-password -s "Claude Code-credentials" -w', {
-      encoding: 'utf-8',
-    }).trim();
+    const body = new URLSearchParams({
+      grant_type: 'refresh_token',
+      client_id: CLAUDE_CODE_OAUTH_CLIENT_ID,
+      refresh_token: refreshToken,
+    });
 
-    // Parse the JSON credentials structure
-    const parsed: unknown = JSON.parse(output);
-    if (!isKeychainCredentials(parsed)) {
-      logger.debug('Invalid credentials structure in Keychain');
+    const resp = await fetch(CLAUDE_CODE_TOKEN_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body,
+      signal: AbortSignal.timeout(15_000),
+    });
+
+    if (!resp.ok) {
+      logger.warn({ status: resp.status }, 'Claude Code token refresh failed');
       return null;
     }
 
-    const claudeAuth = parsed.claudeAiOauth;
-    if (claudeAuth === undefined) {
-      logger.debug('No Claude OAuth credentials found in Keychain');
-      return null;
+    const data = (await resp.json()) as Record<string, unknown>;
+    const accessToken = data.access_token;
+    if (typeof accessToken === 'string' && accessToken !== '') {
+      logger.info('Successfully refreshed Claude Code OAuth token');
+      return accessToken;
     }
 
-    const accessToken = claudeAuth.accessToken;
-    const expiresAt = claudeAuth.expiresAt;
+    logger.warn('Token refresh response missing access_token');
+    return null;
+  } catch (error) {
+    logger.error({ error }, 'Error refreshing OAuth token');
+    return null;
+  }
+}
 
-    if (accessToken === undefined || accessToken === '') {
-      logger.debug('OAuth token missing in Keychain credentials');
-      return null;
-    }
+/**
+ * Check whether a token expiry timestamp (ms) is expired, with 5-min buffer.
+ */
+function isTokenExpired(expiryMs: number): boolean {
+  return Date.now() >= expiryMs - EXPIRY_BUFFER_MS;
+}
 
-    // Validate token expiration
-    if (expiresAt !== undefined && expiresAt !== '') {
-      const expiryMs = parseInt(expiresAt, 10);
-      const expiryDate = new Date(expiryMs);
-      const now = new Date();
+/**
+ * Shared logic for resolving an OAuth token from parsed credentials.
+ */
+async function resolveOAuthFromParsed(
+  parsed: ClaudeCredentialsFile,
+  source: string
+): Promise<string | null> {
+  const claudeAuth = parsed.claudeAiOauth;
+  if (claudeAuth === undefined) {
+    logger.debug(`No Claude OAuth credentials in ${source}`);
+    return null;
+  }
 
-      if (now >= expiryDate) {
-        logger.warn({ expiryDate: expiryDate.toISOString() }, 'Claude Code OAuth token expired');
-        return null;
+  const accessToken = claudeAuth.accessToken;
+  const expiresAt = claudeAuth.expiresAt;
+
+  if (accessToken === undefined || accessToken === '') {
+    logger.debug(`OAuth token missing in ${source} credentials`);
+    return null;
+  }
+
+  if (expiresAt !== undefined && expiresAt !== '') {
+    const expiryMs = typeof expiresAt === 'number' ? expiresAt : parseInt(expiresAt, 10);
+
+    if (isTokenExpired(expiryMs)) {
+      logger.warn({ expiryDate: new Date(expiryMs).toISOString() }, `OAuth token expired in ${source}, attempting refresh`);
+
+      const refreshToken = claudeAuth.refreshToken;
+      if (refreshToken !== undefined && refreshToken !== '') {
+        const newToken = await refreshOAuthToken(refreshToken);
+        if (newToken !== null) {
+          return newToken;
+        }
+        logger.warn(`Failed to refresh OAuth token from ${source}`);
+      } else {
+        logger.debug(`No refreshToken in ${source} credentials`);
       }
 
-      logger.debug({ expiryDate: expiryDate.toISOString() }, 'OAuth token valid');
+      return null;
     }
 
-    return accessToken;
-  } catch (error) {
-    // Token not found in Keychain or parsing error
-    if (error instanceof Error && error.message.includes('could not be found')) {
-      logger.debug('Claude Code credentials not found in Keychain');
-    } else {
-      logger.error({ error }, 'Error reading OAuth token from Keychain');
+    logger.debug({ expiryDate: new Date(expiryMs).toISOString() }, `OAuth token valid from ${source}`);
+  }
+
+  return accessToken;
+}
+
+/**
+ * Reads OAuth token from ~/.claude/.credentials.json (primary OAuth source).
+ * This file is always complete — no size limits unlike macOS `security` CLI.
+ * Mirrors Rust `get_claude_oauth_from_file()` in credentials.rs.
+ * @returns OAuth access token if valid/refreshable, null otherwise
+ */
+async function getOAuthTokenFromFile(): Promise<string | null> {
+  try {
+    const credPath = join(homedir(), '.claude', '.credentials.json');
+    const content = readFileSync(credPath, 'utf-8');
+    const parsed: unknown = JSON.parse(content);
+
+    if (!isClaudeCredentialsFile(parsed)) {
+      logger.debug('Invalid credentials structure in ~/.claude/.credentials.json');
+      return null;
     }
+
+    return resolveOAuthFromParsed(parsed, '~/.claude/.credentials.json');
+  } catch {
+    // File doesn't exist or isn't readable — expected in many setups
+    logger.debug('Could not read ~/.claude/.credentials.json');
+    return null;
+  }
+}
+
+/**
+ * Reads OAuth token from macOS Keychain (fallback when file doesn't exist).
+ * Claude Code CLI stores credentials under service "Claude Code-credentials".
+ * @returns OAuth access token if valid/refreshable, null otherwise
+ */
+async function getOAuthTokenFromKeychain(): Promise<string | null> {
+  if (process.platform !== 'darwin') {
+    logger.debug('Keychain lookup skipped — not macOS');
+    return null;
+  }
+
+  try {
+    const raw = execFileSync(
+      'security',
+      ['find-generic-password', '-s', 'Claude Code-credentials', '-w'],
+      { encoding: 'utf-8', timeout: 5_000, stdio: ['pipe', 'pipe', 'pipe'] }
+    ).trim();
+
+    const parsed: unknown = JSON.parse(raw);
+
+    if (!isClaudeCredentialsFile(parsed)) {
+      logger.debug('Invalid credentials structure in macOS Keychain');
+      return null;
+    }
+
+    return resolveOAuthFromParsed(parsed, 'macOS Keychain');
+  } catch {
+    // Keychain item not found, parse error, or non-macOS — all expected
+    logger.debug('Could not read credentials from macOS Keychain');
     return null;
   }
 }
@@ -108,29 +211,34 @@ function getApiKeyFromEnv(): string | null {
  * Gets credentials with OAuth-first priority
  *
  * Important: When OAuth token is available, environment variables should be cleared
- * to allow the Claude Agent SDK to spawn CLI subprocess that reads from Keychain.
+ * to allow the Claude Agent SDK to spawn CLI subprocess that reads from ~/.claude/.credentials.json.
  *
  * @returns Object with credential info: { type: 'oauth' | 'apikey', hasCredentials: boolean }
  */
-function getCredentials(): { type: 'oauth' | 'apikey'; hasCredentials: boolean } {
-  // Try OAuth token first
-  const oauthToken = getOAuthTokenFromKeychain();
-
-  if (oauthToken !== null) {
-    logger.info('OAuth token available from Claude Code Keychain');
+async function getCredentials(): Promise<{ type: 'oauth' | 'apikey'; hasCredentials: boolean }> {
+  // 1. Try OAuth token from ~/.claude/.credentials.json (with refresh on expiry)
+  const fileToken = await getOAuthTokenFromFile();
+  if (fileToken !== null) {
+    logger.info('OAuth token available from ~/.claude/.credentials.json');
     return { type: 'oauth', hasCredentials: true };
   }
 
-  // Fall back to API key
-  const apiKey = getApiKeyFromEnv();
+  // 2. Try OAuth token from macOS Keychain (fallback when file doesn't exist)
+  const keychainToken = await getOAuthTokenFromKeychain();
+  if (keychainToken !== null) {
+    logger.info('OAuth token available from macOS Keychain');
+    return { type: 'oauth', hasCredentials: true };
+  }
 
+  // 3. Fall back to API key from environment
+  const apiKey = getApiKeyFromEnv();
   if (apiKey !== null) {
     logger.info('API key available from environment');
     return { type: 'apikey', hasCredentials: true };
   }
 
   // No credentials found
-  logger.error('No credentials found (checked Keychain and .env)');
+  logger.error('No credentials found (checked ~/.claude/.credentials.json, macOS Keychain, and env)');
   return { type: 'apikey', hasCredentials: false };
 }
 
@@ -138,10 +246,12 @@ function getCredentials(): { type: 'oauth' | 'apikey'; hasCredentials: boolean }
  * ClaudeCredentials - Manages authentication credentials for Claude Agent SDK
  *
  * Priority:
- * 1. OAuth token from macOS Keychain (same as Claude Code CLI)
- * 2. API key from .env file (fallback)
+ * 1. OAuth token from ~/.claude/.credentials.json (with refresh on expiry)
+ * 2. OAuth token from macOS Keychain (fallback when file doesn't exist)
+ * 3. API key from environment variable
  */
 export const ClaudeCredentials = {
+  getOAuthTokenFromFile,
   getOAuthTokenFromKeychain,
   getApiKeyFromEnv,
   getCredentials,

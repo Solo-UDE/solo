@@ -1,25 +1,40 @@
 /**
- * PrimarySidebar - Unified accordion sidebar with repo cards.
- * All repos are always visible. The active repo expands inline to show
- * worktree list + horizontal tab bar + panel reel.
+ * PrimarySidebar - Content sidebar with vertically stacked collapsible sections.
+ * Shows Explorer, Sessions, and Source Control as expandable sections.
+ * The active repo context is determined by the RepoRail selection.
  */
 
-import { useCallback, useMemo, forwardRef } from 'react';
-import { motion, LayoutGroup } from 'motion/react';
-import { FolderPlus } from '@phosphor-icons/react';
+import { useCallback, useMemo, useState, forwardRef } from 'react';
+import {
+  Files,
+  ChatTeardrop,
+  GitBranch,
+  TreeStructure,
+  Broom,
+  FilePlus,
+  FolderPlus,
+  ArrowsClockwise,
+  ArrowsInSimple,
+  X,
+  Plus,
+  CloudArrowDown,
+  CloudArrowUp,
+  FolderPlus as FolderPlusIcon,
+} from '@phosphor-icons/react';
 import { FileExplorer } from '@/components/file-explorer';
 import { SessionList } from '@/components/agent';
 import { SourceControlPanel } from '@/components/source-control';
-import { ContextHeader } from './ContextHeader';
-import { RepoListHeader } from './RepoListHeader';
-import { RepoCard } from './RepoCard';
-import { InlineWorktreeList } from './InlineWorktreeList';
-import { HorizontalTabBar } from './HorizontalTabBar';
+import { WorktreePanel } from './WorktreePanel';
+import { SidebarHeader } from './SidebarHeader';
+import { CollapsibleSection } from './CollapsibleSection';
 import { TRANSITIONS } from '@/lib/constants';
-import { useUIStore, useIsLeftSidebarCollapsed } from '@/stores/uiStore';
+import { useIsLeftSidebarCollapsed } from '@/stores/uiStore';
 import { useRepoStore, useRepoList } from '@/stores/repoStore';
 import { useAgentStore } from '@/stores/agentStore';
 import { usePanelTabsStore } from '@/stores/panelTabsStore';
+import { useFileExplorerStore, getParentPath } from '@/stores/fileExplorerStore';
+import { useGitStore } from '@/stores/gitStore';
+import { useWorktreeStore } from '@/stores/worktreeStore';
 import { BUILTIN_PANEL_TYPES } from '@/lib/panels';
 import { openFolderDialog } from '@/lib/tauri/fs';
 import { cn } from '@/lib/utils';
@@ -30,17 +45,47 @@ interface PrimarySidebarProps {
   readonly onFileOpen: (path: string) => void;
 }
 
-const TAB_KEYS = ['explorer', 'sessions', 'source-control'] as const;
-
 export const PrimarySidebar = forwardRef<HTMLElement, PrimarySidebarProps>(({ width, onFileOpen }, ref) => {
   const isCollapsed = useIsLeftSidebarCollapsed();
-  const activeTab = useUIStore((state) => state.activeTab);
   const createSession = useAgentStore((state) => state.createSession);
   const addRepo = useRepoStore((state) => state.addRepo);
   const activeRepoPath = useRepoStore((state) => state.activeRepoPath);
+  const isSwitching = useRepoStore((state) => state.isSwitching);
   const repos = useRepoList();
 
   const openPanel = useMemo(() => usePanelTabsStore.getState().openPanel, []);
+
+  // File explorer state
+  const rootPath = useFileExplorerStore((s) => s.rootPath);
+  const selected = useFileExplorerStore((s) => s.selected);
+  const startCreating = useFileExplorerStore((s) => s.startCreating);
+  const setRootPath = useFileExplorerStore((s) => s.setRootPath);
+  const closeFolder = useFileExplorerStore((s) => s.closeFolder);
+  const collapseAll = useFileExplorerStore((s) => s.collapseAll);
+
+  // Worktree state
+  const pruneWorktrees = useWorktreeStore((s) => s.pruneWorktrees);
+  const [showWorktreeCreate, setShowWorktreeCreate] = useState(false);
+
+  const handlePrune = useCallback(async () => {
+    try {
+      const pruned = await pruneWorktrees();
+      if (pruned.length > 0) {
+        toast.success(`Pruned ${pruned.length} worktree${pruned.length > 1 ? 's' : ''}`);
+      }
+    } catch (err) {
+      toast.error('Prune failed', { description: String(err) });
+    }
+  }, [pruneWorktrees]);
+
+  // Git state
+  const repoStatus = useGitStore((s) => s.repoStatus);
+  const isPushing = useGitStore((s) => s.isPushing);
+  const isPulling = useGitStore((s) => s.isPulling);
+  const commitsAhead = useGitStore((s) => s.commitsAhead);
+  const fetchChanges = useGitStore((s) => s.fetchChanges);
+  const push = useGitStore((s) => s.push);
+  const pull = useGitStore((s) => s.pull);
 
   // Open a session as a tab - find existing tab first, otherwise open new
   const handleSessionSelect = useCallback((sessionId: string): void => {
@@ -87,9 +132,55 @@ export const PrimarySidebar = forwardRef<HTMLElement, PrimarySidebarProps>(({ wi
     }
   }, [addRepo]);
 
-  // Compute x offset for the 3-panel reel
-  const activeTabIndex = TAB_KEYS.indexOf(activeTab);
-  const reelOffsetPercent = (activeTabIndex >= 0 ? activeTabIndex : 0) * -33.333;
+  // Explorer action helpers
+  const getTargetDirectory = useCallback((): string | null => {
+    const selectedPaths = Array.from(selected);
+    if (selectedPaths.length > 0) {
+      const entries = useFileExplorerStore.getState().entries;
+      const entry = entries.get(selectedPaths[0]);
+      return entry?.is_dir ? selectedPaths[0] : getParentPath(selectedPaths[0]);
+    }
+    return rootPath;
+  }, [selected, rootPath]);
+
+  const handleNewFile = useCallback(() => {
+    const targetDir = getTargetDirectory();
+    if (!targetDir) return;
+    startCreating(targetDir, 'file');
+  }, [getTargetDirectory, startCreating]);
+
+  const handleNewFolder = useCallback(() => {
+    const targetDir = getTargetDirectory();
+    if (!targetDir) return;
+    startCreating(targetDir, 'folder');
+  }, [getTargetDirectory, startCreating]);
+
+  const handleRefreshExplorer = useCallback(() => {
+    if (rootPath) setRootPath(rootPath);
+  }, [rootPath, setRootPath]);
+
+  // Git action helpers
+  const handlePull = useCallback(async () => {
+    try {
+      await pull();
+      toast.success('Pulled from remote');
+    } catch (err) {
+      toast.error('Pull failed', { description: String(err) });
+    }
+  }, [pull]);
+
+  const handlePush = useCallback(async () => {
+    try {
+      await push();
+      toast.success('Pushed to remote');
+    } catch (err) {
+      toast.error('Push failed', { description: String(err) });
+    }
+  }, [push]);
+
+  const handleRefreshGit = useCallback(() => {
+    fetchChanges();
+  }, [fetchChanges]);
 
   return (
     <aside
@@ -100,86 +191,160 @@ export const PrimarySidebar = forwardRef<HTMLElement, PrimarySidebarProps>(({ wi
         transition: `width ${TRANSITIONS.sidebar}`,
       }}
     >
+      {/* Loading overlay during repo switch */}
+      {isSwitching && (
+        <div className="absolute inset-0 z-10 bg-sidebar/50 animate-pulse pointer-events-none" />
+      )}
+
       {!isCollapsed && (
-        <LayoutGroup>
-          {/* Header */}
-          <RepoListHeader onAddRepo={handleAddRepo} />
+        <>
+          {/* Header showing active repo + branch */}
+          {activeRepoPath ? (
+            <SidebarHeader />
+          ) : (
+            <div className="h-9 flex items-center px-2.5 shrink-0 border-b border-border/10">
+              <span className="text-xs font-semibold text-muted-foreground/70">Solo</span>
+            </div>
+          )}
 
-          {/* Repo list (accordion) */}
-          <div className="flex-1 flex flex-col min-h-0 overflow-y-auto py-1">
-            {repos.length === 0 ? (
-              /* Empty state */
-              <div className="flex-1 flex flex-col items-center justify-center gap-3 px-4 text-center">
-                <div className="w-10 h-10 rounded-xl bg-muted/40 flex items-center justify-center">
-                  <FolderPlus className="w-5 h-5 text-muted-foreground/50" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground/70 mb-1">No repositories</p>
-                  <p className="text-xs text-muted-foreground/40">Add a repository to get started</p>
-                </div>
-                <button
-                  onClick={handleAddRepo}
-                  className="h-8 px-3.5 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 active:scale-[0.97] transition-all duration-200"
-                >
-                  Add Repository
-                </button>
+          {/* Content area with collapsible sections */}
+          {repos.length === 0 ? (
+            /* Empty state - no repos */
+            <div className="flex-1 flex flex-col items-center justify-center gap-3 px-4 text-center">
+              <div className="w-10 h-10 rounded-xl bg-muted/40 flex items-center justify-center">
+                <FolderPlusIcon className="w-5 h-5 text-muted-foreground/50" />
               </div>
-            ) : (
-              repos.map((repo) => {
-                const isActive = repo.path === activeRepoPath;
-                const isExpanded = repo.isExpanded && isActive;
+              <div>
+                <p className="text-sm text-muted-foreground/70 mb-1">No repositories</p>
+                <p className="text-xs text-muted-foreground/40">Add a repository to get started</p>
+              </div>
+              <button
+                onClick={handleAddRepo}
+                className="h-8 px-3.5 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 active:scale-[0.97] transition-all duration-200"
+              >
+                Add Repository
+              </button>
+            </div>
+          ) : (
+            <div className="flex-1 flex flex-col min-h-0 overflow-y-auto">
+              {/* Worktrees section */}
+              <CollapsibleSection
+                title="Worktrees"
+                icon={TreeStructure}
+                defaultOpen={false}
+                actions={
+                  <>
+                    <SectionIconButton onClick={() => setShowWorktreeCreate((prev) => !prev)} title="New Worktree" icon={Plus} />
+                    <SectionIconButton onClick={handlePrune} title="Prune stale worktrees" icon={Broom} />
+                  </>
+                }
+              >
+                <WorktreePanel
+                  embedded
+                  className="h-full"
+                  showCreate={showWorktreeCreate}
+                  onShowCreateChange={setShowWorktreeCreate}
+                />
+              </CollapsibleSection>
 
-                return (
-                  <RepoCard key={repo.path} repo={repo} isActive={isActive}>
-                    {isExpanded && (
-                      <div className="flex flex-col flex-1 min-h-0">
-                        {/* Inline worktree list */}
-                        <InlineWorktreeList repo={repo} />
+              {/* Explorer section */}
+              <CollapsibleSection
+                title="Explorer"
+                icon={Files}
+                defaultOpen={true}
+                actions={
+                  rootPath ? (
+                    <>
+                      <SectionIconButton onClick={handleNewFile} title="New File" icon={FilePlus} />
+                      <SectionIconButton onClick={handleNewFolder} title="New Folder" icon={FolderPlus} />
+                      <SectionIconButton onClick={collapseAll} title="Collapse All" icon={ArrowsInSimple} />
+                      <SectionIconButton onClick={handleRefreshExplorer} title="Refresh" icon={ArrowsClockwise} />
+                      <SectionIconButton onClick={closeFolder} title="Close Folder" icon={X} />
+                    </>
+                  ) : undefined
+                }
+              >
+                <FileExplorer
+                  onFileOpen={onFileOpen}
+                  className={cn(
+                    'h-full transition-opacity duration-150',
+                    isCollapsed ? 'opacity-0 pointer-events-none' : 'opacity-100',
+                  )}
+                />
+              </CollapsibleSection>
 
-                        {/* Context header (branch switcher + view-specific actions) */}
-                        <ContextHeader onNewSession={handleNewSession} />
+              {/* Sessions section */}
+              <CollapsibleSection
+                title="Sessions"
+                icon={ChatTeardrop}
+                defaultOpen={true}
+                actions={
+                  <SectionIconButton onClick={handleNewSession} title="New Session" icon={Plus} />
+                }
+              >
+                <SessionList
+                  onSessionSelect={handleSessionSelect}
+                  onNewSession={handleNewSession}
+                  className="h-full"
+                />
+              </CollapsibleSection>
 
-                        {/* Horizontal tab bar */}
-                        <HorizontalTabBar />
-
-                        {/* Tab Content - Sliding Reel (3 panels) */}
-                        <div className="flex-1 min-h-0 overflow-hidden">
-                          <motion.div
-                            className="flex h-full"
-                            style={{ width: '300%' }}
-                            animate={{ x: `${reelOffsetPercent}%` }}
-                            transition={{ type: 'spring', stiffness: 400, damping: 35 }}
-                          >
-                            <div className="w-1/3 h-full overflow-hidden">
-                              <FileExplorer
-                                onFileOpen={onFileOpen}
-                                className={cn(
-                                  'h-full transition-opacity duration-150',
-                                  isCollapsed ? 'opacity-0 pointer-events-none' : 'opacity-100'
-                                )}
-                              />
-                            </div>
-                            <div className="w-1/3 h-full overflow-hidden">
-                              <SessionList
-                                onSessionSelect={handleSessionSelect}
-                                onNewSession={handleNewSession}
-                                className="h-full"
-                              />
-                            </div>
-                            <div className="w-1/3 h-full overflow-hidden">
-                              <SourceControlPanel className="h-full" />
-                            </div>
-                          </motion.div>
-                        </div>
-                      </div>
-                    )}
-                  </RepoCard>
-                );
-              })
-            )}
-          </div>
-        </LayoutGroup>
+              {/* Source Control section */}
+              <CollapsibleSection
+                title="Source Control"
+                icon={GitBranch}
+                defaultOpen={false}
+                actions={
+                  <>
+                    <SectionIconButton
+                      onClick={handlePull}
+                      title="Pull"
+                      icon={CloudArrowDown}
+                      disabled={isPulling || !repoStatus?.has_remote}
+                    />
+                    <SectionIconButton
+                      onClick={handlePush}
+                      title={commitsAhead && commitsAhead > 0 ? `Push (${commitsAhead} ahead)` : 'Push'}
+                      icon={CloudArrowUp}
+                      disabled={isPushing || !repoStatus?.has_remote || commitsAhead === 0 || commitsAhead === null}
+                    />
+                    <SectionIconButton onClick={handleRefreshGit} title="Refresh" icon={ArrowsClockwise} />
+                  </>
+                }
+              >
+                <SourceControlPanel className="h-full" />
+              </CollapsibleSection>
+            </div>
+          )}
+        </>
       )}
     </aside>
   );
 });
+
+// ---------------------------------------------------------------------------
+// SectionIconButton - Small icon button for section header actions
+// ---------------------------------------------------------------------------
+
+interface SectionIconButtonProps {
+  onClick: () => void;
+  title: string;
+  icon: React.ComponentType<{ className?: string; weight?: 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone' }>;
+  disabled?: boolean;
+}
+
+const SectionIconButton: React.FC<SectionIconButtonProps> = ({ onClick, title, icon: Icon, disabled }) => (
+  <button
+    onClick={onClick}
+    disabled={disabled}
+    className={cn(
+      'w-5 h-5 flex items-center justify-center rounded',
+      'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
+      'disabled:opacity-30 disabled:pointer-events-none',
+      'active:scale-95 transition-all duration-200',
+    )}
+    title={title}
+  >
+    <Icon className="w-3 h-3" weight="bold" />
+  </button>
+);

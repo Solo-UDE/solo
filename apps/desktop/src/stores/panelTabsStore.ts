@@ -10,10 +10,11 @@ import { enableMapSet } from 'immer';
 import type { TileId, PanelInstanceId, PanelInstance, TileTabState } from '@/lib/panels/types';
 import { panelRegistry } from '@/lib/panels/registry';
 import { DEFAULT_TILES } from '@/lib/panels/constants';
+import { useRepoStore } from '@/stores/repoStore';
 
 enableMapSet();
 
-interface PanelTabsState {
+export interface PanelTabsState {
   /** All panel instances */
   instances: Map<PanelInstanceId, PanelInstance>;
   /** Tabs per tile */
@@ -108,6 +109,9 @@ interface PanelTabsActions {
 
   /** Get dirty panels with their save callbacks */
   getDirtyPanelsWithSave: () => { instanceId: PanelInstanceId; save: () => Promise<void> }[];
+
+  /** Close all ghost tabs (non-pinned tabs inactive for 30+ min) in a tile */
+  closeGhostTabs: (tileId: TileId) => void;
 }
 
 type PanelTabsStore = PanelTabsState & PanelTabsActions;
@@ -150,15 +154,38 @@ export const usePanelTabsStore = create<PanelTabsStore>()(
       }
 
       const id = `panel-${get().nextInstanceId}`;
-      const title = registration.getDefaultTitle?.(data) ?? registration.displayName;
+      let title = registration.getDefaultTitle?.(data) ?? registration.displayName;
+
+      // For multi-instance panels whose title matches the generic displayName
+      // (e.g. "Terminal"), append a counter to distinguish tabs
+      if (registration.allowMultiple && title === registration.displayName) {
+        const existingCount = Array.from(get().instances.values())
+          .filter((inst) => inst.panelType === panelType).length;
+        if (existingCount > 0) {
+          title = `${title} ${existingCount + 1}`;
+        }
+      }
 
       // Determine target tile
       const tileId = targetTileId ?? DEFAULT_TILES.editor;
 
+      // Auto-populate repo/worktree context from current active state.
+      // Wrapped in try-catch: if repoStore hasn't initialized yet, tabs still
+      // open -- they just won't have a repo association.
+      let repoPath: string | undefined;
+      let worktreeId: string | null = null;
+      try {
+        const repoState = useRepoStore.getState();
+        repoPath = repoState.activeRepoPath ?? undefined;
+        worktreeId = repoState.activeWorktreeId ?? null;
+      } catch {
+        // repoStore not ready yet - graceful fallback
+      }
+
       set((state) => {
         state.nextInstanceId += 1;
 
-        // Create the panel instance
+        // Create the panel instance with repo context
         state.instances.set(id, {
           id,
           panelType,
@@ -167,6 +194,9 @@ export const usePanelTabsStore = create<PanelTabsStore>()(
           isDirty: false,
           isPinned: false,
           data,
+          repoPath,
+          worktreeId,
+          lastAccessed: Date.now(),
         });
 
         // Ensure tile has tab state
@@ -174,10 +204,14 @@ export const usePanelTabsStore = create<PanelTabsStore>()(
           state.tileTabs.set(tileId, { tabs: [], activeTabId: null });
         }
 
-        // Add to tile's tabs
+        // Add to tile's tabs and mark as active
         const tileState = state.tileTabs.get(tileId)!;
         tileState.tabs.push(id);
         tileState.activeTabId = id;
+
+        // Bump lastAccessed on the previously-active tab's replacement
+        const inst = state.instances.get(id);
+        if (inst) inst.lastAccessed = Date.now();
       });
 
       return id;
@@ -229,6 +263,10 @@ export const usePanelTabsStore = create<PanelTabsStore>()(
         const tileState = state.tileTabs.get(tileId);
         if (tileState && tileState.tabs.includes(instanceId)) {
           tileState.activeTabId = instanceId;
+          const instance = state.instances.get(instanceId);
+          if (instance) {
+            instance.lastAccessed = Date.now();
+          }
         }
       });
     },
@@ -477,8 +515,84 @@ export const usePanelTabsStore = create<PanelTabsStore>()(
       }
       return result;
     },
+
+    closeGhostTabs: (tileId: TileId) => {
+      const GHOST_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
+      const now = Date.now();
+      const tileState = get().tileTabs.get(tileId);
+      if (!tileState) return;
+
+      const toClose = tileState.tabs.filter((tabId) => {
+        const inst = get().instances.get(tabId);
+        if (!inst || inst.isPinned) return false;
+        return now - inst.lastAccessed > GHOST_THRESHOLD_MS;
+      });
+
+      for (const tabId of toClose) {
+        get().closePanelInTile(tabId, tileId);
+      }
+    },
   }))
 );
+
+// ---------------------------------------------------------------------------
+// Tab grouping types and selectors
+// ---------------------------------------------------------------------------
+
+export interface TabGroup {
+  repoPath: string;
+  collapsed: boolean;
+  tabs: PanelInstance[];
+  worktreeIds: Set<string | null>;
+}
+
+/**
+ * Compute tab groups from the current panel state for a given tile.
+ * Groups tabs by repo into a flat list. Collects unique worktree IDs
+ * per group so the UI can offer a worktree switcher dropdown.
+ * Tabs without a repoPath are placed in an "ungrouped" bucket.
+ */
+export function computeTabGroups(
+  tileId: TileId,
+  state: PanelTabsState,
+  collapsedGroups: Set<string>,
+): { grouped: TabGroup[]; ungrouped: PanelInstance[] } {
+  const tileState = state.tileTabs.get(tileId);
+  if (!tileState) return { grouped: [], ungrouped: [] };
+
+  const repoMap = new Map<string, { tabs: PanelInstance[]; worktreeIds: Set<string | null> }>();
+  const ungrouped: PanelInstance[] = [];
+
+  for (const tabId of tileState.tabs) {
+    const instance = state.instances.get(tabId);
+    if (!instance) continue;
+
+    if (!instance.repoPath) {
+      ungrouped.push(instance);
+      continue;
+    }
+
+    let entry = repoMap.get(instance.repoPath);
+    if (!entry) {
+      entry = { tabs: [], worktreeIds: new Set() };
+      repoMap.set(instance.repoPath, entry);
+    }
+    entry.tabs.push(instance);
+    entry.worktreeIds.add(instance.worktreeId ?? null);
+  }
+
+  const grouped: TabGroup[] = [];
+  for (const [repoPath, entry] of repoMap) {
+    grouped.push({
+      repoPath,
+      collapsed: collapsedGroups.has(repoPath),
+      tabs: entry.tabs,
+      worktreeIds: entry.worktreeIds,
+    });
+  }
+
+  return { grouped, ungrouped };
+}
 
 // Empty array constant to avoid creating new references
 const EMPTY_TABS: PanelInstance[] = [];
@@ -558,4 +672,23 @@ export function usePanelInstance(instanceId: PanelInstanceId): PanelInstance | n
   return usePanelTabsStore(
     (state) => state.instances.get(instanceId) ?? null
   );
+}
+
+/**
+ * Returns the 0-based recency rank of a tab within its tile.
+ * 0 = most recently accessed. Used for the recency glow effect.
+ */
+export function useRecencyRank(tileId: TileId, instanceId: PanelInstanceId): number {
+  return usePanelTabsStore((state) => {
+    const tileState = state.tileTabs.get(tileId);
+    if (!tileState) return Infinity;
+
+    const sorted = tileState.tabs
+      .map((id) => state.instances.get(id))
+      .filter((inst): inst is PanelInstance => inst !== undefined)
+      .sort((a, b) => b.lastAccessed - a.lastAccessed);
+
+    const idx = sorted.findIndex((inst) => inst.id === instanceId);
+    return idx === -1 ? Infinity : idx;
+  });
 }

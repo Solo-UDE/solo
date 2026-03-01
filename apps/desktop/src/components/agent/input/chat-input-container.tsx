@@ -154,7 +154,7 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
 
   return (
     <div className={`bg-background ${className}`}>
-      <div className="max-w-4xl mx-auto px-4 pb-4 pt-2">
+      <div className="max-w-3xl mx-auto px-3 pb-3 pt-1.5">
         {/* Floating card wrapping editor + toolbar */}
         <div className="bg-card/95 backdrop-blur-md rounded-[16px] shadow-[0_4px_24px_-4px_rgba(0,0,0,0.15)] ring-1 ring-white/[0.06]">
           {/* Editor with drop zone */}
@@ -195,7 +195,7 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
 
           {/* Bottom Controls */}
           <div className="flex items-center justify-between px-3 pb-3 pt-1" style={{ fontFamily: 'var(--font-sans)' }}>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
               <ContextMenu disabled={isAgentRunning} />
               <ModeSelector value={mode} onChange={handleModeChange} disabled={isAgentRunning} />
               <ModelPicker side="top" disabled={isAgentRunning} />
@@ -216,7 +216,7 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
                   value={worktreeId ?? ''}
                   onChange={(e) => onWorktreeChange(e.target.value || null)}
                   disabled={isAgentRunning}
-                  className="h-[30px] px-2.5 text-xs font-medium rounded-[8px] bg-transparent text-muted-foreground hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/30 transition-[transform,background-color,color] duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="h-[30px] px-2.5 text-xs font-medium rounded-[8px] bg-transparent text-muted-foreground hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/30 transition-[transform,background-color,color] duration-200 disabled:opacity-50 disabled:cursor-not-allowed max-w-[120px] truncate"
                   title="Worktree"
                 >
                   <option value="">Main workspace</option>
@@ -229,7 +229,7 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
               )}
             </div>
 
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 shrink-0">
               {/* Voice input (ElevenLabs STT) */}
               <VoiceButton
                 disabled={isAgentRunning}

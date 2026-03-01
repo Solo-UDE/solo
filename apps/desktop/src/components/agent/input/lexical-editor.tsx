@@ -8,6 +8,7 @@ import { PlainTextPlugin } from '@lexical/react/LexicalPlainTextPlugin';
 import { $createParagraphNode, $getRoot, $nodesOfType } from 'lexical';
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
 
+import { ClipboardImagePlugin } from './lexical/ClipboardImagePlugin';
 import { MentionNode } from './lexical/MentionNode';
 import { MentionPlugin } from './lexical/MentionPlugin';
 import { SlashCommandPlugin } from './lexical/SlashCommandPlugin';
@@ -192,6 +193,7 @@ export const LexicalEditor = forwardRef<LexicalEditorHandle, LexicalEditorProps>
           <EditorRefPlugin editorRef={editorRef} />
           <EditorDisabledPlugin disabled={disabled} />
           {onKeyDown ? <KeyDownPlugin onKeyDown={onKeyDown} /> : null}
+          <ClipboardImagePlugin />
           <MentionPlugin />
           <SlashCommandPlugin
             onLocalCommand={onLocalCommand}

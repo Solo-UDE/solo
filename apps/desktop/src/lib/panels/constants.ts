@@ -5,7 +5,7 @@
 /** Tab bar dimensions */
 export const TAB_BAR = {
   /** Height of the tab bar in pixels */
-  height: 35,
+  height: 41,
   /** Minimum tab width in pixels */
   minTabWidth: 80,
   /** Maximum tab width in pixels */

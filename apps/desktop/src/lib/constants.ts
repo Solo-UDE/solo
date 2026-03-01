@@ -8,6 +8,10 @@ export const SIDEBAR = {
   min: 220,
   max: 400,
   iconColumnWidth: 40,
+  /** Width of the repo icon rail (always visible) */
+  railWidth: 48,
+  /** Width of the repo rail when expanded to show details */
+  railExpandedWidth: 200,
 } as const;
 
 export const HEIGHTS = {
@@ -23,7 +27,7 @@ export const TERMINAL_SECTION = {
 } as const;
 
 export const TRANSITIONS = {
-  sidebar: '150ms ease-in-out',
+  sidebar: '200ms ease-in-out',
 } as const;
 
 /**
@@ -58,9 +62,9 @@ export interface ModelOption {
 }
 
 export const CLAUDE_MODELS: ModelOption[] = [
-  { id: CLAUDE_OPUS_4_6, name: 'Claude Opus 4.6', description: 'Most capable model' },
-  { id: CLAUDE_SONNET_4_6, name: 'Claude Sonnet 4.6', description: 'Balanced performance' },
-  { id: CLAUDE_HAIKU_4_5, name: 'Claude Haiku 4.5', description: 'Fastest responses' },
+  { id: CLAUDE_OPUS_4_6, name: 'Opus 4.6', description: 'Most capable model' },
+  { id: CLAUDE_SONNET_4_6, name: 'Sonnet 4.6', description: 'Balanced performance' },
+  { id: CLAUDE_HAIKU_4_5, name: 'Haiku 4.5', description: 'Fastest responses' },
 ];
 
 /**
@@ -85,21 +89,21 @@ export const MODEL_OPTIONS: ModelOptionConfig[] = [
   // Anthropic Claude models
   {
     value: CLAUDE_OPUS_4_6,
-    label: 'Claude Opus 4.6',
+    label: 'Opus 4.6',
     description: 'Most capable model',
     provider: 'anthropic',
     iconType: 'claude',
   },
   {
     value: CLAUDE_SONNET_4_6,
-    label: 'Claude Sonnet 4.6',
+    label: 'Sonnet 4.6',
     description: 'Balanced speed and intelligence',
     provider: 'anthropic',
     iconType: 'claude',
   },
   {
     value: CLAUDE_HAIKU_4_5,
-    label: 'Claude Haiku 4.5',
+    label: 'Haiku 4.5',
     description: 'Fast and efficient',
     provider: 'anthropic',
     iconType: 'claude',
@@ -107,21 +111,21 @@ export const MODEL_OPTIONS: ModelOptionConfig[] = [
   // OpenAI models
   {
     value: GPT_5_2_HIGH,
-    label: 'GPT-5.2 High',
+    label: '5.2 High',
     description: 'Most capable reasoning',
     provider: 'openai',
     iconType: 'openai',
   },
   {
     value: GPT_5_2_MEDIUM,
-    label: 'GPT-5.2 Medium',
+    label: '5.2 Medium',
     description: 'Balanced performance',
     provider: 'openai',
     iconType: 'openai',
   },
   {
     value: GPT_5_2_LOW,
-    label: 'GPT-5.2 Low',
+    label: '5.2 Low',
     description: 'Fast and cost-effective',
     provider: 'openai',
     iconType: 'openai',
@@ -129,14 +133,14 @@ export const MODEL_OPTIONS: ModelOptionConfig[] = [
   // Google Gemini models
   {
     value: GEMINI_3_PRO,
-    label: 'Gemini 3 Pro',
+    label: '3 Pro',
     description: 'Advanced reasoning',
     provider: 'google',
     iconType: 'gemini',
   },
   {
     value: GEMINI_3_FLASH,
-    label: 'Gemini 3 Flash',
+    label: '3 Flash',
     description: 'Fast multimodal model',
     provider: 'google',
     iconType: 'gemini',

@@ -125,7 +125,7 @@ export const AskUserQuestionCard: FC<AskUserQuestionCardProps> = ({
 
 	return (
 		<div
-			className={`my-2 rounded-xl bg-primary/5 backdrop-blur-sm border border-primary/20 overflow-hidden animate-in fade-in-0 slide-in-from-bottom-1 duration-200 ${className}`}
+			className={`my-2 rounded-xl bg-primary/5 backdrop-blur-sm border border-primary/20 overflow-hidden flex flex-col max-h-[70vh] animate-in fade-in-0 slide-in-from-bottom-1 duration-200 ${className}`}
 			role="form"
 			aria-label="Agent question"
 		>
@@ -136,7 +136,7 @@ export const AskUserQuestionCard: FC<AskUserQuestionCardProps> = ({
 			</div>
 
 			{/* Questions */}
-			<div className="p-3 space-y-4">
+			<div className="p-3 space-y-4 overflow-y-auto flex-1 min-h-0">
 				{questions.map((q, qi) => {
 					const selectedSet = selections.get(q.question) ?? new Set<string>();
 					const otherValue = otherText.get(q.question) ?? '';

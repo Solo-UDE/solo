@@ -171,7 +171,7 @@ async function handleRequest(
 ): Promise<void> {
   switch (request.type) {
     case 'create_session': {
-      sessionManager.createSession(request.sessionId, request.config);
+      await sessionManager.createSession(request.sessionId, request.config);
       sendResponse({ type: 'success', requestType: request.type });
       break;
     }

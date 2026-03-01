@@ -36,11 +36,52 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::{debug, info, warn};
 
+/// Sanitize a branch name for use as a filesystem-safe worktree ID component.
+///
+/// Replaces `/`, `\`, `:`, `*`, `?`, `"`, `<`, `>`, `|`, spaces, and other
+/// non-alphanumeric chars (except `-`, `_`, `.`) with `-`. Collapses consecutive
+/// dashes, trims leading/trailing dashes and dots, and truncates to 60 chars.
+fn sanitize_worktree_id(branch: &str) -> String {
+    let sanitized: String = branch
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect();
+
+    // Collapse consecutive dashes
+    let mut result = String::with_capacity(sanitized.len());
+    let mut prev_dash = false;
+    for c in sanitized.chars() {
+        if c == '-' {
+            if !prev_dash {
+                result.push('-');
+            }
+            prev_dash = true;
+        } else {
+            result.push(c);
+            prev_dash = false;
+        }
+    }
+
+    let trimmed = result.trim_matches(&['-', '.'][..]);
+    // Truncate to 60 chars to avoid path-length issues
+    if trimmed.len() > 60 {
+        trimmed[..60].trim_end_matches('-').to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
 /// Manages git worktrees for a repository.
 ///
 /// Opens `git2::Repository` per-operation to avoid `!Send`/`!Sync` issues.
-/// Worktrees are stored at `~/.solo/worktrees/{repo-name}/{branch}-{short-uuid}/`.
-/// Metadata is persisted in `~/.solo/worktrees/{repo-name}/worktrees.json`.
+/// Worktrees are stored at `~/.solo/worktrees/{repo-name}-{hash}/{branch}-{short-uuid}/`.
+/// Metadata is persisted in `~/.solo/worktrees/{repo-name}-{hash}/worktrees.json`.
 pub struct WorktreeManager {
     repo_path: PathBuf,
     worktrees_dir: PathBuf,
@@ -61,8 +102,14 @@ impl WorktreeManager {
             .map(|p| p.to_path_buf())
             .unwrap_or_else(|| repo_path.to_path_buf());
 
+        // Canonicalize once — git2 already resolved symlinks, but this
+        // ensures macOS /tmp → /private/tmp is handled consistently
+        let actual_repo_path = actual_repo_path
+            .canonicalize()
+            .unwrap_or(actual_repo_path);
+
         let worktrees_dir = config::worktrees_base_dir(&actual_repo_path)?;
-        let config_path = config::config_path(&actual_repo_path)?;
+        let config_path = worktrees_dir.join("worktrees.json");
 
         Ok(Self {
             repo_path: actual_repo_path,
@@ -191,9 +238,10 @@ impl WorktreeManager {
 
         let repo = git2::Repository::open(&self.repo_path)?;
 
-        // Generate worktree ID and path
+        // Generate worktree ID and path (sanitize branch name for filesystem safety)
         let short_uuid = &uuid::Uuid::new_v4().to_string()[..8];
-        let wt_id = format!("{}-{}", request.branch, short_uuid);
+        let safe_branch = sanitize_worktree_id(&request.branch);
+        let wt_id = format!("{}-{}", safe_branch, short_uuid);
         let wt_path = self.worktrees_dir.join(&wt_id);
 
         if wt_path.exists() {
@@ -1128,5 +1176,80 @@ mod tests {
 
         let list = mgr.list().unwrap();
         assert_eq!(list.len(), 1, "only main should remain");
+    }
+
+    // -- H. sanitize_worktree_id tests --
+
+    #[test]
+    fn test_sanitize_slash_branch() {
+        assert_eq!(sanitize_worktree_id("feat/UI"), "feat-UI");
+    }
+
+    #[test]
+    fn test_sanitize_deeply_nested() {
+        assert_eq!(
+            sanitize_worktree_id("feature/deeply/nested"),
+            "feature-deeply-nested"
+        );
+    }
+
+    #[test]
+    fn test_sanitize_special_chars() {
+        assert_eq!(sanitize_worktree_id("fix: bug #123"), "fix-bug-123");
+    }
+
+    #[test]
+    fn test_sanitize_passthrough() {
+        assert_eq!(sanitize_worktree_id("normal-branch"), "normal-branch");
+    }
+
+    #[test]
+    fn test_sanitize_leading_trailing() {
+        assert_eq!(sanitize_worktree_id("/leading-slash/"), "leading-slash");
+    }
+
+    #[test]
+    fn test_sanitize_dots() {
+        assert_eq!(sanitize_worktree_id("...dots..."), "dots");
+    }
+
+    #[test]
+    fn test_sanitize_long_branch() {
+        let long = "a".repeat(80);
+        let result = sanitize_worktree_id(&long);
+        assert!(result.len() <= 60, "got len {}", result.len());
+    }
+
+    #[test]
+    fn test_sanitize_preserves_underscore_and_dot() {
+        assert_eq!(
+            sanitize_worktree_id("feat_name.v2"),
+            "feat_name.v2"
+        );
+    }
+
+    // -- I. Slash branch integration test --
+
+    #[test]
+    fn test_create_worktree_with_slash_branch() {
+        let (_dir, repo_path) = setup_test_repo();
+        let mgr = WorktreeManager::new(&repo_path).unwrap();
+
+        let req = CreateWorktreeRequest {
+            branch: "feat/slash-test".to_string(),
+            path: None,
+            create_branch: true,
+            base: None,
+        };
+
+        let info = mgr.create(&req).unwrap();
+        assert!(!info.id.contains('/'), "ID must not contain slash: {}", info.id);
+        assert!(info.id.starts_with("feat-slash-test-"), "ID should start with sanitized branch: {}", info.id);
+        assert_eq!(info.branch, Some("feat/slash-test".to_string()));
+        assert!(Path::new(&info.path).exists());
+
+        // Verify we can list and find it
+        let list = mgr.list().unwrap();
+        assert_eq!(list.len(), 2);
     }
 }
