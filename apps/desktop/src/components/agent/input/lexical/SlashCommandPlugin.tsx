@@ -1,5 +1,8 @@
 /**
  * SlashCommandPlugin - Lexical plugin that detects '/' at line start and shows command palette
+ *
+ * Shows both built-in commands and user/project skills from .solo/skills/.
+ * Skills are loaded from disk on mount and appear in the dropdown alongside commands.
  */
 
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
@@ -32,11 +35,14 @@ import {
 	ShieldCheck,
 	Trash,
 	Users,
+	Lightning,
 } from '@phosphor-icons/react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import { SlashCommandDropdown } from './SlashCommandDropdown';
+import { useSkillStore } from '../../../../stores/skillStore';
+import { useFileExplorerStore } from '../../../../stores/fileExplorerStore';
 
 import type { SlashCommand } from './SlashCommandDropdown';
 import type { FC } from 'react';
@@ -80,15 +86,46 @@ export const SlashCommandPlugin: FC<SlashCommandPluginProps> = ({
 	const [position, setPosition] = useState({ bottom: 0, left: 0 });
 	const [selectedIndex, setSelectedIndex] = useState(0);
 
+	// Skill store integration
+	const availableSkills = useSkillStore((s) => s.available);
+	const attachedSkills = useSkillStore((s) => s.attached);
+	const toggleSkill = useSkillStore((s) => s.toggleSkill);
+	const loadSkills = useSkillStore((s) => s.loadSkills);
+	const skillsLoaded = useSkillStore((s) => s.loaded);
+	const rootPath = useFileExplorerStore((s) => s.rootPath);
+
+	// Load skills when workspace root changes
+	useEffect(() => {
+		if (rootPath && !skillsLoaded) {
+			loadSkills(rootPath);
+		}
+	}, [rootPath, skillsLoaded, loadSkills]);
+
+	// Build combined commands + skills list
+	const allItems = useMemo(() => {
+		const skillItems: SlashCommand[] = availableSkills
+			.filter((s) => s.enabled)
+			.map((skill) => ({
+				id: `skill:${skill.name}`,
+				label: skill.name,
+				description: skill.description || `Skill from ${skill.source}`,
+				category: 'skill' as const,
+				icon: Lightning,
+				attached: attachedSkills.has(skill.name),
+			}));
+		return [...SLASH_COMMANDS, ...skillItems];
+	}, [availableSkills, attachedSkills]);
+
 	const filteredCommands = useMemo(() => {
-		if (!query) return SLASH_COMMANDS;
+		if (!query) return allItems;
 		const lowerQuery = query.toLowerCase();
-		return SLASH_COMMANDS.filter(
+		return allItems.filter(
 			(cmd) =>
 				cmd.id.toLowerCase().includes(lowerQuery) ||
+				cmd.label.toLowerCase().includes(lowerQuery) ||
 				cmd.description.toLowerCase().includes(lowerQuery)
 		);
-	}, [query]);
+	}, [query, allItems]);
 
 	// Listen for editor updates to detect / trigger
 	useEffect(() => {
@@ -155,7 +192,22 @@ export const SlashCommandPlugin: FC<SlashCommandPluginProps> = ({
 
 	const handleSelect = useCallback(
 		(command: SlashCommand) => {
-			// Clear the editor content
+			if (command.category === 'skill') {
+				// Skills: toggle attached state, clear the /query text, keep editor open
+				const skillName = command.id.replace('skill:', '');
+				toggleSkill(skillName);
+
+				// Clear the slash text from the editor
+				editor.update(() => {
+					const root = $getRoot();
+					root.clear();
+				});
+
+				setIsOpen(false);
+				return;
+			}
+
+			// Regular commands: clear editor and dispatch
 			editor.update(() => {
 				const root = $getRoot();
 				root.clear();
@@ -169,7 +221,7 @@ export const SlashCommandPlugin: FC<SlashCommandPluginProps> = ({
 				onAgentCommand?.(`/${command.id}`);
 			}
 		},
-		[editor, onLocalCommand, onAgentCommand]
+		[editor, onLocalCommand, onAgentCommand, toggleSkill]
 	);
 
 	// Keyboard navigation

@@ -7,6 +7,7 @@ import { LexicalEditor } from './lexical-editor';
 import { AcceptModeToggle } from './accept-mode-toggle';
 import { ThinkingToggle } from './thinking-toggle';
 import { AttachmentBar } from './AttachmentBar';
+import { SkillBar } from './SkillBar';
 import { DropZoneOverlay } from './DropZoneOverlay';
 import {
   Popover,
@@ -174,6 +175,9 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
 
           {/* Attachment chips/thumbnails */}
           <AttachmentBar />
+
+          {/* Attached skill chips */}
+          <SkillBar />
 
           {/* Plan mode badge */}
           {planModeActive ? (
