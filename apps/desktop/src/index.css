@@ -563,7 +563,7 @@ button,
 
 ::-webkit-scrollbar-thumb {
   background: oklch(0.55 0.02 60 / 50%);
-  border-radius: 4px;
+  border-radius: 9999px;
   border: 2px solid transparent;
   background-clip: padding-box;
   box-shadow: 0 0 6px 1px oklch(0.55 0.02 60 / 15%);
@@ -598,6 +598,11 @@ html.dark ::-webkit-scrollbar-thumb:hover {
   background: oklch(0.65 0.02 60 / 60%);
   background-clip: padding-box;
   box-shadow: 0 0 8px 2px oklch(0.65 0.02 60 / 20%);
+}
+
+/* Monaco editor scrollbar — pill-shaped thumb */
+.monaco-scrollable-element > .scrollbar > .slider {
+  border-radius: 9999px !important;
 }
 
 /* =============================================================================

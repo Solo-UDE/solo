@@ -33,6 +33,9 @@ pub enum BridgeError {
     /// Failed to receive response from sidecar
     #[error("Failed to receive response: {0}")]
     ReceiveError(String),
+    /// Sidecar process crashed or exited unexpectedly
+    #[error("Sidecar process crashed")]
+    SidecarCrashed,
     /// Sidecar returned an error
     #[error("Sidecar returned error: {0}")]
     SidecarError(String),
@@ -125,10 +128,12 @@ impl AgentBridge {
         self.response_rx = Some(rx);
 
         // Spawn reader thread (share ready flag for crash detection)
+        // tx is moved into the thread — when the pipe closes, the reader exits
+        // and tx is dropped, causing any blocked recv_timeout() to return immediately.
         let event_callback = self.event_callback.clone();
         let ready_flag = self.ready.clone();
         drop(thread::spawn(move || {
-            Self::reader_thread(stdout, &tx, event_callback.as_ref(), &ready_flag);
+            Self::reader_thread(stdout, tx, event_callback.as_ref(), &ready_flag);
         }));
 
         self.child = Some(child);
@@ -153,9 +158,14 @@ impl AgentBridge {
     }
 
     /// Reader thread - reads JSON lines from stdout
+    ///
+    /// Takes ownership of `tx` so that when the pipe closes (sidecar crash),
+    /// the sender is dropped. This causes any blocked `recv_timeout()` in
+    /// `send_request()` to immediately return `Disconnected` instead of
+    /// waiting the full 300s timeout.
     fn reader_thread(
         stdout: ChildStdout,
-        tx: &Sender<BridgeResponse>,
+        tx: Sender<BridgeResponse>,
         event_callback: Option<&EventCallback>,
         ready_flag: &AtomicBool,
     ) {
@@ -188,7 +198,11 @@ impl AgentBridge {
                                             .unwrap_or_else(|_| format!("{:?}", event))
                                     );
                                 }
-                                // Fire event callback if set
+                                // Fire event callback if set.
+                                // NOTE: This runs inline on the reader thread. If the callback
+                                // ever becomes blocking (currently Tauri emit() is non-blocking),
+                                // move to a dedicated channel + consumer thread to avoid stalling
+                                // the pipe reader.
                                 if let Some(callback) = event_callback {
                                     callback(event.clone());
                                 }
@@ -251,7 +265,7 @@ impl AgentBridge {
                     return Err(BridgeError::Timeout);
                 },
                 Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
-                    return Err(BridgeError::ReceiveError("Channel disconnected".to_owned()));
+                    return Err(BridgeError::SidecarCrashed);
                 },
             }
         }
@@ -267,6 +281,9 @@ impl AgentBridge {
         let rx = self.response_rx.as_ref().ok_or(BridgeError::NotRunning)?;
 
         // Serialize and send request (lock stdin)
+        // NOTE: writeln! can block if the pipe buffer is full (sidecar slow to consume).
+        // This is rare in practice. If it becomes an issue, wrap in a timeout thread or
+        // switch to async I/O.
         {
             let mut stdin_guard = stdin.lock();
             let json = serde_json::to_string(request)?;
@@ -292,7 +309,8 @@ impl AgentBridge {
                     return Err(BridgeError::Timeout);
                 },
                 Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
-                    return Err(BridgeError::ReceiveError("Channel disconnected".to_owned()));
+                    // Channel disconnected = reader thread exited = sidecar crashed
+                    return Err(BridgeError::SidecarCrashed);
                 },
             }
         }

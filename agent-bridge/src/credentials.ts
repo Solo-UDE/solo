@@ -1,3 +1,4 @@
+import { execFileSync } from 'child_process';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
@@ -159,6 +160,39 @@ async function getOAuthTokenFromFile(): Promise<string | null> {
 }
 
 /**
+ * Reads OAuth token from macOS Keychain (fallback when file doesn't exist).
+ * Claude Code CLI stores credentials under service "Claude Code-credentials".
+ * @returns OAuth access token if valid/refreshable, null otherwise
+ */
+async function getOAuthTokenFromKeychain(): Promise<string | null> {
+  if (process.platform !== 'darwin') {
+    logger.debug('Keychain lookup skipped — not macOS');
+    return null;
+  }
+
+  try {
+    const raw = execFileSync(
+      'security',
+      ['find-generic-password', '-s', 'Claude Code-credentials', '-w'],
+      { encoding: 'utf-8', timeout: 5_000, stdio: ['pipe', 'pipe', 'pipe'] }
+    ).trim();
+
+    const parsed: unknown = JSON.parse(raw);
+
+    if (!isClaudeCredentialsFile(parsed)) {
+      logger.debug('Invalid credentials structure in macOS Keychain');
+      return null;
+    }
+
+    return resolveOAuthFromParsed(parsed, 'macOS Keychain');
+  } catch {
+    // Keychain item not found, parse error, or non-macOS — all expected
+    logger.debug('Could not read credentials from macOS Keychain');
+    return null;
+  }
+}
+
+/**
  * Reads API key from environment variable (loaded from .env file)
  * @returns API key if present, null otherwise
  */
@@ -189,7 +223,14 @@ async function getCredentials(): Promise<{ type: 'oauth' | 'apikey'; hasCredenti
     return { type: 'oauth', hasCredentials: true };
   }
 
-  // 2. Fall back to API key from environment
+  // 2. Try OAuth token from macOS Keychain (fallback when file doesn't exist)
+  const keychainToken = await getOAuthTokenFromKeychain();
+  if (keychainToken !== null) {
+    logger.info('OAuth token available from macOS Keychain');
+    return { type: 'oauth', hasCredentials: true };
+  }
+
+  // 3. Fall back to API key from environment
   const apiKey = getApiKeyFromEnv();
   if (apiKey !== null) {
     logger.info('API key available from environment');
@@ -197,7 +238,7 @@ async function getCredentials(): Promise<{ type: 'oauth' | 'apikey'; hasCredenti
   }
 
   // No credentials found
-  logger.error('No credentials found (checked ~/.claude/.credentials.json and env)');
+  logger.error('No credentials found (checked ~/.claude/.credentials.json, macOS Keychain, and env)');
   return { type: 'apikey', hasCredentials: false };
 }
 
@@ -206,10 +247,12 @@ async function getCredentials(): Promise<{ type: 'oauth' | 'apikey'; hasCredenti
  *
  * Priority:
  * 1. OAuth token from ~/.claude/.credentials.json (with refresh on expiry)
- * 2. API key from environment variable
+ * 2. OAuth token from macOS Keychain (fallback when file doesn't exist)
+ * 3. API key from environment variable
  */
 export const ClaudeCredentials = {
   getOAuthTokenFromFile,
+  getOAuthTokenFromKeychain,
   getApiKeyFromEnv,
   getCredentials,
 } as const;

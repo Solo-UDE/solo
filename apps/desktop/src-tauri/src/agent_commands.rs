@@ -341,6 +341,7 @@ pub fn setup_event_callbacks(app: &AppHandle, session_manager: &Arc<SessionManag
     use crate::agent::protocol::BridgeEvent;
 
     let app_handle = app.clone();
+    let session_mgr = Arc::clone(session_manager);
 
     session_manager.set_event_callback(Arc::new(move |event: BridgeEvent| match event {
         BridgeEvent::AgentMessage {
@@ -484,6 +485,12 @@ pub fn setup_event_callbacks(app: &AppHandle, session_manager: &Arc<SessionManag
         }
         BridgeEvent::ErrorEvent { error } => {
             tracing::debug!("[agent:emit] ErrorEvent\n  message : {}", error.message);
+
+            // On sidecar crash, clear all tracked sessions — the bridge is dead
+            if error.message.contains("exited unexpectedly") {
+                session_mgr.clear_sessions_on_crash();
+            }
+
             drop(app_handle.emit(
                 "agent:error",
                 serde_json::json!({

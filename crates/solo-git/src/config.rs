@@ -70,20 +70,35 @@ impl WorktreeConfig {
     }
 }
 
-/// Get the worktrees base directory: ~/.solo/worktrees/{repo-name}/
+/// Deterministic FNV-1a hash for path disambiguation.
+/// MUST remain stable across Rust versions — do not use DefaultHasher.
+fn stable_path_hash(path: &Path) -> String {
+    let bytes = path.to_string_lossy();
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325; // FNV-1a offset basis
+    for b in bytes.as_bytes() {
+        hash ^= u64::from(*b);
+        hash = hash.wrapping_mul(0x0100_0000_01b3); // FNV-1a prime
+    }
+    format!("{:08x}", hash & 0xFFFF_FFFF)
+}
+
+/// Get the worktrees base directory: ~/.solo/worktrees/{repo-name}-{hash}/
+///
+/// The hash is derived from the full canonical repo path, preventing collisions
+/// between repos with the same folder name in different locations.
 pub fn worktrees_base_dir(repo_path: &Path) -> Result<PathBuf, GitError> {
     let home = dirs_home()?;
     let repo_name = repo_path
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| "unknown".to_string());
-    Ok(home.join(".solo").join("worktrees").join(repo_name))
+    let hash = stable_path_hash(repo_path);
+    Ok(home
+        .join(".solo")
+        .join("worktrees")
+        .join(format!("{}-{}", repo_name, hash)))
 }
 
-/// Get the config file path: ~/.solo/worktrees/{repo-name}/worktrees.json
-pub fn config_path(repo_path: &Path) -> Result<PathBuf, GitError> {
-    Ok(worktrees_base_dir(repo_path)?.join("worktrees.json"))
-}
 
 fn dirs_home() -> Result<PathBuf, GitError> {
     std::env::var("HOME")
@@ -180,4 +195,39 @@ mod tests {
 
         assert!(path.exists());
     }
+
+    // -- stable_path_hash tests --
+
+    #[test]
+    fn test_stable_path_hash_deterministic() {
+        let p = Path::new("/Users/dev/projects/my-app");
+        assert_eq!(stable_path_hash(p), stable_path_hash(p));
+    }
+
+    #[test]
+    fn test_stable_path_hash_different_paths() {
+        let a = Path::new("/Users/alice/my-app");
+        let b = Path::new("/Users/bob/my-app");
+        assert_ne!(stable_path_hash(&a), stable_path_hash(&b));
+    }
+
+    #[test]
+    fn test_worktrees_base_dir_includes_hash() {
+        let p = Path::new("/Users/dev/my-app");
+        let dir = worktrees_base_dir(p).unwrap();
+        let dir_name = dir.file_name().unwrap().to_string_lossy().to_string();
+        // Should be "my-app-{8hexchars}"
+        assert!(dir_name.starts_with("my-app-"), "got: {}", dir_name);
+        assert_eq!(dir_name.len(), "my-app-".len() + 8, "got: {}", dir_name);
+    }
+
+    #[test]
+    fn test_worktrees_base_dir_differs_for_same_name() {
+        let a = Path::new("/Users/alice/my-app");
+        let b = Path::new("/Users/bob/my-app");
+        let dir_a = worktrees_base_dir(a).unwrap();
+        let dir_b = worktrees_base_dir(b).unwrap();
+        assert_ne!(dir_a, dir_b);
+    }
+
 }

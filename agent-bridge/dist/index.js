@@ -140,6 +140,7 @@ import { randomUUID } from "crypto";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 
 // src/credentials.ts
+import { execFileSync } from "child_process";
 import { readFileSync } from "fs";
 import { join as join2 } from "path";
 import { homedir as homedir2 } from "os";
@@ -240,6 +241,28 @@ async function getOAuthTokenFromFile() {
     return null;
   }
 }
+async function getOAuthTokenFromKeychain() {
+  if (process.platform !== "darwin") {
+    logger.debug("Keychain lookup skipped \u2014 not macOS");
+    return null;
+  }
+  try {
+    const raw = execFileSync(
+      "security",
+      ["find-generic-password", "-s", "Claude Code-credentials", "-w"],
+      { encoding: "utf-8", timeout: 5e3, stdio: ["pipe", "pipe", "pipe"] }
+    ).trim();
+    const parsed = JSON.parse(raw);
+    if (!isClaudeCredentialsFile(parsed)) {
+      logger.debug("Invalid credentials structure in macOS Keychain");
+      return null;
+    }
+    return resolveOAuthFromParsed(parsed, "macOS Keychain");
+  } catch {
+    logger.debug("Could not read credentials from macOS Keychain");
+    return null;
+  }
+}
 function getApiKeyFromEnv() {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (apiKey === void 0 || apiKey === "") {
@@ -254,16 +277,22 @@ async function getCredentials() {
     logger.info("OAuth token available from ~/.claude/.credentials.json");
     return { type: "oauth", hasCredentials: true };
   }
+  const keychainToken = await getOAuthTokenFromKeychain();
+  if (keychainToken !== null) {
+    logger.info("OAuth token available from macOS Keychain");
+    return { type: "oauth", hasCredentials: true };
+  }
   const apiKey = getApiKeyFromEnv();
   if (apiKey !== null) {
     logger.info("API key available from environment");
     return { type: "apikey", hasCredentials: true };
   }
-  logger.error("No credentials found (checked ~/.claude/.credentials.json and env)");
+  logger.error("No credentials found (checked ~/.claude/.credentials.json, macOS Keychain, and env)");
   return { type: "apikey", hasCredentials: false };
 }
 var ClaudeCredentials = {
   getOAuthTokenFromFile,
+  getOAuthTokenFromKeychain,
   getApiKeyFromEnv,
   getCredentials
 };

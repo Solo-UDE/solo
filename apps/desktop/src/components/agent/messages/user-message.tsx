@@ -33,7 +33,7 @@ export const UserMessage: FC<UserMessageProps> = ({
   const fileAttachments = attachments?.filter((a) => a.type === 'file');
 
   return (
-    <div className={`flex justify-end px-4 ${className}`}>
+    <div className={`flex justify-end px-3 ${className}`}>
       {/* Card bubble */}
       <div className="max-w-[85%] rounded-2xl border border-primary px-4 py-3 space-y-1">
         <div className="flex items-center gap-2">
