@@ -454,6 +454,11 @@ function getAllowedToolsForMode(mode) {
 }
 
 // src/utils/content.ts
+import * as fs2 from "fs";
+import * as path2 from "path";
+var MAX_IMAGE_SIZE = 20 * 1024 * 1024;
+var MAX_DOCUMENT_SIZE = 30 * 1024 * 1024;
+var MAX_TEXT_SIZE = 1 * 1024 * 1024;
 function buildContentBlocks(message, attachments) {
   if (!attachments || attachments.length === 0) {
     return message;
@@ -465,7 +470,7 @@ function buildContentBlocks(message, attachments) {
         type: "document",
         source: {
           type: "base64",
-          media_type: attachment.source.media_type,
+          media_type: attachment.source.mediaType,
           data: attachment.source.data
         }
       });
@@ -474,10 +479,31 @@ function buildContentBlocks(message, attachments) {
         type: "image",
         source: {
           type: "base64",
-          media_type: attachment.source.media_type,
+          media_type: attachment.source.mediaType,
           data: attachment.source.data
         }
       });
+    } else if (attachment.type === "image" && attachment.filePath && !attachment.source) {
+      const block = readImageFromPath(attachment.filePath);
+      if (block) contentBlocks.push(block);
+    } else if (attachment.type === "document" && attachment.filePath && !attachment.source) {
+      const docBlock = readDocumentFromPath(attachment.filePath);
+      if (docBlock) {
+        contentBlocks.push(docBlock);
+      } else {
+        const fileContent = readTextFromPath(attachment.filePath);
+        if (fileContent !== null) {
+          const name = attachment.name ?? path2.basename(attachment.filePath);
+          const languageHint = getLanguageHint(name);
+          contentBlocks.push({
+            type: "text",
+            text: `File: ${name}
+\`\`\`${languageHint}
+${fileContent}
+\`\`\``
+          });
+        }
+      }
     } else if (attachment.type === "text") {
       let textContent = "";
       if (attachment.filePath !== void 0 && attachment.lineStart !== void 0 && attachment.lineEnd !== void 0) {
@@ -497,13 +523,25 @@ ${attachment.text ?? ""}
 \`\`\`${languageHint}
 ${attachment.text}
 \`\`\``;
+      } else if (attachment.filePath && !attachment.text) {
+        const fileContent = readTextFromPath(attachment.filePath);
+        if (fileContent !== null) {
+          const name = attachment.name ?? path2.basename(attachment.filePath);
+          const languageHint = getLanguageHint(name);
+          textContent = `File: ${name}
+\`\`\`${languageHint}
+${fileContent}
+\`\`\``;
+        }
       } else {
         textContent = attachment.text ?? "";
       }
-      contentBlocks.push({
-        type: "text",
-        text: textContent
-      });
+      if (textContent) {
+        contentBlocks.push({
+          type: "text",
+          text: textContent
+        });
+      }
     }
   }
   contentBlocks.push({
@@ -511,6 +549,73 @@ ${attachment.text}
     text: message
   });
   return contentBlocks;
+}
+function getImageMimeType(filename) {
+  const ext = filename.split(".").pop()?.toLowerCase();
+  const map = {
+    png: "image/png",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    gif: "image/gif",
+    webp: "image/webp"
+  };
+  return map[ext ?? ""] ?? null;
+}
+function getDocumentMimeType(filename) {
+  const ext = filename.split(".").pop()?.toLowerCase();
+  if (ext === "pdf") return "application/pdf";
+  return null;
+}
+function readImageFromPath(filePath) {
+  const mimeType = getImageMimeType(path2.basename(filePath));
+  if (!mimeType) return null;
+  try {
+    const stat = fs2.statSync(filePath);
+    if (stat.size > MAX_IMAGE_SIZE) {
+      console.warn(`Skipping image attachment: file too large (${stat.size} bytes): ${filePath}`);
+      return null;
+    }
+    const data = fs2.readFileSync(filePath).toString("base64");
+    return {
+      type: "image",
+      source: { type: "base64", media_type: mimeType, data }
+    };
+  } catch (err) {
+    console.warn(`Failed to read image attachment: ${filePath}`, err);
+    return null;
+  }
+}
+function readDocumentFromPath(filePath) {
+  const mimeType = getDocumentMimeType(path2.basename(filePath));
+  if (!mimeType) return null;
+  try {
+    const stat = fs2.statSync(filePath);
+    if (stat.size > MAX_DOCUMENT_SIZE) {
+      console.warn(`Skipping document attachment: file too large (${stat.size} bytes): ${filePath}`);
+      return null;
+    }
+    const data = fs2.readFileSync(filePath).toString("base64");
+    return {
+      type: "document",
+      source: { type: "base64", media_type: mimeType, data }
+    };
+  } catch (err) {
+    console.warn(`Failed to read document attachment: ${filePath}`, err);
+    return null;
+  }
+}
+function readTextFromPath(filePath) {
+  try {
+    const stat = fs2.statSync(filePath);
+    if (stat.size > MAX_TEXT_SIZE) {
+      console.warn(`Skipping text attachment: file too large (${stat.size} bytes): ${filePath}`);
+      return null;
+    }
+    return fs2.readFileSync(filePath, "utf-8");
+  } catch (err) {
+    console.warn(`Failed to read text attachment: ${filePath}`, err);
+    return null;
+  }
 }
 function getLanguageHint(filename) {
   const ext = filename.split(".").pop()?.toLowerCase();
@@ -2510,4 +2615,3 @@ try {
   logger8.error({ error }, "Fatal error");
   process.exit(1);
 }
-//# sourceMappingURL=index.js.map
