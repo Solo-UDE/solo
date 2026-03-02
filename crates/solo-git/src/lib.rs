@@ -395,6 +395,26 @@ impl WorktreeManager {
             }
         }
 
+        // Best-effort: delete the associated branch so the name can be reused
+        let branch_name = meta.branch.clone();
+        let protected = ["main", "master", "dev"];
+        if !protected.contains(&branch_name.as_str()) {
+            if let Ok(repo) = git2::Repository::open(&self.repo_path) {
+                match repo.find_branch(&branch_name, git2::BranchType::Local) {
+                    Ok(mut branch) => {
+                        if let Err(e) = branch.delete() {
+                            warn!(branch = %branch_name, error = %e, "Could not delete branch after worktree removal");
+                        } else {
+                            info!(branch = %branch_name, "Deleted branch after worktree removal");
+                        }
+                    }
+                    Err(_) => {
+                        // Branch may have already been deleted or never existed — that's fine
+                    }
+                }
+            }
+        }
+
         // Clean up config
         config.remove(id);
         config.save(&self.config_path)?;

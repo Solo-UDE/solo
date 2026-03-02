@@ -12,6 +12,11 @@ export type SidebarTab = 'explorer' | 'sessions' | 'source-control';
 // Settings tab types
 export type SettingsTabId = 'general' | 'editor' | 'terminal' | 'files' | 'shortcuts' | 'ai' | 'voice';
 
+// Dev/Studio sidebar mode
+export type SidebarMode = 'dev' | 'studio';
+export type DevSidebarView = 'worktree-list' | 'worktree-detail';
+export type StudioNav = 'sessions' | 'vault' | 'automations' | 'content-creation';
+
 interface UIState {
   leftSidebarWidth: number;
   _previousSidebarWidth: number;
@@ -23,6 +28,10 @@ interface UIState {
   settingsTab: SettingsTabId;
   tourActive: boolean;
   tourStep: number;
+  sidebarMode: SidebarMode;
+  devSidebarView: DevSidebarView;
+  devDetailWorktreeId: string | null;
+  studioActiveNav: StudioNav;
 }
 
 interface UIActions {
@@ -42,6 +51,10 @@ interface UIActions {
   nextTourStep: () => void;
   prevTourStep: () => void;
   endTour: () => void;
+  setSidebarMode: (mode: SidebarMode) => void;
+  drillIntoWorktree: (worktreeId: string) => void;
+  drillOutOfWorktree: () => void;
+  setStudioNav: (nav: StudioNav) => void;
 }
 
 type UIStore = UIState & UIActions;
@@ -58,6 +71,10 @@ export const useUIStore = create<UIStore>()(
     settingsTab: 'general' as SettingsTabId,
     tourActive: false,
     tourStep: 0,
+    sidebarMode: 'dev' as SidebarMode,
+    devSidebarView: 'worktree-list' as DevSidebarView,
+    devDetailWorktreeId: null,
+    studioActiveNav: 'sessions' as StudioNav,
 
     toggleLeftSidebar: (): void => {
       set((state) => {
@@ -172,6 +189,32 @@ export const useUIStore = create<UIStore>()(
       set((state) => {
         state.tourActive = false;
         state.tourStep = 0;
+      });
+    },
+
+    setSidebarMode: (mode: SidebarMode): void => {
+      set((state) => {
+        state.sidebarMode = mode;
+      });
+    },
+
+    drillIntoWorktree: (worktreeId: string): void => {
+      set((state) => {
+        state.devSidebarView = 'worktree-detail';
+        state.devDetailWorktreeId = worktreeId;
+      });
+    },
+
+    drillOutOfWorktree: (): void => {
+      set((state) => {
+        state.devSidebarView = 'worktree-list';
+        state.devDetailWorktreeId = null;
+      });
+    },
+
+    setStudioNav: (nav: StudioNav): void => {
+      set((state) => {
+        state.studioActiveNav = nav;
       });
     },
   }))
