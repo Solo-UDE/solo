@@ -3,22 +3,10 @@
 //! Scans `~/.solo/skills/` (user-scoped) and `{cwd}/.solo/skills/` (project-scoped)
 //! for markdown skill files, parses their frontmatter, and returns metadata + content.
 
-use serde::Serialize;
+use solo_protocol::{SkillInfo, SkillSource};
 use std::path::{Path, PathBuf};
 use tokio::fs;
 use tracing::debug;
-
-/// Skill information returned to the frontend.
-#[derive(Debug, Clone, Serialize)]
-pub struct SkillInfo {
-    pub name: String,
-    pub description: String,
-    pub content: String,
-    pub source: String, // "user" | "project"
-    pub file_path: String,
-    pub enabled: bool,
-    pub priority: i32,
-}
 
 /// Simple frontmatter parser — extracts key: value pairs from YAML-like header.
 fn parse_frontmatter(raw: &str) -> (std::collections::HashMap<String, String>, String) {
@@ -52,7 +40,7 @@ fn parse_frontmatter(raw: &str) -> (std::collections::HashMap<String, String>, S
 }
 
 /// Scan a single skills directory and return discovered skills.
-async fn discover_skills_in_dir(dir: &Path, scope: &str) -> Vec<SkillInfo> {
+async fn discover_skills_in_dir(dir: &Path, scope: SkillSource) -> Vec<SkillInfo> {
     let mut skills = Vec::new();
 
     let mut entries = match fs::read_dir(dir).await {
@@ -117,7 +105,7 @@ async fn discover_skills_in_dir(dir: &Path, scope: &str) -> Vec<SkillInfo> {
             name,
             description,
             content: body,
-            source: scope.to_string(),
+            source: scope,
             file_path: skill_path.to_string_lossy().into_owned(),
             enabled,
             priority,
@@ -143,7 +131,7 @@ pub async fn skills_list_available(cwd: String) -> Result<Vec<SkillInfo>, String
 
     // User-scoped skills first
     if let Some(user_dir) = user_skills_dir() {
-        let user_skills = discover_skills_in_dir(&user_dir, "user").await;
+        let user_skills = discover_skills_in_dir(&user_dir, SkillSource::User).await;
         for skill in user_skills {
             skill_map.insert(skill.name.clone(), skill);
         }
@@ -151,7 +139,7 @@ pub async fn skills_list_available(cwd: String) -> Result<Vec<SkillInfo>, String
 
     // Project-scoped skills override by name
     let project_dir = PathBuf::from(&cwd).join(".solo").join("skills");
-    let project_skills = discover_skills_in_dir(&project_dir, "project").await;
+    let project_skills = discover_skills_in_dir(&project_dir, SkillSource::Project).await;
     for skill in project_skills {
         skill_map.insert(skill.name.clone(), skill);
     }

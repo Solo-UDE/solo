@@ -5,16 +5,9 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
+import type { SkillInfo } from '../../bindings/SkillInfo';
 
-export interface SkillInfo {
-  name: string;
-  description: string;
-  content: string;
-  source: 'user' | 'project';
-  file_path: string;
-  enabled: boolean;
-  priority: number;
-}
+export type { SkillInfo };
 
 /**
  * List all available skills from user (~/.solo/skills/) and project ({cwd}/.solo/skills/).
