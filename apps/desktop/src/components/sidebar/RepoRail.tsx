@@ -106,7 +106,7 @@ export const RepoRail: FC = () => {
       {/* Repo list */}
       <div
         className={cn(
-          'flex flex-col gap-1 flex-1 overflow-y-auto scrollbar-none py-1',
+          'flex flex-col gap-1 flex-1 overflow-y-auto overflow-x-hidden scrollbar-none py-1',
           !railExpanded && 'items-center',
         )}
       >
@@ -154,7 +154,7 @@ const RailIcon: FC<RailIconProps> = ({ repo, isActive, expanded, onClick, onRemo
     return (
       <ContextMenu>
         <ContextMenuTrigger asChild>
-          <div className="relative group">
+          <div className="relative group px-1">
             {/* Active accent bar */}
             {isActive && (
               <motion.div
@@ -168,7 +168,7 @@ const RailIcon: FC<RailIconProps> = ({ repo, isActive, expanded, onClick, onRemo
             <button
               onClick={onClick}
               className={cn(
-                'relative w-full flex items-center gap-2.5 px-3 py-2 rounded-lg mx-1',
+                'relative w-full flex items-center gap-2.5 px-3 py-2 rounded-lg',
                 'transition-colors duration-150 text-left',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-1',
                 isActive ? 'shadow-sm' : 'hover:bg-muted/40',
