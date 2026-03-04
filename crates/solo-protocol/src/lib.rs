@@ -813,6 +813,32 @@ pub struct ClaudeSetupStatus {
     pub requires_cli_mode: bool,
 }
 
+// =============================================================================
+// Skills Protocol
+// =============================================================================
+
+/// Origin scope of a discovered skill
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "snake_case")]
+pub enum SkillSource {
+    User,
+    Project,
+}
+
+/// Skill information returned to the frontend
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct SkillInfo {
+    pub name: String,
+    pub description: String,
+    pub content: String,
+    pub source: SkillSource,
+    pub file_path: String,
+    pub enabled: bool,
+    pub priority: i32,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
