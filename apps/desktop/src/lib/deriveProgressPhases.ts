@@ -172,6 +172,20 @@ export function buildInterleavedTimeline(
     }
   }
 
+  // Post-process: only the LAST active progress phase should show animated dots.
+  // Earlier active phases (e.g. multiple "Responding..." entries) become completed.
+  let foundLastActive = false;
+  for (let i = timeline.length - 1; i >= 0; i--) {
+    const entry = timeline[i];
+    if (entry.kind === 'progress' && entry.phase.status === 'active') {
+      if (!foundLastActive) {
+        foundLastActive = true;
+      } else {
+        entry.phase.status = 'completed';
+      }
+    }
+  }
+
   return timeline;
 }
 

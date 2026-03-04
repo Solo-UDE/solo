@@ -19,6 +19,7 @@ import {
 } from '../ui/dropdown-menu';
 
 import type { FC } from 'react';
+import type { Mode } from './input/mode-selector';
 import type { MessageMode, Attachment, FileMention, SessionConnectionState } from '../../stores/agentStore';
 
 export interface AgentWindowCallbacks {
@@ -54,9 +55,8 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 }) => {
 	const [worktreeId, setWorktreeId] = useState<string | null>(initialWorktreeId ?? null);
 
-	// Track mode states for bridge sync
-	const [thinkingEnabled, setThinkingEnabled] = useState(false);
-	const [acceptEnabled, setAcceptEnabled] = useState(false);
+	// Track thinking mode for bridge sync
+	const [thinkingEnabled, setThinkingEnabled] = useState(true);
 
 	const {
 		sessionId,
@@ -110,6 +110,13 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 		}
 	}, [sessionId, selectedModel, setModel]);
 
+	// Sync initial thinking mode to bridge on session ready
+	useEffect(() => {
+		if (sessionId) {
+			setThinkingMode(true);
+		}
+	}, [sessionId, setThinkingMode]);
+
 	const messageGroups = useMemo(
 		() => convertToMessageGroups(messages),
 		[messages]
@@ -160,18 +167,14 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 	const activeQuestion = useActiveAskUserQuestion(sessionId ?? null);
 
 	// Handle mode selector changes — sync to bridge
+	// Cycles: fast → planning → accept (click or Shift+Tab)
 	const handleModeChange = useCallback(
-		(mode: 'planning' | 'fast') => {
-			const enabled = mode === 'planning';
-			setPlanMode(enabled);
+		(mode: Mode) => {
+			setPlanMode(mode === 'planning');
+			setAcceptMode(mode === 'accept');
 		},
-		[setPlanMode]
+		[setPlanMode, setAcceptMode]
 	);
-
-	// Plan mode toggle via keyboard shortcut (Shift+Tab)
-	const handlePlanModeToggle = useCallback(() => {
-		setPlanMode(!planModeActive);
-	}, [setPlanMode, planModeActive]);
 
 	// Handle thinking toggle — sync to bridge
 	const handleThinkingChange = useCallback(
@@ -180,15 +183,6 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 			setThinkingMode(enabled);
 		},
 		[setThinkingMode]
-	);
-
-	// Handle accept mode toggle -- sync to bridge
-	const handleAcceptChange = useCallback(
-		(enabled: boolean) => {
-			setAcceptEnabled(enabled);
-			setAcceptMode(enabled);
-		},
-		[setAcceptMode]
 	);
 
 	const handleNewSession = useCallback(() => {
@@ -260,8 +254,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 					onModeChange={handleModeChange}
 					thinkingEnabled={thinkingEnabled}
 					onThinkingChange={handleThinkingChange}
-					acceptEnabled={acceptEnabled}
-					onAcceptChange={handleAcceptChange}
+					planModeActive={planModeActive}
 				/>
 			</div>
 		);
@@ -343,14 +336,15 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 				</div>
 			)}
 
-			{/* AskUserQuestion — floated above input */}
+			{/* AskUserQuestion — flush above input */}
 			{activeQuestion && (
-				<div className="max-w-3xl mx-auto px-3 pb-1">
+				<div className="w-full max-w-3xl mx-auto px-3">
 					<AskUserQuestionCard
 						requestId={activeQuestion.requestId}
 						toolInput={activeQuestion.toolInput}
 						onSubmit={handleAnswerQuestion}
 						onReject={(id) => handleToolApproval(id, false)}
+						floating
 					/>
 				</div>
 			)}
@@ -366,7 +360,6 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 				thinkingEnabled={thinkingEnabled}
 				onThinkingChange={handleThinkingChange}
 				planModeActive={planModeActive}
-				onPlanModeToggle={handlePlanModeToggle}
 			/>
 		</div>
 	);
