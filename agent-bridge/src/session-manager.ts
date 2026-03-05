@@ -266,7 +266,7 @@ export class SessionManager extends Disposable {
   readonly onAgentMessage = this._onAgentMessage.event;
 
   private readonly _onPlanModeChanged = this._register(
-    new Emitter<{ sessionId: string; enabled: boolean }>()
+    new Emitter<{ sessionId: string; enabled: boolean; planFilePath: string | null }>()
   );
   readonly onPlanModeChanged = this._onPlanModeChanged.event;
 
@@ -355,6 +355,7 @@ export class SessionManager extends Disposable {
           const prefs = this.modePreferences.get(sessionId) ?? {};
           prefs.planEnabled = false;
           this.modePreferences.set(sessionId, prefs);
+          this._onPlanModeChanged.fire({ sessionId, enabled: false, planFilePath: null });
         }
 
         // Find the FIRST pending tool with this name whose permission
@@ -821,14 +822,15 @@ export class SessionManager extends Disposable {
       const prefs = this.modePreferences.get(sessionId) ?? {};
       prefs.planEnabled = enabled;
       this.modePreferences.set(sessionId, prefs);
-      this._onPlanModeChanged.fire({ sessionId, enabled });
+      this._onPlanModeChanged.fire({ sessionId, enabled, planFilePath: null });
       return;
     }
     agent.setPlanMode(enabled);
+    const planFilePath = agent.getPlanFilePath();
     const prefs = this.modePreferences.get(sessionId) ?? {};
     prefs.planEnabled = enabled;
     this.modePreferences.set(sessionId, prefs);
-    this._onPlanModeChanged.fire({ sessionId, enabled });
+    this._onPlanModeChanged.fire({ sessionId, enabled, planFilePath });
   }
 
   /**

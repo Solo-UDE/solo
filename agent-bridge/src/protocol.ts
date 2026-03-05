@@ -288,6 +288,7 @@ export interface PlanModeChangedEvent {
   type: 'plan_mode_changed';
   sessionId: string;
   enabled: boolean;
+  planFilePath: string | null;
 }
 
 /**

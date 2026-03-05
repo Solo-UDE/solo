@@ -4,7 +4,6 @@ import { Stop, PaintBrush } from '@phosphor-icons/react';
 import { ContextMenu } from './context-menu';
 import { ContextTracker } from './context-tracker';
 import { LexicalEditor } from './lexical-editor';
-import { AcceptModeToggle } from './accept-mode-toggle';
 import { ThinkingToggle } from './thinking-toggle';
 import { AttachmentBar } from './AttachmentBar';
 import { SkillBar } from './SkillBar';
@@ -27,6 +26,8 @@ import { useWorktreeList } from '../../../stores/worktreeStore';
 import { DEFAULT_MODEL_ID } from '../../../lib/constants';
 import { VoiceButton } from './voice-button';
 
+import type { Mode } from './mode-selector';
+
 const LazySketchPopoverContent = lazy(() =>
   import('./sketch/SketchPopoverContent').then((m) => ({ default: m.SketchPopoverContent })),
 );
@@ -39,13 +40,11 @@ export interface ChatInputContainerProps {
   className?: string;
   worktreeId?: string | null;
   onWorktreeChange?: (id: string | null) => void;
-  onModeChange?: (mode: 'planning' | 'fast') => void;
+  onModeChange?: (mode: Mode) => void;
   thinkingEnabled?: boolean;
   onThinkingChange?: (enabled: boolean) => void;
-  acceptEnabled?: boolean;
-  onAcceptChange?: (enabled: boolean) => void;
   planModeActive?: boolean;
-  onPlanModeToggle?: () => void;
+  acceptModeActive?: boolean;
 }
 
 export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
@@ -59,13 +58,16 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
   onModeChange,
   thinkingEnabled = false,
   onThinkingChange,
-  acceptEnabled = false,
-  onAcceptChange,
   planModeActive = false,
-  onPlanModeToggle,
+  acceptModeActive = false,
 }) => {
   const [content, setContent] = useState('');
-  const [mode, setMode] = useState<'planning' | 'fast'>('planning');
+  // Derive initial mode from bridge state so remounted components get the right mode
+  const [mode, setMode] = useState<Mode>(() => {
+    if (planModeActive) return 'planning';
+    if (acceptModeActive) return 'accept';
+    return 'fast';
+  });
   const [mentions, setMentions] = useState<FileMention[]>([]);
   const [sketchOpen, setSketchOpen] = useState(false);
   const selectedModel = useProviderStore((state) => state.selectedModel);
@@ -77,6 +79,17 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
   const worktrees = useWorktreeList();
   const sessionMessages = useActiveSessionMessages();
 
+  // Sync mode from bridge state changes (plan mode / accept mode)
+  useEffect(() => {
+    if (planModeActive) {
+      setMode('planning');
+    } else if (acceptModeActive) {
+      setMode('accept');
+    } else {
+      setMode('fast');
+    }
+  }, [planModeActive, acceptModeActive]);
+
   // Build context from recent chat messages for STT transcription improvement
   const voiceContext = useMemo(() => {
     const recent = sessionMessages.slice(-5);
@@ -87,12 +100,15 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
       .slice(0, 2000);
   }, [sessionMessages]);
 
+  // Map 3-state mode to message mode (accept sends as 'fast')
+  const messageMode = mode === 'planning' ? 'planning' : 'fast';
+
   const handleSubmit = (): void => {
     const hasContent = content.trim() || attachments.length > 0;
     if (hasContent && !isAgentRunning) {
       onSubmit(
         content,
-        mode,
+        messageMode,
         selectedModel || DEFAULT_MODEL_ID,
         attachments.length > 0 ? [...attachments] : undefined,
         mentions.length > 0 ? [...mentions] : undefined,
@@ -105,22 +121,30 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
   };
 
   const handleAgentCommand = (commandText: string): void => {
-    onSubmit(commandText, mode, selectedModel || DEFAULT_MODEL_ID);
+    onSubmit(commandText, messageMode, selectedModel || DEFAULT_MODEL_ID);
   };
+
+  // Cycle mode: fast → planning → accept → fast
+  const cycleMode = useCallback(() => {
+    const order: Mode[] = ['fast', 'planning', 'accept'];
+    const nextMode = order[(order.indexOf(mode) + 1) % order.length];
+    setMode(nextMode);
+    onModeChange?.(nextMode);
+  }, [mode, onModeChange]);
 
   const handleKeyDown = (event: React.KeyboardEvent): void => {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       handleSubmit();
     }
-    // Shift+Tab toggles plan mode
+    // Shift+Tab cycles mode (fast → planning → accept)
     if (event.key === 'Tab' && event.shiftKey) {
       event.preventDefault();
-      onPlanModeToggle?.();
+      cycleMode();
     }
   };
 
-  const handleModeChange = (newMode: 'planning' | 'fast') => {
+  const handleModeChange = (newMode: Mode) => {
     setMode(newMode);
     onModeChange?.(newMode);
   };
@@ -158,6 +182,9 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
       <div className="max-w-3xl mx-auto px-3 pb-3 pt-1.5">
         {/* Floating card wrapping editor + toolbar */}
         <div className="bg-card/95 backdrop-blur-md rounded-[16px] shadow-[0_4px_24px_-4px_rgba(0,0,0,0.15)] ring-1 ring-white/[0.06]">
+          {/* Attachment chips/thumbnails — above editor (like Conductor) */}
+          <AttachmentBar />
+
           {/* Editor with drop zone */}
           <DropZoneOverlay disabled={isAgentRunning}>
             <LexicalEditor
@@ -169,33 +196,12 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
               onAgentCommand={handleAgentCommand}
               placeholder="Ask anything, @ for context"
               disabled={isAgentRunning}
-              mode={mode}
+              mode={messageMode}
             />
           </DropZoneOverlay>
 
-          {/* Attachment chips/thumbnails */}
-          <AttachmentBar />
-
           {/* Attached skill chips */}
           <SkillBar />
-
-          {/* Plan mode badge */}
-          {planModeActive ? (
-            <div className="flex items-center gap-1.5 px-3 pt-1">
-              <button
-                type="button"
-                onClick={onPlanModeToggle}
-                className="inline-flex items-center gap-1 h-[22px] px-2 rounded-full bg-primary/15 text-primary text-[10px] font-semibold uppercase tracking-wider hover:bg-primary/25 active:scale-95 transition-all duration-150"
-                title="Plan mode active (Shift+Tab to toggle)"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" fill="currentColor" viewBox="0 0 256 256">
-                  <path d="M224,128a8,8,0,0,1-8,8H40a8,8,0,0,1,0-16H216A8,8,0,0,1,224,128ZM40,72H216a8,8,0,0,0,0-16H40a8,8,0,0,0,0,16ZM216,184H40a8,8,0,0,0,0,16H216a8,8,0,0,0,0-16Z" />
-                </svg>
-                Plan Mode
-                <kbd className="text-[8px] opacity-50 ml-0.5">⇧⇥</kbd>
-              </button>
-            </div>
-          ) : null}
 
           {/* Bottom Controls */}
           <div className="flex items-center justify-between px-3 pb-3 pt-1" style={{ fontFamily: 'var(--font-sans)' }}>
@@ -206,11 +212,6 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
               <ThinkingToggle
                 enabled={thinkingEnabled}
                 onChange={(enabled) => onThinkingChange?.(enabled)}
-                disabled={isAgentRunning}
-              />
-              <AcceptModeToggle
-                enabled={acceptEnabled}
-                onChange={(enabled) => onAcceptChange?.(enabled)}
                 disabled={isAgentRunning}
               />
               <ContextTracker disabled={isAgentRunning} />

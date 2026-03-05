@@ -4,9 +4,12 @@
 
 import { query } from '@anthropic-ai/claude-agent-sdk';
 
+import * as fs from 'node:fs';
+
 import { ClaudeCredentials } from './credentials.js';
 import { createLogger } from './logger.js';
 import { PermissionManager } from './permissions.js';
+import { generatePlanName, getPlanFilePath, ensurePlanDirectory } from './plan-names.js';
 import { getAllowedToolsForMode } from './session-mode.js';
 import { loadSkills, formatSkillsForPrompt } from './skills.js';
 import { buildContentBlocks } from './utils/content.js';
@@ -228,6 +231,7 @@ export class OrbitAgent {
   private _thinkingMode: boolean;
   private _thinkingBudget: number; // 0=off, 4096=think, 10240=hard, 32768=ultra
   private _planMode: boolean;
+  private _planFilePath: string | null = null;
   private _acceptMode: boolean;
   private _critiqueMode: boolean;
   private model?: string;
@@ -256,12 +260,21 @@ export class OrbitAgent {
     this.permissionManager = new PermissionManager(
       config.permissionRequestCallback,
       config.snapshotCallback,
-      () => this._acceptMode // Pass Accept mode getter for dynamic checking
+      () => this._acceptMode, // Pass Accept mode getter for dynamic checking
+      () => this._planMode, // Pass Plan mode getter for dynamic enforcement
+      () => this._planFilePath // Pass plan file path getter for file-specific allows
     );
     this.cwd = config.cwd ?? process.cwd();
     this._thinkingMode = config.thinkingEnabled ?? false;
     this._thinkingBudget = config.maxThinkingTokens ?? 0; // 0=off, 4096=think, 10240=hard, 32768=ultra
     this._planMode = config.planEnabled ?? false;
+    // Generate plan file path if plan mode is already enabled (e.g., from stored preferences)
+    if (this._planMode) {
+      const planName = generatePlanName();
+      this._planFilePath = getPlanFilePath(planName);
+      ensurePlanDirectory();
+      logger.info({ planName, planFilePath: this._planFilePath }, 'Plan file path generated during construction');
+    }
     this._acceptMode = config.acceptEnabled ?? false;
     this._critiqueMode = config.critiqueEnabled ?? false;
     this._sessionMode = config.sessionMode ?? 'agent';
@@ -726,6 +739,41 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
             ],
           },
         ],
+
+        // UserPromptSubmit hook - inject plan mode system prompt per-turn
+        UserPromptSubmit: [
+          {
+            timeout: 30,
+            hooks: [
+              (_input: unknown): Promise<HookJSONOutput> => {
+                if (!this._planMode || !this._planFilePath) {
+                  return Promise.resolve({});
+                }
+
+                const planExists = fs.existsSync(this._planFilePath);
+                const planModePrompt = `Plan mode is active. The user indicated that they do not want you to execute yet -- you MUST NOT make any edits (with the exception of the plan file mentioned below), run any non-readonly tools (including changing configs or making commits), or otherwise make any changes to the system. This supercedes any other instructions you have received.
+
+## Plan File Info:
+${planExists
+  ? `Your plan is at ${this._planFilePath}. Edit it incrementally.`
+  : `No plan file exists yet. You should create your plan at ${this._planFilePath} using the Write tool.`}
+You should build your plan incrementally by writing to or editing this file. NOTE that this is the only file you are allowed to edit - other than this you are only allowed to take READ-ONLY actions.`;
+
+                logger.info(
+                  { planFilePath: this._planFilePath, planExists },
+                  'Hook: UserPromptSubmit — injecting plan mode system prompt'
+                );
+
+                return Promise.resolve({
+                  hookSpecificOutput: {
+                    hookEventName: 'UserPromptSubmit' as const,
+                    additionalContext: planModePrompt,
+                  },
+                });
+              },
+            ],
+          },
+        ],
       };
     }
 
@@ -741,21 +789,17 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
       logger.info({ fallbackModel: this._fallbackModel }, 'Fallback model configured');
     }
 
-    // Permission mode (UDE pattern)
+    // Permission mode
     // - Accept mode: 'acceptEdits' - SDK auto-approves all tools
-    // - Plan mode: 'plan' - SDK restricts to read-only tools
     // - Default mode: 'default' - canUseTool callback handles all permissions
+    // Plan mode is enforced via UserPromptSubmit hook (soft) + canUseTool callback (hard).
+    // We never use SDK's 'plan' permission mode because it blocks ALL writes before
+    // canUseTool fires, preventing the agent from writing to its plan file.
     const permissionMode: PermissionMode = this._acceptMode
       ? 'acceptEdits'
-      : this._planMode
-        ? 'plan'
-        : 'default'; // UDE uses 'default' and it works
+      : 'default';
     options.permissionMode = permissionMode;
     logger.info({ permissionMode }, 'Permission mode set');
-
-    if (this._planMode) {
-      logger.info('Plan mode ENABLED - SDK will restrict to read-only tools');
-    }
 
     // Enable streaming partial messages for real-time text streaming
     options.includePartialMessages = true;
@@ -1090,15 +1134,30 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
     // Disable accept mode if plan mode is being enabled
     if (enabled) {
       this._acceptMode = false;
+      // Generate plan file path and ensure directory exists
+      if (!this._planFilePath) {
+        const planName = generatePlanName();
+        this._planFilePath = getPlanFilePath(planName);
+        ensurePlanDirectory();
+        logger.info({ planName, planFilePath: this._planFilePath }, 'Plan file path generated');
+      }
+    } else {
+      // Clear plan file path when plan mode is disabled
+      this._planFilePath = null;
     }
 
-    // Plan mode is checked when creating new sessions
-    // Existing sessions continue with their current mode to avoid interruption
-    logger.info({ enabled }, 'Plan mode changed - will apply to next session');
+    // Plan mode is enforced dynamically via PermissionManager callback
+    // Write tools are denied immediately; read-only tools continue to work
+    // UserPromptSubmit hook injects plan mode system prompt per-turn (soft enforcement)
+    logger.info({ enabled, planFilePath: this._planFilePath }, 'Plan mode changed - will take effect on next tool use');
   }
 
   getPlanMode(): boolean {
     return this._planMode;
+  }
+
+  getPlanFilePath(): string | null {
+    return this._planFilePath;
   }
 
   setAcceptMode(enabled: boolean): void {

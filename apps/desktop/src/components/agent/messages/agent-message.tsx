@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { AgentNarrative } from './agent-narrative';
 import { InterruptIndicator } from './interrupt-indicator';
 import { MessageActions } from './message-actions';
@@ -9,6 +10,7 @@ import { TodoToolWidget } from './tools';
 import { renderToolCard } from '../streaming/tool-registry';
 import { StreamingSkeleton } from '../streaming/StreamingSkeleton';
 import { ToolApprovalCard } from '../streaming/ToolApprovalCard';
+import { ElapsedTimer } from '../streaming/ElapsedTimer';
 import { ChatCircleDots } from '@phosphor-icons/react';
 import { ProgressTracker } from '../streaming/ProgressTracker';
 import { ProgressTrackerItem } from '../streaming/ProgressTrackerItem';
@@ -129,6 +131,15 @@ export const AgentMessage: FC<AgentMessageProps> = ({
     }).format(date);
   };
 
+  // Track streaming start time for elapsed timer
+  const streamStartRef = useRef<number | null>(null);
+  if (content.isStreaming && !streamStartRef.current) {
+    streamStartRef.current = Date.now();
+  }
+  if (!content.isStreaming && streamStartRef.current) {
+    streamStartRef.current = null;
+  }
+
   // Use ordered blocks if available, otherwise fall back to legacy rendering
   const hasBlocks = content.blocks && content.blocks.length > 0;
 
@@ -220,6 +231,13 @@ export const AgentMessage: FC<AgentMessageProps> = ({
                   return null;
               }
             })}
+
+            {/* Elapsed time during streaming */}
+            {content.isStreaming && streamStartRef.current && (
+              <div className="flex items-center gap-1.5 pl-[26px]">
+                <ElapsedTimer startTime={streamStartRef.current} />
+              </div>
+            )}
           </div>
         ) : (
           /* === Legacy (non-block) Rendering === */
