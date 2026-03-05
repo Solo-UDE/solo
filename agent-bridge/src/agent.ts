@@ -789,21 +789,17 @@ You should build your plan incrementally by writing to or editing this file. NOT
       logger.info({ fallbackModel: this._fallbackModel }, 'Fallback model configured');
     }
 
-    // Permission mode (UDE pattern)
+    // Permission mode
     // - Accept mode: 'acceptEdits' - SDK auto-approves all tools
-    // - Plan mode: 'plan' - SDK restricts to read-only tools
     // - Default mode: 'default' - canUseTool callback handles all permissions
+    // Plan mode is enforced via UserPromptSubmit hook (soft) + canUseTool callback (hard).
+    // We never use SDK's 'plan' permission mode because it blocks ALL writes before
+    // canUseTool fires, preventing the agent from writing to its plan file.
     const permissionMode: PermissionMode = this._acceptMode
       ? 'acceptEdits'
-      : this._planMode
-        ? 'plan'
-        : 'default'; // UDE uses 'default' and it works
+      : 'default';
     options.permissionMode = permissionMode;
     logger.info({ permissionMode }, 'Permission mode set');
-
-    if (this._planMode) {
-      logger.info('Plan mode ENABLED - SDK will restrict to read-only tools');
-    }
 
     // Enable streaming partial messages for real-time text streaming
     options.includePartialMessages = true;

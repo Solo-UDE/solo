@@ -138,6 +138,7 @@ import { randomUUID } from "crypto";
 
 // src/agent.ts
 import { query } from "@anthropic-ai/claude-agent-sdk";
+import * as fs4 from "fs";
 
 // src/credentials.ts
 import { execFileSync } from "child_process";
@@ -304,12 +305,26 @@ function localize(_key, message) {
 
 // src/permissions.ts
 var logger2 = createLogger("PermissionManager");
-var PermissionManager = class {
+var PermissionManager = class _PermissionManager {
   requestCallback;
   snapshotCallback;
   alwaysAllowedTools = /* @__PURE__ */ new Set();
   acceptModeGetter;
-  constructor(requestCallback, snapshotCallback, acceptModeGetter) {
+  planModeGetter;
+  planFilePathGetter;
+  // Tools allowed through in plan mode (planning/reading tools that reach canUseTool)
+  static PLAN_MODE_ALLOWED_TOOLS = /* @__PURE__ */ new Set([
+    "ExitPlanMode",
+    "EnterPlanMode",
+    "AskUserQuestion",
+    "TaskCreate",
+    "TaskUpdate",
+    "TaskGet",
+    "TaskList",
+    "ToolSearch",
+    "Skill"
+  ]);
+  constructor(requestCallback, snapshotCallback, acceptModeGetter, planModeGetter, planFilePathGetter) {
     if (requestCallback !== void 0) {
       this.requestCallback = requestCallback;
     }
@@ -318,6 +333,12 @@ var PermissionManager = class {
     }
     if (acceptModeGetter !== void 0) {
       this.acceptModeGetter = acceptModeGetter;
+    }
+    if (planModeGetter !== void 0) {
+      this.planModeGetter = planModeGetter;
+    }
+    if (planFilePathGetter !== void 0) {
+      this.planFilePathGetter = planFilePathGetter;
     }
   }
   /**
@@ -354,6 +375,32 @@ var PermissionManager = class {
             behavior: "allow",
             updatedInput: toolInput
           };
+        }
+        const planModeActive = this.planModeGetter?.() ?? false;
+        if (planModeActive) {
+          if (toolName === "Write" || toolName === "Edit") {
+            const filePath = toolInput.file_path;
+            const planPath = this.planFilePathGetter?.();
+            if (planPath && filePath === planPath) {
+              logger2.info({ toolName, filePath }, "Plan mode \u2014 auto-approving write to plan file");
+              return {
+                behavior: "allow",
+                updatedInput: toolInput
+              };
+            } else {
+              logger2.info({ toolName, filePath }, "Plan mode active \u2014 denying write to non-plan file");
+              return {
+                behavior: "deny",
+                message: `Plan mode is active. You can only write to the plan file${planPath ? ` (${planPath})` : ""}. Use ExitPlanMode to switch back.`
+              };
+            }
+          } else if (!_PermissionManager.PLAN_MODE_ALLOWED_TOOLS.has(toolName)) {
+            logger2.info({ toolName }, "Plan mode active \u2014 denying non-planning tool");
+            return {
+              behavior: "deny",
+              message: "Plan mode is active. Only read-only tools and plan file edits are allowed. Use ExitPlanMode to switch back."
+            };
+          }
         }
         if ((toolName === "Write" || toolName === "Edit") && this.snapshotCallback) {
           try {
@@ -429,6 +476,173 @@ var PermissionManager = class {
   }
 };
 
+// src/plan-names.ts
+import * as fs2 from "fs";
+import * as os2 from "os";
+import * as path2 from "path";
+var ADJECTIVES = [
+  "cozy",
+  "woolly",
+  "jazzy",
+  "sunny",
+  "misty",
+  "calm",
+  "bold",
+  "crisp",
+  "dusty",
+  "eager",
+  "frosty",
+  "gentle",
+  "happy",
+  "keen",
+  "lively",
+  "mellow",
+  "nimble",
+  "plucky",
+  "quiet",
+  "rustic",
+  "sleek",
+  "tender",
+  "vivid",
+  "warm",
+  "zesty",
+  "amber",
+  "bright",
+  "coral",
+  "dainty",
+  "elfin",
+  "fair",
+  "golden",
+  "humble",
+  "ivory",
+  "jolly",
+  "kind",
+  "lunar",
+  "mossy",
+  "noble",
+  "olive",
+  "pastel",
+  "quaint",
+  "rosy",
+  "silver",
+  "tawny",
+  "urban",
+  "velvet",
+  "wild"
+];
+var VERBS = [
+  "stirring",
+  "crafting",
+  "snuggling",
+  "drifting",
+  "gliding",
+  "humming",
+  "jumping",
+  "knitting",
+  "leaping",
+  "melting",
+  "nesting",
+  "orbiting",
+  "pacing",
+  "quilting",
+  "roaming",
+  "sailing",
+  "ticking",
+  "unfolding",
+  "vaulting",
+  "winding",
+  "yielding",
+  "arching",
+  "blazing",
+  "climbing",
+  "dancing",
+  "echoing",
+  "flowing",
+  "grazing",
+  "hiking",
+  "inching",
+  "jogging",
+  "kicking",
+  "lacing",
+  "mapping",
+  "nudging",
+  "opening",
+  "picking",
+  "racing",
+  "shaping",
+  "tracing",
+  "turning",
+  "walking",
+  "bending",
+  "curving",
+  "diving",
+  "easing",
+  "folding",
+  "growing"
+];
+var NOUNS = [
+  "hopper",
+  "reef",
+  "falcon",
+  "meadow",
+  "brook",
+  "canyon",
+  "delta",
+  "ember",
+  "fjord",
+  "grove",
+  "haven",
+  "inlet",
+  "jungle",
+  "knoll",
+  "lagoon",
+  "mesa",
+  "nexus",
+  "oasis",
+  "plume",
+  "quartz",
+  "ridge",
+  "summit",
+  "tundra",
+  "updraft",
+  "valley",
+  "whisper",
+  "zenith",
+  "atlas",
+  "beacon",
+  "cedar",
+  "dune",
+  "echo",
+  "flint",
+  "glacier",
+  "harbor",
+  "iris",
+  "jasper",
+  "kelp",
+  "lantern",
+  "marble",
+  "nimbus",
+  "orchid",
+  "pebble",
+  "quill",
+  "raven",
+  "spruce",
+  "timber"
+];
+function generatePlanName() {
+  const adj = ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)];
+  const verb = VERBS[Math.floor(Math.random() * VERBS.length)];
+  const noun = NOUNS[Math.floor(Math.random() * NOUNS.length)];
+  return `${adj}-${verb}-${noun}`;
+}
+function getPlanFilePath(name) {
+  return path2.join(os2.homedir(), ".solo", "plans", `${name}.md`);
+}
+function ensurePlanDirectory() {
+  const dir = path2.join(os2.homedir(), ".solo", "plans");
+  fs2.mkdirSync(dir, { recursive: true });
+}
+
 // src/session-mode.ts
 var MODE_TOOLS = {
   chat: ["Read", "Glob", "Grep", "WebSearch", "WebFetch", "TodoWrite"],
@@ -455,8 +669,8 @@ function getAllowedToolsForMode(mode) {
 
 // src/skills.ts
 import { readdirSync, readFileSync as readFileSync2, statSync as statSync2, existsSync } from "fs";
-import { join as join3, basename, extname } from "path";
-import { homedir as homedir3 } from "os";
+import { join as join4, basename, extname } from "path";
+import { homedir as homedir4 } from "os";
 var logger3 = createLogger("Skills");
 var FRONTMATTER_RE = /^---\s*\n([\s\S]*?)\n---\s*\n?/;
 function parseFrontmatter(raw) {
@@ -490,7 +704,7 @@ function discoverSkillsFromDir(dirPath, scope) {
     return [];
   }
   for (const entry of entries) {
-    const fullPath = join3(dirPath, entry);
+    const fullPath = join4(dirPath, entry);
     let raw;
     let skillFilePath;
     let derivedName;
@@ -501,7 +715,7 @@ function discoverSkillsFromDir(dirPath, scope) {
         skillFilePath = fullPath;
         derivedName = basename(entry, ".md");
       } else if (stat.isDirectory()) {
-        const skillMd = join3(fullPath, "SKILL.md");
+        const skillMd = join4(fullPath, "SKILL.md");
         if (!existsSync(skillMd)) continue;
         raw = readFileSync2(skillMd, "utf-8");
         skillFilePath = skillMd;
@@ -557,8 +771,8 @@ The following skill instructions are loaded from .solo/skills/:
 ${sections.join("\n\n---\n\n")}`;
 }
 function loadSkills(cwd) {
-  const userDir = join3(homedir3(), ".solo", "skills");
-  const projectDir = join3(cwd, ".solo", "skills");
+  const userDir = join4(homedir4(), ".solo", "skills");
+  const projectDir = join4(cwd, ".solo", "skills");
   const userSkills = discoverSkillsFromDir(userDir, "user");
   const projectSkills = discoverSkillsFromDir(projectDir, "project");
   const merged = mergeSkills(userSkills, projectSkills);
@@ -574,8 +788,8 @@ function loadSkills(cwd) {
 }
 
 // src/utils/content.ts
-import * as fs2 from "fs";
-import * as path2 from "path";
+import * as fs3 from "fs";
+import * as path3 from "path";
 var MAX_IMAGE_SIZE = 20 * 1024 * 1024;
 var MAX_DOCUMENT_SIZE = 30 * 1024 * 1024;
 var MAX_TEXT_SIZE = 1 * 1024 * 1024;
@@ -613,7 +827,7 @@ function buildContentBlocks(message, attachments) {
       } else {
         const fileContent = readTextFromPath(attachment.filePath);
         if (fileContent !== null) {
-          const name = attachment.name ?? path2.basename(attachment.filePath);
+          const name = attachment.name ?? path3.basename(attachment.filePath);
           const languageHint = getLanguageHint(name);
           contentBlocks.push({
             type: "text",
@@ -646,7 +860,7 @@ ${attachment.text}
       } else if (attachment.filePath && !attachment.text) {
         const fileContent = readTextFromPath(attachment.filePath);
         if (fileContent !== null) {
-          const name = attachment.name ?? path2.basename(attachment.filePath);
+          const name = attachment.name ?? path3.basename(attachment.filePath);
           const languageHint = getLanguageHint(name);
           textContent = `File: ${name}
 \`\`\`${languageHint}
@@ -687,15 +901,15 @@ function getDocumentMimeType(filename) {
   return null;
 }
 function readImageFromPath(filePath) {
-  const mimeType = getImageMimeType(path2.basename(filePath));
+  const mimeType = getImageMimeType(path3.basename(filePath));
   if (!mimeType) return null;
   try {
-    const stat = fs2.statSync(filePath);
+    const stat = fs3.statSync(filePath);
     if (stat.size > MAX_IMAGE_SIZE) {
       console.warn(`Skipping image attachment: file too large (${stat.size} bytes): ${filePath}`);
       return null;
     }
-    const data = fs2.readFileSync(filePath).toString("base64");
+    const data = fs3.readFileSync(filePath).toString("base64");
     return {
       type: "image",
       source: { type: "base64", media_type: mimeType, data }
@@ -706,15 +920,15 @@ function readImageFromPath(filePath) {
   }
 }
 function readDocumentFromPath(filePath) {
-  const mimeType = getDocumentMimeType(path2.basename(filePath));
+  const mimeType = getDocumentMimeType(path3.basename(filePath));
   if (!mimeType) return null;
   try {
-    const stat = fs2.statSync(filePath);
+    const stat = fs3.statSync(filePath);
     if (stat.size > MAX_DOCUMENT_SIZE) {
       console.warn(`Skipping document attachment: file too large (${stat.size} bytes): ${filePath}`);
       return null;
     }
-    const data = fs2.readFileSync(filePath).toString("base64");
+    const data = fs3.readFileSync(filePath).toString("base64");
     return {
       type: "document",
       source: { type: "base64", media_type: mimeType, data }
@@ -726,12 +940,12 @@ function readDocumentFromPath(filePath) {
 }
 function readTextFromPath(filePath) {
   try {
-    const stat = fs2.statSync(filePath);
+    const stat = fs3.statSync(filePath);
     if (stat.size > MAX_TEXT_SIZE) {
       console.warn(`Skipping text attachment: file too large (${stat.size} bytes): ${filePath}`);
       return null;
     }
-    return fs2.readFileSync(filePath, "utf-8");
+    return fs3.readFileSync(filePath, "utf-8");
   } catch (err) {
     console.warn(`Failed to read text attachment: ${filePath}`, err);
     return null;
@@ -1040,6 +1254,7 @@ var OrbitAgent = class {
   _thinkingBudget;
   // 0=off, 4096=think, 10240=hard, 32768=ultra
   _planMode;
+  _planFilePath = null;
   _acceptMode;
   _critiqueMode;
   model;
@@ -1062,13 +1277,23 @@ var OrbitAgent = class {
     this.permissionManager = new PermissionManager(
       config.permissionRequestCallback,
       config.snapshotCallback,
-      () => this._acceptMode
+      () => this._acceptMode,
       // Pass Accept mode getter for dynamic checking
+      () => this._planMode,
+      // Pass Plan mode getter for dynamic enforcement
+      () => this._planFilePath
+      // Pass plan file path getter for file-specific allows
     );
     this.cwd = config.cwd ?? process.cwd();
     this._thinkingMode = config.thinkingEnabled ?? false;
     this._thinkingBudget = config.maxThinkingTokens ?? 0;
     this._planMode = config.planEnabled ?? false;
+    if (this._planMode) {
+      const planName = generatePlanName();
+      this._planFilePath = getPlanFilePath(planName);
+      ensurePlanDirectory();
+      logger4.info({ planName, planFilePath: this._planFilePath }, "Plan file path generated during construction");
+    }
     this._acceptMode = config.acceptEnabled ?? false;
     this._critiqueMode = config.critiqueEnabled ?? false;
     this._sessionMode = config.sessionMode ?? "agent";
@@ -1484,6 +1709,35 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
               }
             ]
           }
+        ],
+        // UserPromptSubmit hook - inject plan mode system prompt per-turn
+        UserPromptSubmit: [
+          {
+            timeout: 30,
+            hooks: [
+              (_input) => {
+                if (!this._planMode || !this._planFilePath) {
+                  return Promise.resolve({});
+                }
+                const planExists = fs4.existsSync(this._planFilePath);
+                const planModePrompt = `Plan mode is active. The user indicated that they do not want you to execute yet -- you MUST NOT make any edits (with the exception of the plan file mentioned below), run any non-readonly tools (including changing configs or making commits), or otherwise make any changes to the system. This supercedes any other instructions you have received.
+
+## Plan File Info:
+${planExists ? `Your plan is at ${this._planFilePath}. Edit it incrementally.` : `No plan file exists yet. You should create your plan at ${this._planFilePath} using the Write tool.`}
+You should build your plan incrementally by writing to or editing this file. NOTE that this is the only file you are allowed to edit - other than this you are only allowed to take READ-ONLY actions.`;
+                logger4.info(
+                  { planFilePath: this._planFilePath, planExists },
+                  "Hook: UserPromptSubmit \u2014 injecting plan mode system prompt"
+                );
+                return Promise.resolve({
+                  hookSpecificOutput: {
+                    hookEventName: "UserPromptSubmit",
+                    additionalContext: planModePrompt
+                  }
+                });
+              }
+            ]
+          }
         ]
       };
     }
@@ -1495,12 +1749,9 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
       options.fallbackModel = this._fallbackModel;
       logger4.info({ fallbackModel: this._fallbackModel }, "Fallback model configured");
     }
-    const permissionMode = this._acceptMode ? "acceptEdits" : this._planMode ? "plan" : "default";
+    const permissionMode = this._acceptMode ? "acceptEdits" : "default";
     options.permissionMode = permissionMode;
     logger4.info({ permissionMode }, "Permission mode set");
-    if (this._planMode) {
-      logger4.info("Plan mode ENABLED - SDK will restrict to read-only tools");
-    }
     options.includePartialMessages = true;
     if (this._resumeSessionId) {
       options.resume = this._resumeSessionId;
@@ -1727,11 +1978,22 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
     this._planMode = enabled;
     if (enabled) {
       this._acceptMode = false;
+      if (!this._planFilePath) {
+        const planName = generatePlanName();
+        this._planFilePath = getPlanFilePath(planName);
+        ensurePlanDirectory();
+        logger4.info({ planName, planFilePath: this._planFilePath }, "Plan file path generated");
+      }
+    } else {
+      this._planFilePath = null;
     }
-    logger4.info({ enabled }, "Plan mode changed - will apply to next session");
+    logger4.info({ enabled, planFilePath: this._planFilePath }, "Plan mode changed - will take effect on next tool use");
   }
   getPlanMode() {
     return this._planMode;
+  }
+  getPlanFilePath() {
+    return this._planFilePath;
   }
   setAcceptMode(enabled) {
     this._acceptMode = enabled;
@@ -1917,6 +2179,7 @@ var SessionManager = class extends Disposable {
           const prefs = this.modePreferences.get(sessionId) ?? {};
           prefs.planEnabled = false;
           this.modePreferences.set(sessionId, prefs);
+          this._onPlanModeChanged.fire({ sessionId, enabled: false, planFilePath: null });
         }
         const sessionMap = this.sessionToolUseMaps.get(sessionId);
         if (sessionMap) {
@@ -2287,14 +2550,15 @@ var SessionManager = class extends Disposable {
       const prefs2 = this.modePreferences.get(sessionId) ?? {};
       prefs2.planEnabled = enabled;
       this.modePreferences.set(sessionId, prefs2);
-      this._onPlanModeChanged.fire({ sessionId, enabled });
+      this._onPlanModeChanged.fire({ sessionId, enabled, planFilePath: null });
       return;
     }
     agent.setPlanMode(enabled);
+    const planFilePath = agent.getPlanFilePath();
     const prefs = this.modePreferences.get(sessionId) ?? {};
     prefs.planEnabled = enabled;
     this.modePreferences.set(sessionId, prefs);
-    this._onPlanModeChanged.fire({ sessionId, enabled });
+    this._onPlanModeChanged.fire({ sessionId, enabled, planFilePath });
   }
   /**
    * Get plan mode for a session
@@ -2551,7 +2815,8 @@ function main() {
     sendEvent({
       type: "plan_mode_changed",
       sessionId: data.sessionId,
-      enabled: data.enabled
+      enabled: data.enabled,
+      planFilePath: data.planFilePath
     });
   });
   sessionManager.onAcceptModeChanged((data) => {

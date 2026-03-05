@@ -148,8 +148,11 @@ export class PermissionManager {
             const filePath = toolInput.file_path as string;
             const planPath = this.planFilePathGetter?.();
             if (planPath && filePath === planPath) {
-              logger.info({ toolName, filePath }, 'Plan mode — allowing write to plan file');
-              // Fall through to normal permission flow (snapshot + user prompt)
+              logger.info({ toolName, filePath }, 'Plan mode — auto-approving write to plan file');
+              return {
+                behavior: 'allow',
+                updatedInput: toolInput,
+              };
             } else {
               logger.info({ toolName, filePath }, 'Plan mode active — denying write to non-plan file');
               return {

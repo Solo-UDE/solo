@@ -7,7 +7,7 @@ import { SoloEmptyState } from './SoloDecryptAnimation';
 import { convertToMessageGroups } from './messageAdapter';
 import { useAgentSession } from '../../hooks/useAgentSession';
 import { useProviderStore } from '../../stores/provider-store';
-import { useAgentStore, usePlanModeActive, useActiveAskUserQuestion } from '../../stores/agentStore';
+import { useAgentStore, usePlanModeActive, useAcceptModeActive, useActiveAskUserQuestion } from '../../stores/agentStore';
 import { AskUserQuestionCard } from './streaming/AskUserQuestionCard';
 import { usePanelTabsStore } from '../../stores/panelTabsStore';
 import { BUILTIN_PANEL_TYPES } from '../../lib/panels/constants';
@@ -160,8 +160,9 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 		[respondPermission]
 	);
 
-	// Plan mode state from store (set by bridge events)
+	// Plan mode / accept mode state from store (set by bridge events)
 	const planModeActive = usePlanModeActive(sessionId ?? null);
+	const acceptModeActive = useAcceptModeActive(sessionId ?? null);
 
 	// Active AskUserQuestion (floated above input)
 	const activeQuestion = useActiveAskUserQuestion(sessionId ?? null);
@@ -255,6 +256,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 					thinkingEnabled={thinkingEnabled}
 					onThinkingChange={handleThinkingChange}
 					planModeActive={planModeActive}
+					acceptModeActive={acceptModeActive}
 				/>
 			</div>
 		);
@@ -360,6 +362,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 				thinkingEnabled={thinkingEnabled}
 				onThinkingChange={handleThinkingChange}
 				planModeActive={planModeActive}
+				acceptModeActive={acceptModeActive}
 			/>
 		</div>
 	);

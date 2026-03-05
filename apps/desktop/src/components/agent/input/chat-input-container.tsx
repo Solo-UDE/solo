@@ -44,6 +44,7 @@ export interface ChatInputContainerProps {
   thinkingEnabled?: boolean;
   onThinkingChange?: (enabled: boolean) => void;
   planModeActive?: boolean;
+  acceptModeActive?: boolean;
 }
 
 export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
@@ -58,9 +59,15 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
   thinkingEnabled = false,
   onThinkingChange,
   planModeActive = false,
+  acceptModeActive = false,
 }) => {
   const [content, setContent] = useState('');
-  const [mode, setMode] = useState<Mode>('planning');
+  // Derive initial mode from bridge state so remounted components get the right mode
+  const [mode, setMode] = useState<Mode>(() => {
+    if (planModeActive) return 'planning';
+    if (acceptModeActive) return 'accept';
+    return 'fast';
+  });
   const [mentions, setMentions] = useState<FileMention[]>([]);
   const [sketchOpen, setSketchOpen] = useState(false);
   const selectedModel = useProviderStore((state) => state.selectedModel);
@@ -72,15 +79,16 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
   const worktrees = useWorktreeList();
   const sessionMessages = useActiveSessionMessages();
 
-  // Sync mode from bridge plan mode changes
+  // Sync mode from bridge state changes (plan mode / accept mode)
   useEffect(() => {
-    if (planModeActive && mode !== 'planning') {
+    if (planModeActive) {
       setMode('planning');
-    } else if (!planModeActive && mode === 'planning') {
+    } else if (acceptModeActive) {
+      setMode('accept');
+    } else {
       setMode('fast');
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [planModeActive]);
+  }, [planModeActive, acceptModeActive]);
 
   // Build context from recent chat messages for STT transcription improvement
   const voiceContext = useMemo(() => {
