@@ -147,6 +147,7 @@ export const useWorktreeStore = create<WorktreeStore>()(
 			if (targetPath) {
 				const { useGitStore } = await import('@/stores/gitStore');
 				await useFileExplorerStore.getState().setRootPath(targetPath);
+				useGitStore.getState().setCommitMessage('');
 				useGitStore.getState().stopPolling();
 				useGitStore.getState().startPolling();
 			}

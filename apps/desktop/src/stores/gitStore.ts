@@ -67,6 +67,10 @@ interface GitState {
 
   // Polling
   pollIntervalId: ReturnType<typeof setInterval> | null;
+
+  // Concurrency guards
+  _pendingOps: number;
+  _fetchSeq: number;
 }
 
 interface GitActions {
@@ -125,6 +129,8 @@ export const useGitStore = create<GitState & GitActions>()(
     currentBranch: 'main',
     githubRepoUrl: '',
     pollIntervalId: null,
+    _pendingOps: 0,
+    _fetchSeq: 0,
 
     fetchRepoStatus: async () => {
       // Skip when no workspace is open
@@ -149,35 +155,44 @@ export const useGitStore = create<GitState & GitActions>()(
     fetchChanges: async () => {
       // Skip when no workspace is open
       if (!useFileExplorerStore.getState().rootPath) return;
+      // Skip while mutating operations are in flight (prevents poll clobbering)
+      if (get()._pendingOps > 0) return;
+
+      const seq = get()._fetchSeq;
       try {
         set((state) => { state.isLoading = true; });
         const { currentBranch } = get();
         const result = await gitGetChanges(currentBranch);
+        // Discard stale response (worktree switched while fetch was in-flight)
+        if (get()._fetchSeq !== seq) return;
         set((state) => {
           state.changedFiles = result.files;
           state.changesSummary = result.summary;
           state.isLoading = false;
         });
       } catch (err) {
+        if (get()._fetchSeq !== seq) return;
         console.error('Failed to fetch changes:', err);
         set((state) => { state.isLoading = false; });
       }
     },
 
     commit: async (commitMessage: string) => {
-      set((state) => { state.isCommitting = true; });
+      set((state) => { state.isCommitting = true; state._pendingOps += 1; });
       try {
         await gitCommit(commitMessage);
         set((state) => {
           state.isCommitting = false;
           state.commitMessage = '';
         });
-        await get().fetchChanges();
-        await get().fetchRepoStatus();
       } catch (err) {
         set((state) => { state.isCommitting = false; });
         throw err;
+      } finally {
+        set((state) => { state._pendingOps -= 1; });
       }
+      await get().fetchChanges();
+      await get().fetchRepoStatus();
     },
 
     push: async () => {
@@ -220,68 +235,84 @@ export const useGitStore = create<GitState & GitActions>()(
 
     discardFile: async (filePath: string) => {
       const { currentBranch } = get();
-      set((state) => { state.isDiscarding = true; });
+      set((state) => { state.isDiscarding = true; state._pendingOps += 1; });
       try {
         await gitDiscardFile(filePath, currentBranch);
         set((state) => { state.isDiscarding = false; });
-        await get().fetchChanges();
       } catch (err) {
         set((state) => { state.isDiscarding = false; });
         throw err;
+      } finally {
+        set((state) => { state._pendingOps -= 1; });
       }
+      await get().fetchChanges();
     },
 
     discardAll: async () => {
       const { currentBranch } = get();
-      set((state) => { state.isDiscarding = true; });
+      set((state) => { state.isDiscarding = true; state._pendingOps += 1; });
       try {
         await gitDiscardAll(currentBranch);
         set((state) => { state.isDiscarding = false; });
-        await get().fetchChanges();
       } catch (err) {
         set((state) => { state.isDiscarding = false; });
         throw err;
+      } finally {
+        set((state) => { state._pendingOps -= 1; });
       }
+      await get().fetchChanges();
     },
 
     stageFile: async (filePath: string) => {
+      set((state) => { state._pendingOps += 1; });
       try {
         await gitStageFile(filePath);
-        await get().fetchChanges();
       } catch (err) {
         console.error('Failed to stage file:', err);
         throw err;
+      } finally {
+        set((state) => { state._pendingOps -= 1; });
       }
+      await get().fetchChanges();
     },
 
     unstageFile: async (filePath: string) => {
+      set((state) => { state._pendingOps += 1; });
       try {
         await gitUnstageFile(filePath);
-        await get().fetchChanges();
       } catch (err) {
         console.error('Failed to unstage file:', err);
         throw err;
+      } finally {
+        set((state) => { state._pendingOps -= 1; });
       }
+      await get().fetchChanges();
     },
 
     stageAllFiles: async () => {
+      set((state) => { state._pendingOps += 1; });
       try {
         await gitStageAll();
-        await get().fetchChanges();
       } catch (err) {
         console.error('Failed to stage all files:', err);
         throw err;
+      } finally {
+        set((state) => { state._pendingOps -= 1; });
       }
+      await get().fetchChanges();
     },
 
     unstageAllFiles: async () => {
+      set((state) => { state._pendingOps += 1; });
       try {
         await gitUnstageAll();
-        await get().fetchChanges();
       } catch (err) {
         console.error('Failed to unstage all files:', err);
         throw err;
+      } finally {
+        set((state) => { state._pendingOps -= 1; });
       }
+      await get().fetchChanges();
     },
 
     createBranch: async (name: string) => {
@@ -431,6 +462,9 @@ export const useGitStore = create<GitState & GitActions>()(
       const { pollIntervalId } = get();
       if (pollIntervalId) return;
 
+      // Invalidate any stale in-flight fetches from previous context
+      set((state) => { state._fetchSeq += 1; });
+
       // Fetch immediately
       get().fetchRepoStatus();
       get().fetchChanges();
@@ -479,6 +513,8 @@ export const useGitStore = create<GitState & GitActions>()(
         state.currentBranch = 'main';
         state.githubRepoUrl = '';
         state.pollIntervalId = null;
+        state._pendingOps = 0;
+        state._fetchSeq += 1; // Invalidate any in-flight fetches
       });
     },
   })),
