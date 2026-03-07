@@ -10,6 +10,8 @@ fi
 : "${SOLO_SUPABASE_URL:?Missing SOLO_SUPABASE_URL}"
 : "${SOLO_SUPABASE_ANON_KEY:?Missing SOLO_SUPABASE_ANON_KEY}"
 
+# Tauri's config loader requires the desktop dist directory to exist even for cargo check.
+bun run --filter @solo/desktop build:vite
 bun run check
 bun run test
 
