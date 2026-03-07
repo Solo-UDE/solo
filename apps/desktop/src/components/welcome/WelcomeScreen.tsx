@@ -33,6 +33,7 @@ export function WelcomeScreen({ onProjectOpen }: WelcomeScreenProps = {}) {
   const removeRecent = useWorkspaceStore((s) => s.removeRecent);
   const [cloneOpen, setCloneOpen] = useState(false);
   const [showContent, setShowContent] = useState(false);
+  const [showRecentProjects, setShowRecentProjects] = useState(false);
 
   // Play startup sound on first mount (synced with decrypt animation)
   useStartupSound();
@@ -42,6 +43,16 @@ export function WelcomeScreen({ onProjectOpen }: WelcomeScreenProps = {}) {
     const t = setTimeout(() => setShowContent(true), 2400);
     return () => clearTimeout(t);
   }, []);
+
+  useEffect(() => {
+    if (!showContent || recentDirectories.length === 0) {
+      setShowRecentProjects(false);
+      return;
+    }
+
+    const t = setTimeout(() => setShowRecentProjects(true), 120);
+    return () => clearTimeout(t);
+  }, [recentDirectories.length, showContent]);
 
   // Open or select a repo via the repoStore (which internally calls switchWorkspace)
   const openOrSelectRepo = useCallback(async (path: string) => {
@@ -155,12 +166,15 @@ export function WelcomeScreen({ onProjectOpen }: WelcomeScreenProps = {}) {
           <div
             className="relative z-10 mt-8 w-full max-w-sm"
             style={{
-              opacity: showContent ? 1 : 0,
-              transform: showContent ? 'translateY(0)' : 'translateY(8px)',
-              transition: 'opacity 280ms var(--ease-smooth) 60ms, transform 280ms var(--ease-smooth) 60ms',
+              opacity: showRecentProjects ? 1 : 0,
+              transform: showRecentProjects ? 'translateY(0) scale(1)' : 'translateY(18px) scale(0.985)',
+              filter: showRecentProjects ? 'blur(0px)' : 'blur(8px)',
+              transition:
+                'opacity 420ms var(--ease-smooth), transform 520ms var(--ease-smooth), filter 420ms var(--ease-smooth)',
+              willChange: 'opacity, transform, filter',
             }}
           >
-            <div className="rounded-xl bg-card/50 border border-border/30 p-3">
+            <div className="rounded-xl bg-card/50 border border-border/30 p-3 backdrop-blur-sm">
               <div className="flex items-center gap-1.5 mb-2">
                 <Clock className="w-3 h-3 text-muted-foreground/50" />
                 <span className="text-[10px] font-medium text-muted-foreground/50 tracking-wide">
@@ -177,9 +191,11 @@ export function WelcomeScreen({ onProjectOpen }: WelcomeScreenProps = {}) {
                     onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSwitchTo(path); } }}
                     className="group w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs hover:bg-muted/40 active:scale-[0.99] transition-all duration-150 cursor-pointer"
                     style={{
-                      opacity: showContent ? 1 : 0,
-                      transform: showContent ? 'translateY(0)' : 'translateY(8px)',
-                      transition: `opacity 250ms var(--ease-smooth) ${100 + i * 40}ms, transform 250ms var(--ease-smooth) ${100 + i * 40}ms`,
+                      opacity: showRecentProjects ? 1 : 0,
+                      transform: showRecentProjects ? 'translateY(0)' : 'translateY(12px)',
+                      filter: showRecentProjects ? 'blur(0px)' : 'blur(6px)',
+                      transition: `opacity 320ms var(--ease-smooth) ${140 + i * 75}ms, transform 420ms var(--ease-smooth) ${140 + i * 75}ms, filter 360ms var(--ease-smooth) ${140 + i * 75}ms`,
+                      willChange: 'opacity, transform, filter',
                     }}
                   >
                     <FolderSimple className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
