@@ -40,7 +40,9 @@ mod git_commands;
 mod parse_commands;
 mod provider_commands;
 mod session_commands;
+mod skills_commands;
 mod terminal_commands;
+mod update_commands;
 mod worktree_commands;
 
 use auth_commands::AuthState;
@@ -99,6 +101,8 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_macos_permissions::init())
         .plugin(tauri_plugin_decorum::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             // Handle deep link from single instance
@@ -315,6 +319,8 @@ pub fn run() {
             worktree_commands::worktree_promote,
             worktree_commands::worktree_set_setup_commands,
             worktree_commands::worktree_get_setup_commands,
+            // Skills commands
+            skills_commands::skills_list_available,
             // ElevenLabs voice commands
             elevenlabs_commands::elevenlabs_set_api_key,
             elevenlabs_commands::elevenlabs_has_api_key,
@@ -325,6 +331,9 @@ pub fn run() {
             elevenlabs_commands::elevenlabs_stt_stop,
             elevenlabs_commands::elevenlabs_tts_speak,
             elevenlabs_commands::elevenlabs_tts_stop,
+            // Update commands
+            update_commands::check_for_update,
+            update_commands::install_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -47,11 +47,28 @@ export class PermissionManager {
   private snapshotCallback?: SnapshotCallback;
   private alwaysAllowedTools = new Set<string>();
   private acceptModeGetter?: () => boolean;
+  private planModeGetter?: () => boolean;
+  private planFilePathGetter?: () => string | null;
+
+  // Tools allowed through in plan mode (planning/reading tools that reach canUseTool)
+  private static readonly PLAN_MODE_ALLOWED_TOOLS = new Set([
+    'ExitPlanMode',
+    'EnterPlanMode',
+    'AskUserQuestion',
+    'TaskCreate',
+    'TaskUpdate',
+    'TaskGet',
+    'TaskList',
+    'ToolSearch',
+    'Skill',
+  ]);
 
   constructor(
     requestCallback?: PermissionRequestCallback,
     snapshotCallback?: SnapshotCallback,
-    acceptModeGetter?: () => boolean
+    acceptModeGetter?: () => boolean,
+    planModeGetter?: () => boolean,
+    planFilePathGetter?: () => string | null
   ) {
     if (requestCallback !== undefined) {
       this.requestCallback = requestCallback;
@@ -61,6 +78,12 @@ export class PermissionManager {
     }
     if (acceptModeGetter !== undefined) {
       this.acceptModeGetter = acceptModeGetter;
+    }
+    if (planModeGetter !== undefined) {
+      this.planModeGetter = planModeGetter;
+    }
+    if (planFilePathGetter !== undefined) {
+      this.planFilePathGetter = planFilePathGetter;
     }
   }
 
@@ -112,6 +135,40 @@ export class PermissionManager {
             behavior: 'allow',
             updatedInput: toolInput,
           };
+        }
+
+        // Check Plan mode - allow Write/Edit ONLY for the plan file, deny other writes
+        // Read-only tools (Read, Glob, Grep, etc.) are auto-approved in PreToolUse hook
+        // and never reach this callback. Tools that reach here are write tools — deny them
+        // unless they target the plan file or are planning-specific tools.
+        const planModeActive = this.planModeGetter?.() ?? false;
+        if (planModeActive) {
+          // Allow Write/Edit ONLY for the plan file
+          if (toolName === 'Write' || toolName === 'Edit') {
+            const filePath = toolInput.file_path as string;
+            const planPath = this.planFilePathGetter?.();
+            if (planPath && filePath === planPath) {
+              logger.info({ toolName, filePath }, 'Plan mode — auto-approving write to plan file');
+              return {
+                behavior: 'allow',
+                updatedInput: toolInput,
+              };
+            } else {
+              logger.info({ toolName, filePath }, 'Plan mode active — denying write to non-plan file');
+              return {
+                behavior: 'deny',
+                message: `Plan mode is active. You can only write to the plan file${planPath ? ` (${planPath})` : ''}. Use ExitPlanMode to switch back.`,
+              };
+            }
+          } else if (!PermissionManager.PLAN_MODE_ALLOWED_TOOLS.has(toolName)) {
+            // Deny all other non-planning tools (Bash, etc.)
+            logger.info({ toolName }, 'Plan mode active — denying non-planning tool');
+            return {
+              behavior: 'deny',
+              message: 'Plan mode is active. Only read-only tools and plan file edits are allowed. Use ExitPlanMode to switch back.',
+            };
+          }
+          // Planning tools (ExitPlanMode, AskUserQuestion, etc.) fall through to normal flow
         }
 
         // Capture file snapshot BEFORE Write/Edit tools execute (for checkpointing)

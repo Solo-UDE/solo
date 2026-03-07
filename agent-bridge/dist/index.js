@@ -138,6 +138,7 @@ import { randomUUID } from "crypto";
 
 // src/agent.ts
 import { query } from "@anthropic-ai/claude-agent-sdk";
+import * as fs4 from "fs";
 
 // src/credentials.ts
 import { execFileSync } from "child_process";
@@ -304,12 +305,26 @@ function localize(_key, message) {
 
 // src/permissions.ts
 var logger2 = createLogger("PermissionManager");
-var PermissionManager = class {
+var PermissionManager = class _PermissionManager {
   requestCallback;
   snapshotCallback;
   alwaysAllowedTools = /* @__PURE__ */ new Set();
   acceptModeGetter;
-  constructor(requestCallback, snapshotCallback, acceptModeGetter) {
+  planModeGetter;
+  planFilePathGetter;
+  // Tools allowed through in plan mode (planning/reading tools that reach canUseTool)
+  static PLAN_MODE_ALLOWED_TOOLS = /* @__PURE__ */ new Set([
+    "ExitPlanMode",
+    "EnterPlanMode",
+    "AskUserQuestion",
+    "TaskCreate",
+    "TaskUpdate",
+    "TaskGet",
+    "TaskList",
+    "ToolSearch",
+    "Skill"
+  ]);
+  constructor(requestCallback, snapshotCallback, acceptModeGetter, planModeGetter, planFilePathGetter) {
     if (requestCallback !== void 0) {
       this.requestCallback = requestCallback;
     }
@@ -318,6 +333,12 @@ var PermissionManager = class {
     }
     if (acceptModeGetter !== void 0) {
       this.acceptModeGetter = acceptModeGetter;
+    }
+    if (planModeGetter !== void 0) {
+      this.planModeGetter = planModeGetter;
+    }
+    if (planFilePathGetter !== void 0) {
+      this.planFilePathGetter = planFilePathGetter;
     }
   }
   /**
@@ -354,6 +375,32 @@ var PermissionManager = class {
             behavior: "allow",
             updatedInput: toolInput
           };
+        }
+        const planModeActive = this.planModeGetter?.() ?? false;
+        if (planModeActive) {
+          if (toolName === "Write" || toolName === "Edit") {
+            const filePath = toolInput.file_path;
+            const planPath = this.planFilePathGetter?.();
+            if (planPath && filePath === planPath) {
+              logger2.info({ toolName, filePath }, "Plan mode \u2014 auto-approving write to plan file");
+              return {
+                behavior: "allow",
+                updatedInput: toolInput
+              };
+            } else {
+              logger2.info({ toolName, filePath }, "Plan mode active \u2014 denying write to non-plan file");
+              return {
+                behavior: "deny",
+                message: `Plan mode is active. You can only write to the plan file${planPath ? ` (${planPath})` : ""}. Use ExitPlanMode to switch back.`
+              };
+            }
+          } else if (!_PermissionManager.PLAN_MODE_ALLOWED_TOOLS.has(toolName)) {
+            logger2.info({ toolName }, "Plan mode active \u2014 denying non-planning tool");
+            return {
+              behavior: "deny",
+              message: "Plan mode is active. Only read-only tools and plan file edits are allowed. Use ExitPlanMode to switch back."
+            };
+          }
         }
         if ((toolName === "Write" || toolName === "Edit") && this.snapshotCallback) {
           try {
@@ -429,6 +476,173 @@ var PermissionManager = class {
   }
 };
 
+// src/plan-names.ts
+import * as fs2 from "fs";
+import * as os2 from "os";
+import * as path2 from "path";
+var ADJECTIVES = [
+  "cozy",
+  "woolly",
+  "jazzy",
+  "sunny",
+  "misty",
+  "calm",
+  "bold",
+  "crisp",
+  "dusty",
+  "eager",
+  "frosty",
+  "gentle",
+  "happy",
+  "keen",
+  "lively",
+  "mellow",
+  "nimble",
+  "plucky",
+  "quiet",
+  "rustic",
+  "sleek",
+  "tender",
+  "vivid",
+  "warm",
+  "zesty",
+  "amber",
+  "bright",
+  "coral",
+  "dainty",
+  "elfin",
+  "fair",
+  "golden",
+  "humble",
+  "ivory",
+  "jolly",
+  "kind",
+  "lunar",
+  "mossy",
+  "noble",
+  "olive",
+  "pastel",
+  "quaint",
+  "rosy",
+  "silver",
+  "tawny",
+  "urban",
+  "velvet",
+  "wild"
+];
+var VERBS = [
+  "stirring",
+  "crafting",
+  "snuggling",
+  "drifting",
+  "gliding",
+  "humming",
+  "jumping",
+  "knitting",
+  "leaping",
+  "melting",
+  "nesting",
+  "orbiting",
+  "pacing",
+  "quilting",
+  "roaming",
+  "sailing",
+  "ticking",
+  "unfolding",
+  "vaulting",
+  "winding",
+  "yielding",
+  "arching",
+  "blazing",
+  "climbing",
+  "dancing",
+  "echoing",
+  "flowing",
+  "grazing",
+  "hiking",
+  "inching",
+  "jogging",
+  "kicking",
+  "lacing",
+  "mapping",
+  "nudging",
+  "opening",
+  "picking",
+  "racing",
+  "shaping",
+  "tracing",
+  "turning",
+  "walking",
+  "bending",
+  "curving",
+  "diving",
+  "easing",
+  "folding",
+  "growing"
+];
+var NOUNS = [
+  "hopper",
+  "reef",
+  "falcon",
+  "meadow",
+  "brook",
+  "canyon",
+  "delta",
+  "ember",
+  "fjord",
+  "grove",
+  "haven",
+  "inlet",
+  "jungle",
+  "knoll",
+  "lagoon",
+  "mesa",
+  "nexus",
+  "oasis",
+  "plume",
+  "quartz",
+  "ridge",
+  "summit",
+  "tundra",
+  "updraft",
+  "valley",
+  "whisper",
+  "zenith",
+  "atlas",
+  "beacon",
+  "cedar",
+  "dune",
+  "echo",
+  "flint",
+  "glacier",
+  "harbor",
+  "iris",
+  "jasper",
+  "kelp",
+  "lantern",
+  "marble",
+  "nimbus",
+  "orchid",
+  "pebble",
+  "quill",
+  "raven",
+  "spruce",
+  "timber"
+];
+function generatePlanName() {
+  const adj = ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)];
+  const verb = VERBS[Math.floor(Math.random() * VERBS.length)];
+  const noun = NOUNS[Math.floor(Math.random() * NOUNS.length)];
+  return `${adj}-${verb}-${noun}`;
+}
+function getPlanFilePath(name) {
+  return path2.join(os2.homedir(), ".solo", "plans", `${name}.md`);
+}
+function ensurePlanDirectory() {
+  const dir = path2.join(os2.homedir(), ".solo", "plans");
+  fs2.mkdirSync(dir, { recursive: true });
+}
+
 // src/session-mode.ts
 var MODE_TOOLS = {
   chat: ["Read", "Glob", "Grep", "WebSearch", "WebFetch", "TodoWrite"],
@@ -453,9 +667,129 @@ function getAllowedToolsForMode(mode) {
   return MODE_TOOLS[mode];
 }
 
+// src/skills.ts
+import { readdirSync, readFileSync as readFileSync2, statSync as statSync2, existsSync } from "fs";
+import { join as join4, basename, extname } from "path";
+import { homedir as homedir4 } from "os";
+var logger3 = createLogger("Skills");
+var FRONTMATTER_RE = /^---\s*\n([\s\S]*?)\n---\s*\n?/;
+function parseFrontmatter(raw) {
+  const match = raw.match(FRONTMATTER_RE);
+  if (!match) {
+    return { metadata: {}, body: raw.trim() };
+  }
+  const frontmatterBlock = match[1];
+  const body = raw.slice(match[0].length).trim();
+  const metadata = {};
+  for (const line of frontmatterBlock.split("\n")) {
+    const colonIdx = line.indexOf(":");
+    if (colonIdx === -1) continue;
+    const key = line.slice(0, colonIdx).trim();
+    const value = line.slice(colonIdx + 1).trim();
+    if (!key) continue;
+    if (value === "true") metadata[key] = true;
+    else if (value === "false") metadata[key] = false;
+    else if (/^\d+$/.test(value)) metadata[key] = parseInt(value, 10);
+    else metadata[key] = value;
+  }
+  return { metadata, body };
+}
+function discoverSkillsFromDir(dirPath, scope) {
+  if (!existsSync(dirPath)) return [];
+  const skills = [];
+  let entries;
+  try {
+    entries = readdirSync(dirPath);
+  } catch {
+    return [];
+  }
+  for (const entry of entries) {
+    const fullPath = join4(dirPath, entry);
+    let raw;
+    let skillFilePath;
+    let derivedName;
+    try {
+      const stat = statSync2(fullPath);
+      if (stat.isFile() && extname(entry) === ".md") {
+        raw = readFileSync2(fullPath, "utf-8");
+        skillFilePath = fullPath;
+        derivedName = basename(entry, ".md");
+      } else if (stat.isDirectory()) {
+        const skillMd = join4(fullPath, "SKILL.md");
+        if (!existsSync(skillMd)) continue;
+        raw = readFileSync2(skillMd, "utf-8");
+        skillFilePath = skillMd;
+        derivedName = entry;
+      } else {
+        continue;
+      }
+    } catch {
+      continue;
+    }
+    const { metadata, body } = parseFrontmatter(raw);
+    skills.push({
+      metadata: {
+        name: typeof metadata.name === "string" ? metadata.name : derivedName,
+        description: typeof metadata.description === "string" ? metadata.description : "",
+        enabled: metadata.enabled !== false,
+        // default true
+        priority: typeof metadata.priority === "number" ? metadata.priority : 0
+      },
+      content: body,
+      source: scope,
+      filePath: skillFilePath
+    });
+  }
+  return skills;
+}
+function mergeSkills(userSkills, projectSkills) {
+  const map = /* @__PURE__ */ new Map();
+  for (const skill of userSkills) {
+    map.set(skill.metadata.name, skill);
+  }
+  for (const skill of projectSkills) {
+    map.set(skill.metadata.name, skill);
+  }
+  return Array.from(map.values()).filter((s) => s.metadata.enabled).sort((a, b) => {
+    const pDiff = b.metadata.priority - a.metadata.priority;
+    if (pDiff !== 0) return pDiff;
+    return a.metadata.name.localeCompare(b.metadata.name);
+  });
+}
+function formatSkillsForPrompt(skills) {
+  if (skills.length === 0) return "";
+  const sections = skills.map(
+    (s) => `### ${s.metadata.name}
+
+${s.content}`
+  );
+  return `
+## Active Skills
+
+The following skill instructions are loaded from .solo/skills/:
+
+${sections.join("\n\n---\n\n")}`;
+}
+function loadSkills(cwd) {
+  const userDir = join4(homedir4(), ".solo", "skills");
+  const projectDir = join4(cwd, ".solo", "skills");
+  const userSkills = discoverSkillsFromDir(userDir, "user");
+  const projectSkills = discoverSkillsFromDir(projectDir, "project");
+  const merged = mergeSkills(userSkills, projectSkills);
+  if (merged.length > 0) {
+    logger3.info(
+      { count: merged.length, names: merged.map((s) => s.metadata.name) },
+      "Skills loaded"
+    );
+  } else {
+    logger3.debug("No skills found");
+  }
+  return merged;
+}
+
 // src/utils/content.ts
-import * as fs2 from "fs";
-import * as path2 from "path";
+import * as fs3 from "fs";
+import * as path3 from "path";
 var MAX_IMAGE_SIZE = 20 * 1024 * 1024;
 var MAX_DOCUMENT_SIZE = 30 * 1024 * 1024;
 var MAX_TEXT_SIZE = 1 * 1024 * 1024;
@@ -493,7 +827,7 @@ function buildContentBlocks(message, attachments) {
       } else {
         const fileContent = readTextFromPath(attachment.filePath);
         if (fileContent !== null) {
-          const name = attachment.name ?? path2.basename(attachment.filePath);
+          const name = attachment.name ?? path3.basename(attachment.filePath);
           const languageHint = getLanguageHint(name);
           contentBlocks.push({
             type: "text",
@@ -526,7 +860,7 @@ ${attachment.text}
       } else if (attachment.filePath && !attachment.text) {
         const fileContent = readTextFromPath(attachment.filePath);
         if (fileContent !== null) {
-          const name = attachment.name ?? path2.basename(attachment.filePath);
+          const name = attachment.name ?? path3.basename(attachment.filePath);
           const languageHint = getLanguageHint(name);
           textContent = `File: ${name}
 \`\`\`${languageHint}
@@ -567,15 +901,15 @@ function getDocumentMimeType(filename) {
   return null;
 }
 function readImageFromPath(filePath) {
-  const mimeType = getImageMimeType(path2.basename(filePath));
+  const mimeType = getImageMimeType(path3.basename(filePath));
   if (!mimeType) return null;
   try {
-    const stat = fs2.statSync(filePath);
+    const stat = fs3.statSync(filePath);
     if (stat.size > MAX_IMAGE_SIZE) {
       console.warn(`Skipping image attachment: file too large (${stat.size} bytes): ${filePath}`);
       return null;
     }
-    const data = fs2.readFileSync(filePath).toString("base64");
+    const data = fs3.readFileSync(filePath).toString("base64");
     return {
       type: "image",
       source: { type: "base64", media_type: mimeType, data }
@@ -586,15 +920,15 @@ function readImageFromPath(filePath) {
   }
 }
 function readDocumentFromPath(filePath) {
-  const mimeType = getDocumentMimeType(path2.basename(filePath));
+  const mimeType = getDocumentMimeType(path3.basename(filePath));
   if (!mimeType) return null;
   try {
-    const stat = fs2.statSync(filePath);
+    const stat = fs3.statSync(filePath);
     if (stat.size > MAX_DOCUMENT_SIZE) {
       console.warn(`Skipping document attachment: file too large (${stat.size} bytes): ${filePath}`);
       return null;
     }
-    const data = fs2.readFileSync(filePath).toString("base64");
+    const data = fs3.readFileSync(filePath).toString("base64");
     return {
       type: "document",
       source: { type: "base64", media_type: mimeType, data }
@@ -606,12 +940,12 @@ function readDocumentFromPath(filePath) {
 }
 function readTextFromPath(filePath) {
   try {
-    const stat = fs2.statSync(filePath);
+    const stat = fs3.statSync(filePath);
     if (stat.size > MAX_TEXT_SIZE) {
       console.warn(`Skipping text attachment: file too large (${stat.size} bytes): ${filePath}`);
       return null;
     }
-    return fs2.readFileSync(filePath, "utf-8");
+    return fs3.readFileSync(filePath, "utf-8");
   } catch (err) {
     console.warn(`Failed to read text attachment: ${filePath}`, err);
     return null;
@@ -818,7 +1152,7 @@ function formatGeneric(resultContent) {
 }
 
 // src/agent.ts
-var logger3 = createLogger("OrbitAgent");
+var logger4 = createLogger("OrbitAgent");
 function isToolResultBlock(block) {
   if (typeof block !== "object" || block === null) {
     return false;
@@ -920,6 +1254,7 @@ var OrbitAgent = class {
   _thinkingBudget;
   // 0=off, 4096=think, 10240=hard, 32768=ultra
   _planMode;
+  _planFilePath = null;
   _acceptMode;
   _critiqueMode;
   model;
@@ -942,13 +1277,23 @@ var OrbitAgent = class {
     this.permissionManager = new PermissionManager(
       config.permissionRequestCallback,
       config.snapshotCallback,
-      () => this._acceptMode
+      () => this._acceptMode,
       // Pass Accept mode getter for dynamic checking
+      () => this._planMode,
+      // Pass Plan mode getter for dynamic enforcement
+      () => this._planFilePath
+      // Pass plan file path getter for file-specific allows
     );
     this.cwd = config.cwd ?? process.cwd();
     this._thinkingMode = config.thinkingEnabled ?? false;
     this._thinkingBudget = config.maxThinkingTokens ?? 0;
     this._planMode = config.planEnabled ?? false;
+    if (this._planMode) {
+      const planName = generatePlanName();
+      this._planFilePath = getPlanFilePath(planName);
+      ensurePlanDirectory();
+      logger4.info({ planName, planFilePath: this._planFilePath }, "Plan file path generated during construction");
+    }
     this._acceptMode = config.acceptEnabled ?? false;
     this._critiqueMode = config.critiqueEnabled ?? false;
     this._sessionMode = config.sessionMode ?? "agent";
@@ -963,7 +1308,7 @@ var OrbitAgent = class {
     this._mcpServers = config.mcpServers ?? {};
     this._outputFormat = config.outputFormat;
     this._agents = config.agents;
-    logger3.info(
+    logger4.info(
       {
         sessionMode: this._sessionMode,
         mcpServerCount: Object.keys(this._mcpServers).length,
@@ -978,11 +1323,11 @@ var OrbitAgent = class {
    */
   registerMcpServer(name, server) {
     if (this.sessionActive) {
-      logger3.warn("Cannot register MCP server after session has started");
+      logger4.warn("Cannot register MCP server after session has started");
       return;
     }
     this._mcpServers[name] = server;
-    logger3.info({ name }, "MCP server registered");
+    logger4.info({ name }, "MCP server registered");
   }
   /**
    * Unregister an MCP server
@@ -991,7 +1336,7 @@ var OrbitAgent = class {
     const { [name]: _removed, ...rest } = this._mcpServers;
     void _removed;
     this._mcpServers = rest;
-    logger3.info({ name }, "MCP server unregistered");
+    logger4.info({ name }, "MCP server unregistered");
   }
   /**
    * Set or remove the browser MCP server.
@@ -1113,7 +1458,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
 ### When to Use DevTools vs Browser Tools
 - **Browser tools (mcp__browser__)**: Page interaction, navigation, clicking, typing
 - **DevTools tools (mcp__orbit-devtools__)**: Deep inspection, debugging, storage, performance analysis
-`
+` + formatSkillsForPrompt(loadSkills(this.cwd))
       },
       // Working directory
       cwd: this.cwd,
@@ -1123,22 +1468,22 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
     if (this._thinkingMode && this._thinkingBudget > 0) {
       options.maxThinkingTokens = this._thinkingBudget;
       const modeName = this._thinkingBudget <= 4096 ? "think" : this._thinkingBudget <= 10240 ? "hard" : "ultra";
-      logger3.info(
+      logger4.info(
         { thinkingMode: modeName, thinkingBudget: this._thinkingBudget },
         "Extended thinking ENABLED"
       );
     } else {
-      logger3.info({ thinkingMode: "off" }, "Extended thinking DISABLED");
+      logger4.info({ thinkingMode: "off" }, "Extended thinking DISABLED");
     }
     if (this._sessionMode === "chat") {
       const chatTools = getAllowedToolsForMode("chat");
       options.allowedTools = chatTools;
-      logger3.info({ mode: "chat", tools: chatTools }, "Chat mode - read-only tools auto-approved");
+      logger4.info({ mode: "chat", tools: chatTools }, "Chat mode - read-only tools auto-approved");
     } else {
       const permissionCallback = this.permissionManager.createCallback();
-      logger3.debug("Using SDK permission flow with canUseTool callback");
+      logger4.debug("Using SDK permission flow with canUseTool callback");
       options.canUseTool = async (toolName, toolInput, canUseToolOptions) => {
-        logger3.debug({ toolName }, "canUseTool callback invoked");
+        logger4.debug({ toolName }, "canUseTool callback invoked");
         try {
           const result = await permissionCallback(toolName, toolInput, {
             signal: canUseToolOptions.signal,
@@ -1146,7 +1491,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
           });
           return result;
         } catch (error) {
-          logger3.error({ toolName, error }, "canUseTool callback error");
+          logger4.error({ toolName, error }, "canUseTool callback error");
           return {
             behavior: "deny",
             message: "Permission request failed"
@@ -1177,7 +1522,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
                 const preToolInput = input;
                 const toolName = preToolInput.tool_name;
                 const toolInput = preToolInput.tool_input;
-                logger3.info(
+                logger4.info(
                   {
                     toolName,
                     inputKeys: Object.keys(toolInput)
@@ -1185,7 +1530,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
                   "Hook: PreToolUse \u2014 tool requested"
                 );
                 if (SAFE_TOOLS.has(toolName)) {
-                  logger3.debug({ toolName }, "Hook: PreToolUse \u2014 auto-approved (safe tool)");
+                  logger4.debug({ toolName }, "Hook: PreToolUse \u2014 auto-approved (safe tool)");
                   return Promise.resolve({
                     hookSpecificOutput: {
                       hookEventName: "PreToolUse",
@@ -1194,7 +1539,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
                     }
                   });
                 }
-                logger3.debug({ toolName }, "Hook: PreToolUse \u2014 delegating to SDK permission flow");
+                logger4.debug({ toolName }, "Hook: PreToolUse \u2014 delegating to SDK permission flow");
                 return Promise.resolve({});
               }
             ]
@@ -1209,7 +1554,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
                 const postInput = input;
                 const response = postInput.tool_response;
                 const responseStr = typeof response === "string" ? response : JSON.stringify(response);
-                logger3.info(
+                logger4.info(
                   {
                     toolName: postInput.tool_name,
                     toolUseId,
@@ -1230,7 +1575,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
             hooks: [
               (input, toolUseId) => {
                 const failureInput = input;
-                logger3.warn(
+                logger4.warn(
                   {
                     toolName: failureInput.tool_name,
                     toolUseId,
@@ -1252,7 +1597,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
             hooks: [
               (input) => {
                 const notifInput = input;
-                logger3.info(
+                logger4.info(
                   {
                     message: notifInput.message,
                     title: notifInput.title
@@ -1271,7 +1616,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
             hooks: [
               (input) => {
                 const compactInput = input;
-                logger3.info(
+                logger4.info(
                   {
                     trigger: compactInput.trigger,
                     customInstructions: compactInput.custom_instructions ? `${compactInput.custom_instructions.slice(0, 100)}...` : void 0
@@ -1292,7 +1637,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
                 const startInput = input;
                 const agentId = startInput.agent_id;
                 subagentStartTimes.set(agentId, Date.now());
-                logger3.info(
+                logger4.info(
                   {
                     agentId,
                     agentType: startInput.agent_type
@@ -1311,7 +1656,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
             hooks: [
               (input) => {
                 const stopInput = input;
-                logger3.info(
+                logger4.info(
                   {
                     stopHookActive: stopInput.stop_hook_active
                   },
@@ -1329,7 +1674,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
             hooks: [
               (input) => {
                 const sessionInput = input;
-                logger3.info(
+                logger4.info(
                   {
                     source: sessionInput.source,
                     model: this.model ?? "sonnet",
@@ -1354,7 +1699,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
             hooks: [
               (input) => {
                 const sessionInput = input;
-                logger3.info(
+                logger4.info(
                   {
                     reason: sessionInput.reason
                   },
@@ -1364,51 +1709,77 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
               }
             ]
           }
+        ],
+        // UserPromptSubmit hook - inject plan mode system prompt per-turn
+        UserPromptSubmit: [
+          {
+            timeout: 30,
+            hooks: [
+              (_input) => {
+                if (!this._planMode || !this._planFilePath) {
+                  return Promise.resolve({});
+                }
+                const planExists = fs4.existsSync(this._planFilePath);
+                const planModePrompt = `Plan mode is active. The user indicated that they do not want you to execute yet -- you MUST NOT make any edits (with the exception of the plan file mentioned below), run any non-readonly tools (including changing configs or making commits), or otherwise make any changes to the system. This supercedes any other instructions you have received.
+
+## Plan File Info:
+${planExists ? `Your plan is at ${this._planFilePath}. Edit it incrementally.` : `No plan file exists yet. You should create your plan at ${this._planFilePath} using the Write tool.`}
+You should build your plan incrementally by writing to or editing this file. NOTE that this is the only file you are allowed to edit - other than this you are only allowed to take READ-ONLY actions.`;
+                logger4.info(
+                  { planFilePath: this._planFilePath, planExists },
+                  "Hook: UserPromptSubmit \u2014 injecting plan mode system prompt"
+                );
+                return Promise.resolve({
+                  hookSpecificOutput: {
+                    hookEventName: "UserPromptSubmit",
+                    additionalContext: planModePrompt
+                  }
+                });
+              }
+            ]
+          }
         ]
       };
     }
     if (this.model) {
       options.model = this.model;
-      logger3.info({ model: this.model }, "Using model");
+      logger4.info({ model: this.model }, "Using model");
     }
     if (this._fallbackModel) {
       options.fallbackModel = this._fallbackModel;
-      logger3.info({ fallbackModel: this._fallbackModel }, "Fallback model configured");
+      logger4.info({ fallbackModel: this._fallbackModel }, "Fallback model configured");
     }
-    const permissionMode = this._acceptMode ? "acceptEdits" : this._planMode ? "plan" : "default";
+    const permissionMode = this._acceptMode ? "acceptEdits" : "default";
     options.permissionMode = permissionMode;
-    logger3.info({ permissionMode }, "Permission mode set");
-    if (this._planMode) {
-      logger3.info("Plan mode ENABLED - SDK will restrict to read-only tools");
-    }
+    logger4.info({ permissionMode }, "Permission mode set");
     options.includePartialMessages = true;
     if (this._resumeSessionId) {
       options.resume = this._resumeSessionId;
       if (this._forkSession) {
         options.forkSession = true;
       }
-      logger3.info(
+      logger4.info(
         { resumeFrom: this._resumeSessionId, fork: this._forkSession },
         "Session resume/fork configured"
       );
     }
     if (Object.keys(this._mcpServers).length > 0) {
       options.mcpServers = this._mcpServers;
-      logger3.info({ servers: Object.keys(this._mcpServers) }, "MCP servers configured");
+      logger4.info({ servers: Object.keys(this._mcpServers) }, "MCP servers configured");
     }
     if (this._outputFormat) {
       options.outputFormat = this._outputFormat;
-      logger3.info({ type: this._outputFormat.type }, "Structured output format configured");
+      logger4.info({ type: this._outputFormat.type }, "Structured output format configured");
     }
     if (this._agents && Object.keys(this._agents).length > 0) {
       options.agents = this._agents;
-      logger3.info({ agents: Object.keys(this._agents) }, "Custom subagents configured");
+      logger4.info({ agents: Object.keys(this._agents) }, "Custom subagents configured");
     }
     return options;
   }
   async startSession() {
     if (this.sessionActive) {
-      logger3.warn("Session already active");
+      logger4.warn("Session already active");
       return;
     }
     const currentPath = process.env.PATH ?? "";
@@ -1429,7 +1800,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
     ].filter((p) => !currentPath.includes(p));
     if (additionalPaths.length > 0) {
       process.env.PATH = [...additionalPaths, currentPath].join(":");
-      logger3.debug({ addedPaths: additionalPaths }, "Fixed PATH for Electron app");
+      logger4.debug({ addedPaths: additionalPaths }, "Fixed PATH for Electron app");
     }
     const credentials = await ClaudeCredentials.getCredentials();
     if (!credentials.hasCredentials) {
@@ -1440,17 +1811,17 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
     if (credentials.type === "oauth") {
       delete process.env.ANTHROPIC_API_KEY;
       delete process.env.ANTHROPIC_AUTH_TOKEN;
-      logger3.info("Using Claude Code OAuth (CLI reads from ~/.claude/.credentials.json)");
-      logger3.info("Note: Using your Claude subscription quota, not API credits");
+      logger4.info("Using Claude Code OAuth (CLI reads from ~/.claude/.credentials.json)");
+      logger4.info("Note: Using your Claude subscription quota, not API credits");
     } else {
       const apiKey = process.env.ANTHROPIC_API_KEY;
       if (!apiKey) {
         throw new Error("API key was detected but is no longer available");
       }
-      logger3.info("Using API key from .env (will consume API credits)");
+      logger4.info("Using API key from .env (will consume API credits)");
     }
     process.env.CLAUDE_CODE_STREAM_CLOSE_TIMEOUT = "86400000";
-    logger3.debug(
+    logger4.debug(
       { thinkingMode: this._thinkingMode, thinkingBudget: this._thinkingBudget },
       "Starting session"
     );
@@ -1460,7 +1831,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
       prompt: this.messageQueue[Symbol.asyncIterator](),
       options: this._createOptions()
     });
-    logger3.info("Session started successfully");
+    logger4.info("Session started successfully");
   }
   /**
    * Check if the session is ready to receive messages
@@ -1473,7 +1844,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
       throw new Error("Session not started. Call startSession() first.");
     }
     const thinkingModeName = this._thinkingMode && this._thinkingBudget > 0 ? this._thinkingBudget <= 4096 ? "think" : this._thinkingBudget <= 10240 ? "hard" : "ultra" : "off";
-    logger3.info(
+    logger4.info(
       {
         model: this.model ?? "sonnet",
         thinkingMode: thinkingModeName,
@@ -1547,16 +1918,16 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
         yield message;
       }
     }
-    logger3.debug("Query session completed");
+    logger4.debug("Query session completed");
     this.sessionActive = false;
     this.currentQuery = null;
   }
   async stopSession() {
     if (!this.sessionActive) {
-      logger3.debug("Session not active");
+      logger4.debug("Session not active");
       return;
     }
-    logger3.debug("Stopping session");
+    logger4.debug("Stopping session");
     if (this.messageQueue) {
       this.messageQueue.stop();
       this.messageQueue = null;
@@ -1565,18 +1936,18 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
       try {
         await this.currentQuery.interrupt();
       } catch (error) {
-        logger3.error({ error }, "Error interrupting query");
+        logger4.error({ error }, "Error interrupting query");
       }
       this.currentQuery = null;
     }
     this.sessionActive = false;
-    logger3.info("Session stopped");
+    logger4.info("Session stopped");
   }
   async interrupt() {
     if (!this.currentQuery) {
       throw new Error("No active query to interrupt.");
     }
-    logger3.info("Interrupting current query");
+    logger4.info("Interrupting current query");
     await this.currentQuery.interrupt();
   }
   async setPermissionMode(mode) {
@@ -1597,7 +1968,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
       const budget = enabled && this._thinkingBudget > 0 ? this._thinkingBudget : null;
       await this.currentQuery.setMaxThinkingTokens(budget);
       const modeName = budget === null ? "off" : budget <= 4096 ? "think" : budget <= 10240 ? "hard" : "ultra";
-      logger3.info({ thinkingMode: modeName, budget }, "Thinking mode updated mid-session");
+      logger4.info({ thinkingMode: modeName, budget }, "Thinking mode updated mid-session");
     }
   }
   getThinkingMode() {
@@ -1607,18 +1978,29 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
     this._planMode = enabled;
     if (enabled) {
       this._acceptMode = false;
+      if (!this._planFilePath) {
+        const planName = generatePlanName();
+        this._planFilePath = getPlanFilePath(planName);
+        ensurePlanDirectory();
+        logger4.info({ planName, planFilePath: this._planFilePath }, "Plan file path generated");
+      }
+    } else {
+      this._planFilePath = null;
     }
-    logger3.info({ enabled }, "Plan mode changed - will apply to next session");
+    logger4.info({ enabled, planFilePath: this._planFilePath }, "Plan mode changed - will take effect on next tool use");
   }
   getPlanMode() {
     return this._planMode;
+  }
+  getPlanFilePath() {
+    return this._planFilePath;
   }
   setAcceptMode(enabled) {
     this._acceptMode = enabled;
     if (enabled) {
       this._planMode = false;
     }
-    logger3.info({ enabled }, "Accept mode changed - will take effect on next tool use");
+    logger4.info({ enabled }, "Accept mode changed - will take effect on next tool use");
   }
   getAcceptMode() {
     return this._acceptMode;
@@ -1633,7 +2015,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
     this.model = model;
     if (this.currentQuery) {
       await this.currentQuery.setModel(model);
-      logger3.info({ model }, "Model updated mid-session via Query.setModel()");
+      logger4.info({ model }, "Model updated mid-session via Query.setModel()");
     }
   }
   getModel() {
@@ -1721,7 +2103,7 @@ var Emitter = class {
 };
 
 // src/session-manager.ts
-var logger4 = createLogger("SessionManager");
+var logger5 = createLogger("SessionManager");
 function isToolResultBlock2(block) {
   if (typeof block !== "object" || block === null) {
     return false;
@@ -1797,6 +2179,7 @@ var SessionManager = class extends Disposable {
           const prefs = this.modePreferences.get(sessionId) ?? {};
           prefs.planEnabled = false;
           this.modePreferences.set(sessionId, prefs);
+          this._onPlanModeChanged.fire({ sessionId, enabled: false, planFilePath: null });
         }
         const sessionMap = this.sessionToolUseMaps.get(sessionId);
         if (sessionMap) {
@@ -1837,7 +2220,7 @@ var SessionManager = class extends Disposable {
       resumeSessionId: config?.resumeSessionId,
       forkSession: config?.forkSession
     };
-    logger4.info({ sessionId, sessionMode: finalConfig.sessionMode }, "Creating session");
+    logger5.info({ sessionId, sessionMode: finalConfig.sessionMode }, "Creating session");
     const agent = new OrbitAgent(finalConfig);
     this.sessionResumeState.set(sessionId, {
       isResumed: !!config?.resumeSessionId,
@@ -1846,10 +2229,10 @@ var SessionManager = class extends Disposable {
     this.activeSessions.set(sessionId, agent);
     try {
       await agent.startSession();
-      logger4.info({ sessionId }, "Session started successfully");
+      logger5.info({ sessionId }, "Session started successfully");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      logger4.error({ sessionId, error: errorMessage }, "Failed to start session");
+      logger5.error({ sessionId, error: errorMessage }, "Failed to start session");
       throw error;
     }
     this._startBackgroundConsumer(sessionId, agent);
@@ -1872,7 +2255,7 @@ var SessionManager = class extends Disposable {
           }
           const sdkMessage = rawMessage;
           if (sdkMessage.type === "system") {
-            logger4.debug({ sessionId, subtype: sdkMessage.subtype }, "SDK system message");
+            logger5.debug({ sessionId, subtype: sdkMessage.subtype }, "SDK system message");
             if (sdkMessage.subtype === "init" && sdkMessage.session_id !== void 0) {
               if (this.sessionInitFired.has(sessionId)) {
                 continue;
@@ -1936,7 +2319,7 @@ var SessionManager = class extends Disposable {
               const toolName = getString(block.name, "unknown");
               const toolId = getString(block.id) || generateToolId();
               const toolInput = block.input ?? {};
-              logger4.info({ sessionId, toolName, toolId }, "Tool use block received");
+              logger5.info({ sessionId, toolName, toolId }, "Tool use block received");
               const toolMessage = {
                 type: "tool_use",
                 content: `Using tool: ${toolName}`,
@@ -1964,7 +2347,7 @@ var SessionManager = class extends Disposable {
                 if (toolInfo !== void 0) {
                   const toolOutput = typeof block.content === "string" ? block.content : JSON.stringify(block.content);
                   const isError = block.is_error === true;
-                  logger4.info(
+                  logger5.info(
                     {
                       sessionId,
                       toolName: toolInfo.name,
@@ -1995,7 +2378,7 @@ var SessionManager = class extends Disposable {
           } else {
             const resultMsg = sdkMessage;
             if (resultMsg.usage !== void 0) {
-              logger4.info(
+              logger5.info(
                 {
                   sessionId,
                   inputTokens: resultMsg.usage.input_tokens,
@@ -2028,7 +2411,7 @@ var SessionManager = class extends Disposable {
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         const errorStack = error instanceof Error ? error.stack : "no stack";
-        logger4.error({ sessionId, error: errorMessage }, "Background consumer error");
+        logger5.error({ sessionId, error: errorMessage }, "Background consumer error");
         this._onError.fire({ message: `[SDK Error] ${errorMessage}`, stack: errorStack });
       }
     })();
@@ -2088,7 +2471,7 @@ var SessionManager = class extends Disposable {
     }
     const correlationId = randomUUID();
     setCorrelationId(correlationId);
-    logger4.info(
+    logger5.info(
       {
         sessionId,
         correlationId: correlationId.slice(0, 8),
@@ -2167,14 +2550,15 @@ var SessionManager = class extends Disposable {
       const prefs2 = this.modePreferences.get(sessionId) ?? {};
       prefs2.planEnabled = enabled;
       this.modePreferences.set(sessionId, prefs2);
-      this._onPlanModeChanged.fire({ sessionId, enabled });
+      this._onPlanModeChanged.fire({ sessionId, enabled, planFilePath: null });
       return;
     }
     agent.setPlanMode(enabled);
+    const planFilePath = agent.getPlanFilePath();
     const prefs = this.modePreferences.get(sessionId) ?? {};
     prefs.planEnabled = enabled;
     this.modePreferences.set(sessionId, prefs);
-    this._onPlanModeChanged.fire({ sessionId, enabled });
+    this._onPlanModeChanged.fire({ sessionId, enabled, planFilePath });
   }
   /**
    * Get plan mode for a session
@@ -2262,7 +2646,7 @@ var SessionManager = class extends Disposable {
     this.sessionConsumers.clear();
     for (const [sessionId, agent] of this.activeSessions.entries()) {
       void agent.stopSession().catch((err) => {
-        logger4.error({ sessionId, error: err }, "Error stopping session");
+        logger5.error({ sessionId, error: err }, "Error stopping session");
       });
     }
     this.activeSessions.clear();
@@ -2273,7 +2657,7 @@ var SessionManager = class extends Disposable {
 
 // src/commit-message.ts
 import Anthropic from "@anthropic-ai/sdk";
-var logger5 = createLogger("CommitMessage");
+var logger6 = createLogger("CommitMessage");
 var SYSTEM_PROMPT = `You are a git commit message generator. Given a diff summary, generate a concise commit message following conventional commits format (type: description). Be specific about what changed. Output ONLY the commit message, no explanation.
 
 Rules:
@@ -2282,7 +2666,7 @@ Rules:
 - If changes span multiple areas, use the most significant type
 - Be specific: "fix: resolve null pointer in user auth flow" not "fix: bug fix"`;
 async function generateCommitMessage(diff, apiKey) {
-  logger5.info("Generating commit message...");
+  logger6.info("Generating commit message...");
   let resolvedKey = apiKey;
   if (!resolvedKey) {
     resolvedKey = ClaudeCredentials.getApiKeyFromEnv() ?? void 0;
@@ -2303,13 +2687,13 @@ ${diff}`
     }]
   });
   const text = response.content[0]?.type === "text" ? response.content[0].text.trim() : "";
-  logger5.info({ messageLength: text.length }, "Commit message generated");
+  logger6.info({ messageLength: text.length }, "Commit message generated");
   return text;
 }
 
 // src/refine-transcript.ts
 import Anthropic2 from "@anthropic-ai/sdk";
-var logger6 = createLogger("RefineTranscript");
+var logger7 = createLogger("RefineTranscript");
 var SYSTEM_PROMPT2 = `You are a speech-to-text transcript refiner for a coding IDE. Given a raw voice transcript, clean it up by:
 - Fixing obvious transcription errors (homophones, technical terms)
 - Correcting casing for proper nouns, programming terms, and file names
@@ -2321,7 +2705,7 @@ If context from recent chat messages is provided, use it to understand technical
 
 Output ONLY the refined transcript, nothing else. If the transcript is already clean, return it unchanged.`;
 async function refineTranscript(transcript, context, apiKey) {
-  logger6.info("Refining transcript...");
+  logger7.info("Refining transcript...");
   let resolvedKey = apiKey;
   if (!resolvedKey) {
     resolvedKey = ClaudeCredentials.getApiKeyFromEnv() ?? void 0;
@@ -2346,13 +2730,13 @@ ${context}`;
     messages: [{ role: "user", content: userContent }]
   });
   const text = response.content[0]?.type === "text" ? response.content[0].text.trim() : "";
-  logger6.info({ originalLength: transcript.length, refinedLength: text.length }, "Transcript refined");
+  logger7.info({ originalLength: transcript.length, refinedLength: text.length }, "Transcript refined");
   return text || transcript;
 }
 
 // src/session-title.ts
 import Anthropic3 from "@anthropic-ai/sdk";
-var logger7 = createLogger("SessionTitle");
+var logger8 = createLogger("SessionTitle");
 var SYSTEM_PROMPT3 = `You are a session title generator. Given a user message and an AI assistant response, generate a concise title that captures the essence of the conversation topic.
 
 Rules:
@@ -2363,7 +2747,7 @@ Rules:
 - Do not start with "Help with" or "Question about"
 - Output ONLY the title, nothing else`;
 async function generateSessionTitle(userMessage, assistantMessage, apiKey) {
-  logger7.info("Generating session title...");
+  logger8.info("Generating session title...");
   let resolvedKey = apiKey;
   if (!resolvedKey) {
     resolvedKey = ClaudeCredentials.getApiKeyFromEnv() ?? void 0;
@@ -2388,12 +2772,12 @@ ${truncatedAssistant}`
     }]
   });
   const text = response.content[0]?.type === "text" ? response.content[0].text.trim() : "";
-  logger7.info({ titleLength: text.length }, "Session title generated");
+  logger8.info({ titleLength: text.length }, "Session title generated");
   return text;
 }
 
 // src/index.ts
-var logger8 = createLogger("AgentBridge");
+var logger9 = createLogger("AgentBridge");
 function sendMessage(message) {
   const json = JSON.stringify(message);
   process.stdout.write(json + "\n");
@@ -2406,7 +2790,7 @@ function sendEvent(event) {
 }
 function main() {
   configureFileLogging();
-  logger8.info("Agent Bridge starting...");
+  logger9.info("Agent Bridge starting...");
   const sessionManager = new SessionManager();
   sessionManager.onAgentMessage((data) => {
     sendEvent({
@@ -2431,7 +2815,8 @@ function main() {
     sendEvent({
       type: "plan_mode_changed",
       sessionId: data.sessionId,
-      enabled: data.enabled
+      enabled: data.enabled,
+      planFilePath: data.planFilePath
     });
   });
   sessionManager.onAcceptModeChanged((data) => {
@@ -2460,7 +2845,7 @@ function main() {
     try {
       request = JSON.parse(line);
     } catch (error) {
-      logger8.error({ error, line }, "Failed to parse request");
+      logger9.error({ error, line }, "Failed to parse request");
       sendResponse({
         type: "error",
         requestType: "unknown",
@@ -2468,10 +2853,10 @@ function main() {
       });
       return;
     }
-    logger8.info({ requestType: request.type }, "Received request");
+    logger9.info({ requestType: request.type }, "Received request");
     handleRequest(request, sessionManager).catch((error) => {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      logger8.error({ requestType: request.type, error: errorMessage }, "Error handling request");
+      logger9.error({ requestType: request.type, error: errorMessage }, "Error handling request");
       sendResponse({
         type: "error",
         requestType: request.type,
@@ -2480,25 +2865,25 @@ function main() {
     });
   });
   rl.on("close", () => {
-    logger8.info("stdin closed, shutting down...");
+    logger9.info("stdin closed, shutting down...");
     sessionManager.dispose();
     shutdownFileLogging();
     process.exit(0);
   });
   process.on("SIGTERM", () => {
-    logger8.info("SIGTERM received, shutting down...");
+    logger9.info("SIGTERM received, shutting down...");
     sessionManager.dispose();
     shutdownFileLogging();
     process.exit(0);
   });
   process.on("SIGINT", () => {
-    logger8.info("SIGINT received, shutting down...");
+    logger9.info("SIGINT received, shutting down...");
     sessionManager.dispose();
     shutdownFileLogging();
     process.exit(0);
   });
   sendEvent({ type: "ready" });
-  logger8.info("Agent Bridge ready");
+  logger9.info("Agent Bridge ready");
 }
 async function handleRequest(request, sessionManager) {
   switch (request.type) {
@@ -2593,7 +2978,7 @@ async function handleRequest(request, sessionManager) {
       break;
     }
     case "shutdown": {
-      logger8.info("Shutdown requested");
+      logger9.info("Shutdown requested");
       sendResponse({ type: "success", requestType: request.type });
       sessionManager.dispose();
       process.exit(0);
@@ -2612,6 +2997,7 @@ async function handleRequest(request, sessionManager) {
 try {
   main();
 } catch (error) {
-  logger8.error({ error }, "Fatal error");
+  logger9.error({ error }, "Fatal error");
   process.exit(1);
 }
+//# sourceMappingURL=index.js.map

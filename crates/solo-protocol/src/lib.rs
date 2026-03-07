@@ -647,6 +647,32 @@ pub enum BackendEvent {
         is_error: bool,
         is_complete: bool,
     },
+
+    // =========================================================================
+    // Update events
+    // =========================================================================
+    /// An app update is available
+    #[serde(rename = "update:available")]
+    UpdateAvailable {
+        version: String,
+        body: Option<String>,
+        date: Option<String>,
+    },
+
+    /// Update download progress
+    #[serde(rename = "update:progress")]
+    UpdateProgress {
+        chunk_length: usize,
+        content_length: Option<u64>,
+    },
+
+    /// Update ready to install
+    #[serde(rename = "update:ready")]
+    UpdateReady {},
+
+    /// Update error
+    #[serde(rename = "update:error")]
+    UpdateError { error: String },
 }
 
 // =============================================================================
@@ -811,6 +837,32 @@ pub struct ClaudeSetupStatus {
     pub error: Option<String>,
     pub cli_mode_available: bool,
     pub requires_cli_mode: bool,
+}
+
+// =============================================================================
+// Skills Protocol
+// =============================================================================
+
+/// Origin scope of a discovered skill
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "snake_case")]
+pub enum SkillSource {
+    User,
+    Project,
+}
+
+/// Skill information returned to the frontend
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct SkillInfo {
+    pub name: String,
+    pub description: String,
+    pub content: String,
+    pub source: SkillSource,
+    pub file_path: String,
+    pub enabled: bool,
+    pub priority: i32,
 }
 
 #[cfg(test)]

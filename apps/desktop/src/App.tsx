@@ -23,6 +23,7 @@ import { useTerminalStream } from "./hooks/useTerminalStream";
 import { useGitStream } from "./hooks/useGitStream";
 import { useWorktreeStream } from "./hooks/useWorktreeStream";
 import { useElevenLabsStream } from "./hooks/useElevenLabsStream";
+import { useUpdateStream } from "./hooks/useUpdateStream";
 import { useTerminalStore, clearActiveTerminal, findInActiveTerminal } from "./stores/terminalStore";
 import { useFileExplorerStore } from "./stores/fileExplorerStore";
 import { useGitHubAccountsStore } from "./stores/githubAccountsStore";
@@ -82,6 +83,7 @@ function AppContent() {
   const user = useUser();
   const rootPath = useFileExplorerStore((s) => s.rootPath);
   const hasRepos = useRepoStore((s) => s.repos.size > 0);
+  const sidebarMode = useUIStore((s) => s.sidebarMode);
 
   // Get openPanel action directly from store to avoid selector subscription issues
   const openPanel = useMemo(() => usePanelTabsStore.getState().openPanel, []);
@@ -142,6 +144,7 @@ function AppContent() {
   useGitStream();
   useWorktreeStream();
   useElevenLabsStream();
+  useUpdateStream();
 
   // Load GitHub token from keychain so the header shows auth status
   useEffect(() => {
@@ -509,7 +512,7 @@ function AppContent() {
 
               {/* Right column: editor area or welcome */}
               <div className="flex-1 flex flex-col overflow-hidden min-h-0 pt-[38px] bg-background">
-                {rootPath !== null ? (
+                {rootPath !== null || sidebarMode === 'studio' ? (
                   <>
                     <div className="flex-1 overflow-hidden min-h-0">
                       <MosaicLayout />

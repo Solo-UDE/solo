@@ -79,6 +79,7 @@ function main(): void {
       type: 'plan_mode_changed',
       sessionId: data.sessionId,
       enabled: data.enabled,
+      planFilePath: data.planFilePath,
     });
   });
 
