@@ -10,7 +10,8 @@
     "build": "bun run --filter @solo/desktop build:vite && cargo build --release",
     "tauri": "bun run --filter @solo/desktop tauri",
     "check": "cargo check && bun run --filter '*' typecheck",
-    "test": "cargo test && bun run --filter '*' test",
+    "test": "cargo test && node scripts/run-workspace-tests.mjs",
+    "premerge:master": "bash scripts/premerge-master.sh",
     "clean": "cargo clean && rm -rf node_modules apps/*/node_modules packages/*/node_modules",
     "gen:bindings": "cargo test -p solo-protocol -p solo-auth && mkdir -p apps/desktop/src/bindings && cp -r crates/solo-protocol/apps/desktop/src/bindings/* apps/desktop/src/bindings/ && cp -r crates/solo-auth/apps/desktop/src/bindings/* apps/desktop/src/bindings/ && rm -rf crates/solo-protocol/apps crates/solo-auth/apps && node scripts/gen-barrel.mjs",
     "version:bump": "node scripts/bump-version.mjs"
