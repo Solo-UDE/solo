@@ -24,7 +24,11 @@ const truncatePath = (p: string, maxLen = 50) => {
   return `...${sep}${parts.slice(-3).join(sep)}`;
 };
 
-export function WelcomeScreen() {
+interface WelcomeScreenProps {
+  onProjectOpen?: () => void;
+}
+
+export function WelcomeScreen({ onProjectOpen }: WelcomeScreenProps = {}) {
   const recentDirectories = useWorkspaceStore((s) => s.recentDirectories);
   const removeRecent = useWorkspaceStore((s) => s.removeRecent);
   const [cloneOpen, setCloneOpen] = useState(false);
@@ -52,15 +56,17 @@ export function WelcomeScreen() {
   const handleOpenProject = useCallback(async () => {
     const path = await openFolderDialog();
     if (path) {
+      onProjectOpen?.();
       await openOrSelectRepo(path);
     }
-  }, [openOrSelectRepo]);
+  }, [openOrSelectRepo, onProjectOpen]);
 
   const handleSwitchTo = useCallback(
     async (path: string) => {
+      onProjectOpen?.();
       await openOrSelectRepo(path);
     },
-    [openOrSelectRepo],
+    [openOrSelectRepo, onProjectOpen],
   );
 
   const handleRemoveRecent = useCallback(

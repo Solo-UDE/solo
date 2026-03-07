@@ -61,6 +61,14 @@ function AppContent() {
   // Tab switcher (Cmd+Shift+T)
   const [tabSwitcherOpen, setTabSwitcherOpen] = useState(false);
 
+  // Splash screen — guarantee WelcomeScreen is visible for at least 5s
+  const [splashComplete, setSplashComplete] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setSplashComplete(true), 5000);
+    return () => clearTimeout(timer);
+  }, []);
+
   // Terminal panel drag state
   const [isDraggingTerminal, setIsDraggingTerminal] = useState(false);
   const dragStartY = useRef<number>(0);
@@ -407,7 +415,7 @@ function AppContent() {
         className="absolute top-0 inset-x-0 h-[38px] flex items-center z-50 bg-background titlebar-glass border-b border-border/20"
       >
         <div className="flex-1 flex items-center gap-1.5 ml-1.5" data-tauri-drag-region>
-          {(rootPath !== null || hasRepos) && (
+          {splashComplete && (rootPath !== null || hasRepos) && (
             <button
               onClick={toggleSidebar}
               className={cn(
@@ -441,7 +449,7 @@ function AppContent() {
               {user.email}
             </span>
           )}
-          {(rootPath !== null || hasRepos) && (
+          {splashComplete && (rootPath !== null || hasRepos) && (
             <TitlebarButton
               onClick={handleToggleTerminal}
               icon={<Terminal className={cn('w-4 h-4', terminalPanelOpen ? 'text-primary' : 'text-muted-foreground')} />}
@@ -494,23 +502,27 @@ function AppContent() {
             className="flex h-full"
           >
             <DndProvider backend={HTML5Backend}>
-              {/* Repo icon rail - always visible when repos exist */}
-              {hasRepos && <RepoRail />}
+              {/* Repo icon rail - always visible when repos exist (hidden during splash) */}
+              {splashComplete && hasRepos && <RepoRail />}
 
-              {/* Content sidebar - collapsible */}
-              <PrimarySidebar ref={sidebarRef} width={leftSidebarWidth} onFileOpen={handleFileOpen} />
+              {/* Content sidebar - collapsible (hidden during splash) */}
+              {splashComplete && (
+                <>
+                  <PrimarySidebar ref={sidebarRef} width={leftSidebarWidth} onFileOpen={handleFileOpen} />
 
-              <div
-                className="split-divider"
-                onPointerDown={handlePointerDown}
-                onPointerMove={handlePointerMove}
-                onPointerUp={handlePointerUp}
-                onDoubleClick={handleDoubleClick}
-              />
+                  <div
+                    className="split-divider"
+                    onPointerDown={handlePointerDown}
+                    onPointerMove={handlePointerMove}
+                    onPointerUp={handlePointerUp}
+                    onDoubleClick={handleDoubleClick}
+                  />
+                </>
+              )}
 
               {/* Right column: editor area or welcome */}
               <div className="flex-1 flex flex-col overflow-hidden min-h-0 pt-[38px] bg-background">
-                {rootPath !== null || sidebarMode === 'studio' ? (
+                {splashComplete && (rootPath !== null || sidebarMode === 'studio') ? (
                   <>
                     <div className="flex-1 overflow-hidden min-h-0">
                       <MosaicLayout />
@@ -543,7 +555,7 @@ function AppContent() {
                     </div>
                   </>
                 ) : (
-                  <WelcomeScreen />
+                  <WelcomeScreen onProjectOpen={() => setSplashComplete(true)} />
                 )}
               </div>
             </DndProvider>
