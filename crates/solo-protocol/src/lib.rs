@@ -647,6 +647,32 @@ pub enum BackendEvent {
         is_error: bool,
         is_complete: bool,
     },
+
+    // =========================================================================
+    // Update events
+    // =========================================================================
+    /// An app update is available
+    #[serde(rename = "update:available")]
+    UpdateAvailable {
+        version: String,
+        body: Option<String>,
+        date: Option<String>,
+    },
+
+    /// Update download progress
+    #[serde(rename = "update:progress")]
+    UpdateProgress {
+        chunk_length: usize,
+        content_length: Option<u64>,
+    },
+
+    /// Update ready to install
+    #[serde(rename = "update:ready")]
+    UpdateReady {},
+
+    /// Update error
+    #[serde(rename = "update:error")]
+    UpdateError { error: String },
 }
 
 // =============================================================================
