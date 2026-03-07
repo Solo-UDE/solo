@@ -61,13 +61,8 @@ function AppContent() {
   // Tab switcher (Cmd+Shift+T)
   const [tabSwitcherOpen, setTabSwitcherOpen] = useState(false);
 
-  // Splash screen — guarantee WelcomeScreen is visible for at least 5s
+  // Splash gate — WelcomeScreen stays until user picks a project
   const [splashComplete, setSplashComplete] = useState(false);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setSplashComplete(true), 5000);
-    return () => clearTimeout(timer);
-  }, []);
 
   // Terminal panel drag state
   const [isDraggingTerminal, setIsDraggingTerminal] = useState(false);
