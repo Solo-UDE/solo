@@ -14,7 +14,6 @@ import { TabGroupComponent } from './TabGroup';
 import { computeTabGroups, usePanelTabsStore, type PanelTabsState } from '@/stores/panelTabsStore';
 import type { PanelInstance, TileId, PanelInstanceId, TabDragItem } from '@/lib/panels/types';
 import { DragItemTypes } from '@/lib/panels/types';
-import { TAB_BAR } from '@/lib/panels/constants';
 import { useGhostTabCount } from '@/hooks/useGhostTabs';
 
 interface TabBarProps {

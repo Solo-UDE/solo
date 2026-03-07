@@ -401,7 +401,7 @@ function ClaudeSetupDiagnostic() {
               <StatusIcon ok={status.credentialsFound ? !status.tokenExpired : null} />
               {status.tokenExpiresInSeconds != null
                 ? status.tokenExpiresInSeconds > 0
-                  ? formatExpiryTime(status.tokenExpiresInSeconds)
+                  ? formatExpiryTime(Number(status.tokenExpiresInSeconds))
                   : 'Expired'
                 : '---'}
             </span>

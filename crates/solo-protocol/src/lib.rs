@@ -822,7 +822,8 @@ pub struct ElevenLabsTtsStatusEvent {
 // =============================================================================
 
 /// Status of the Claude Code CLI setup
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
 #[serde(rename_all = "camelCase")]
 pub struct ClaudeSetupStatus {
     pub cli_installed: bool,

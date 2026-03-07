@@ -303,7 +303,7 @@ const RailIcon: FC<RailIconProps> = ({ repo, isActive, expanded, onClick, onRemo
           </AnimatePresence>
         </div>
       </ContextMenuTrigger>
-      <ContextMenuContent side="right" className="w-44">
+      <ContextMenuContent className="w-44">
         <ContextMenuItem
           onClick={onRemove}
           className="text-destructive focus:text-destructive"
