@@ -14,6 +14,8 @@ jobs:
     env:
       APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
       APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
+      SOLO_SUPABASE_URL: ${{ vars.SOLO_SUPABASE_URL }}
+      SOLO_SUPABASE_ANON_KEY: ${{ vars.SOLO_SUPABASE_ANON_KEY }}
 
     steps:
       - name: Checkout
@@ -42,6 +44,17 @@ jobs:
 
       - name: Typecheck frontend
         run: cd apps/desktop && bunx tsc --noEmit
+
+      - name: Validate desktop auth config
+        run: |
+          test -n "$SOLO_SUPABASE_URL" || {
+            echo "Missing GitHub repository variable: SOLO_SUPABASE_URL" >&2
+            exit 1
+          }
+          test -n "$SOLO_SUPABASE_ANON_KEY" || {
+            echo "Missing GitHub repository variable: SOLO_SUPABASE_ANON_KEY" >&2
+            exit 1
+          }
 
       - name: Import Apple certificate
         if: env.APPLE_CERTIFICATE != ''

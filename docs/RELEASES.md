@@ -64,6 +64,15 @@ User sees toast → clicks "Restart" → app updates
 | `TAURI_SIGNING_PRIVATE_KEY` | Contents of `~/.tauri/solo-ide.key` |
 | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Empty string |
 
+## GitHub Variables
+
+These public values are required for desktop authentication builds:
+
+| Variable | Value |
+|----------|-------|
+| `SOLO_SUPABASE_URL` | `https://<project-ref>.supabase.co` |
+| `SOLO_SUPABASE_ANON_KEY` | Supabase anon/public key for that project |
+
 ### Phase 2 (add later)
 
 | Secret | Value | How to Get |
