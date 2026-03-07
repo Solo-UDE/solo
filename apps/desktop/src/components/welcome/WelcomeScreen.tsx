@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { FolderOpen, GitBranch, Clock, FolderSimple, X } from '@phosphor-icons/react';
 import { Button, IconButton } from '@solo/ui';
 import SoloDecryptAnimation from '../agent/SoloDecryptAnimation';
+import { StarsBackground } from '@/components/ui/stars-background';
 import { CloneDialog } from './CloneDialog';
 import { openFolderDialog } from '@/lib/tauri/fs';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
@@ -85,9 +86,18 @@ export function WelcomeScreen() {
   return (
     <>
       <div className="relative bg-background flex-1 flex flex-col items-center justify-center h-full overflow-hidden select-none">
+        {/* Animated stars background (dark mode only) */}
+        <StarsBackground
+          className="absolute inset-0 z-0"
+          count={150}
+          speed={30}
+          starColor="rgba(255,255,255,0.6)"
+          pointerEvents={false}
+        />
+
         {/* Animated glow — breathes continuously while welcome screen is visible */}
         <div
-          className="absolute top-[30%] left-1/2 rounded-full pointer-events-none startup-glow"
+          className="absolute top-[30%] left-1/2 rounded-full pointer-events-none startup-glow z-[1]"
           style={{
             width: 300,
             height: 300,
@@ -100,13 +110,13 @@ export function WelcomeScreen() {
         <SoloDecryptAnimation />
 
         {/* Tagline */}
-        <p className="text-xs text-muted-foreground/50 tracking-wide mt-4">
+        <p className="relative z-10 text-xs text-muted-foreground/50 tracking-wide mt-4">
           Your AI coding agent
         </p>
 
         {/* Action buttons — fade in after decrypt assembles */}
         <div
-          className="flex items-center gap-3 mt-8"
+          className="relative z-10 flex items-center gap-3 mt-8"
           style={{
             opacity: showContent ? 1 : 0,
             transform: showContent ? 'translateY(0)' : 'translateY(8px)',
@@ -137,7 +147,7 @@ export function WelcomeScreen() {
         {/* Recent Projects — staggered fade-in */}
         {recentDirectories.length > 0 && (
           <div
-            className="mt-8 w-full max-w-sm"
+            className="relative z-10 mt-8 w-full max-w-sm"
             style={{
               opacity: showContent ? 1 : 0,
               transform: showContent ? 'translateY(0)' : 'translateY(8px)',

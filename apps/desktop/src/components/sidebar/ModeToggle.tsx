@@ -18,8 +18,8 @@ export const ModeToggle: FC = () => {
   const setSidebarMode = useUIStore((s) => s.setSidebarMode);
 
   return (
-    <div className="mx-2.5 my-2">
-      <div className="relative flex h-8 rounded-lg bg-muted/30 p-0.5">
+    <div className="mx-3 my-2.5">
+      <div className="relative flex h-8 rounded-lg bg-muted/30 p-0.5 border border-border/10">
         {MODES.map(({ key, label }) => (
           <button
             key={key}
@@ -27,14 +27,14 @@ export const ModeToggle: FC = () => {
             className={cn(
               'relative z-10 flex-1 text-xs font-medium rounded-md transition-colors duration-150',
               sidebarMode === key
-                ? 'text-primary'
+                ? 'text-primary font-semibold'
                 : 'text-muted-foreground hover:text-foreground',
             )}
           >
             {sidebarMode === key && (
               <motion.div
                 layoutId="mode-indicator"
-                className="absolute inset-0 rounded-md bg-primary/10"
+                className="absolute inset-0 rounded-md bg-primary/10 shadow-sm"
                 transition={{ type: 'spring', stiffness: 500, damping: 35 }}
               />
             )}

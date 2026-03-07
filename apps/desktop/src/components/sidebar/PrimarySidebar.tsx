@@ -5,12 +5,12 @@
  */
 
 import { useCallback, forwardRef } from 'react';
+import { motion } from 'motion/react';
 import { FolderPlus as FolderPlusIcon } from '@phosphor-icons/react';
 import { ModeToggle } from './ModeToggle';
 import { DevSidebar } from './DevSidebar';
 import { StudioSidebar } from './StudioSidebar';
 import { SidebarHeader } from './SidebarHeader';
-import { TRANSITIONS } from '@/lib/constants';
 import { useUIStore, useIsLeftSidebarCollapsed } from '@/stores/uiStore';
 import { useRepoStore, useRepoList } from '@/stores/repoStore';
 import { openFolderDialog } from '@/lib/tauri/fs';
@@ -40,14 +40,15 @@ export const PrimarySidebar = forwardRef<HTMLElement, PrimarySidebarProps>(({ wi
     }
   }, [addRepo]);
 
+  const isResizing = typeof document !== 'undefined' && document.body.classList.contains('is-resizing');
+
   return (
-    <aside
+    <motion.aside
       ref={ref}
       className="h-full flex flex-col relative bg-sidebar overflow-hidden pt-[38px]"
-      style={{
-        width,
-        transition: `width ${TRANSITIONS.sidebar}`,
-      }}
+      animate={{ width }}
+      transition={isResizing ? { duration: 0 } : { type: 'spring', stiffness: 400, damping: 30 }}
+      style={{ width }}
     >
       {/* Loading overlay during repo switch */}
       {isSwitching && (
@@ -68,8 +69,13 @@ export const PrimarySidebar = forwardRef<HTMLElement, PrimarySidebarProps>(({ wi
           {/* Content area */}
           {repos.length === 0 ? (
             /* Empty state - no repos */
-            <div className="flex-1 flex flex-col items-center justify-center gap-3 px-4 text-center">
-              <div className="w-10 h-10 rounded-xl bg-muted/40 flex items-center justify-center">
+            <motion.div
+              className="flex-1 flex flex-col items-center justify-center gap-3 px-4 text-center"
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.3 }}
+            >
+              <div className="w-12 h-12 rounded-2xl bg-muted/40 flex items-center justify-center">
                 <FolderPlusIcon className="w-5 h-5 text-muted-foreground/50" />
               </div>
               <div>
@@ -82,7 +88,7 @@ export const PrimarySidebar = forwardRef<HTMLElement, PrimarySidebarProps>(({ wi
               >
                 Add Repository
               </button>
-            </div>
+            </motion.div>
           ) : (
             <>
               <ModeToggle />
@@ -95,6 +101,6 @@ export const PrimarySidebar = forwardRef<HTMLElement, PrimarySidebarProps>(({ wi
           )}
         </>
       )}
-    </aside>
+    </motion.aside>
   );
 });

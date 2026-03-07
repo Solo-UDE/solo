@@ -190,6 +190,47 @@ shadow-[0_4px_12px_-4px_rgba(0,0,0,0.2)]
 </button>
 ```
 
+### StarsBackground (Canvas)
+
+```tsx
+// Dark-mode-only animated star field with parallax
+import { StarsBackground } from '@/components/ui/stars-background';
+
+<StarsBackground
+  className="absolute inset-0 z-0"
+  count={150}
+  speed={30}
+  starColor="rgba(255,255,255,0.6)"
+  pointerEvents={false}
+/>
+```
+
+Props: `count`, `factor` (parallax), `speed`, `starColor`, `pointerEvents`, `className`.
+Auto-hides in light mode via `MutationObserver` on `html.dark`. Respects `prefers-reduced-motion`.
+
+### LayoutId Sliding Indicator
+
+Used in ModeToggle and StudioSidebar for smooth active-state transitions:
+
+```tsx
+{isActive && (
+  <motion.div
+    layoutId="indicator-id"
+    className="absolute inset-0 rounded-xl bg-primary/10"
+    transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+  />
+)}
+<span className="relative">{label}</span>
+```
+
+### Sidebar Spacing Conventions
+
+- Header height: `h-10` (40px)
+- Section header height: `h-8` (32px)
+- Section header text: `text-[11px] text-muted-foreground/50 font-semibold`
+- Repo name: `text-[13px] font-semibold tracking-tight`
+- Mode toggle margins: `mx-3 my-2.5`
+
 ---
 
 ## Opacity Patterns
