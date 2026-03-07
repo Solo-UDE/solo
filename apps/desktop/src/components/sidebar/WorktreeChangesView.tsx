@@ -1,6 +1,5 @@
 /**
- * WorktreeChangesView — Full commit + staging UI for worktree detail sidebar.
- * Adapted from SourceControlPanel, excluding remote operations (push/pull/fetch).
+ * WorktreeChangesView — Full commit + staging + push UI for worktree detail sidebar.
  */
 
 import { useState, useCallback, useMemo } from 'react';
@@ -8,19 +7,23 @@ import type { FC } from 'react';
 import {
   ArrowCounterClockwise,
   ArrowsClockwise,
+  ArrowUp,
   CaretDown,
   CaretRight,
   Check,
   CircleNotch,
   Eye,
+  MagnifyingGlass,
   Minus,
   Plus,
   Rows,
   Sparkle,
 } from '@phosphor-icons/react';
 import { useGitStore } from '@/stores/gitStore';
+import { useUIStore } from '@/stores/uiStore';
 import { usePanelTabsStore } from '@/stores/panelTabsStore';
 import { BUILTIN_PANEL_TYPES } from '@/lib/panels';
+import { launchReviewSession } from '@/lib/reviewSession';
 import { motion } from 'motion/react';
 import { FileChangeItem } from '@/components/source-control/FileChangeItem';
 import { AnimatedList } from '@/components/ui/animated-list';
@@ -42,6 +45,8 @@ export const WorktreeChangesView: FC<WorktreeChangesViewProps> = ({ className })
     onConfirm: () => void;
   }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
 
+  const [isLaunchingReview, setIsLaunchingReview] = useState(false);
+
   // Store selectors
   const changedFiles = useGitStore((s) => s.changedFiles);
   const changesSummary = useGitStore((s) => s.changesSummary);
@@ -49,16 +54,21 @@ export const WorktreeChangesView: FC<WorktreeChangesViewProps> = ({ className })
   const isCommitting = useGitStore((s) => s.isCommitting);
   const isGeneratingMessage = useGitStore((s) => s.isGeneratingMessage);
   const currentBranch = useGitStore((s) => s.currentBranch);
+  const repoStatus = useGitStore((s) => s.repoStatus);
+  const isPushing = useGitStore((s) => s.isPushing);
+  const commitsAhead = useGitStore((s) => s.commitsAhead);
   const setCommitMessage = useGitStore((s) => s.setCommitMessage);
   const discardFile = useGitStore((s) => s.discardFile);
   const discardAll = useGitStore((s) => s.discardAll);
   const stageFile = useGitStore((s) => s.stageFile);
   const unstageFile = useGitStore((s) => s.unstageFile);
   const commit = useGitStore((s) => s.commit);
+  const push = useGitStore((s) => s.push);
   const generateCommitMessage = useGitStore((s) => s.generateCommitMessage);
   const stageAllFiles = useGitStore((s) => s.stageAllFiles);
   const unstageAllFiles = useGitStore((s) => s.unstageAllFiles);
 
+  const devDetailWorktreeId = useUIStore((s) => s.devDetailWorktreeId);
   const openPanel = useMemo(() => usePanelTabsStore.getState().openPanel, []);
 
   // Split files into staged and unstaged
@@ -106,13 +116,30 @@ export const WorktreeChangesView: FC<WorktreeChangesViewProps> = ({ className })
     [handleCommit],
   );
 
+  const handlePush = useCallback(async () => {
+    try {
+      await push();
+      toast.success('Pushed to remote');
+    } catch (err) {
+      toast.error('Push failed', { description: String(err) });
+    }
+  }, [push]);
+
   const handleViewBranchDiff = useCallback(() => {
     openPanel(BUILTIN_PANEL_TYPES.BRANCH_DIFF, { branch: currentBranch });
   }, [openPanel, currentBranch]);
 
-  const handleReview = useCallback(() => {
-    openPanel(BUILTIN_PANEL_TYPES.BRANCH_DIFF, { branch: currentBranch });
-  }, [openPanel, currentBranch]);
+  const handleReviewChanges = useCallback(async () => {
+    setIsLaunchingReview(true);
+    try {
+      const sessionId = await launchReviewSession(devDetailWorktreeId ?? undefined);
+      openPanel(BUILTIN_PANEL_TYPES.AGENT, { sessionId });
+    } catch (err) {
+      toast.error('Review failed', { description: String(err) });
+    } finally {
+      setIsLaunchingReview(false);
+    }
+  }, [devDetailWorktreeId, openPanel]);
 
   const handleViewDiff = useCallback(
     (filePath: string) => {
@@ -253,24 +280,72 @@ export const WorktreeChangesView: FC<WorktreeChangesViewProps> = ({ className })
             {isCommitting ? 'Committing...' : 'Commit'}
           </button>
         </div>
+
+        {/* Push button (shown when remote exists and commits ahead) */}
+        {repoStatus?.has_remote && (
+          <button
+            onClick={handlePush}
+            disabled={isPushing || !commitsAhead}
+            className={cn(
+              'w-full h-[34px] mt-1.5 rounded-[10px] text-xs font-medium',
+              'flex items-center justify-center gap-1.5',
+              'bg-muted/40 text-foreground',
+              'hover:bg-muted/60 active:scale-[0.97]',
+              'disabled:opacity-40 disabled:pointer-events-none',
+              'transition-[transform,background-color] duration-200',
+            )}
+            title={commitsAhead ? `Push ${commitsAhead} commit${commitsAhead !== 1 ? 's' : ''} to remote` : 'Nothing to push'}
+          >
+            {isPushing ? (
+              <ArrowsClockwise className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <ArrowUp className="w-3.5 h-3.5" weight="bold" />
+            )}
+            {isPushing ? 'Pushing...' : 'Push'}
+            {commitsAhead != null && commitsAhead > 0 && (
+              <span className="px-1 py-0.5 rounded-full text-[10px] font-semibold bg-primary/10 text-primary">
+                {commitsAhead}
+              </span>
+            )}
+          </button>
+        )}
       </div>
 
-      {/* Review button */}
+      {/* File count + review icons */}
       <div className="flex items-center justify-between px-3 pb-1">
         <span className="text-[10px] text-muted-foreground/60">
           {changedFiles.length} file{changedFiles.length !== 1 ? 's' : ''} changed
         </span>
-        <button
-          onClick={handleReview}
-          className={cn(
-            'h-5 w-5 flex items-center justify-center rounded',
-            'text-muted-foreground hover:text-foreground hover:bg-muted/60',
-            'active:scale-95 transition-all duration-150',
-          )}
-          title="Review all changes"
-        >
-          <Eye className="w-3 h-3" weight="bold" />
-        </button>
+        <div className="flex items-center gap-0.5">
+          <button
+            onClick={handleReviewChanges}
+            disabled={isLaunchingReview || changedFiles.length === 0}
+            className={cn(
+              'h-5 w-5 flex items-center justify-center rounded',
+              'text-muted-foreground hover:text-foreground hover:bg-muted/60',
+              'disabled:opacity-40 disabled:pointer-events-none',
+              'active:scale-95 transition-all duration-150',
+            )}
+            title="AI review changes (Opus)"
+          >
+            {isLaunchingReview ? (
+              <CircleNotch className="w-3 h-3 animate-spin" />
+            ) : (
+              <MagnifyingGlass className="w-3 h-3" weight="bold" />
+            )}
+          </button>
+          <button
+            onClick={handleViewBranchDiff}
+            className={cn(
+              'h-5 w-5 flex items-center justify-center rounded',
+              'text-muted-foreground hover:text-foreground hover:bg-muted/60',
+              'active:scale-95 transition-all duration-150',
+            )}
+            title="View all changes"
+          >
+            <Eye className="w-3 h-3" weight="bold" />
+          </button>
+        </div>
       </div>
 
       {/* File sections */}

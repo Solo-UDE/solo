@@ -4,6 +4,7 @@
  */
 
 import type { FC } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { ChatTeardrop, Vault, Lightning, PenNib } from '@phosphor-icons/react';
 import { SessionList } from '@/components/agent';
 import { VaultPlaceholder } from './studio/VaultPlaceholder';
@@ -57,16 +58,23 @@ export const StudioSidebar: FC = () => {
             key={key}
             onClick={() => setStudioNav(key)}
             className={cn(
-              'w-full h-9 px-3 flex items-center gap-2 rounded-lg text-xs transition-colors duration-150',
+              'relative w-full h-9 px-3 flex items-center gap-2 rounded-xl text-xs transition-colors duration-150',
               studioActiveNav === key
-                ? 'bg-primary/10 text-primary'
+                ? 'text-primary'
                 : 'text-muted-foreground hover:bg-muted/40 hover:text-foreground',
             )}
           >
-            <Icon className="w-4 h-4 shrink-0" weight={studioActiveNav === key ? 'fill' : 'regular'} />
-            <span className="flex-1 text-left font-medium">{label}</span>
+            {studioActiveNav === key && (
+              <motion.div
+                layoutId="studio-nav-indicator"
+                className="absolute inset-0 rounded-xl bg-primary/10"
+                transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+              />
+            )}
+            <Icon className="relative w-4 h-4 shrink-0" weight={studioActiveNav === key ? 'fill' : 'regular'} />
+            <span className="relative flex-1 text-left font-medium">{label}</span>
             {badge && (
-              <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-muted/50 text-muted-foreground/70 font-medium">
+              <span className="relative text-[9px] px-1.5 py-0.5 rounded-full bg-primary/8 text-primary/60 font-medium">
                 {badge}
               </span>
             )}
@@ -75,7 +83,7 @@ export const StudioSidebar: FC = () => {
       </div>
 
       {/* Divider */}
-      <div className="h-px mx-3 bg-border/20 shrink-0" />
+      <div className="h-px mx-3 shrink-0" style={{ background: 'linear-gradient(to right, transparent, var(--border) 20%, var(--border) 80%, transparent)', opacity: 0.15 }} />
 
       {/* Content area */}
       <div className="flex-1 min-h-0 overflow-hidden">

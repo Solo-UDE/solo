@@ -103,6 +103,8 @@ export const RepoRail: FC = () => {
         </button>
       </div>
 
+      <div className="h-px mx-2 bg-border/10 my-1" />
+
       {/* Repo list */}
       <div
         className={cn(
@@ -161,6 +163,8 @@ const RailIcon: FC<RailIconProps> = ({ repo, isActive, expanded, onClick, onRemo
                 layoutId="rail-accent"
                 className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full z-10"
                 style={{ backgroundColor: getRepoColorVar(repo.color) }}
+                initial={{ scaleY: 0 }}
+                animate={{ scaleY: 1 }}
                 transition={{ type: 'spring', stiffness: 500, damping: 30 }}
               />
             )}
@@ -244,6 +248,8 @@ const RailIcon: FC<RailIconProps> = ({ repo, isActive, expanded, onClick, onRemo
               layoutId="rail-accent"
               className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full"
               style={{ backgroundColor: getRepoColorVar(repo.color) }}
+              initial={{ scaleY: 0 }}
+              animate={{ scaleY: 1 }}
               transition={{ type: 'spring', stiffness: 500, damping: 30 }}
             />
           )}
@@ -284,7 +290,7 @@ const RailIcon: FC<RailIconProps> = ({ repo, isActive, expanded, onClick, onRemo
                 initial={{ opacity: 0, x: -4 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -4 }}
-                transition={{ duration: 0.15 }}
+                transition={{ type: 'spring', stiffness: 500, damping: 30 }}
                 className={cn(
                   'absolute left-full ml-2 z-50 pointer-events-none',
                   'px-2.5 py-1.5 rounded-lg',

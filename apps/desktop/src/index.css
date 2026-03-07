@@ -891,6 +891,13 @@ html.dark .hover-lift:hover {
   animation: streaming-dot 1.2s ease-in-out infinite;
 }
 
+/* Sidebar gradient separator — fades at edges */
+.sidebar-section-separator {
+  height: 1px;
+  background: linear-gradient(to right, transparent, var(--border) 20%, var(--border) 80%, transparent);
+  opacity: 0.15;
+}
+
 
 /* =============================================================================
    STREAMDOWN THEME OVERRIDES

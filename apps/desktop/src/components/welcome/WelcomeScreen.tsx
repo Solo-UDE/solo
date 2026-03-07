@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { FolderOpen, GitBranch, Clock, FolderSimple, X } from '@phosphor-icons/react';
 import { Button, IconButton } from '@solo/ui';
 import SoloDecryptAnimation from '../agent/SoloDecryptAnimation';
+import { StarsBackground } from '@/components/ui/stars-background';
 import { CloneDialog } from './CloneDialog';
 import { openFolderDialog } from '@/lib/tauri/fs';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
@@ -23,11 +24,16 @@ const truncatePath = (p: string, maxLen = 50) => {
   return `...${sep}${parts.slice(-3).join(sep)}`;
 };
 
-export function WelcomeScreen() {
+interface WelcomeScreenProps {
+  onProjectOpen?: () => void;
+}
+
+export function WelcomeScreen({ onProjectOpen }: WelcomeScreenProps = {}) {
   const recentDirectories = useWorkspaceStore((s) => s.recentDirectories);
   const removeRecent = useWorkspaceStore((s) => s.removeRecent);
   const [cloneOpen, setCloneOpen] = useState(false);
   const [showContent, setShowContent] = useState(false);
+  const [showRecentProjects, setShowRecentProjects] = useState(false);
 
   // Play startup sound on first mount (synced with decrypt animation)
   useStartupSound();
@@ -37,6 +43,16 @@ export function WelcomeScreen() {
     const t = setTimeout(() => setShowContent(true), 2400);
     return () => clearTimeout(t);
   }, []);
+
+  useEffect(() => {
+    if (!showContent || recentDirectories.length === 0) {
+      setShowRecentProjects(false);
+      return;
+    }
+
+    const t = setTimeout(() => setShowRecentProjects(true), 120);
+    return () => clearTimeout(t);
+  }, [recentDirectories.length, showContent]);
 
   // Open or select a repo via the repoStore (which internally calls switchWorkspace)
   const openOrSelectRepo = useCallback(async (path: string) => {
@@ -51,15 +67,17 @@ export function WelcomeScreen() {
   const handleOpenProject = useCallback(async () => {
     const path = await openFolderDialog();
     if (path) {
+      onProjectOpen?.();
       await openOrSelectRepo(path);
     }
-  }, [openOrSelectRepo]);
+  }, [openOrSelectRepo, onProjectOpen]);
 
   const handleSwitchTo = useCallback(
     async (path: string) => {
+      onProjectOpen?.();
       await openOrSelectRepo(path);
     },
-    [openOrSelectRepo],
+    [openOrSelectRepo, onProjectOpen],
   );
 
   const handleRemoveRecent = useCallback(
@@ -85,9 +103,18 @@ export function WelcomeScreen() {
   return (
     <>
       <div className="relative bg-background flex-1 flex flex-col items-center justify-center h-full overflow-hidden select-none">
+        {/* Animated stars background (dark mode only) */}
+        <StarsBackground
+          className="absolute inset-0 z-0"
+          count={150}
+          speed={30}
+          starColor="rgba(255,255,255,0.6)"
+          pointerEvents={false}
+        />
+
         {/* Animated glow — breathes continuously while welcome screen is visible */}
         <div
-          className="absolute top-[30%] left-1/2 rounded-full pointer-events-none startup-glow"
+          className="absolute top-[30%] left-1/2 rounded-full pointer-events-none startup-glow z-[1]"
           style={{
             width: 300,
             height: 300,
@@ -100,13 +127,13 @@ export function WelcomeScreen() {
         <SoloDecryptAnimation />
 
         {/* Tagline */}
-        <p className="text-xs text-muted-foreground/50 tracking-wide mt-4">
+        <p className="relative z-10 text-xs text-muted-foreground/50 tracking-wide mt-4">
           Your AI coding agent
         </p>
 
         {/* Action buttons — fade in after decrypt assembles */}
         <div
-          className="flex items-center gap-3 mt-8"
+          className="relative z-10 flex items-center gap-3 mt-8"
           style={{
             opacity: showContent ? 1 : 0,
             transform: showContent ? 'translateY(0)' : 'translateY(8px)',
@@ -137,14 +164,17 @@ export function WelcomeScreen() {
         {/* Recent Projects — staggered fade-in */}
         {recentDirectories.length > 0 && (
           <div
-            className="mt-8 w-full max-w-sm"
+            className="relative z-10 mt-8 w-full max-w-sm"
             style={{
-              opacity: showContent ? 1 : 0,
-              transform: showContent ? 'translateY(0)' : 'translateY(8px)',
-              transition: 'opacity 280ms var(--ease-smooth) 60ms, transform 280ms var(--ease-smooth) 60ms',
+              opacity: showRecentProjects ? 1 : 0,
+              transform: showRecentProjects ? 'translateY(0) scale(1)' : 'translateY(18px) scale(0.985)',
+              filter: showRecentProjects ? 'blur(0px)' : 'blur(8px)',
+              transition:
+                'opacity 420ms var(--ease-smooth), transform 520ms var(--ease-smooth), filter 420ms var(--ease-smooth)',
+              willChange: 'opacity, transform, filter',
             }}
           >
-            <div className="rounded-xl bg-card/50 border border-border/30 p-3">
+            <div className="rounded-xl bg-card/50 border border-border/30 p-3 backdrop-blur-sm">
               <div className="flex items-center gap-1.5 mb-2">
                 <Clock className="w-3 h-3 text-muted-foreground/50" />
                 <span className="text-[10px] font-medium text-muted-foreground/50 tracking-wide">
@@ -161,9 +191,11 @@ export function WelcomeScreen() {
                     onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSwitchTo(path); } }}
                     className="group w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs hover:bg-muted/40 active:scale-[0.99] transition-all duration-150 cursor-pointer"
                     style={{
-                      opacity: showContent ? 1 : 0,
-                      transform: showContent ? 'translateY(0)' : 'translateY(8px)',
-                      transition: `opacity 250ms var(--ease-smooth) ${100 + i * 40}ms, transform 250ms var(--ease-smooth) ${100 + i * 40}ms`,
+                      opacity: showRecentProjects ? 1 : 0,
+                      transform: showRecentProjects ? 'translateY(0)' : 'translateY(12px)',
+                      filter: showRecentProjects ? 'blur(0px)' : 'blur(6px)',
+                      transition: `opacity 320ms var(--ease-smooth) ${140 + i * 75}ms, transform 420ms var(--ease-smooth) ${140 + i * 75}ms, filter 360ms var(--ease-smooth) ${140 + i * 75}ms`,
+                      willChange: 'opacity, transform, filter',
                     }}
                   >
                     <FolderSimple className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
