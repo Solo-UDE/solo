@@ -1,0 +1,67 @@
+name: Build Master DMG
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+jobs:
+  build-dmg:
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    env:
+      SOLO_SUPABASE_URL: ${{ vars.SOLO_SUPABASE_URL }}
+      SOLO_SUPABASE_ANON_KEY: ${{ vars.SOLO_SUPABASE_ANON_KEY }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+
+      - name: Install bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install frontend dependencies
+        run: bun install
+
+      - name: Generate TypeScript bindings
+        run: bun run gen:bindings
+
+      - name: Typecheck frontend
+        run: cd apps/desktop && bunx tsc --noEmit
+
+      - name: Validate desktop auth config
+        run: |
+          test -n "$SOLO_SUPABASE_URL" || {
+            echo "Missing GitHub repository variable: SOLO_SUPABASE_URL" >&2
+            exit 1
+          }
+          test -n "$SOLO_SUPABASE_ANON_KEY" || {
+            echo "Missing GitHub repository variable: SOLO_SUPABASE_ANON_KEY" >&2
+            exit 1
+          }
+
+      - name: Build DMG
+        run: cd apps/desktop && bunx tauri build --target aarch64-apple-darwin
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: solo-dmg-${{ github.sha }}
+          path: |
+            target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+            target/release/bundle/dmg/*.dmg
+          if-no-files-found: error
