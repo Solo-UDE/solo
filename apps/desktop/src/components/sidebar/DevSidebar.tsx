@@ -117,8 +117,8 @@ export const DevSidebar: FC<DevSidebarProps> = ({ onFileOpen }) => {
             className="flex-1 flex flex-col min-h-0"
           >
             {/* Section header */}
-            <div className="flex items-center justify-between px-3 h-7 shrink-0">
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground/80 font-medium">
+            <div className="flex items-center justify-between px-3 h-8 shrink-0">
+              <span className="text-[11px] text-muted-foreground/50 font-semibold">
                 Worktrees
               </span>
               <div className="flex items-center gap-0.5">
@@ -148,37 +148,46 @@ export const DevSidebar: FC<DevSidebarProps> = ({ onFileOpen }) => {
             </div>
 
             {/* Create form */}
-            {showCreate && (
-              <div className="mx-2 mb-1 px-3 py-2 rounded-lg bg-muted/20 border border-border/20 space-y-2">
-                <input
-                  type="text"
-                  placeholder="Branch name"
-                  value={branchName}
-                  onChange={(e) => setBranchName(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
-                  className="w-full h-7 px-2 text-xs bg-muted/30 border border-border/50 rounded outline-none focus:ring-1 focus:ring-ring"
-                  autoFocus
-                />
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={handleCreate}
-                    disabled={!branchName.trim() || isCreating}
-                    className="h-6 px-3 text-xs bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-50"
-                  >
-                    {isCreating ? 'Creating...' : 'Create'}
-                  </button>
-                  <button
-                    onClick={() => setShowCreate(false)}
-                    className="h-6 px-3 text-xs text-muted-foreground hover:text-foreground"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            )}
+            <AnimatePresence>
+              {showCreate && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <div className="mx-2 mb-1 px-3 py-2 rounded-lg bg-muted/20 border border-border/20 space-y-2">
+                    <input
+                      type="text"
+                      placeholder="Branch name"
+                      value={branchName}
+                      onChange={(e) => setBranchName(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+                      className="w-full h-7 px-2 text-xs bg-muted/30 border border-border/50 rounded outline-none focus:ring-1 focus:ring-ring"
+                      autoFocus
+                    />
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleCreate}
+                        disabled={!branchName.trim() || isCreating}
+                        className="h-6 px-3 text-xs bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-50"
+                      >
+                        {isCreating ? 'Creating...' : 'Create'}
+                      </button>
+                      <button
+                        onClick={() => setShowCreate(false)}
+                        className="h-6 px-3 text-xs text-muted-foreground hover:text-foreground"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* Worktree cards */}
-            <div className="flex-1 overflow-y-auto py-1">
+            <div className="flex-1 overflow-y-auto py-1.5">
               {worktrees.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-8 text-center px-4">
                   <div className="w-10 h-10 rounded-2xl bg-muted/50 flex items-center justify-center mb-2">

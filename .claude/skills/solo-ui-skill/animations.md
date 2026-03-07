@@ -302,3 +302,35 @@ function Component() {
 // Avoid: Width animation (causes layout shift)
 <div className="w-1/2 transition-[width]" />
 ```
+
+---
+
+## Canvas-Based Animation Pattern
+
+For high-particle-count animations, use `<canvas>` + `requestAnimationFrame` instead of DOM elements.
+Reference: `StarsBackground` (`src/components/ui/stars-background.tsx`).
+
+Key pattern:
+1. `ResizeObserver` for responsive canvas sizing with `devicePixelRatio`
+2. `requestAnimationFrame` loop with delta-time movement
+3. `MutationObserver` on `<html>` for theme-reactive rendering (dark mode only)
+4. `prefers-reduced-motion`: draw one static frame, skip rAF loop
+5. Cleanup: cancel rAF, disconnect observers, remove listeners
+
+### Parallax / Pointer-Tracking
+
+```tsx
+const offsetX = (mouse.x - width / 2) * factor * item.z;
+```
+
+`factor` controls parallax intensity, `z` (0-1) creates depth layers.
+
+---
+
+## RAIL_SPRING Constant
+
+```tsx
+const RAIL_SPRING = { type: 'spring' as const, stiffness: 600, damping: 35 };
+```
+
+Used in: `RepoRail.tsx` (rail width, tooltip transitions).

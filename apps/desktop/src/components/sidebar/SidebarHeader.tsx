@@ -30,7 +30,7 @@ export const SidebarHeader: FC = () => {
   if (!activeRepo) return null;
 
   return (
-    <div className="relative flex items-center gap-2 h-9 px-2.5 shrink-0 border-b border-border/10">
+    <div className="relative flex items-center gap-2 h-10 px-2.5 shrink-0 border-b border-border/15">
       {/* Repo icon (colored) */}
       {Icon && (
         <Icon
@@ -41,7 +41,7 @@ export const SidebarHeader: FC = () => {
       )}
 
       {/* Repo name */}
-      <span className="text-xs font-semibold truncate">
+      <span className="text-[13px] font-semibold tracking-tight truncate">
         {activeRepo.name}
       </span>
 
@@ -51,7 +51,7 @@ export const SidebarHeader: FC = () => {
           onClick={() => setSwitcherOpen((v) => !v)}
           className={cn(
             'flex items-center gap-1 h-5 px-1.5 rounded-md',
-            'text-[10px] text-muted-foreground bg-muted/30',
+            'text-[10px] text-muted-foreground bg-muted/40',
             'hover:bg-muted/60 hover:text-foreground',
             'active:scale-[0.97] transition-all duration-150',
             'ml-auto shrink-0 max-w-[100px]',
