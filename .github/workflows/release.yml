@@ -11,6 +11,9 @@ jobs:
     runs-on: macos-latest
     permissions:
       contents: write
+    env:
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
 
     steps:
       - name: Checkout
@@ -35,9 +38,8 @@ jobs:
         run: bun install
 
       - name: Import Apple certificate
-        if: ${{ secrets.APPLE_CERTIFICATE != '' }}
+        if: env.APPLE_CERTIFICATE != ''
         env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         run: |
           CERTIFICATE_PATH=$RUNNER_TEMP/certificate.p12
@@ -60,9 +62,8 @@ jobs:
           security list-keychain -d user -s $KEYCHAIN_PATH
 
       - name: Write Apple API key
-        if: ${{ secrets.APPLE_API_KEY_CONTENT != '' }}
+        if: env.APPLE_API_KEY_CONTENT != ''
         env:
-          APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
         run: |
           mkdir -p ~/private_keys
@@ -73,7 +74,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
@@ -89,6 +89,6 @@ jobs:
           args: --target aarch64-apple-darwin
 
       - name: Cleanup keychain
-        if: ${{ always() && secrets.APPLE_CERTIFICATE != '' }}
+        if: always() && env.APPLE_CERTIFICATE != ''
         run: |
           security delete-keychain $RUNNER_TEMP/app-signing.keychain-db || true
