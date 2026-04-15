@@ -3,7 +3,7 @@
  * current branch badge, and worktree switcher dropdown.
  */
 
-import { useState, useMemo, type FC } from 'react';
+import { useState, useMemo, useRef, type FC } from 'react';
 import { GitBranch, CaretDown, TreeStructure } from '@phosphor-icons/react';
 import { useActiveRepo } from '@/stores/repoStore';
 import { useGitStore } from '@/stores/gitStore';
@@ -18,6 +18,7 @@ export const SidebarHeader: FC = () => {
   const repoStatus = useGitStore((s) => s.repoStatus);
   const activeWorktree = useActiveWorktree();
   const [switcherOpen, setSwitcherOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   const isGitRepo = repoStatus?.is_repo ?? false;
   const branchName = currentBranch || activeRepo?.currentBranch || '';
@@ -48,6 +49,7 @@ export const SidebarHeader: FC = () => {
       {/* Branch badge (clickable for worktree switcher) */}
       {isGitRepo && branchName && (
         <button
+          ref={triggerRef}
           onClick={() => setSwitcherOpen((v) => !v)}
           className={cn(
             'flex items-center gap-1 h-5 px-1.5 rounded-md',
@@ -67,7 +69,12 @@ export const SidebarHeader: FC = () => {
       )}
 
       {/* Worktree switcher dropdown */}
-      {switcherOpen && <WorktreeSwitcher onClose={() => setSwitcherOpen(false)} />}
+      {switcherOpen && (
+        <WorktreeSwitcher
+          onClose={() => setSwitcherOpen(false)}
+          triggerRef={triggerRef}
+        />
+      )}
     </div>
   );
 };
