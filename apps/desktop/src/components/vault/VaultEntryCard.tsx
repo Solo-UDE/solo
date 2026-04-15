@@ -4,8 +4,7 @@
 
 import type { FC } from 'react';
 import {
-  Pushpin,
-  PushpinSimpleSlash,
+  PushPin,
   CloudCheck,
   CloudArrowUp,
   CloudSlash,
@@ -60,11 +59,7 @@ export const VaultEntryCard: FC<Props> = ({ entry }) => {
         )}
         title={entry.pinned ? 'Unpin' : 'Pin as source of truth'}
       >
-        {entry.pinned ? (
-          <Pushpin className="w-3 h-3" weight="fill" />
-        ) : (
-          <PushpinSimpleSlash className="w-3 h-3" />
-        )}
+        <PushPin className="w-3 h-3" weight={entry.pinned ? 'fill' : 'regular'} />
       </button>
 
       <div className="flex-1 min-w-0">

@@ -3,9 +3,6 @@
  *
  * Listens for vault:* BackendEvent variants and mirrors them into the vault
  * store. Mount once at the app root.
- *
- * V0: events are plumbed end-to-end; real emissions land in Phase V1 when the
- * local pipeline starts firing.
  */
 
 import { useEffect } from 'react';
@@ -20,46 +17,41 @@ export function useVaultStream(): void {
     let unlisten: UnlistenFn | null = null;
 
     listen<BackendEvent>('backend-event', async (event) => {
-      const payload = event.payload;
+      const evt = event.payload;
       const store = useVaultStore.getState();
 
-      switch (payload.type) {
+      switch (evt.type) {
         case 'vault:entry_added':
         case 'vault:entry_updated': {
-          const entry = await vaultGet(payload.entry_id).catch(() => null);
+          const entry = await vaultGet(evt.payload.entry_id).catch(() => null);
           if (entry) store.upsertEntry(entry);
           break;
         }
         case 'vault:entry_deleted': {
-          store.removeEntry(payload.entry_id);
+          store.removeEntry(evt.payload.entry_id);
           break;
         }
         case 'vault:index_progress': {
-          const existing = useVaultStore.getState().entries.get(payload.entry_id);
+          const existing = useVaultStore.getState().entries.get(evt.payload.entry_id);
           if (existing) {
-            // V1 will map stage string to IndexStatus; for now just refresh
-            void vaultGet(payload.entry_id).then((entry) => {
+            void vaultGet(evt.payload.entry_id).then((entry) => {
               if (entry) store.upsertEntry(entry);
             });
           }
           break;
         }
         case 'vault:cloud_sync_updated': {
-          const existing = useVaultStore.getState().entries.get(payload.entry_id);
+          const existing = useVaultStore.getState().entries.get(evt.payload.entry_id);
           if (existing) {
-            store.upsertEntry({
-              ...existing,
-              cloud_sync_state: payload.state,
-            });
+            store.upsertEntry({ ...existing, cloud_sync_state: evt.payload.state });
           }
           break;
         }
         case 'vault:unsorted_count_changed': {
-          useVaultStore.setState({ unsortedCount: payload.count });
+          useVaultStore.setState({ unsortedCount: evt.payload.count });
           break;
         }
         default:
-          // Not a vault event
           break;
       }
     })

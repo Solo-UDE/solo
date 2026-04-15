@@ -1,27 +1,26 @@
 /**
  * VaultPanel — Studio-sidebar surface for the agent memory vault.
- *
- * V0: shell only. Renders the scope toggle, the drop-zone placeholder, a
- * lightweight search box, and an empty-state explaining the vault's purpose.
- * Wires to `vaultStore` so V1 plug-in is a one-line swap.
  */
 
 import { useEffect, type FC } from 'react';
-import { Vault as VaultIcon, Pushpin, MagnifyingGlass } from '@phosphor-icons/react';
+import { Vault as VaultIcon, PushPin, MagnifyingGlass, X } from '@phosphor-icons/react';
 import { useVaultStore } from '@/stores/vaultStore';
 import { VaultScopeToggle } from './VaultScopeToggle';
 import { VaultDropZone } from './VaultDropZone';
 import { VaultEntryList } from './VaultEntryList';
 import { VaultEmptyState } from './VaultEmptyState';
+import { VaultSearchResults } from './VaultSearchResults';
 
 export const VaultPanel: FC = () => {
   const entries = useVaultStore((s) => s.entries);
   const unsortedCount = useVaultStore((s) => s.unsortedCount);
   const searchQuery = useVaultStore((s) => s.searchQuery);
+  const searchResults = useVaultStore((s) => s.searchResults);
   const setSearchQuery = useVaultStore((s) => s.setSearchQuery);
   const fetchEntries = useVaultStore((s) => s.fetchEntries);
   const fetchUnsortedCount = useVaultStore((s) => s.fetchUnsortedCount);
   const runSearch = useVaultStore((s) => s.runSearch);
+  const clearSearch = useVaultStore((s) => s.clearSearch);
   const activeScope = useVaultStore((s) => s.activeScope);
 
   useEffect(() => {
@@ -30,6 +29,7 @@ export const VaultPanel: FC = () => {
   }, [activeScope, fetchEntries, fetchUnsortedCount]);
 
   const hasEntries = entries.size > 0;
+  const isSearching = searchQuery.trim().length > 0 && searchResults.length >= 0;
 
   return (
     <div className="h-full flex flex-col min-h-0">
@@ -60,29 +60,42 @@ export const VaultPanel: FC = () => {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') void runSearch();
+              if (e.key === 'Enter') void runSearch('fts');
+              if (e.key === 'Escape') clearSearch();
             }}
             placeholder="Search vault memory…"
-            className="w-full h-8 pl-7 pr-2 rounded-lg bg-muted/40 border-none text-xs focus:bg-muted/60 focus:ring-1 focus:ring-ring/30 focus:outline-none transition-colors duration-150 placeholder:text-muted-foreground/50"
+            className="w-full h-8 pl-7 pr-7 rounded-lg bg-muted/40 border-none text-xs focus:bg-muted/60 focus:ring-1 focus:ring-ring/30 focus:outline-none transition-colors duration-150 placeholder:text-muted-foreground/50"
           />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={clearSearch}
+              className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 rounded-sm flex items-center justify-center text-muted-foreground/60 hover:text-foreground hover:bg-muted/80 transition-colors duration-150"
+              aria-label="Clear search"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          )}
         </div>
       </div>
 
       {/* Body */}
-      <div className="flex-1 min-h-0 overflow-auto px-3 pb-3">
-        {hasEntries ? (
+      <div className="flex-1 min-h-0 overflow-auto px-3 pb-3 flex flex-col gap-3">
+        {/* Drop zone always available */}
+        <VaultDropZone />
+
+        {isSearching ? (
+          <VaultSearchResults />
+        ) : hasEntries ? (
           <VaultEntryList />
         ) : (
-          <>
-            <VaultDropZone />
-            <VaultEmptyState />
-          </>
+          <VaultEmptyState />
         )}
       </div>
 
-      {/* Pinned indicator footer (placeholder) */}
+      {/* Pinned indicator footer */}
       <div className="px-3 py-2 border-t border-border/30 shrink-0 flex items-center gap-1.5 text-[10px] text-muted-foreground/60">
-        <Pushpin className="w-3 h-3" />
+        <PushPin className="w-3 h-3" />
         <span>Pin sources of truth to force-inject them into the agent.</span>
       </div>
     </div>

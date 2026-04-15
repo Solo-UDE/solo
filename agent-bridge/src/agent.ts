@@ -2,7 +2,8 @@
  * Claude Agent SDK integration for Orbit Editor (TypeScript).
  */
 
-import { query } from '@anthropic-ai/claude-agent-sdk';
+import { query, createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk';
+import { vaultSearchTool, fetchVaultContext } from './vault.js';
 
 import * as fs from 'node:fs';
 
@@ -448,6 +449,25 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
 ### When to Use DevTools vs Browser Tools
 - **Browser tools (mcp__browser__)**: Page interaction, navigation, clicking, typing
 - **DevTools tools (mcp__orbit-devtools__)**: Deep inspection, debugging, storage, performance analysis
+
+## Vault — Agent Memory
+
+The user maintains a personal **vault** of indexed knowledge (documents, code,
+data, screenshots, notes). It functions as your durable memory across sessions.
+
+- **Auto-injected context**: if relevant vault chunks are found for the
+  current turn, they are prepended to the user message inside a
+  \`<vault-memory>\` block. Treat those chunks as authoritative. If none are
+  relevant to the user's question, ignore them silently — do NOT tell the
+  user "I received vault context but it wasn't relevant".
+- **On-demand lookup**: when the user refers to something they previously
+  indexed ("the schema I added", "my notes on X", "did I put Y in the
+  vault?"), call the \`mcp__vault__vault_search\` tool with keywords from
+  their message. Prefer this over re-asking the user or grepping the
+  filesystem for vault content.
+- **Pinned entries** appear with a \`[pinned]\` badge. They are
+  user-designated sources of truth — treat them as higher priority than
+  other retrieved chunks.
 ` + formatSkillsForPrompt(loadSkills(this.cwd)),
       },
       // Working directory
@@ -519,6 +539,8 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
         'TodoWrite',
         'ListMcpResourcesTool',
         'ReadMcpResourceTool',
+        // Vault memory tool — read-only, safe to auto-approve
+        'mcp__vault__vault_search',
       ]);
 
       options.hooks = {
@@ -816,11 +838,16 @@ You should build your plan incrementally by writing to or editing this file. NOT
       );
     }
 
-    // MCP servers (DevTools, custom tools, etc.)
-    if (Object.keys(this._mcpServers).length > 0) {
-      options.mcpServers = this._mcpServers;
-      logger.info({ servers: Object.keys(this._mcpServers) }, 'MCP servers configured');
-    }
+    // MCP servers (DevTools, custom tools, etc.) — always include the in-process
+    // vault server so the model can call `vault_search` for agent-memory lookups.
+    const vaultMcp = createSdkMcpServer({
+      name: 'vault',
+      version: '0.1.0',
+      tools: [vaultSearchTool],
+    });
+    const mergedMcp = { ...this._mcpServers, vault: vaultMcp };
+    options.mcpServers = mergedMcp;
+    logger.info({ servers: Object.keys(mergedMcp) }, 'MCP servers configured');
 
     // Structured output format (JSON Schema)
     if (this._outputFormat) {
@@ -964,7 +991,24 @@ You should build your plan incrementally by writing to or editing this file. NOT
       // allow-any-unicode-next-line
       '📤 Sending message to Claude'
     );
-    this.messageQueue.add(message, attachments);
+    // Pre-flight vault RAG: auto-retrieve relevant memory for this turn and
+    // prepend it to the user message so the model sees it even if it doesn't
+    // choose to call the vault_search tool.
+    let finalMessage = message;
+    try {
+      const ctx = fetchVaultContext(message, { projectId: this.cwd, maxChunks: 5 });
+      if (ctx) {
+        finalMessage = `${ctx}\n\n${message}`;
+        logger.info(
+          { ctxLen: ctx.length, msgPreview: message.substring(0, 60) },
+          '🧠 vault: context prepended'
+        );
+      }
+    } catch (err) {
+      logger.warn({ err: String(err) }, 'vault: pre-flight injection skipped');
+    }
+
+    this.messageQueue.add(finalMessage, attachments);
   }
 
   async *receiveResponse(): AsyncGenerator<SDKMessage, void, unknown> {

@@ -47,13 +47,19 @@ interface VaultActions {
 }
 
 const initialScope: VaultScope = { type: 'global' };
+const initialFilters: VaultListFilters = {
+  kind: null,
+  pinned: null,
+  unsorted: null,
+  query: null,
+};
 
 export const useVaultStore = create<VaultState & VaultActions>()(
   immer((set, get) => ({
     entries: new Map(),
     unsortedCount: 0,
     activeScope: initialScope,
-    filters: {},
+    filters: initialFilters,
     searchQuery: '',
     searchResults: [],
     isLoading: false,
