@@ -247,22 +247,21 @@ export function FileTree({ onFileOpen }: FileTreeProps) {
     filteredVirtualizer,
   ]);
 
+  // Single-click selects AND opens (file) / toggles (directory). Modifier-clicks
+  // (cmd/ctrl/shift) only multi-select, never trigger open/toggle, so range and
+  // additive selections still work the way they do in VS Code / Finder.
   const handleClick = useCallback(
-    (path: string, event: React.MouseEvent) => {
-      selectFile(path, event.metaKey || event.ctrlKey);
-    },
-    [selectFile]
-  );
-
-  const handleDoubleClick = useCallback(
-    (entry: { path: string; is_dir: boolean }) => {
+    (entry: { path: string; is_dir: boolean }, event: React.MouseEvent) => {
+      const isMultiSelect = event.metaKey || event.ctrlKey || event.shiftKey;
+      selectFile(entry.path, event.metaKey || event.ctrlKey);
+      if (isMultiSelect) return;
       if (entry.is_dir) {
         toggleDirectory(entry.path);
       } else if (onFileOpen) {
         onFileOpen(entry.path);
       }
     },
-    [toggleDirectory, onFileOpen]
+    [selectFile, toggleDirectory, onFileOpen]
   );
 
   const handleRenameSubmit = useCallback(
@@ -356,8 +355,7 @@ export function FileTree({ onFileOpen }: FileTreeProps) {
               isRenaming={renamingPath === item.entry.path}
               style={rowStyle}
               onToggle={() => toggleDirectory(item.entry.path)}
-              onClick={(e) => handleClick(item.entry.path, e)}
-              onDoubleClick={() => handleDoubleClick(item.entry)}
+              onClick={(e) => handleClick(item.entry, e)}
               onRenameSubmit={(newName) =>
                 handleRenameSubmit(item.entry.path, newName)
               }
