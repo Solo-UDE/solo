@@ -16,6 +16,7 @@ import { useAuthStore, useUser } from "./stores/authStore";
 import { registerBuiltinPanels, BUILTIN_PANEL_TYPES, DEFAULT_TILES } from "./lib/panels";
 import { SettingsView } from "./components/settings";
 import { useAutosave } from "./hooks/useAutosave";
+import { useAppZoom } from "./hooks/useAppZoom";
 import { useColorScheme } from "./hooks/useColorScheme";
 import { useTitlebarStyle } from "./hooks/usePlatform";
 import { useAgentStream } from "./hooks/useAgentStream";
@@ -67,6 +68,7 @@ function AppContent() {
 
   // Terminal panel drag state
   const [isDraggingTerminal, setIsDraggingTerminal] = useState(false);
+  const [isDraggingSidebar, setIsDraggingSidebar] = useState(false);
   const dragStartY = useRef<number>(0);
   const dragStartHeight = useRef<number>(0);
 
@@ -93,6 +95,9 @@ function AppContent() {
 
   // Enable autosave on blur and tab switch
   useAutosave();
+
+  // Apply persisted zoom level to the webview, react to Cmd+=/Cmd+-/Cmd+0 changes
+  useAppZoom();
 
   // A2: beforeunload warning for unsaved changes
   useEffect(() => {
@@ -197,6 +202,25 @@ function AppContent() {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Cmd+= / Cmd++ — zoom in (accept both the unshifted '=' and shifted '+')
+      if ((e.key === '=' || e.key === '+') && e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        useUIStore.getState().zoomIn();
+        return;
+      }
+      // Cmd+- — zoom out
+      if (e.key === '-' && e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        useUIStore.getState().zoomOut();
+        return;
+      }
+      // Cmd+0 — reset zoom
+      if (e.key === '0' && e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        e.preventDefault();
+        useUIStore.getState().resetZoom();
+        return;
+      }
+
       // Cmd+J — toggle terminal
       if (e.key === 'j' && e.metaKey && !e.shiftKey && !e.ctrlKey) {
         e.preventDefault();
@@ -347,13 +371,18 @@ function AppContent() {
     openSettings('shortcuts');
   }, [openSettings]);
 
-  // Sidebar resize handlers — direct DOM manipulation for zero-lag dragging
+  // Sidebar resize handlers — direct DOM manipulation for zero-lag dragging.
+  // The reactive `isDraggingSidebar` flag is what PrimarySidebar reads to suppress
+  // its CSS width transition during the drag (and across the commit on pointerup),
+  // preventing the post-release shake caused by transitioning from the React-tracked
+  // width to the DOM-tracked width.
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
     dragStartX.current = e.clientX;
     dragStartWidth.current = useUIStore.getState().leftSidebarWidth;
     document.body.classList.add('is-resizing');
+    setIsDraggingSidebar(true);
   }, []);
 
   const handlePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
@@ -368,10 +397,19 @@ function AppContent() {
   const handlePointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
     document.body.classList.remove('is-resizing');
-    // Commit final width to store
+    // Commit final width to store FIRST so the React tree's `width` prop matches
+    // the DOM-tracked width before we re-enable transitions on the next frame.
     const delta = e.clientX - dragStartX.current;
     const newWidth = Math.max(SIDEBAR.min, Math.min(SIDEBAR.max, dragStartWidth.current + delta));
     setLeftSidebarWidth(newWidth);
+    // Defer clearing the flag until after React has committed the new width, so
+    // PrimarySidebar's transition class is still suppressed during the commit
+    // that aligns React state with the DOM.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setIsDraggingSidebar(false);
+      });
+    });
   }, [setLeftSidebarWidth]);
 
   const handleDoubleClick = useCallback(() => {
@@ -505,7 +543,7 @@ function AppContent() {
               {/* Content sidebar - collapsible (hidden during splash) */}
               {splashComplete && (
                 <>
-                  <PrimarySidebar ref={sidebarRef} width={leftSidebarWidth} onFileOpen={handleFileOpen} />
+                  <PrimarySidebar ref={sidebarRef} width={leftSidebarWidth} isResizing={isDraggingSidebar} onFileOpen={handleFileOpen} />
 
                   <div
                     className="split-divider"
