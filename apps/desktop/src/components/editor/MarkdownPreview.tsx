@@ -4,12 +4,11 @@
  */
 
 import { forwardRef, type ReactNode } from 'react';
-import Markdown from 'react-markdown';
+import { Streamdown } from 'streamdown';
 
 import { CodeBlock, parseHighlightMeta, parseTitleMeta } from '@/components/shared/CodeBlock';
 import { MermaidBlock } from '@/components/shared/MermaidBlock';
 import { markdownTableComponents } from '@/components/shared/MarkdownTable';
-import { sharedRemarkPlugins, sharedRehypePlugins } from '@/lib/markdown/plugins';
 import { rehypeSourceLines } from '@/lib/markdown/rehype-source-lines';
 import { parseCalloutType, renderCallout } from '@/lib/markdown/callouts';
 
@@ -37,9 +36,8 @@ export const MarkdownPreview = forwardRef<HTMLDivElement, MarkdownPreviewProps>(
     return (
       <div ref={ref} className={`markdown-preview ${className}`}>
         <div className="markdown-body">
-          <Markdown
-            remarkPlugins={sharedRemarkPlugins}
-            rehypePlugins={[...sharedRehypePlugins, rehypeSourceLines]}
+          <Streamdown
+            rehypePlugins={[rehypeSourceLines]}
             components={{
               ...markdownTableComponents,
               code: (props) => {
@@ -131,7 +129,7 @@ export const MarkdownPreview = forwardRef<HTMLDivElement, MarkdownPreviewProps>(
             }}
           >
             {content}
-          </Markdown>
+          </Streamdown>
         </div>
       </div>
     );
