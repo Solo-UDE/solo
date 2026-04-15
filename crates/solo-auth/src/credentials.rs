@@ -73,6 +73,88 @@ const VAULT_VERSION: &str = "1";
 /// Sentinel key: once set, legacy migration is never attempted again.
 const VAULT_MIGRATED_KEY: &str = "_migrated";
 
+// =========================================================================
+// Keychain helpers
+// =========================================================================
+//
+// On macOS, shell out to `/usr/bin/security` instead of using the `keyring`
+// crate's in-process SecKeychain calls. Keychain ACLs are bound to the code
+// signature of the calling binary; `security` is Apple-signed with a stable
+// identity, so a single "Always Allow" survives `cargo` rebuilds (each of
+// which would otherwise give the Solo binary a fresh signature and re-prompt).
+// On other platforms the keyring crate is used directly.
+
+#[cfg(target_os = "macos")]
+fn keychain_read(service: &str, account: Option<&str>) -> Result<Option<String>, String> {
+    use std::process::Command;
+    let mut args: Vec<&str> = vec!["find-generic-password", "-s", service];
+    if let Some(a) = account {
+        args.push("-a");
+        args.push(a);
+    }
+    args.push("-w");
+    let output = Command::new("/usr/bin/security")
+        .args(&args)
+        .output()
+        .map_err(|e| format!("failed to spawn /usr/bin/security: {}", e))?;
+    if !output.status.success() {
+        // Non-zero exit (commonly 44 = item not found) — treat as absent.
+        return Ok(None);
+    }
+    let s = String::from_utf8_lossy(&output.stdout).trim_end().to_string();
+    if s.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(s))
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn keychain_write(service: &str, account: &str, value: &str) -> Result<(), String> {
+    use std::process::Command;
+    let output = Command::new("/usr/bin/security")
+        .args([
+            "add-generic-password",
+            "-U",
+            "-s",
+            service,
+            "-a",
+            account,
+            "-w",
+            value,
+        ])
+        .output()
+        .map_err(|e| format!("failed to spawn /usr/bin/security: {}", e))?;
+    if !output.status.success() {
+        return Err(format!(
+            "/usr/bin/security exited with status {:?}: {}",
+            output.status.code(),
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn keychain_read(service: &str, account: Option<&str>) -> Result<Option<String>, String> {
+    let account = account.unwrap_or("default");
+    match Entry::new(service, account) {
+        Ok(entry) => match entry.get_password() {
+            Ok(s) => Ok(Some(s)),
+            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(e) => Err(e.to_string()),
+        },
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn keychain_write(service: &str, account: &str, value: &str) -> Result<(), String> {
+    Entry::new(service, account)
+        .and_then(|e| e.set_password(value))
+        .map_err(|e| e.to_string())
+}
+
 /// Legacy keychain entries from the pre-vault era.
 /// Each tuple: (old_service, old_account, new_vault_key)
 /// Kept for potential future use as a manual migration action in Settings.
@@ -193,25 +275,16 @@ impl CredentialManager {
             return Ok(());
         }
 
-        let entry = match Entry::new(VAULT_SERVICE, VAULT_ACCOUNT) {
-            Ok(e) => e,
-            Err(e) => {
-                tracing::warn!("Failed to create vault keyring entry: {}", e);
-                *self.vault.write().await = Some(HashMap::new());
-                return Ok(());
-            }
-        };
-
-        let mut data = match entry.get_password() {
-            Ok(json) if json.is_empty() => HashMap::new(),
-            Ok(json) => match serde_json::from_str::<HashMap<String, String>>(&json) {
+        let mut data = match keychain_read(VAULT_SERVICE, Some(VAULT_ACCOUNT)) {
+            Ok(None) => HashMap::new(),
+            Ok(Some(json)) if json.is_empty() => HashMap::new(),
+            Ok(Some(json)) => match serde_json::from_str::<HashMap<String, String>>(&json) {
                 Ok(map) => map,
                 Err(e) => {
                     tracing::error!("Vault JSON corrupted, attempting partial recovery: {}", e);
                     Self::attempt_partial_recovery(&json)
                 }
             },
-            Err(keyring::Error::NoEntry) => HashMap::new(),
             Err(e) => {
                 tracing::warn!("Failed to read vault from keychain: {}", e);
                 HashMap::new()
@@ -241,11 +314,7 @@ impl CredentialManager {
         let json = serde_json::to_string(data)
             .map_err(|e| ProviderError::KeychainError(format!("Failed to serialize vault: {}", e)))?;
 
-        let entry = Entry::new(VAULT_SERVICE, VAULT_ACCOUNT)
-            .map_err(|e| ProviderError::KeychainError(format!("Failed to create vault entry: {}", e)))?;
-
-        entry
-            .set_password(&json)
+        keychain_write(VAULT_SERVICE, VAULT_ACCOUNT, &json)
             .map_err(|e| ProviderError::KeychainError(format!("Failed to write vault: {}", e)))?;
 
         Ok(())
@@ -617,17 +686,9 @@ impl CredentialManager {
 
     /// Internal: read Claude Code OAuth token directly from keychain (no caching)
     async fn read_claude_oauth_from_keychain(&self) -> ProviderResult<Option<String>> {
-        let entry = match Entry::new("Claude Code-credentials", "default") {
-            Ok(e) => e,
-            Err(e) => {
-                tracing::warn!("Failed to create keyring entry for Claude Code: {}", e);
-                return Ok(None);
-            }
-        };
-
-        let json_str = match entry.get_password() {
-            Ok(s) => s,
-            Err(keyring::Error::NoEntry) => return Ok(None),
+        let json_str = match keychain_read("Claude Code-credentials", None) {
+            Ok(Some(s)) => s,
+            Ok(None) => return Ok(None),
             Err(e) => {
                 tracing::warn!("Failed to read Claude OAuth from keychain: {}", e);
                 return Ok(None);
@@ -818,11 +879,10 @@ impl CredentialManager {
             }
         }
 
-        // Fallback: keychain via keyring crate
-        if let Ok(entry) = Entry::new("Claude Code-credentials", "default") {
-            if let Ok(json_str) = entry.get_password() {
-                if !json_str.is_empty() {
-                    if let Ok(value) = serde_json::from_str::<serde_json::Value>(&json_str) {
+        // Fallback: keychain (via /usr/bin/security on macOS, keyring elsewhere)
+        if let Ok(Some(json_str)) = keychain_read("Claude Code-credentials", None) {
+            if !json_str.is_empty() {
+                if let Ok(value) = serde_json::from_str::<serde_json::Value>(&json_str) {
                         if let Some(oauth_obj) = value.get("claudeAiOauth") {
                             if let Some(access_token) = oauth_obj.get("accessToken").and_then(|t| t.as_str()) {
                                 let expires_at = Self::parse_expires_at(oauth_obj);
@@ -856,7 +916,6 @@ impl CredentialManager {
                             }
                         }
                     }
-                }
             }
         }
 
