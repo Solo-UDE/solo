@@ -95,9 +95,11 @@ export const WorktreeCardLarge: FC<WorktreeCardLargeProps> = ({
         </div>
       </div>
 
-      {/* Hover action icons — absolutely positioned so they overlay only on hover */}
+      {/* Hover action icons — absolutely positioned so they overlay only on hover.
+          No background pill: the icons sit transparently above the row, which
+          already has its own hover bg for separation from the page. */}
       {!worktree.is_main && (
-        <div className="absolute right-2 top-2.5 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150 bg-gradient-to-l from-muted/95 via-muted/95 to-transparent pl-3">
+        <div className="absolute right-2 top-2.5 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
           <ActionButton onClick={(e) => handleAction(e, onViewDiff)} title="View diff" icon={GitDiff} />
           <ActionButton
             onClick={(e) => handleAction(e, onToggleLock)}

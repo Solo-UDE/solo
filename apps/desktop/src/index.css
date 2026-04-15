@@ -1,6 +1,12 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* Tailwind v4: scan Streamdown's compiled output so its utility classes survive purging. */
+@source "../../../node_modules/streamdown/dist/*.js";
+@source "../../../node_modules/@streamdown/code/dist/*.js";
+@source "../../../node_modules/@streamdown/math/dist/*.js";
+@source "../../../node_modules/@streamdown/mermaid/dist/*.js";
+
 /* CRITICAL: Tell Tailwind v4 how to handle dark mode */
 @custom-variant dark (&:is(.dark *));
 
@@ -189,8 +195,9 @@
   --primary: oklch(0.68 0.17 140);
   --primary-foreground: oklch(0.98 0.01 75);
 
-  /* Secondary — Codex-style: near-white surface, near-black ink */
-  --secondary: oklch(0.985 0 0);
+  /* Secondary — Codex-style: subtle gray surface (slightly darker than the
+     page bg so it has shape on its own without needing a border), near-black ink */
+  --secondary: oklch(0.94 0 0);
   --secondary-foreground: oklch(0.20 0 0);
 
   /* Muted */
@@ -348,8 +355,8 @@ html.dark {
   --primary: oklch(0.86 0.14 135);
   --primary-foreground: oklch(0.15 0.01 60);
 
-  /* Secondary */
-  --secondary: oklch(0.28 0.02 58);
+  /* Secondary — neutral mid-dark, lighter than bg so it reads as a button without a border */
+  --secondary: oklch(0.28 0 0);
   --secondary-foreground: oklch(0.90 0.01 75);
 
   /* Muted */
