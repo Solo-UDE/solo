@@ -4,6 +4,7 @@ import { Plus, PencilSimpleLine, ArrowsSplit } from '@phosphor-icons/react';
 import { MessageFeed } from './messages';
 import { ChatInputContainer } from './input';
 import { SoloEmptyState } from './SoloDecryptAnimation';
+import { StickyTodoOverlay } from './StickyTodoOverlay';
 import { convertToMessageGroups } from './messageAdapter';
 import { useAgentSession } from '../../hooks/useAgentSession';
 import { useProviderStore } from '../../stores/provider-store';
@@ -351,19 +352,23 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 				</div>
 			)}
 
-			<ChatInputContainer
-				onSubmit={handleSubmit}
-				onLocalCommand={handleLocalCommand}
-				onAbort={handleAbort}
-				isAgentRunning={isRunning}
-				worktreeId={worktreeId}
-				onWorktreeChange={handleWorktreeChange}
-				onModeChange={handleModeChange}
-				thinkingEnabled={thinkingEnabled}
-				onThinkingChange={handleThinkingChange}
-				planModeActive={planModeActive}
-				acceptModeActive={acceptModeActive}
-			/>
+			{/* Sticky tasks pill — overlays above the input. Hidden when no tasks. */}
+			<div className="relative">
+				<StickyTodoOverlay messages={messages} />
+				<ChatInputContainer
+					onSubmit={handleSubmit}
+					onLocalCommand={handleLocalCommand}
+					onAbort={handleAbort}
+					isAgentRunning={isRunning}
+					worktreeId={worktreeId}
+					onWorktreeChange={handleWorktreeChange}
+					onModeChange={handleModeChange}
+					thinkingEnabled={thinkingEnabled}
+					onThinkingChange={handleThinkingChange}
+					planModeActive={planModeActive}
+					acceptModeActive={acceptModeActive}
+				/>
+			</div>
 		</div>
 	);
 };
