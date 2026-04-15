@@ -442,6 +442,16 @@ export function FileViewerPanel({
         overviewRulerLanes: 0,
         hideCursorInOverviewRuler: true,
         overviewRulerBorder: false,
+        // Find widget: render at fixed position so the widget escapes the
+        // editor's overflow-clipped container, and reserve extra room at the
+        // top so the toolbar row above the Find input isn't clipped by the
+        // breadcrumb/tab strip.
+        fixedOverflowWidgets: true,
+        find: {
+          addExtraSpaceOnTop: true,
+          autoFindInSelection: 'never',
+          seedSearchStringFromSelection: 'selection',
+        },
       }}
     />
   );
