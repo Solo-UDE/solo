@@ -152,9 +152,9 @@ export const AgentMessage: FC<AgentMessageProps> = ({
     : [];
 
   return (
-    <div className={`flex gap-2.5 px-3 animate-in fade-in-0 slide-in-from-bottom-2 duration-200 ${className}`}>
+    <div className={`flex gap-2.5 px-3 chat-surface animate-in fade-in-0 slide-in-from-bottom-2 duration-200 ${className}`}>
       {/* Content */}
-      <div className="flex-1 min-w-0 space-y-2.5">
+      <div className="flex-1 min-w-0 space-y-2.5" style={{ maxWidth: 'min(920px, 100%)' }}>
         {/* Header */}
         <div className="flex items-center gap-2">
           <SoloAgentBadge />

@@ -1,6 +1,8 @@
 import { Terminal, CaretRight, CircleNotch, CheckCircle, XCircle } from '@phosphor-icons/react';
 import { useState } from 'react';
 
+import { ExpandRegion } from './shared/ExpandRegion';
+
 import type { FC } from 'react';
 
 export interface ToolCallBlockProps {
@@ -63,58 +65,46 @@ export const ToolCallBlock: FC<ToolCallBlockProps> = ({
   const hasOutput = output !== undefined && output.trim().length > 0;
   const primaryDisplay = getPrimaryDisplay(toolName, toolInput);
 
+  const canExpand = hasOutput || !!primaryDisplay;
+
   return (
-    <div className={`border border-border rounded-lg bg-card overflow-hidden ${className}`}>
-      {/* Header */}
+    <div className={`group my-0.5 ${className}`}>
+      {/* Codex-style flat header */}
       <button
-        onClick={() => { setIsExpanded(!isExpanded); }}
-        className={`w-full flex items-center justify-between bg-muted px-3 py-1.5 hover:bg-accent/50 transition-colors ${
-          isExpanded ? 'border-b border-border' : ''
+        type="button"
+        onClick={() => { if (canExpand) setIsExpanded(!isExpanded); }}
+        className={`flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors py-0.5 ${
+          canExpand ? 'cursor-pointer' : 'cursor-default'
         }`}
+        disabled={!canExpand}
       >
-        <div className="flex items-center gap-2">
-          <Terminal className="h-3.5 w-3.5 text-muted-foreground" />
-          <span className="text-sm font-medium text-foreground">
-            {getHeaderLabel(toolName, status)}
-          </span>
-          {getStatusIcon(status)}
-        </div>
-        <CaretRight className={`h-4 w-4 text-muted-foreground transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+        <Terminal className="h-3 w-3 text-muted-foreground/70" />
+        <span className="text-foreground/85">{getHeaderLabel(toolName, status)}</span>
+        {primaryDisplay ? (
+          <code className="font-mono text-muted-foreground truncate max-w-[480px]">
+            {primaryDisplay}
+          </code>
+        ) : null}
+        {getStatusIcon(status)}
+        {canExpand ? (
+          <CaretRight className={`h-3 w-3 text-muted-foreground/50 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+        ) : null}
       </button>
 
-      {/* Collapsible content */}
-      {isExpanded ? (
-        <>
-          {/* Primary display (command, file path, etc.) */}
-          {primaryDisplay ? (
-            <div className="border-b border-border px-3 py-2">
-              <code className="text-xs font-mono text-foreground break-all">
-                {primaryDisplay}
-              </code>
-            </div>
-          ) : null}
-
-          {/* Output */}
-          <div className="p-3">
-            {status === 'running' && !output ? (
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <CircleNotch className="h-3 w-3 animate-spin" />
-                <span>Running...</span>
-              </div>
-            ) : hasOutput ? (
-              <div className="overflow-x-auto rounded-md bg-muted p-2 font-mono text-xs">
-                <pre className="break-words whitespace-pre-wrap text-foreground">
-                  {output}
-                </pre>
-              </div>
-            ) : (
-              <div className="text-xs text-muted-foreground italic">
-                No output
-              </div>
-            )}
+      <ExpandRegion isExpanded={isExpanded}>
+        {status === 'running' && !output ? (
+          <div className="mt-1 ml-5 flex items-center gap-2 text-xs text-muted-foreground">
+            <CircleNotch className="h-3 w-3 animate-spin" />
+            <span>Running...</span>
           </div>
-        </>
-      ) : null}
+        ) : hasOutput ? (
+          <div className="mt-1.5 ml-5 overflow-x-auto tool-widget-output p-2.5 font-mono text-xs">
+            <pre className="break-words whitespace-pre-wrap text-foreground/85">
+              {output}
+            </pre>
+          </div>
+        ) : null}
+      </ExpandRegion>
     </div>
   );
 };
