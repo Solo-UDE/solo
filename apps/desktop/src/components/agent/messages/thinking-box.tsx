@@ -2,6 +2,7 @@ import { Brain, CaretDown } from '@phosphor-icons/react';
 import { useEffect, useRef, useState } from 'react';
 
 import { StreamdownNarrative } from './StreamdownNarrative';
+import { ExpandRegion } from './shared/ExpandRegion';
 import { ThinkingDots } from '../streaming/ThinkingDots';
 import { TextShimmer } from '../streaming/TextShimmer';
 
@@ -54,7 +55,10 @@ export const ThinkingBox: FC<ThinkingBoxProps> = ({
   const durationText = formatDuration(thinkingDurationMs);
 
   return (
-    <div className="rounded-xl border-l-2 border-primary/20 bg-muted/20 overflow-hidden mb-3 transition-all duration-200">
+    <div
+      className="rounded-lg border overflow-hidden mb-3 transition-all duration-200"
+      style={{ borderColor: 'var(--border-tool)', background: 'var(--tool-output-bg)' }}
+    >
       {/* Header */}
       <button
         onClick={toggleExpanded}
@@ -97,21 +101,16 @@ export const ThinkingBox: FC<ThinkingBoxProps> = ({
         />
       </button>
 
-      {/* Collapsible Content — CSS grid-rows transition */}
-      <div
-        className="grid transition-[grid-template-rows] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]"
-        style={{ gridTemplateRows: isExpanded ? '1fr' : '0fr' }}
-      >
-        <div className="overflow-hidden min-h-0">
-          <div className="px-3 pb-3 pt-1">
-            <StreamdownNarrative
-              content={thinking}
-              isStreaming={isStreaming}
-              className="text-muted-foreground/80 text-sm leading-relaxed"
-            />
-          </div>
+      {/* Collapsible Content — Orbit motion pattern */}
+      <ExpandRegion isExpanded={isExpanded}>
+        <div className="px-3 pb-3 pt-1">
+          <StreamdownNarrative
+            content={thinking}
+            isStreaming={isStreaming}
+            className="text-muted-foreground/80 text-sm leading-relaxed"
+          />
         </div>
-      </div>
+      </ExpandRegion>
     </div>
   );
 };

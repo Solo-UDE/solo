@@ -15,32 +15,20 @@ export interface UserMessageProps {
 
 export const UserMessage: FC<UserMessageProps> = ({
   content,
-  timestamp,
-  userName = 'You',
+  timestamp: _timestamp,
+  userName: _userName = 'You',
   attachments,
   mentions,
   className = '',
 }) => {
-  const formatTime = (date: Date): string => {
-    return new Intl.DateTimeFormat('en-US', {
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true,
-    }).format(date);
-  };
-
   const imageAttachments = attachments?.filter((a) => a.type === 'image');
   const fileAttachments = attachments?.filter((a) => a.type === 'file');
 
   return (
-    <div className={`flex justify-end px-3 ${className}`}>
-      {/* Card bubble */}
-      <div className="max-w-[85%] rounded-2xl border border-primary px-4 py-3 space-y-1">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-primary">{userName}</span>
-          <span className="text-xs text-muted-foreground">{formatTime(timestamp)}</span>
-        </div>
-        <div className="text-sm text-black dark:text-white whitespace-pre-wrap break-words">
+    <div className={`flex justify-end px-3 chat-surface ${className}`}>
+      {/* Neutral bubble — Orbit style (no green border, no username header) */}
+      <div className="max-w-[85%] rounded-xl bg-agent-user-bg text-foreground px-3.5 py-2.5 space-y-1 shadow-xs">
+        <div className="text-[13px] whitespace-pre-wrap break-words leading-relaxed">
           {content}
         </div>
 
@@ -92,7 +80,7 @@ export const UserMessage: FC<UserMessageProps> = ({
             {mentions.map((mention) => (
               <div
                 key={mention.path}
-                className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-primary/10 text-xs text-primary"
+                className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-muted/40 text-xs text-muted-foreground"
                 title={mention.path}
               >
                 <At className="w-3 h-3 flex-shrink-0" />

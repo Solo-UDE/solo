@@ -1,6 +1,8 @@
 import { Terminal, CaretDown, CircleNotch } from '@phosphor-icons/react';
 import { useState } from 'react';
 
+import { ExpandRegion } from '../shared/ExpandRegion';
+
 import type { FC } from 'react';
 
 interface BashToolWidgetProps {
@@ -24,12 +26,12 @@ export const BashToolWidget: FC<BashToolWidgetProps> = ({
   const displayOutput = isExpanded ? output : outputLines.slice(0, maxCollapsedLines).join('\n');
 
   return (
-    <div className="my-2 rounded-md border border-border bg-card overflow-hidden">
+    <div className="my-2 tool-widget-frame">
       {/* Header */}
       <button
         onClick={() => { setIsExpanded(!isExpanded); }}
         className={`w-full flex items-center justify-between bg-muted px-3 py-1.5 hover:bg-accent/50 transition-colors ${
-          isExpanded ? 'border-b border-border' : ''
+          isExpanded ? 'border-b tool-widget-divider' : ''
         }`}
       >
         <div className="flex items-center gap-2">
@@ -43,10 +45,10 @@ export const BashToolWidget: FC<BashToolWidgetProps> = ({
       </button>
 
       {/* Collapsible content */}
-      {isExpanded ? (
+      <ExpandRegion isExpanded={isExpanded}>
         <>
           {/* Command & Description */}
-          <div className="border-b border-border space-y-1.5 px-3 py-2">
+          <div className="border-b tool-widget-divider space-y-1.5 px-3 py-2">
             <div className="flex items-start gap-2 text-xs">
               <span className="text-muted-foreground shrink-0">Command:</span>
               <code className="flex-1 rounded bg-muted px-1.5 py-0.5 font-mono text-foreground break-all">
@@ -69,7 +71,7 @@ export const BashToolWidget: FC<BashToolWidgetProps> = ({
                 <span>Running command...</span>
               </div>
             ) : output ? (
-              <div className="overflow-x-auto rounded-md bg-muted p-2 font-mono text-xs">
+              <div className="overflow-x-auto tool-widget-output p-2 font-mono text-xs">
                 <pre className="break-words whitespace-pre-wrap text-foreground">
                   {displayOutput}
                 </pre>
@@ -86,7 +88,7 @@ export const BashToolWidget: FC<BashToolWidgetProps> = ({
             )}
           </div>
         </>
-      ) : null}
+      </ExpandRegion>
     </div>
   );
 };

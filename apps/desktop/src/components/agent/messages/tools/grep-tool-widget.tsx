@@ -1,6 +1,8 @@
 import { MagnifyingGlass, CircleNotch } from '@phosphor-icons/react';
 import { useState } from 'react';
 
+import { ExpandRegion } from '../shared/ExpandRegion';
+
 import type { FC } from 'react';
 
 interface GrepToolWidgetProps {
@@ -23,11 +25,11 @@ export const GrepToolWidget: FC<GrepToolWidgetProps> = ({
   const matchCount = lines.length;
 
   return (
-    <div className="my-2 rounded-md border border-border bg-card overflow-hidden">
+    <div className="my-2 tool-widget-frame">
       {/* Header */}
       <button
         onClick={() => { setIsExpanded(!isExpanded); }}
-        className={`w-full flex items-center gap-2 px-3 py-1.5 bg-muted hover:bg-accent/50 transition-colors ${isExpanded ? 'border-b border-border' : ''}`}
+        className={`w-full flex items-center gap-2 px-3 py-1.5 bg-muted hover:bg-accent/50 transition-colors ${isExpanded ? 'border-b tool-widget-divider' : ''}`}
       >
         <MagnifyingGlass className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
         <span className="text-sm font-medium text-foreground">
@@ -41,20 +43,22 @@ export const GrepToolWidget: FC<GrepToolWidgetProps> = ({
         ) : null}
       </button>
 
-      {isExpanded && lines.length > 0 ? (
-        <div className="p-2 max-h-[300px] overflow-auto font-mono text-xs">
-          {lines.slice(0, 50).map((line, i) => (
-            <div key={`result-${String(i)}`} className="text-foreground/80 py-0.5 px-2 truncate hover:bg-accent/30">
-              {line}
-            </div>
-          ))}
-          {lines.length > 50 ? (
-            <div className="text-muted-foreground px-2 py-1">
-              +{lines.length - 50} more results...
-            </div>
-          ) : null}
-        </div>
-      ) : null}
+      <ExpandRegion isExpanded={isExpanded}>
+        {lines.length > 0 ? (
+          <div className="p-2 max-h-[300px] overflow-auto font-mono text-xs">
+            {lines.slice(0, 50).map((line, i) => (
+              <div key={`result-${String(i)}`} className="text-foreground/80 py-0.5 px-2 truncate hover:bg-accent/30">
+                {line}
+              </div>
+            ))}
+            {lines.length > 50 ? (
+              <div className="text-muted-foreground px-2 py-1">
+                +{lines.length - 50} more results...
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </ExpandRegion>
     </div>
   );
 };

@@ -1,6 +1,8 @@
 import { Globe, CircleNotch } from '@phosphor-icons/react';
 import { useState } from 'react';
 
+import { ExpandRegion } from '../shared/ExpandRegion';
+
 import type { FC } from 'react';
 
 interface WebFetchToolWidgetProps {
@@ -19,10 +21,10 @@ export const WebFetchToolWidget: FC<WebFetchToolWidgetProps> = ({
   const [isExpanded, setIsExpanded] = useState(false);
 
   return (
-    <div className="my-2 rounded-md border border-border bg-card overflow-hidden">
+    <div className="my-2 tool-widget-frame">
       <button
         onClick={() => { setIsExpanded(!isExpanded); }}
-        className={`w-full flex items-center gap-2 px-3 py-1.5 bg-muted hover:bg-accent/50 transition-colors ${isExpanded ? 'border-b border-border' : ''}`}
+        className={`w-full flex items-center gap-2 px-3 py-1.5 bg-muted hover:bg-accent/50 transition-colors ${isExpanded ? 'border-b tool-widget-divider' : ''}`}
       >
         <Globe className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
         <span className="text-sm font-medium text-foreground">
@@ -32,7 +34,7 @@ export const WebFetchToolWidget: FC<WebFetchToolWidgetProps> = ({
         {isRunning ? <CircleNotch className="h-3 w-3 animate-spin text-muted-foreground ml-auto" /> : null}
       </button>
 
-      {isExpanded ? (
+      <ExpandRegion isExpanded={isExpanded}>
         <div className="p-3 space-y-2 max-h-[300px] overflow-auto">
           {prompt ? (
             <div className="text-xs text-muted-foreground">
@@ -43,7 +45,7 @@ export const WebFetchToolWidget: FC<WebFetchToolWidgetProps> = ({
             <pre className="text-xs font-mono text-foreground whitespace-pre-wrap break-words">{output}</pre>
           ) : null}
         </div>
-      ) : null}
+      </ExpandRegion>
     </div>
   );
 };
