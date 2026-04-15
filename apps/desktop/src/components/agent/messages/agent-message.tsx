@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { CaretRight } from '@phosphor-icons/react';
-import { AgentNarrative } from './agent-narrative';
+import { StreamdownNarrative as AgentNarrative } from './StreamdownNarrative';
 import { InterruptIndicator } from './interrupt-indicator';
 import { MessageActions } from './message-actions';
 import { NotifyUserCard } from './notify-user-card';
@@ -74,6 +74,18 @@ const renderToolWidget = (
   style?: CSSProperties,
 ): ReactNode => {
   const name = toolName.toLowerCase();
+
+  // Tasks are hoisted into the sticky overlay above the chat input, so we
+  // intentionally suppress the inline rendering here to avoid showing the
+  // same todo list twice (once mid-stream, once pinned). Hidden by `false`
+  // so we can flip back if we ever want the inline view again.
+  const HOIST_TODOS_TO_STICKY = true;
+  if (
+    HOIST_TODOS_TO_STICKY &&
+    (name === 'todowrite' || name === 'taskcreate' || name === 'taskupdate' || name === 'tasklist' || name === 'taskget')
+  ) {
+    return null;
+  }
 
   // TodoWrite and TaskCreate/TaskUpdate use the todo widget
   if (name === 'todowrite' || name === 'taskcreate') {
