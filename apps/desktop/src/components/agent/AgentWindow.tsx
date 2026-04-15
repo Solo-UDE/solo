@@ -59,6 +59,10 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 	// Track thinking mode for bridge sync
 	const [thinkingEnabled, setThinkingEnabled] = useState(true);
 
+	// Reserved space below the message feed equal to the sticky tasks pill's
+	// rendered height. Keeps streamed content from being occluded by the overlay.
+	const [overlayHeightPx, setOverlayHeightPx] = useState(0);
+
 	const {
 		sessionId,
 		messages,
@@ -312,6 +316,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 				isStreaming={isRunning}
 				onToolApproval={handleToolApproval}
 				onAnswerQuestion={handleAnswerQuestion}
+				bottomReservePx={overlayHeightPx}
 				className="flex-1"
 			/>
 
@@ -354,7 +359,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 
 			{/* Sticky tasks pill — overlays above the input. Hidden when no tasks. */}
 			<div className="relative">
-				<StickyTodoOverlay messages={messages} />
+				<StickyTodoOverlay messages={messages} onHeightChange={setOverlayHeightPx} />
 				<ChatInputContainer
 					onSubmit={handleSubmit}
 					onLocalCommand={handleLocalCommand}

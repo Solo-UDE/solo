@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ListChecks, CaretRight, Circle, Check, CircleNotch } from '@phosphor-icons/react';
 
 import type { FC } from 'react';
@@ -11,6 +11,9 @@ interface TodoItem {
 
 interface StickyTodoOverlayProps {
   readonly messages: Message[];
+  /** Reports the rendered overlay height (incl. its bottom margin) to the parent
+      so the message feed can reserve matching space and avoid occlusion. 0 when hidden. */
+  readonly onHeightChange?: (heightPx: number) => void;
 }
 
 /**
@@ -22,8 +25,9 @@ interface StickyTodoOverlayProps {
  *
  * Hidden when there are no tasks, or when every task is already completed.
  */
-export const StickyTodoOverlay: FC<StickyTodoOverlayProps> = ({ messages }) => {
+export const StickyTodoOverlay: FC<StickyTodoOverlayProps> = ({ messages, onHeightChange }) => {
   const [expanded, setExpanded] = useState(true);
+  const pillRef = useRef<HTMLDivElement>(null);
 
   const todos = useMemo<TodoItem[]>(() => {
     // Walk newest -> oldest, find the most recent message with a tasks-related
@@ -71,10 +75,31 @@ export const StickyTodoOverlay: FC<StickyTodoOverlayProps> = ({ messages }) => {
   }, [todos]);
 
   // Hide when nothing to show or fully complete (Codex hides at 100%)
-  if (total === 0 || completed === total) return null;
+  const hidden = total === 0 || completed === total;
+
+  // Measure rendered height (incl. surrounding padding) so the message feed
+  // can reserve matching space and never tuck streamed content underneath.
+  useEffect(() => {
+    if (hidden) {
+      onHeightChange?.(0);
+      return;
+    }
+    const el = pillRef.current;
+    if (!el || !onHeightChange) return;
+    const report = () => {
+      const r = el.getBoundingClientRect();
+      onHeightChange(Math.ceil(r.height));
+    };
+    report();
+    const ro = new ResizeObserver(report);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [hidden, expanded, onHeightChange, total]);
+
+  if (hidden) return null;
 
   return (
-    <div className="pointer-events-none absolute inset-x-0 bottom-full z-20 px-4 pb-2">
+    <div ref={pillRef} className="pointer-events-none absolute inset-x-0 bottom-full z-20 px-4 pb-2">
       <div
         className="pointer-events-auto mx-auto max-w-3xl rounded-xl border border-border/40 px-3 py-2 shadow-lg backdrop-blur-md"
         style={{ background: 'oklch(from var(--popover) l c h / 0.85)' }}
