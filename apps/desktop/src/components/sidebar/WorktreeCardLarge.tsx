@@ -60,59 +60,58 @@ export const WorktreeCardLarge: FC<WorktreeCardLargeProps> = ({
         <div className="absolute left-0 top-3 bottom-3 w-[3px] rounded-full bg-primary" />
       )}
 
-      {/* Content */}
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          {/* Branch name */}
-          <div className="flex items-center gap-1.5">
-            {isSettingUp && (
-              <CircleNotch className="w-3.5 h-3.5 text-primary animate-spin shrink-0" />
-            )}
-            <span className={cn(
-              'text-[13px] font-semibold truncate',
-              isActive ? 'text-foreground' : 'text-muted-foreground',
-            )}>
-              {branchLabel}
-            </span>
-          </div>
-
-          {/* Status row */}
-          <div className="flex items-center gap-2 mt-1">
-            {worktree.is_dirty && (
-              <span className="w-1.5 h-1.5 rounded-full bg-warning shrink-0" title="Uncommitted changes" />
-            )}
-            {worktree.is_locked && (
-              <span title="Locked"><Lock className="w-3 h-3 text-warning shrink-0" /></span>
-            )}
-            {worktree.agent_session_id && (
-              <span title="Agent session active"><Robot className="w-3 h-3 text-primary/70 shrink-0" /></span>
-            )}
-            {shortSha && (
-              <span className="text-[10px] text-muted-foreground/60 font-mono">
-                {shortSha}
-              </span>
-            )}
-          </div>
+      {/* Content — name takes full row width; hover action icons overlay the
+          right edge so they don't reserve flex space when hidden. */}
+      <div className="min-w-0">
+        {/* Branch name */}
+        <div className="flex items-center gap-1.5">
+          {isSettingUp && (
+            <CircleNotch className="w-3.5 h-3.5 text-primary animate-spin shrink-0" />
+          )}
+          <span className={cn(
+            'text-[12px] font-semibold truncate',
+            isActive ? 'text-foreground' : 'text-muted-foreground',
+          )}>
+            {branchLabel}
+          </span>
         </div>
 
-        {/* Hover action icons */}
-        {!worktree.is_main && (
-          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150 shrink-0 mt-0.5">
-            <ActionButton onClick={(e) => handleAction(e, onViewDiff)} title="View diff" icon={GitDiff} />
-            <ActionButton
-              onClick={(e) => handleAction(e, onToggleLock)}
-              title={worktree.is_locked ? 'Unlock' : 'Lock'}
-              icon={worktree.is_locked ? LockOpen : Lock}
-            />
-            <ActionButton
-              onClick={(e) => handleAction(e, onRemove)}
-              title="Remove"
-              icon={Trash}
-              variant="destructive"
-            />
-          </div>
-        )}
+        {/* Status row */}
+        <div className="flex items-center gap-2 mt-1">
+          {worktree.is_dirty && (
+            <span className="w-1.5 h-1.5 rounded-full bg-warning shrink-0" title="Uncommitted changes" />
+          )}
+          {worktree.is_locked && (
+            <span title="Locked"><Lock className="w-3 h-3 text-warning shrink-0" /></span>
+          )}
+          {worktree.agent_session_id && (
+            <span title="Agent session active"><Robot className="w-3 h-3 text-primary/70 shrink-0" /></span>
+          )}
+          {shortSha && (
+            <span className="text-[10px] text-muted-foreground/60 font-mono">
+              {shortSha}
+            </span>
+          )}
+        </div>
       </div>
+
+      {/* Hover action icons — absolutely positioned so they overlay only on hover */}
+      {!worktree.is_main && (
+        <div className="absolute right-2 top-2.5 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150 bg-gradient-to-l from-muted/95 via-muted/95 to-transparent pl-3">
+          <ActionButton onClick={(e) => handleAction(e, onViewDiff)} title="View diff" icon={GitDiff} />
+          <ActionButton
+            onClick={(e) => handleAction(e, onToggleLock)}
+            title={worktree.is_locked ? 'Unlock' : 'Lock'}
+            icon={worktree.is_locked ? LockOpen : Lock}
+          />
+          <ActionButton
+            onClick={(e) => handleAction(e, onRemove)}
+            title="Remove"
+            icon={Trash}
+            variant="destructive"
+          />
+        </div>
+      )}
     </motion.div>
   );
 };
