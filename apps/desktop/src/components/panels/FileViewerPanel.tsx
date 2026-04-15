@@ -442,11 +442,11 @@ export function FileViewerPanel({
         overviewRulerLanes: 0,
         hideCursorInOverviewRuler: true,
         overviewRulerBorder: false,
-        // Find widget: render at fixed position so the widget escapes the
-        // editor's overflow-clipped container, and reserve extra room at the
-        // top so the toolbar row above the Find input isn't clipped by the
-        // breadcrumb/tab strip.
-        fixedOverflowWidgets: true,
+        // Find widget: reserve extra room at the top so the widget isn't
+        // clipped by the breadcrumb/tab strip. (Don't enable
+        // fixedOverflowWidgets here — the find widget is an overlay widget,
+        // not an overflow widget, and portalling breaks the close-button
+        // tooltip + click target.)
         find: {
           addExtraSpaceOnTop: true,
           autoFindInSelection: 'never',
