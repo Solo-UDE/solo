@@ -1,4 +1,5 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
+import { CaretRight } from '@phosphor-icons/react';
 import { AgentNarrative } from './agent-narrative';
 import { InterruptIndicator } from './interrupt-indicator';
 import { MessageActions } from './message-actions';
@@ -131,14 +132,21 @@ export const AgentMessage: FC<AgentMessageProps> = ({
     }).format(date);
   };
 
-  // Track streaming start time for elapsed timer
+  // Track streaming start time for elapsed timer + capture final duration on completion.
   const streamStartRef = useRef<number | null>(null);
+  const finalDurationMsRef = useRef<number | null>(null);
   if (content.isStreaming && !streamStartRef.current) {
     streamStartRef.current = Date.now();
   }
   if (!content.isStreaming && streamStartRef.current) {
+    finalDurationMsRef.current = Date.now() - streamStartRef.current;
     streamStartRef.current = null;
   }
+
+  // Codex-style "Worked for X" collapse: once the turn finishes, fold all
+  // intermediate blocks (thinking, tool calls) above the final narrative
+  // behind a single chevron header. User can re-expand to audit the trace.
+  const [traceExpanded, setTraceExpanded] = useState(false);
 
   // Use ordered blocks if available, otherwise fall back to legacy rendering
   const hasBlocks = content.blocks && content.blocks.length > 0;
@@ -151,6 +159,33 @@ export const AgentMessage: FC<AgentMessageProps> = ({
     ? deriveProgressPhases(content.blocks ?? [], true)
     : [];
 
+  // Find the index of the final non-empty narrative block. Intermediate blocks
+  // before it become collapsible once streaming completes.
+  const blocks = content.blocks ?? [];
+  let finalNarrativeIdx = -1;
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    const b = blocks[i];
+    if (b && b.type === 'narrative' && b.content.trim().length > 0) {
+      finalNarrativeIdx = i;
+      break;
+    }
+  }
+  const hasIntermediateTrace =
+    !content.isStreaming &&
+    hasBlocks &&
+    finalNarrativeIdx >= 0 &&
+    timeline.some(
+      (e) => e.kind === 'content' && e.blockIndex < finalNarrativeIdx,
+    );
+
+  const formatDuration = (ms: number): string => {
+    const sec = Math.round(ms / 1000);
+    if (sec < 60) return `${sec}s`;
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return s === 0 ? `${m}m` : `${m}m ${s}s`;
+  };
+
   return (
     <div className={`flex gap-2.5 px-3 chat-surface animate-in fade-in-0 slide-in-from-bottom-2 duration-200 ${className}`}>
       {/* Content */}
@@ -162,10 +197,51 @@ export const AgentMessage: FC<AgentMessageProps> = ({
           {content.autoProceed ? <ProceedIndicator /> : null}
         </div>
 
+        {/* "Worked for Xm Ys" — Codex-style collapsed trace once the turn finishes.
+            Renders only when there's intermediate work to hide AND a final answer to show. */}
+        {hasIntermediateTrace ? (
+          <div>
+            <button
+              type="button"
+              onClick={() => setTraceExpanded((v) => !v)}
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors py-0.5"
+              aria-expanded={traceExpanded}
+            >
+              <span>
+                {finalDurationMsRef.current
+                  ? `Worked for ${formatDuration(finalDurationMsRef.current)}`
+                  : 'Worked'}
+              </span>
+              <CaretRight
+                className={`h-3 w-3 text-muted-foreground/50 transition-transform duration-200 ${
+                  traceExpanded ? 'rotate-90' : ''
+                }`}
+              />
+            </button>
+          </div>
+        ) : null}
+
         {/* === Ordered Blocks Rendering (interleaved timeline) === */}
         {hasBlocks ? (
           <div className="space-y-3">
             {timeline.map((entry) => {
+              // Hide intermediate blocks behind the "Worked for X" collapse once
+              // streaming has completed, unless the user has expanded it.
+              if (
+                hasIntermediateTrace &&
+                !traceExpanded &&
+                entry.kind === 'content' &&
+                entry.blockIndex < finalNarrativeIdx
+              ) {
+                return null;
+              }
+              if (
+                hasIntermediateTrace &&
+                !traceExpanded &&
+                entry.kind === 'progress'
+              ) {
+                return null;
+              }
               if (entry.kind === 'progress') {
                 return (
                   <ProgressTrackerItem
