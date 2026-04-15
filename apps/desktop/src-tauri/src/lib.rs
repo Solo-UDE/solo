@@ -43,6 +43,7 @@ mod session_commands;
 mod skills_commands;
 mod terminal_commands;
 mod update_commands;
+mod vault_commands;
 mod worktree_commands;
 
 use auth_commands::AuthState;
@@ -56,6 +57,7 @@ use tauri::Emitter;
 use tauri_plugin_decorum::WebviewWindowExt;
 use terminal_commands::TerminalState;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use vault_commands::VaultState;
 use worktree_commands::WorktreeState;
 
 use std::env;
@@ -184,6 +186,7 @@ pub fn run() {
         .manage(GitState::new())
         .manage(WorktreeState::new())
         .manage(ElevenLabsState::new())
+        .manage(VaultState::new())
         .invoke_handler(tauri::generate_handler![
             // Core commands
             commands::ping,
@@ -334,6 +337,21 @@ pub fn run() {
             // Update commands
             update_commands::check_for_update,
             update_commands::install_update,
+            // Vault commands
+            vault_commands::vault_drop_paths,
+            vault_commands::vault_list,
+            vault_commands::vault_get,
+            vault_commands::vault_update_tags,
+            vault_commands::vault_set_pinned,
+            vault_commands::vault_move_scope,
+            vault_commands::vault_move_bucket,
+            vault_commands::vault_delete,
+            vault_commands::vault_search,
+            vault_commands::vault_suggest_placement,
+            vault_commands::vault_accept_placement,
+            vault_commands::vault_reindex,
+            vault_commands::vault_log_classifier_correction,
+            vault_commands::vault_unsorted_count,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

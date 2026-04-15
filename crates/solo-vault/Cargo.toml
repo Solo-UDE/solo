@@ -1,0 +1,28 @@
+[package]
+name = "solo-vault"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Agent memory vault — drag-drop indexing, semantic search, hybrid cloud sync"
+
+[dependencies]
+# Workspace
+tokio.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+# Local crates
+solo-core = { path = "../solo-core" }
+solo-protocol = { path = "../solo-protocol" }
+solo-fs = { path = "../solo-fs" }
+solo-parse = { path = "../solo-parse" }
+solo-embeddings = { path = "../solo-embeddings" }
+
+# Utility
+uuid = { version = "1.11", features = ["v4"] }
+
+[dev-dependencies]
+tempfile = "3.14"

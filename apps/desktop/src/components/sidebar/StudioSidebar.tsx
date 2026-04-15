@@ -7,7 +7,7 @@ import type { FC } from 'react';
 import { motion } from 'motion/react';
 import { ChatTeardrop, Vault, Lightning, PenNib } from '@phosphor-icons/react';
 import { SessionList } from '@/components/agent';
-import { VaultPlaceholder } from './studio/VaultPlaceholder';
+import { VaultPanel } from '@/components/vault/VaultPanel';
 import { AutomationsPlaceholder } from './studio/AutomationsPlaceholder';
 import { ContentCreationPlaceholder } from './studio/ContentCreationPlaceholder';
 import { useUIStore } from '@/stores/uiStore';
@@ -24,7 +24,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { key: 'sessions', label: 'Sessions', icon: ChatTeardrop },
-  { key: 'vault', label: 'Vault', icon: Vault, badge: 'Soon' },
+  { key: 'vault', label: 'Vault', icon: Vault },
   { key: 'automations', label: 'Automations', icon: Lightning },
   { key: 'content-creation', label: 'Content Creation', icon: PenNib },
 ];
@@ -37,7 +37,7 @@ const CONTENT_MAP: Record<StudioNav, FC<{ onSessionSelect: (id: string) => void;
       className="h-full"
     />
   ),
-  vault: () => <VaultPlaceholder />,
+  vault: () => <VaultPanel />,
   automations: () => <AutomationsPlaceholder />,
   'content-creation': () => <ContentCreationPlaceholder />,
 };

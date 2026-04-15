@@ -13,7 +13,7 @@ export const VaultPlaceholder: FC = () => (
     <div>
       <p className="text-sm font-medium text-muted-foreground">Vault</p>
       <p className="text-xs text-muted-foreground/50 mt-1">
-        Securely store and manage your credentials, API keys, and secrets.
+        A durable memory for the agent — drop any file and it becomes searchable context.
       </p>
     </div>
     <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">
