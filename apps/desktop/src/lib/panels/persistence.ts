@@ -94,6 +94,7 @@ function deserializeInstance(serialized: SerializedPanelInstance): PanelInstance
     isDirty: false,
     isPinned: serialized.isPinned,
     data,
+    lastAccessed: Date.now(),
   };
 }
 

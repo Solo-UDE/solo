@@ -34,6 +34,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -43,7 +44,9 @@
       "icons/icon.png"
     ],
     "macOS": {
-      "minimumSystemVersion": "10.15"
+      "minimumSystemVersion": "10.15",
+      "entitlements": "./Entitlements.plist",
+      "signingIdentity": null
     }
   },
   "plugins": {
@@ -52,8 +55,16 @@
     },
     "deep-link": {
       "desktop": {
-        "schemes": ["soloide"]
+        "schemes": [
+          "soloide"
+        ]
       }
+    },
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDI0NjIyNTEyQjJGRDk1RDkKUldUWmxmMnlFaVZpSk1VK3ZtRVhPbnd2UVR6MGpRUWdUcC8xZ1MxU013ZVdzeFowVzdUTmQ2MUMK",
+      "endpoints": [
+        "https://github.com/Solo-UDE/solo/releases/latest/download/latest.json"
+      ]
     }
   }
 }

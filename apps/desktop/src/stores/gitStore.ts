@@ -28,6 +28,7 @@ import {
   githubGetToken,
 } from '@/lib/tauri/git';
 import { useFileExplorerStore } from '@/stores/fileExplorerStore';
+import { useWorktreeStore } from '@/stores/worktreeStore';
 import type { GitRepoStatus } from '@/bindings/GitRepoStatus';
 import type { GitChangedFile } from '@/bindings/GitChangedFile';
 import type { GitChangesSummary } from '@/bindings/GitChangesSummary';
@@ -105,6 +106,34 @@ interface GitActions {
 
 const POLL_INTERVAL = 5000;
 
+// Tracks worktrees we've already warned about, so we don't spam the console once per poll tick.
+const _warnedMissingWorktrees = new Set<string>();
+
+/**
+ * Returns true if the active worktree's directory is gone from disk — in which case
+ * downstream git ops would fail with "could not find repository" / "No such file or directory".
+ * Polling code uses this to early-exit gracefully instead of spamming console errors.
+ */
+function shouldSkipForMissingWorktree(): boolean {
+  const wtState = useWorktreeStore.getState();
+  const activeId = wtState.activeWorktreeId;
+  if (!activeId) return false; // main workspace; assume fs root presence is enforced elsewhere
+  const wt = wtState.worktrees.get(activeId);
+  if (wt && wt.exists_on_disk === false) {
+    if (!_warnedMissingWorktrees.has(activeId)) {
+      _warnedMissingWorktrees.add(activeId);
+      console.warn(
+        `[gitStore] Skipping git ops: worktree "${activeId}" is missing on disk. ` +
+          'Refresh or prune to clean up.',
+      );
+    }
+    return true;
+  }
+  // If the worktree came back, allow future warnings.
+  _warnedMissingWorktrees.delete(activeId);
+  return false;
+}
+
 export const useGitStore = create<GitState & GitActions>()(
   immer((set, get) => ({
     // Initial state
@@ -135,6 +164,8 @@ export const useGitStore = create<GitState & GitActions>()(
     fetchRepoStatus: async () => {
       // Skip when no workspace is open
       if (!useFileExplorerStore.getState().rootPath) return;
+      // Skip when active worktree's directory is gone — prevents poll-loop console spam
+      if (shouldSkipForMissingWorktree()) return;
       try {
         const status = await gitGetStatus();
         set((state) => {
@@ -157,6 +188,8 @@ export const useGitStore = create<GitState & GitActions>()(
       if (!useFileExplorerStore.getState().rootPath) return;
       // Skip while mutating operations are in flight (prevents poll clobbering)
       if (get()._pendingOps > 0) return;
+      // Skip when active worktree's directory is gone
+      if (shouldSkipForMissingWorktree()) return;
 
       const seq = get()._fetchSeq;
       try {
@@ -349,6 +382,7 @@ export const useGitStore = create<GitState & GitActions>()(
     },
 
     listBranches: async () => {
+      if (shouldSkipForMissingWorktree()) return;
       try {
         const branches = await gitListBranches();
         set((state) => { state.branches = branches; });
@@ -423,6 +457,7 @@ export const useGitStore = create<GitState & GitActions>()(
     },
 
     stashList: async () => {
+      if (shouldSkipForMissingWorktree()) return;
       try {
         const entries = await gitStashList();
         set((state) => { state.stashEntries = entries; });

@@ -23,6 +23,7 @@ import { useTerminalStream } from "./hooks/useTerminalStream";
 import { useGitStream } from "./hooks/useGitStream";
 import { useWorktreeStream } from "./hooks/useWorktreeStream";
 import { useElevenLabsStream } from "./hooks/useElevenLabsStream";
+import { useUpdateStream } from "./hooks/useUpdateStream";
 import { useTerminalStore, clearActiveTerminal, findInActiveTerminal } from "./stores/terminalStore";
 import { useFileExplorerStore } from "./stores/fileExplorerStore";
 import { useGitHubAccountsStore } from "./stores/githubAccountsStore";
@@ -146,6 +147,7 @@ function AppContent() {
   useGitStream();
   useWorktreeStream();
   useElevenLabsStream();
+  useUpdateStream();
 
   // Load GitHub token from keychain so the header shows auth status
   useEffect(() => {

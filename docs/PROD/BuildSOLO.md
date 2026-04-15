@@ -69,18 +69,20 @@ Tokens stored in Keychain → User signed in
 2. **Supabase Dashboard → Authentication → Providers**
    - Enable GitHub provider with OAuth app credentials
 
-### Embedded Credentials
+### Build-Time Auth Configuration
 
-The Supabase URL and anon key are embedded in `auth_commands.rs`:
+The desktop app now reads the Supabase URL and anon key from build-time environment variables:
 
-```rust
-const SUPABASE_URL: &str = "https://krhyecazjzbjhmmofnkj.supabase.co";
-const SUPABASE_ANON_KEY: &str = "eyJ...";
+```bash
+export SOLO_SUPABASE_URL="https://your-project-ref.supabase.co"
+export SOLO_SUPABASE_ANON_KEY="eyJ..."
 ```
 
-These are **public values** (anon key is designed for client-side use with Row Level Security). They are embedded because:
-- `.env` files don't work reliably in production Tauri builds
-- The anon key is not a secret (RLS protects data)
+Accepted aliases:
+- `SOLO_SUPABASE_URL` or `SUPABASE_URL`
+- `SOLO_SUPABASE_ANON_KEY` or `SUPABASE_ANON_KEY`
+
+These are **public values** (the anon key is designed for client-side use with Row Level Security), but they must be embedded at build time because Finder-launched macOS apps do not inherit your shell environment.
 
 ## Deep Linking
 
@@ -182,6 +184,8 @@ bun run dev
 
 ```bash
 # 1. Build the app
+export SOLO_SUPABASE_URL="https://your-project-ref.supabase.co"
+export SOLO_SUPABASE_ANON_KEY="eyJ..."
 bun run build
 
 # 2. Kill any existing instance
@@ -203,6 +207,7 @@ tail -f /tmp/solo-auth.log | grep -E "(auth|OAuth|PKCE|token)"
 ```
 
 Common issues:
+- **"Desktop auth is not configured"**: Build the app with `SOLO_SUPABASE_URL` and `SOLO_SUPABASE_ANON_KEY` exported
 - **"unsupported_grant_type"**: Check token exchange uses `auth_code` not `code`
 - **"No PKCE state found"**: App was restarted between OAuth start and callback
 - **Deep link not opening app**: Need production build, not dev mode
@@ -231,7 +236,7 @@ urlencoding = "2"
 
 ## Checklist for New Developers
 
-- [ ] Supabase project URL and anon key are correct in `auth_commands.rs`
+- [ ] `SOLO_SUPABASE_URL` and `SOLO_SUPABASE_ANON_KEY` are set before building
 - [ ] `soloide://auth/callback` is in Supabase redirect URLs
 - [ ] GitHub OAuth provider is enabled in Supabase
 - [ ] Using production build (not dev mode) for auth testing

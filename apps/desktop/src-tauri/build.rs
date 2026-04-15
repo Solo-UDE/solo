@@ -1,4 +1,9 @@
 fn main() {
+    println!("cargo:rerun-if-env-changed=SOLO_SUPABASE_URL");
+    println!("cargo:rerun-if-env-changed=SOLO_SUPABASE_ANON_KEY");
+    println!("cargo:rerun-if-env-changed=SUPABASE_URL");
+    println!("cargo:rerun-if-env-changed=SUPABASE_ANON_KEY");
+
     // Embed Info.plist into the Mach-O binary so macOS TCC can read
     // NSMicrophoneUsageDescription even when running unbundled (cargo tauri dev).
     #[cfg(target_os = "macos")]

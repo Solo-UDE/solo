@@ -19,15 +19,33 @@ pub struct WorktreeMetadata {
     pub lock_reason: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorktreeConfig {
     pub worktrees: HashMap<String, WorktreeMetadata>,
-    /// Shell commands to run in new worktrees after creation
-    #[serde(default)]
+    /// Shell commands to run in new worktrees after creation.
+    /// Default includes `bun install`, which runs the root postinstall hook
+    /// that builds the agent-bridge sidecar (`agent-bridge/dist/index.js`).
+    /// Without this, new worktrees can't start agent sessions because the
+    /// sidecar binary is missing.
+    #[serde(default = "default_setup_commands")]
     pub setup_commands: Vec<String>,
     /// Auto-prune worktrees older than this many days (None = disabled)
     #[serde(default)]
     pub max_age_days: Option<u32>,
+}
+
+fn default_setup_commands() -> Vec<String> {
+    vec!["bun install".to_string()]
+}
+
+impl Default for WorktreeConfig {
+    fn default() -> Self {
+        Self {
+            worktrees: HashMap::new(),
+            setup_commands: default_setup_commands(),
+            max_age_days: None,
+        }
+    }
 }
 
 impl WorktreeConfig {
@@ -152,7 +170,9 @@ mod tests {
 
         let config = WorktreeConfig::load(&path).unwrap();
         assert!(config.worktrees.is_empty());
-        assert!(config.setup_commands.is_empty());
+        // Default setup_commands is `["bun install"]` so new worktrees install
+        // dependencies (including the agent-bridge sidecar via postinstall).
+        assert_eq!(config.setup_commands, vec!["bun install".to_string()]);
         assert_eq!(config.max_age_days, None);
     }
 

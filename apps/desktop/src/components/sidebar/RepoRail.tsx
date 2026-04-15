@@ -203,7 +203,13 @@ const RailIcon: FC<RailIconProps> = ({ repo, isActive, expanded, onClick, onRemo
                 )}
               </div>
               {repo.worktrees.length > 1 && (
-                <span className="text-[10px] text-muted-foreground/50 tabular-nums shrink-0">
+                <span
+                  className={cn(
+                    'text-[10px] text-muted-foreground/50 tabular-nums shrink-0',
+                    'transition-opacity duration-150',
+                    'group-hover:opacity-0',
+                  )}
+                >
                   {repo.worktrees.length}wt
                 </span>
               )}
@@ -309,7 +315,7 @@ const RailIcon: FC<RailIconProps> = ({ repo, isActive, expanded, onClick, onRemo
           </AnimatePresence>
         </div>
       </ContextMenuTrigger>
-      <ContextMenuContent side="right" className="w-44">
+      <ContextMenuContent className="w-44">
         <ContextMenuItem
           onClick={onRemove}
           className="text-destructive focus:text-destructive"

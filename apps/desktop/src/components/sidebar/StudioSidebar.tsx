@@ -4,7 +4,7 @@
  */
 
 import type { FC } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion } from 'motion/react';
 import { ChatTeardrop, Vault, Lightning, PenNib } from '@phosphor-icons/react';
 import { SessionList } from '@/components/agent';
 import { VaultPlaceholder } from './studio/VaultPlaceholder';

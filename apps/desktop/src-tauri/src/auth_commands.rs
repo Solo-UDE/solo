@@ -8,9 +8,11 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::OnceLock;
 use tauri::State;
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
+use url::Url;
 
 use crate::provider_commands::ProviderAuthState;
 
@@ -18,17 +20,15 @@ use crate::provider_commands::ProviderAuthState;
 // Configuration
 // =============================================================================
 
-/// Supabase configuration
-/// These are public values (URL and anon key) that are safe to embed.
-/// The anon key is meant for client-side use with Row Level Security.
-const SUPABASE_URL: &str = "https://krhyecazjzbjhmmofnkj.supabase.co";
-const SUPABASE_ANON_KEY: &str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtyaHllY2F6anpiamhtbW9mbmtqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkzODE2NjIsImV4cCI6MjA4NDk1NzY2Mn0.9DAIVBwKttoWGSor4do3KgzmEA7o9dyREyYn-lMd0Ps";
-
 const REDIRECT_URL: &str = "soloide://auth/callback";
+const SUPABASE_URL_ENV_KEYS: &[&str] = &["SOLO_SUPABASE_URL", "SUPABASE_URL"];
+const SUPABASE_ANON_KEY_ENV_KEYS: &[&str] = &["SOLO_SUPABASE_ANON_KEY", "SUPABASE_ANON_KEY"];
 
 /// Vault key names for Supabase auth tokens
 const VAULT_KEY_ACCESS_TOKEN: &str = "supabase.accessToken";
 const VAULT_KEY_REFRESH_TOKEN: &str = "supabase.refreshToken";
+
+static SUPABASE_CONFIG: OnceLock<Result<SupabaseConfig, String>> = OnceLock::new();
 
 // =============================================================================
 // Types
@@ -39,6 +39,12 @@ const VAULT_KEY_REFRESH_TOKEN: &str = "supabase.refreshToken";
 struct PkceState {
     verifier: String,
     challenge: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SupabaseConfig {
+    url: String,
+    anon_key: String,
 }
 
 /// Supabase user information
@@ -137,17 +143,92 @@ impl Default for AuthState {
     }
 }
 
+fn read_env(keys: &[&str]) -> Option<String> {
+    keys.iter().find_map(|key| {
+        std::env::var(key)
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+    })
+}
+
+fn normalize_supabase_url(raw_url: &str) -> Result<String, String> {
+    let trimmed = raw_url.trim().trim_end_matches('/');
+    let parsed =
+        Url::parse(trimmed).map_err(|err| format!("Invalid Supabase URL `{trimmed}`: {err}"))?;
+
+    if parsed.scheme() != "https" {
+        return Err(format!(
+            "Invalid Supabase URL `{trimmed}`: expected an https URL"
+        ));
+    }
+
+    if parsed.host_str().is_none() {
+        return Err(format!("Invalid Supabase URL `{trimmed}`: missing host"));
+    }
+
+    Ok(trimmed.to_string())
+}
+
+fn resolve_supabase_config(
+    compile_time_url: Option<&str>,
+    compile_time_anon_key: Option<&str>,
+    runtime_url: Option<String>,
+    runtime_anon_key: Option<String>,
+) -> Result<SupabaseConfig, String> {
+    let url = compile_time_url
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .or(runtime_url)
+        .ok_or_else(|| {
+            format!(
+                "Desktop auth is not configured. Set {} before building the app.",
+                SUPABASE_URL_ENV_KEYS.join(" or ")
+            )
+        })?;
+
+    let anon_key = compile_time_anon_key
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .or(runtime_anon_key)
+        .ok_or_else(|| {
+            format!(
+                "Desktop auth is not configured. Set {} before building the app.",
+                SUPABASE_ANON_KEY_ENV_KEYS.join(" or ")
+            )
+        })?;
+
+    Ok(SupabaseConfig {
+        url: normalize_supabase_url(&url)?,
+        anon_key,
+    })
+}
+
+fn load_supabase_config() -> Result<SupabaseConfig, String> {
+    resolve_supabase_config(
+        option_env!("SOLO_SUPABASE_URL").or(option_env!("SUPABASE_URL")),
+        option_env!("SOLO_SUPABASE_ANON_KEY").or(option_env!("SUPABASE_ANON_KEY")),
+        read_env(SUPABASE_URL_ENV_KEYS),
+        read_env(SUPABASE_ANON_KEY_ENV_KEYS),
+    )
+}
+
+fn supabase_config() -> Result<&'static SupabaseConfig, String> {
+    match SUPABASE_CONFIG.get_or_init(load_supabase_config) {
+        Ok(config) => Ok(config),
+        Err(error) => Err(error.clone()),
+    }
+}
+
 // =============================================================================
 // Vault Helpers (delegate to CredentialManager)
 // =============================================================================
 
 /// Read a value from the credential vault
 async fn vault_read(auth: &ProviderAuthState, key: &str) -> Option<String> {
-    auth.credentials
-        .vault_get_raw(key)
-        .await
-        .ok()
-        .flatten()
+    auth.credentials.vault_get_raw(key).await.ok().flatten()
 }
 
 /// Write a value to the credential vault
@@ -177,6 +258,7 @@ pub async fn auth_start_oauth(
     state: State<'_, AuthState>,
 ) -> Result<String, String> {
     info!(provider = %provider, "Starting OAuth flow");
+    let config = supabase_config()?;
 
     // Validate provider
     if provider != "github" {
@@ -189,7 +271,7 @@ pub async fn auth_start_oauth(
     // Build OAuth URL - let Supabase handle state internally
     let auth_url = format!(
         "{}/auth/v1/authorize?provider={}&redirect_to={}&code_challenge={}&code_challenge_method=S256",
-        SUPABASE_URL,
+        config.url,
         provider,
         urlencoding::encode(REDIRECT_URL),
         pkce.challenge
@@ -209,14 +291,15 @@ pub async fn auth_start_magic_link(
     state: State<'_, AuthState>,
 ) -> Result<(), String> {
     info!(email = %email, "Sending magic link");
+    let config = supabase_config()?;
 
     // Generate PKCE codes for magic link flow
     let pkce = AuthState::generate_pkce();
 
     let response = state
         .client
-        .post(format!("{}/auth/v1/otp", SUPABASE_URL))
-        .header("apikey", SUPABASE_ANON_KEY)
+        .post(format!("{}/auth/v1/otp", config.url))
+        .header("apikey", &config.anon_key)
         .header("Content-Type", "application/json")
         .json(&serde_json::json!({
             "email": email,
@@ -255,6 +338,7 @@ pub async fn auth_exchange_code(
     state: State<'_, AuthState>,
     auth: State<'_, ProviderAuthState>,
 ) -> Result<AuthStateResponse, String> {
+    let config = supabase_config()?;
     info!(
         "Exchanging authorization code for tokens, code={}",
         &code[..8]
@@ -279,8 +363,8 @@ pub async fn auth_exchange_code(
     // See: https://github.com/supabase/auth/issues/2306
     let response = state
         .client
-        .post(format!("{}/auth/v1/token?grant_type=pkce", SUPABASE_URL))
-        .header("apikey", SUPABASE_ANON_KEY)
+        .post(format!("{}/auth/v1/token?grant_type=pkce", config.url))
+        .header("apikey", &config.anon_key)
         .header("Content-Type", "application/json")
         .json(&serde_json::json!({
             "auth_code": code,
@@ -303,7 +387,12 @@ pub async fn auth_exchange_code(
 
         // Store tokens in vault
         vault_write(&auth, VAULT_KEY_ACCESS_TOKEN, &token_response.access_token).await?;
-        vault_write(&auth, VAULT_KEY_REFRESH_TOKEN, &token_response.refresh_token).await?;
+        vault_write(
+            &auth,
+            VAULT_KEY_REFRESH_TOKEN,
+            &token_response.refresh_token,
+        )
+        .await?;
 
         // Create session
         let session = Session {
@@ -380,12 +469,13 @@ pub async fn auth_get_session(
     };
 
     let refresh_token = vault_read(&auth, VAULT_KEY_REFRESH_TOKEN).await;
+    let config = supabase_config()?;
 
     // Validate token by getting user info
     let response = state
         .client
-        .get(format!("{}/auth/v1/user", SUPABASE_URL))
-        .header("apikey", SUPABASE_ANON_KEY)
+        .get(format!("{}/auth/v1/user", config.url))
+        .header("apikey", &config.anon_key)
         .header("Authorization", format!("Bearer {}", access_token))
         .send()
         .await
@@ -444,8 +534,9 @@ pub async fn auth_refresh_session(
 ) -> Result<AuthStateResponse, String> {
     info!("Refreshing session");
 
-    let refresh_token =
-        vault_read(&auth, VAULT_KEY_REFRESH_TOKEN).await.ok_or("No refresh token available")?;
+    let refresh_token = vault_read(&auth, VAULT_KEY_REFRESH_TOKEN)
+        .await
+        .ok_or("No refresh token available")?;
 
     refresh_session_internal(&state, &auth, &refresh_token).await
 }
@@ -456,10 +547,11 @@ async fn refresh_session_internal(
     auth: &State<'_, ProviderAuthState>,
     refresh_token: &str,
 ) -> Result<AuthStateResponse, String> {
+    let config = supabase_config()?;
     let response = state
         .client
-        .post(format!("{}/auth/v1/token", SUPABASE_URL))
-        .header("apikey", SUPABASE_ANON_KEY)
+        .post(format!("{}/auth/v1/token", config.url))
+        .header("apikey", &config.anon_key)
         .form(&[
             ("grant_type", "refresh_token"),
             ("refresh_token", refresh_token),
@@ -511,13 +603,14 @@ pub async fn auth_sign_out(
     auth: State<'_, ProviderAuthState>,
 ) -> Result<(), String> {
     info!("Signing out");
+    let config = supabase_config()?;
 
     // Try to call Supabase logout (best effort)
     if let Some(session) = state.session.read().await.as_ref() {
         let _ = state
             .client
-            .post(format!("{}/auth/v1/logout", SUPABASE_URL))
-            .header("apikey", SUPABASE_ANON_KEY)
+            .post(format!("{}/auth/v1/logout", config.url))
+            .header("apikey", &config.anon_key)
             .header("Authorization", format!("Bearer {}", session.access_token))
             .send()
             .await;
@@ -546,4 +639,50 @@ pub async fn auth_get_access_token(
 
     // Try vault
     Ok(vault_read(&auth, VAULT_KEY_ACCESS_TOKEN).await)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_supabase_config;
+
+    #[test]
+    fn uses_compile_time_values_when_present() {
+        let config = resolve_supabase_config(
+            Some("https://example.supabase.co/"),
+            Some("anon-key"),
+            Some("https://runtime.supabase.co".to_string()),
+            Some("runtime-key".to_string()),
+        )
+        .unwrap();
+
+        assert_eq!(config.url, "https://example.supabase.co");
+        assert_eq!(config.anon_key, "anon-key");
+    }
+
+    #[test]
+    fn falls_back_to_runtime_values() {
+        let config = resolve_supabase_config(
+            None,
+            None,
+            Some("https://runtime.supabase.co".to_string()),
+            Some("runtime-key".to_string()),
+        )
+        .unwrap();
+
+        assert_eq!(config.url, "https://runtime.supabase.co");
+        assert_eq!(config.anon_key, "runtime-key");
+    }
+
+    #[test]
+    fn rejects_invalid_supabase_url() {
+        let error = resolve_supabase_config(
+            Some("http://example.supabase.co"),
+            Some("anon-key"),
+            None,
+            None,
+        )
+        .unwrap_err();
+
+        assert!(error.contains("expected an https URL"));
+    }
 }

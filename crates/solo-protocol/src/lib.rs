@@ -519,6 +519,9 @@ pub struct WorktreeInfo {
     pub agent_session_id: Option<String>,
     /// Creation timestamp (Unix epoch seconds)
     pub created_at: u64,
+    /// Whether the worktree directory still exists on disk.
+    /// `false` indicates a stale config entry that needs pruning.
+    pub exists_on_disk: bool,
 }
 
 /// Request to create a new worktree
@@ -647,6 +650,32 @@ pub enum BackendEvent {
         is_error: bool,
         is_complete: bool,
     },
+
+    // =========================================================================
+    // Update events
+    // =========================================================================
+    /// An app update is available
+    #[serde(rename = "update:available")]
+    UpdateAvailable {
+        version: String,
+        body: Option<String>,
+        date: Option<String>,
+    },
+
+    /// Update download progress
+    #[serde(rename = "update:progress")]
+    UpdateProgress {
+        chunk_length: usize,
+        content_length: Option<u64>,
+    },
+
+    /// Update ready to install
+    #[serde(rename = "update:ready")]
+    UpdateReady {},
+
+    /// Update error
+    #[serde(rename = "update:error")]
+    UpdateError { error: String },
 }
 
 // =============================================================================
@@ -796,7 +825,8 @@ pub struct ElevenLabsTtsStatusEvent {
 // =============================================================================
 
 /// Status of the Claude Code CLI setup
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
 #[serde(rename_all = "camelCase")]
 pub struct ClaudeSetupStatus {
     pub cli_installed: bool,

@@ -158,6 +158,7 @@ impl WorktreeManager {
                 is_dirty,
                 agent_session_id: None,
                 created_at: 0,
+                exists_on_disk: true,
             });
         }
 
@@ -209,6 +210,7 @@ impl WorktreeManager {
                     let lock_reason = meta.and_then(|m| m.lock_reason.clone());
                     let agent_session_id = meta.and_then(|m| m.agent_session_id.clone());
                     let created_at = meta.map(|m| m.created_at).unwrap_or(0);
+                    let exists_on_disk = wt_path.exists();
 
                     result.push(WorktreeInfo {
                         id,
@@ -221,6 +223,7 @@ impl WorktreeManager {
                         is_dirty,
                         agent_session_id,
                         created_at,
+                        exists_on_disk,
                     });
                 }
             }
@@ -349,6 +352,7 @@ impl WorktreeManager {
             is_dirty,
             agent_session_id: None,
             created_at: now,
+            exists_on_disk: true,
         })
     }
 
@@ -962,6 +966,26 @@ mod tests {
     }
 
     #[test]
+    fn test_list_marks_missing_worktree_as_not_on_disk() {
+        let (_dir, repo_path) = setup_test_repo();
+        let mgr = WorktreeManager::new(&repo_path).unwrap();
+        let info = create_test_worktree(&mgr, "feature-stale");
+
+        // Sanity check: fresh worktree exists on disk.
+        let initial = mgr.list().unwrap();
+        let initial_entry = initial.iter().find(|wt| wt.id == info.id).unwrap();
+        assert!(initial_entry.exists_on_disk);
+        assert!(initial.iter().find(|wt| wt.is_main).unwrap().exists_on_disk);
+
+        // Simulate external deletion of the worktree directory only — admin metadata stays.
+        std::fs::remove_dir_all(&info.path).unwrap();
+
+        let after = mgr.list().unwrap();
+        let stale_entry = after.iter().find(|wt| wt.id == info.id).unwrap();
+        assert!(!stale_entry.exists_on_disk);
+    }
+
+    #[test]
     fn test_worktree_path_returns_correct_paths() {
         let (_dir, repo_path) = setup_test_repo();
         let mgr = WorktreeManager::new(&repo_path).unwrap();
@@ -1037,12 +1061,14 @@ mod tests {
     }
 
     #[test]
-    fn test_setup_commands_default_empty() {
+    fn test_setup_commands_default_includes_bun_install() {
         let (_dir, repo_path) = setup_test_repo();
         let mgr = WorktreeManager::new(&repo_path).unwrap();
 
+        // The default is `["bun install"]` so new worktrees auto-install deps
+        // (which triggers the root `postinstall` building the agent-bridge sidecar).
         let cmds = mgr.get_setup_commands().unwrap();
-        assert!(cmds.is_empty());
+        assert_eq!(cmds, vec!["bun install".to_string()]);
     }
 
     // -- E. Prune tests --
