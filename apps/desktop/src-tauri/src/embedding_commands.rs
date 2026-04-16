@@ -80,13 +80,6 @@ pub async fn embedding_init(
         _ => OpenAIEmbeddingModel::TextEmbedding3Small,
     };
 
-    // Mirror the key into the process env so the agent-bridge sidecar
-    // inherits it on next spawn. The sidecar reads `OPENAI_API_KEY` in
-    // vault.ts to embed semantic search queries. Setting this here (in
-    // addition to the startup pre-warm) covers the case where the user
-    // adds a key mid-session.
-    std::env::set_var("OPENAI_API_KEY", &api_key);
-
     let provider = Arc::new(OpenAIEmbeddingProvider::with_model(api_key, model));
 
     // Store provider
