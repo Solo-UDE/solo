@@ -77,8 +77,24 @@ export const vaultAcceptPlacement = (
   mode: PlacementMode,
 ) => invoke<PlacementResult>('vault_accept_placement', { entryId, targetPath, mode });
 
-export const vaultReindex = (entryId: string) =>
-  invoke<void>('vault_reindex', { entryId });
+/**
+ * Result from the semantic embedding backfill. Counts are cumulative for
+ * the single backfill run; the backend also streams
+ * `vault:backfill_progress` BackendEvent ticks while it runs.
+ */
+export interface VaultBackfillResult {
+  total: number;
+  embedded: number;
+  failed: number;
+  retries: number;
+  totalMs: number;
+}
+
+export const vaultBackfillEmbeddings = (batchSize?: number) =>
+  invoke<VaultBackfillResult>('vault_backfill_embeddings', { batchSize: batchSize ?? null });
+
+export const vaultPendingEmbeddingsCount = () =>
+  invoke<number>('vault_pending_embeddings_count');
 
 export const vaultLogClassifierCorrection = (
   entryId: string,
