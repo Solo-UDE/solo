@@ -1,4 +1,4 @@
-import { ArrowUp } from '@phosphor-icons/react';
+import { ArrowUpIcon } from '@radix-ui/react-icons';
 import { IconButton } from '@solo/ui';
 import React from 'react';
 
@@ -28,7 +28,7 @@ export const SubmitButton: React.FC<SubmitButtonProps> = ({
       `}
       aria-label="Submit message"
     >
-      <ArrowUp weight="bold" className="h-4 w-4" />
+      <ArrowUpIcon width={16} height={16} />
     </IconButton>
   );
 };
