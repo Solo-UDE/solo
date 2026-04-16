@@ -10,6 +10,7 @@ import { ChevronRightIcon, Cross2Icon } from '@radix-ui/react-icons';
 import { Folder, ArrowUp, CircleDashed, Loader2 } from 'lucide-react';
 import type { RepoEntry } from '@/stores/repoStore';
 import { useRepoStore } from '@/stores/repoStore';
+import { useGitStore } from '@/stores/gitStore';
 import { cn } from '@/lib/utils';
 
 interface RepoCardProps {
@@ -23,9 +24,14 @@ export const RepoCard: FC<RepoCardProps> = ({ repo, isActive, children }) => {
   const toggleExpanded = useRepoStore((s) => s.toggleExpanded);
   const removeRepo = useRepoStore((s) => s.removeRepo);
   const selectWorktree = useRepoStore((s) => s.selectWorktree);
+  // For the active repo, track the live ahead-count from gitStore so the badge
+  // clears immediately after a push. Inactive repos fall back to the cache that
+  // was snapshotted when we last switched away from them.
+  const liveCommitsAhead = useGitStore((s) => s.commitsAhead);
+  const commitsAhead = isActive ? (liveCommitsAhead ?? repo.cachedCommitsAhead) : repo.cachedCommitsAhead;
 
   const worktreeCount = repo.worktrees.filter((wt) => !wt.is_main).length;
-  const hasStatus = repo.cachedCommitsAhead > 0 || repo.dirtyWorktreeCount > 0;
+  const hasStatus = commitsAhead > 0 || repo.dirtyWorktreeCount > 0;
 
   const handleClick = useCallback(() => {
     if (!isActive) {
@@ -117,13 +123,13 @@ export const RepoCard: FC<RepoCardProps> = ({ repo, isActive, children }) => {
         {/* Row 2: Status indicators (commits ahead, dirty worktrees) */}
         {hasStatus && (
           <div className="flex items-center gap-1 h-4 pl-[30px] pr-2 pb-1 text-[10px] text-muted-foreground/60">
-            {repo.cachedCommitsAhead > 0 && (
+            {commitsAhead > 0 && (
               <span className="flex items-center gap-0.5 text-emerald-400/80">
                 <ArrowUp className="w-2.5 h-2.5" />
-                {repo.cachedCommitsAhead} ahead
+                {commitsAhead} ahead
               </span>
             )}
-            {repo.cachedCommitsAhead > 0 && repo.dirtyWorktreeCount > 0 && (
+            {commitsAhead > 0 && repo.dirtyWorktreeCount > 0 && (
               <span className="text-muted-foreground/30">·</span>
             )}
             {repo.dirtyWorktreeCount > 0 && (
