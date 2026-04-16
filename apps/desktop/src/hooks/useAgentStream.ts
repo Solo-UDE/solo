@@ -37,6 +37,8 @@ export function useAgentStream(options: UseAgentStreamOptions = {}): void {
 		onError: useAgentStore((s) => s.handleError),
 		onPlanModeChanged: useAgentStore((s) => s.handlePlanModeChanged),
 		onAcceptModeChanged: useAgentStore((s) => s.handleAcceptModeChanged),
+		onDebugModeChanged: useAgentStore((s) => s.handleDebugModeChanged),
+		onSessionGoalCaptured: useAgentStore((s) => s.handleSessionGoalCaptured),
 	};
 
 	useEffect(() => {
@@ -61,6 +63,13 @@ export function useAgentStream(options: UseAgentStreamOptions = {}): void {
 				handlersRef.current.onPlanModeChanged?.(sessionId, enabled),
 			onAcceptModeChanged: (sessionId, enabled) =>
 				handlersRef.current.onAcceptModeChanged?.(sessionId, enabled),
+			onDebugModeChanged: (sessionId, enabled) =>
+				handlersRef.current.onDebugModeChanged?.(sessionId, enabled),
+			onSessionGoalCaptured: (sessionId, goal, capturedAt) => {
+				// `capturedAt` is currently informational; store just holds the goal text.
+				void capturedAt;
+				handlersRef.current.onSessionGoalCaptured?.(sessionId, goal, capturedAt);
+			},
 		};
 
 		listenToAgentEvents(proxy)
