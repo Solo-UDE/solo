@@ -19,6 +19,7 @@
 //! `backfill_embeddings`. Cloud sync and OCR land later.
 
 pub mod classifier;
+pub mod local_embed;
 pub mod memory;
 pub mod pipeline;
 pub mod placement;
@@ -140,6 +141,34 @@ impl Vault {
             .read()
             .map(|g| g.is_some())
             .unwrap_or(false)
+    }
+
+    /// Kick off a background tokio task to download (if missing) and load
+    /// the local embedding model from `<root>/models/`. Fire-and-forget —
+    /// the Vault stays fully usable during the download; once ready the
+    /// task calls `set_embedding_provider` and semantic search activates.
+    ///
+    /// Safe to call multiple times: no-op if a provider is already attached
+    /// or a load is already in flight (we rely on the SetOnce pattern —
+    /// `set_embedding_provider` is idempotent when called with the same
+    /// provider, and callers should only invoke this once per vault open).
+    pub fn spawn_local_embedder_load(self: &std::sync::Arc<Self>) {
+        if self.has_embedding_provider() {
+            debug!("vault.local_embed.already_attached");
+            return;
+        }
+        let vault = self.clone();
+        let root = vault.root.clone();
+        tokio::spawn(async move {
+            match crate::local_embed::LocalEmbeddingProvider::load(&root).await {
+                Ok(provider) => {
+                    vault.set_embedding_provider(Some(std::sync::Arc::new(provider)));
+                }
+                Err(e) => {
+                    warn!(err = %e, "vault.local_embed.load_failed (semantic will fall back to fts)");
+                }
+            }
+        });
     }
 
     pub fn default_root() -> PathBuf {
