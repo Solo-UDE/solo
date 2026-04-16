@@ -92,6 +92,18 @@ export interface FileMention {
 	relativePath: string;
 }
 
+/**
+ * Ordered rendering unit for a user message built with inline skill chips.
+ *
+ * A typed message like `"hello /per-file-commit world"` becomes
+ * `[{text: "hello "}, {skill: "per-file-commit"}, {text: " world"}]`,
+ * letting the user bubble preserve the exact order the author typed.
+ * Optional — older messages just use `content` + `skills[]` fallback.
+ */
+export type UserContentPart =
+	| { type: 'text'; text: string }
+	| { type: 'skill'; name: string };
+
 export interface Message {
 	id: string;
 	role: 'user' | 'assistant';
@@ -108,6 +120,10 @@ export interface Message {
 	attachedImages?: ImageAttachment[];
 	attachments?: Attachment[];
 	mentions?: FileMention[];
+	/** Skill names chipped into this user message. Flat list used for prompt injection. */
+	skills?: string[];
+	/** Ordered text+chip sequence. When present, the user bubble renders this instead of `content`. */
+	parts?: UserContentPart[];
 	turnNumber?: number;
 	usage?: TokenUsage;
 	costUsd?: number;
@@ -158,6 +174,8 @@ export interface QueuedMessage {
 	model: string;
 	attachments?: Attachment[];
 	mentions?: FileMention[];
+	skills?: string[];
+	parts?: UserContentPart[];
 	createdAt: number;
 }
 
@@ -180,21 +198,26 @@ function toAgentModel(modelId: string): 'haiku' | 'sonnet' | 'opus' {
 function toContentBlocks(
 	attachments?: Attachment[],
 	mentions?: FileMention[],
+	skillNames?: string[],
 ): AttachmentContentBlock[] | undefined {
 	const blocks: AttachmentContentBlock[] = [];
 
 	// Inject attached skill content as text blocks (before other attachments).
 	// Omit `name` so buildContentBlocks treats it as plain text, not a code-fenced file.
-	const { available, attached } = useSkillStore.getState();
-	const activeSkills = available.filter((s) => attached.has(s.name));
-	if (activeSkills.length > 0) {
-		const skillText = activeSkills
-			.map((s) => `<skill name="${s.name}">\n${s.content}\n</skill>`)
-			.join('\n\n');
-		blocks.push({
-			type: 'text',
-			text: `The user has attached the following skills as instructions for this message. Follow these skill instructions:\n\n${skillText}`,
-		});
+	if (skillNames && skillNames.length > 0) {
+		const { available } = useSkillStore.getState();
+		const resolved = skillNames
+			.map((name) => available.find((s) => s.name === name))
+			.filter((s): s is NonNullable<typeof s> => Boolean(s));
+		if (resolved.length > 0) {
+			const skillText = resolved
+				.map((s) => `<skill name="${s.name}">\n${s.content}\n</skill>`)
+				.join('\n\n');
+			blocks.push({
+				type: 'text',
+				text: `The user has attached the following skills as instructions for this message. Follow these skill instructions:\n\n${skillText}`,
+			});
+		}
 	}
 
 	if (attachments) {
@@ -307,8 +330,8 @@ interface AgentActions {
 	setSelectedModel: (model: string) => void;
 
 	// Message handling
-	sendMessage: (sessionId: string, content: string, mode?: MessageMode, attachments?: Attachment[], mentions?: FileMention[]) => Promise<void>;
-	addUserMessage: (sessionId: string, content: string, mode?: MessageMode, attachments?: Attachment[], mentions?: FileMention[]) => string;
+	sendMessage: (sessionId: string, content: string, mode?: MessageMode, attachments?: Attachment[], mentions?: FileMention[], skills?: string[], parts?: UserContentPart[]) => Promise<void>;
+	addUserMessage: (sessionId: string, content: string, mode?: MessageMode, attachments?: Attachment[], mentions?: FileMention[], skills?: string[], parts?: UserContentPart[]) => string;
 
 	// Queued messages (while a turn is streaming)
 	enqueueMessage: (sessionId: string, draft: Omit<QueuedMessage, 'id' | 'createdAt'>) => void;
@@ -854,7 +877,7 @@ export const useAgentStore = create<AgentStore>()(
 		// Message Handling
 		// =================================================================
 
-		sendMessage: async (sessionId: string, content: string, mode?: MessageMode, attachments?: Attachment[], mentions?: FileMention[]) => {
+		sendMessage: async (sessionId: string, content: string, mode?: MessageMode, attachments?: Attachment[], mentions?: FileMention[], skills?: string[], parts?: UserContentPart[]) => {
 			if (!sessionId) return;
 
 			// Lazy resume: ensure bridge connection before sending
@@ -867,7 +890,7 @@ export const useAgentStore = create<AgentStore>()(
 			}
 
 			// Add user message
-			get().addUserMessage(sessionId, content, mode, attachments, mentions);
+			get().addUserMessage(sessionId, content, mode, attachments, mentions, skills, parts);
 
 			// Create placeholder for assistant response
 			const assistantMessageId = `msg-${Date.now()}-assistant`;
@@ -894,7 +917,7 @@ export const useAgentStore = create<AgentStore>()(
 			});
 
 			try {
-				await backend.agentSendMessage(sessionId, content, toContentBlocks(attachments, mentions));
+				await backend.agentSendMessage(sessionId, content, toContentBlocks(attachments, mentions, skills));
 			} catch (error) {
 				const errorMsg = error instanceof Error ? error.message : String(error);
 				console.error('[Agent] sendMessage failed:', errorMsg);
@@ -907,7 +930,7 @@ export const useAgentStore = create<AgentStore>()(
 			}
 		},
 
-		addUserMessage: (sessionId: string, content: string, mode?: MessageMode, attachments?: Attachment[], mentions?: FileMention[]) => {
+		addUserMessage: (sessionId: string, content: string, mode?: MessageMode, attachments?: Attachment[], mentions?: FileMention[], skills?: string[], parts?: UserContentPart[]) => {
 			const messageId = `msg-${Date.now()}-user`;
 
 			set((state) => {
@@ -921,6 +944,8 @@ export const useAgentStore = create<AgentStore>()(
 					mode,
 					attachments: attachments?.length ? attachments : undefined,
 					mentions: mentions?.length ? mentions : undefined,
+					skills: skills?.length ? skills : undefined,
+					parts: parts?.length ? parts : undefined,
 				});
 				state.messages.set(sessionId, sessionMessages);
 			});
@@ -990,6 +1015,19 @@ export const useAgentStore = create<AgentStore>()(
 				for (const m of q.mentions ?? []) mentionMap.set(m.path, m);
 			}
 			const combinedMentions = Array.from(mentionMap.values());
+			// De-dupe skills by name; stitch parts with paragraph separators
+			const skillSet = new Set<string>();
+			for (const q of queue) {
+				for (const n of q.skills ?? []) skillSet.add(n);
+			}
+			const combinedSkills = Array.from(skillSet);
+			const combinedParts: UserContentPart[] = [];
+			queue.forEach((q, i) => {
+				if (i > 0 && (q.parts?.length ?? 0) > 0) {
+					combinedParts.push({ type: 'text', text: '\n\n' });
+				}
+				if (q.parts) combinedParts.push(...q.parts);
+			});
 
 			await get().sendMessage(
 				sessionId,
@@ -997,6 +1035,8 @@ export const useAgentStore = create<AgentStore>()(
 				last.mode,
 				combinedAttachments.length ? combinedAttachments : undefined,
 				combinedMentions.length ? combinedMentions : undefined,
+				combinedSkills.length ? combinedSkills : undefined,
+				combinedParts.length ? combinedParts : undefined,
 			);
 		},
 
