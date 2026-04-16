@@ -3,7 +3,7 @@ import { PlusIcon, Pencil2Icon } from '@radix-ui/react-icons';
 import { Split } from 'lucide-react';
 
 import { MessageFeed } from './messages';
-import { ChatInputContainer } from './input';
+import { ChatInputContainer, type ChatInputContainerHandle } from './input';
 import { QueuedMessagesStrip } from './input/queued-messages-strip';
 import { SoloEmptyState } from './SoloDecryptAnimation';
 import { StickyTodoOverlay } from './StickyTodoOverlay';
@@ -71,6 +71,10 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 	// Reserved space below the message feed equal to the sticky tasks pill's
 	// rendered height. Keeps streamed content from being occluded by the overlay.
 	const [overlayHeightPx, setOverlayHeightPx] = useState(0);
+
+	// Panel root + composer handle, used by the panel-scoped keyboard dispatcher.
+	const rootRef = useRef<HTMLDivElement>(null);
+	const chatInputRef = useRef<ChatInputContainerHandle>(null);
 
 	const {
 		sessionId,
@@ -273,11 +277,81 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 		[sendMessage]
 	);
 
+	// Panel-scoped keyboard dispatcher.
+	//
+	// Listens at document level so shortcuts (Escape, Enter) fire no matter
+	// where focus is within this agent panel — editor, message feed,
+	// buttons, pills, empty whitespace. Containment check ensures the
+	// listener only fires when this panel actually "owns" the focus; if the
+	// user is typing in the terminal or another panel we stay out of the way.
+	useEffect(() => {
+		const handler = (event: KeyboardEvent) => {
+			// Skip if something downstream (composer's own handleKeyDown, a
+			// button's activation handler, etc.) already handled this press.
+			if (event.defaultPrevented) return;
+			const root = rootRef.current;
+			if (!root) return;
+			// Hidden/collapsed panels shouldn't steal shortcuts.
+			if (root.offsetParent === null) return;
+
+			const active = document.activeElement;
+			const focusInPanel =
+				active === null ||
+				active === document.body ||
+				(active instanceof Node && root.contains(active));
+			if (!focusInPanel) return;
+
+			// Escape = abort current turn and pull queued messages back into
+			// the composer for editing. Works whether or not the queue has
+			// items (empty-queue case is a plain abort).
+			if (event.key === 'Escape' && isRunning) {
+				event.preventDefault();
+				chatInputRef.current?.abortWithRecall();
+				return;
+			}
+
+			// Enter (no shift) = send / queue whatever is in the composer,
+			// even if focus is elsewhere in the panel. Skip when focus is in
+			// an editable or interactive target — those have their own
+			// Enter semantics (composer handles its own Enter; buttons fire
+			// clicks; etc.).
+			if (event.key === 'Enter' && !event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey) {
+				const target = event.target;
+				const isInteractive =
+					target instanceof HTMLElement &&
+					!!target.closest('input, textarea, select, button, a[href], [contenteditable="true"]');
+				if (isInteractive) return;
+				event.preventDefault();
+				chatInputRef.current?.submit();
+			}
+		};
+		document.addEventListener('keydown', handler);
+		return () => document.removeEventListener('keydown', handler);
+	}, [isRunning]);
+
+	// Keep focus inside the panel on clicks that would otherwise land on
+	// non-focusable elements (e.g. the message feed's whitespace). Without
+	// this, clicking a blank area moves focus to document.body and the
+	// dispatcher's containment check fails until the user clicks an
+	// interactive child again.
+	const handleRootMouseDown = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+		const target = event.target as HTMLElement;
+		const isInteractive = target.closest(
+			'input, textarea, select, button, a[href], [contenteditable="true"], [tabindex]:not([tabindex="-1"])'
+		);
+		if (isInteractive) return;
+		// Defer so the native mousedown completes first.
+		requestAnimationFrame(() => rootRef.current?.focus({ preventScroll: true }));
+	}, []);
+
 
 	if (messages.length === 0) {
 		return (
 			<div
-				className={`relative flex flex-col h-full bg-background rounded-2xl overflow-hidden ${className}`}
+				ref={rootRef}
+				tabIndex={-1}
+				onMouseDown={handleRootMouseDown}
+				className={`relative flex flex-col h-full bg-background rounded-2xl overflow-hidden focus:outline-none ${className}`}
 				data-instance-id={instanceId}
 				style={{ fontFamily: 'var(--font-chat)' }}
 			>
@@ -298,6 +372,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 
 				<QueuedMessagesStrip sessionId={sessionId ?? null} />
 				<ChatInputContainer
+					ref={chatInputRef}
 					onSubmit={handleSubmit}
 					onEnqueue={handleEnqueue}
 					onRecallQueue={handleRecallQueue}
@@ -319,7 +394,10 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 
 	return (
 		<div
-			className={`relative flex flex-col h-full bg-background rounded-2xl overflow-hidden ${className}`}
+			ref={rootRef}
+			tabIndex={-1}
+			onMouseDown={handleRootMouseDown}
+			className={`relative flex flex-col h-full bg-background rounded-2xl overflow-hidden focus:outline-none ${className}`}
 			data-instance-id={instanceId}
 			style={{ fontFamily: 'var(--font-chat)' }}
 		>
@@ -427,6 +505,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 				<StickyTodoOverlay messages={messages} onHeightChange={setOverlayHeightPx} />
 				<QueuedMessagesStrip sessionId={sessionId ?? null} />
 				<ChatInputContainer
+					ref={chatInputRef}
 					onSubmit={handleSubmit}
 					onEnqueue={handleEnqueue}
 					onRecallQueue={handleRecallQueue}

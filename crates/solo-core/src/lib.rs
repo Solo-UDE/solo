@@ -26,6 +26,10 @@
 //! This crate provides the foundational abstractions used across
 //! the Solo IDE, including traits for services and common types.
 
+pub mod permissions;
+pub mod plans;
+pub mod settings;
+
 use thiserror::Error;
 
 /// Core error types for the Solo IDE
