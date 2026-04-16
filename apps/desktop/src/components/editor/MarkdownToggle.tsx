@@ -2,7 +2,7 @@
  * MarkdownToggle - Segmented control for switching between Preview and Markdown (code) modes.
  */
 
-import { Eye, Code } from '@phosphor-icons/react';
+import { EyeOpenIcon, CodeIcon } from '@radix-ui/react-icons';
 import { cn } from '@/lib/utils';
 
 import type { MarkdownMode } from '@/stores/editorStore';
@@ -32,7 +32,7 @@ export function MarkdownToggle({ mode, onModeChange, className }: MarkdownToggle
         title="Preview (Cmd+Shift+M)"
         aria-label="Preview mode"
       >
-        <Eye className="w-3 h-3" />
+        <EyeOpenIcon className="w-3 h-3" />
         <span>Preview</span>
       </button>
       <button
@@ -46,7 +46,7 @@ export function MarkdownToggle({ mode, onModeChange, className }: MarkdownToggle
         title="Markdown (Cmd+Shift+M)"
         aria-label="Markdown mode"
       >
-        <Code className="w-3 h-3" />
+        <CodeIcon className="w-3 h-3" />
         <span>Markdown</span>
       </button>
     </div>
