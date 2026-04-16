@@ -85,7 +85,7 @@ export interface GetThinkingModeRequest {
 export interface SetModelRequest {
   type: 'set_model';
   sessionId: string;
-  model: 'haiku' | 'sonnet' | 'opus';
+  model: string;
 }
 
 /**
@@ -119,6 +119,23 @@ export interface SetAcceptModeRequest {
  */
 export interface GetAcceptModeRequest {
   type: 'get_accept_mode';
+  sessionId: string;
+}
+
+/**
+ * Set Debug mode — enables goal capture and periodic review questions.
+ */
+export interface SetDebugModeRequest {
+  type: 'set_debug_mode';
+  sessionId: string;
+  enabled: boolean;
+}
+
+/**
+ * Get Debug mode for a session.
+ */
+export interface GetDebugModeRequest {
+  type: 'get_debug_mode';
   sessionId: string;
 }
 
@@ -200,6 +217,8 @@ export type BridgeRequest =
   | GetPlanModeRequest
   | SetAcceptModeRequest
   | GetAcceptModeRequest
+  | SetDebugModeRequest
+  | GetDebugModeRequest
   | SetToolPolicyRequest
   | IsSessionReadyRequest
   | GetSDKSessionIdRequest
@@ -301,6 +320,26 @@ export interface AcceptModeChangedEvent {
 }
 
 /**
+ * Debug mode changed event
+ */
+export interface DebugModeChangedEvent {
+  type: 'debug_mode_changed';
+  sessionId: string;
+  enabled: boolean;
+}
+
+/**
+ * Session goal captured event — fires once per session when Debug mode
+ * is active and the user's first prompt lands.
+ */
+export interface SessionGoalCapturedEvent {
+  type: 'session_goal_captured';
+  sessionId: string;
+  goal: string;
+  capturedAt: number;
+}
+
+/**
  * Error event
  */
 export interface ErrorEvent {
@@ -324,6 +363,8 @@ export type BridgeEvent =
   | SessionInitEventMessage
   | PlanModeChangedEvent
   | AcceptModeChangedEvent
+  | DebugModeChangedEvent
+  | SessionGoalCapturedEvent
   | ErrorEvent
   | ReadyEvent;
 
