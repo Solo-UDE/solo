@@ -94,7 +94,9 @@ pub async fn open_folder_dialog(app: AppHandle) -> Result<Option<String>, String
 #[tauri::command]
 pub async fn set_workspace_root(
     path: String,
+    app: AppHandle,
     state: State<'_, FsState>,
+    git_state: State<'_, crate::git_commands::GitState>,
 ) -> Result<(), FileOperationError> {
     let path_buf = PathBuf::from(&path);
 
@@ -115,7 +117,11 @@ pub async fn set_workspace_root(
     }
 
     info!(path = %path, "Setting workspace root");
-    *state.workspace_root.write().await = Some(path_buf);
+    *state.workspace_root.write().await = Some(path_buf.clone());
+
+    // Swap in a fresh .git/ watcher so external git ops (agent shell, external CLI)
+    // surface as GitChangesUpdated events. Non-repo paths are a no-op.
+    crate::git_commands::install_git_ref_watcher(&git_state, app, path_buf).await;
 
     Ok(())
 }
