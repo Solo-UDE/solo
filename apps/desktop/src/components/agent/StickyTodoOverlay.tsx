@@ -30,9 +30,11 @@ export const StickyTodoOverlay: FC<StickyTodoOverlayProps> = ({ messages, onHeig
   const [expanded, setExpanded] = useState(true);
   const pillRef = useRef<HTMLDivElement>(null);
 
-  const todos = useMemo<TodoItem[]>(() => {
+  const { todos, sourceInterrupted } = useMemo<{ todos: TodoItem[]; sourceInterrupted: boolean }>(() => {
     // Walk newest -> oldest, find the most recent message with a tasks-related
     // tool call. The latest TodoWrite/TaskList wins (full snapshot of state).
+    // Track whether the owning message was interrupted so we can hide stale
+    // state after an abort — any `in_progress` todo there will never land.
     for (let i = messages.length - 1; i >= 0; i--) {
       const msg = messages[i];
       if (!msg || msg.role !== 'assistant' || !msg.toolCalls?.length) continue;
@@ -44,24 +46,30 @@ export const StickyTodoOverlay: FC<StickyTodoOverlayProps> = ({ messages, onHeig
         if (name === 'todowrite' || name === 'tasklist') {
           const arr = (tc.input as Record<string, unknown> | undefined)?.['todos'];
           if (Array.isArray(arr)) {
-            return arr.map((it) => (typeof it === 'object' && it !== null ? (it as TodoItem) : { content: String(it) }));
+            return {
+              todos: arr.map((it) => (typeof it === 'object' && it !== null ? (it as TodoItem) : { content: String(it) })),
+              sourceInterrupted: !!msg.isInterrupted,
+            };
           }
           // tasklist returns todos in output JSON
           if (name === 'tasklist' && tc.output) {
             try {
               const parsed = JSON.parse(tc.output);
               if (Array.isArray(parsed)) {
-                return parsed.map((t: Record<string, unknown>) => ({
-                  content: (t['subject'] as string) || (t['description'] as string),
-                  status: t['status'] as string,
-                }));
+                return {
+                  todos: parsed.map((t: Record<string, unknown>) => ({
+                    content: (t['subject'] as string) || (t['description'] as string),
+                    status: t['status'] as string,
+                  })),
+                  sourceInterrupted: !!msg.isInterrupted,
+                };
               }
             } catch { /* ignore */ }
           }
         }
       }
     }
-    return [];
+    return { todos: [], sourceInterrupted: false };
   }, [messages]);
 
   const { completed, total, anyRunning } = useMemo(() => {
@@ -75,8 +83,10 @@ export const StickyTodoOverlay: FC<StickyTodoOverlayProps> = ({ messages, onHeig
     return { completed: c, total: todos.length, anyRunning: r };
   }, [todos]);
 
-  // Hide when nothing to show or fully complete (Codex hides at 100%)
-  const hidden = total === 0 || completed === total;
+  // Hide when nothing to show, fully complete, or the turn that produced
+  // these tasks was aborted — in the abort case the `in_progress` spinner
+  // would keep turning forever against stale state.
+  const hidden = total === 0 || completed === total || sourceInterrupted;
 
   // Measure rendered height (incl. surrounding padding) so the message feed
   // can reserve matching space and never tuck streamed content underneath.
