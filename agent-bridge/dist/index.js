@@ -13922,7 +13922,7 @@ config(en_default());
 // src/vault.ts
 var logger = createLogger("vault");
 var VAULT_DB = join2(homedir2(), ".solo", "vault", "index.sqlite");
-var EMBEDDING_DIM = 1536;
+var EMBEDDING_DIM = 384;
 var VAULT_DEBUG = process.env.VAULT_DEBUG === "1" || process.env.VAULT_DEBUG === "true";
 function openDb() {
   if (!existsSync(VAULT_DB)) {
@@ -14193,6 +14193,32 @@ function cosine(a, b) {
 }
 var QUERY_CACHE_MAX = 128;
 var queryEmbedCache = /* @__PURE__ */ new Map();
+var embedderPromise = null;
+async function getEmbedder() {
+  if (embedderPromise) return embedderPromise;
+  embedderPromise = (async () => {
+    const start = Date.now();
+    logger.info({ model: "Xenova/all-MiniLM-L6-v2" }, "vault.embedder.init.start");
+    try {
+      const { pipeline, env } = await import("@xenova/transformers");
+      env.allowRemoteModels = true;
+      const extractor = await pipeline(
+        "feature-extraction",
+        "Xenova/all-MiniLM-L6-v2"
+      );
+      logger.info(
+        { ms: Date.now() - start },
+        "vault.embedder.init.done"
+      );
+      return extractor;
+    } catch (err) {
+      logger.error({ err: String(err) }, "vault.embedder.init.failed");
+      embedderPromise = null;
+      throw err;
+    }
+  })();
+  return embedderPromise;
+}
 async function embedQuery(text) {
   const start = Date.now();
   const trimmed = text.trim();
@@ -14211,79 +14237,37 @@ async function embedQuery(text) {
     );
     return cached2;
   }
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    logger.warn("vault.query.embed.no_key");
+  let extractor;
+  try {
+    extractor = await getEmbedder();
+  } catch {
     return null;
   }
-  const MAX_ATTEMPTS = 3;
-  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    const attemptStart = Date.now();
-    try {
-      const res = await fetch("https://api.openai.com/v1/embeddings", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`
-        },
-        body: JSON.stringify({
-          model: "text-embedding-3-small",
-          input: trimmed
-        })
-      });
-      if (res.status === 429) {
-        const waitMs = (1 << attempt) * 1e3;
-        logger.warn(
-          { attempt, status: 429, wait_ms: waitMs },
-          "vault.query.embed.retry"
-        );
-        await new Promise((r) => setTimeout(r, waitMs));
-        continue;
-      }
-      if (!res.ok) {
-        const errBody = await res.text().catch(() => "<unreadable>");
-        logger.error(
-          { status: res.status, attempt, body_preview: errBody.slice(0, 200) },
-          "vault.query.embed.failed"
-        );
-        return null;
-      }
-      const json2 = await res.json();
-      const raw = json2.data?.[0]?.embedding;
-      if (!raw || !Array.isArray(raw)) {
-        logger.error({ attempt }, "vault.query.embed.malformed_response");
-        return null;
-      }
-      const vec = new Float32Array(raw);
-      if (queryEmbedCache.size >= QUERY_CACHE_MAX) {
-        const firstKey = queryEmbedCache.keys().next().value;
-        if (firstKey !== void 0) queryEmbedCache.delete(firstKey);
-      }
-      queryEmbedCache.set(trimmed, vec);
-      logger.info(
-        {
-          cached: false,
-          ms: Date.now() - start,
-          api_ms: Date.now() - attemptStart,
-          tokens_est: Math.ceil(trimmed.length / 4),
-          attempts: attempt + 1
-        },
-        "vault.query.embed"
-      );
-      return vec;
-    } catch (err) {
-      logger.warn(
-        { err: String(err), attempt },
-        "vault.query.embed.retry"
-      );
-      if (attempt === MAX_ATTEMPTS - 1) {
-        logger.error({ err: String(err) }, "vault.query.embed.failed");
-        return null;
-      }
-      await new Promise((r) => setTimeout(r, (1 << attempt) * 1e3));
-    }
+  const inferenceStart = Date.now();
+  let vec;
+  try {
+    const output = await extractor(trimmed, { pooling: "mean", normalize: true });
+    vec = new Float32Array(output.data);
+  } catch (err) {
+    logger.error({ err: String(err) }, "vault.query.embed.failed");
+    return null;
   }
-  return null;
+  if (queryEmbedCache.size >= QUERY_CACHE_MAX) {
+    const firstKey = queryEmbedCache.keys().next().value;
+    if (firstKey !== void 0) queryEmbedCache.delete(firstKey);
+  }
+  queryEmbedCache.set(trimmed, vec);
+  logger.info(
+    {
+      cached: false,
+      ms: Date.now() - start,
+      inference_ms: Date.now() - inferenceStart,
+      tokens_est: Math.ceil(trimmed.length / 4),
+      dim: vec.length
+    },
+    "vault.query.embed"
+  );
+  return vec;
 }
 async function searchVaultSemantic(query2, opts = {}) {
   const start = Date.now();

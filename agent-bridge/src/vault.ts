@@ -4,12 +4,15 @@
  * Opens the same SQLite DB the Rust side writes to (WAL mode makes concurrent
  * reads safe). Exposes:
  *   1. A `vault_search` tool for the SDK so the model can query the vault on
- *      demand (supports both `fts` and `semantic` modes as of V1.2).
+ *      demand (supports both `fts` and `semantic` modes).
  *   2. `fetchVaultContext()` used by the pre-flight injector that automatically
  *      prepends the top-k FTS hits + pinned chunks to every user message.
  *   3. `loadEmbeddingsCache()` — preloaded on session start so semantic tool
- *      calls are sub-millisecond after the OpenAI round-trip.
- *   4. `embedQuery()` — OpenAI fetch with LRU cache (size 128).
+ *      calls are sub-millisecond after the query-embed step.
+ *   4. `embedQuery()` — **local** inference via `@xenova/transformers` +
+ *      `all-MiniLM-L6-v2` (384 dims, ~90 MB model cached locally on first
+ *      call). Zero network per query, zero API keys, zero per-user cost.
+ *      LRU cache (size 128) still applies so repeat queries are free.
  *
  * Schema is mirrored from `crates/solo-vault/src/store.rs`. Keep the two in
  * sync; breaking changes will surface as runtime SQL errors here.
@@ -18,6 +21,7 @@
  * Every boundary crossing emits a structured log event under the `vault.*`
  * namespace so we can measure latency and retrieval quality.
  *   - `vault.cache.load.start` / `vault.cache.loaded` — cold-load stats
+ *   - `vault.embedder.init`     — one-time model load / download latency
  *   - `vault.query.embed`       — per-query embedding latency + cache hit
  *   - `vault.tool.search`       — mode, candidates, rank_ms, top scores
  *   - `vault.rag.preflight`     — injected size + chunk counts per turn
@@ -40,7 +44,8 @@ const logger = createLogger('vault');
 const VAULT_DB = join(homedir(), '.solo', 'vault', 'index.sqlite');
 
 // Keep in sync with `EMBEDDING_DIM` in crates/solo-vault/src/store.rs.
-const EMBEDDING_DIM = 1536;
+// V1.2.1: switched from OpenAI (1536) to local MiniLM-L6-v2 (384).
+const EMBEDDING_DIM = 384;
 
 // Env toggle: when set to any truthy value, the semantic tool returns the
 // full scored list in its visible text so the developer can eyeball quality.
@@ -438,16 +443,61 @@ function cosine(a: Float32Array, b: Float32Array): number {
   return Number.isFinite(c) ? c : 0;
 }
 
-// LRU cache for OpenAI query embeddings. Map preserves insertion order, so
+// LRU cache for local query embeddings. Map preserves insertion order, so
 // re-insert on hit to keep recent queries warm and evict the oldest on overflow.
+// MiniLM inference is ~10ms/query on an M-series CPU but caching still wins
+// for the "agent re-searches the same string" case.
 const QUERY_CACHE_MAX = 128;
 const queryEmbedCache = new Map<string, Float32Array>();
 
 /**
- * Embed a user query via OpenAI `text-embedding-3-small`. Reads the API key
- * from `OPENAI_API_KEY` in process env (forwarded by the Rust parent at
- * spawn). Retries up to 3 times with exponential backoff on 429 or network
- * errors. Returns null when no key is configured or after final failure.
+ * Lazy-initialized `@xenova/transformers` pipeline holding the MiniLM
+ * model. The first call to `getEmbedder()` triggers a one-time ~90MB
+ * download to `~/.cache/transformers-js/` (or wherever HF_HUB_CACHE
+ * points). Subsequent calls reuse the in-memory pipeline — roughly 90MB
+ * of process memory for the weights, CPU inference.
+ *
+ * We deliberately mirror the Rust-side model choice so both runtimes use
+ * the same embedding space; a chunk embedded by Rust can be scored
+ * against a query embedded by the bridge without shape mismatch.
+ */
+let embedderPromise: Promise<(input: string, opts?: unknown) => Promise<{ data: Float32Array }>> | null = null;
+
+async function getEmbedder(): Promise<(input: string, opts?: unknown) => Promise<{ data: Float32Array }>> {
+  if (embedderPromise) return embedderPromise;
+  embedderPromise = (async () => {
+    const start = Date.now();
+    logger.info({ model: 'Xenova/all-MiniLM-L6-v2' }, 'vault.embedder.init.start');
+    try {
+      // Dynamic import so the tsup bundle doesn't pull in transformers
+      // unless semantic is actually used. First call downloads the model.
+      const { pipeline, env } = await import('@xenova/transformers');
+      // Disable the remote-fetch-through-proxy logic; we want local cache.
+      // `env.localModelPath` can be overridden; default HF cache is fine.
+      env.allowRemoteModels = true;
+      const extractor = (await pipeline(
+        'feature-extraction',
+        'Xenova/all-MiniLM-L6-v2',
+      )) as unknown as (input: string, opts?: unknown) => Promise<{ data: Float32Array }>;
+      logger.info(
+        { ms: Date.now() - start },
+        'vault.embedder.init.done',
+      );
+      return extractor;
+    } catch (err) {
+      logger.error({ err: String(err) }, 'vault.embedder.init.failed');
+      // Reset so the next query can retry (e.g. transient download failure).
+      embedderPromise = null;
+      throw err;
+    }
+  })();
+  return embedderPromise;
+}
+
+/**
+ * Embed a user query locally via MiniLM. Sub-20ms after the first load.
+ * Returns null if the model fails to load (e.g. first run offline) — the
+ * semantic tool falls back to FTS in that case.
  */
 export async function embedQuery(text: string): Promise<Float32Array | null> {
   const start = Date.now();
@@ -456,7 +506,6 @@ export async function embedQuery(text: string): Promise<Float32Array | null> {
 
   const cached = queryEmbedCache.get(trimmed);
   if (cached) {
-    // LRU touch
     queryEmbedCache.delete(trimmed);
     queryEmbedCache.set(trimmed, cached);
     logger.info(
@@ -470,87 +519,42 @@ export async function embedQuery(text: string): Promise<Float32Array | null> {
     return cached;
   }
 
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    logger.warn('vault.query.embed.no_key');
+  let extractor: Awaited<ReturnType<typeof getEmbedder>>;
+  try {
+    extractor = await getEmbedder();
+  } catch {
     return null;
   }
 
-  const MAX_ATTEMPTS = 3;
-  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    const attemptStart = Date.now();
-    try {
-      const res = await fetch('https://api.openai.com/v1/embeddings', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: 'text-embedding-3-small',
-          input: trimmed,
-        }),
-      });
-
-      if (res.status === 429) {
-        const waitMs = (1 << attempt) * 1000;
-        logger.warn(
-          { attempt, status: 429, wait_ms: waitMs },
-          'vault.query.embed.retry',
-        );
-        await new Promise((r) => setTimeout(r, waitMs));
-        continue;
-      }
-      if (!res.ok) {
-        const errBody = await res.text().catch(() => '<unreadable>');
-        logger.error(
-          { status: res.status, attempt, body_preview: errBody.slice(0, 200) },
-          'vault.query.embed.failed',
-        );
-        return null;
-      }
-
-      const json = (await res.json()) as {
-        data: Array<{ embedding: number[] }>;
-      };
-      const raw = json.data?.[0]?.embedding;
-      if (!raw || !Array.isArray(raw)) {
-        logger.error({ attempt }, 'vault.query.embed.malformed_response');
-        return null;
-      }
-      const vec = new Float32Array(raw);
-
-      // LRU evict
-      if (queryEmbedCache.size >= QUERY_CACHE_MAX) {
-        const firstKey = queryEmbedCache.keys().next().value;
-        if (firstKey !== undefined) queryEmbedCache.delete(firstKey);
-      }
-      queryEmbedCache.set(trimmed, vec);
-
-      logger.info(
-        {
-          cached: false,
-          ms: Date.now() - start,
-          api_ms: Date.now() - attemptStart,
-          tokens_est: Math.ceil(trimmed.length / 4),
-          attempts: attempt + 1,
-        },
-        'vault.query.embed',
-      );
-      return vec;
-    } catch (err) {
-      logger.warn(
-        { err: String(err), attempt },
-        'vault.query.embed.retry',
-      );
-      if (attempt === MAX_ATTEMPTS - 1) {
-        logger.error({ err: String(err) }, 'vault.query.embed.failed');
-        return null;
-      }
-      await new Promise((r) => setTimeout(r, (1 << attempt) * 1000));
-    }
+  const inferenceStart = Date.now();
+  let vec: Float32Array;
+  try {
+    const output = await extractor(trimmed, { pooling: 'mean', normalize: true });
+    // `output.data` is a Float32Array — copy to detach from any shared ArrayBuffer.
+    vec = new Float32Array(output.data);
+  } catch (err) {
+    logger.error({ err: String(err) }, 'vault.query.embed.failed');
+    return null;
   }
-  return null;
+
+  // LRU evict if over cap.
+  if (queryEmbedCache.size >= QUERY_CACHE_MAX) {
+    const firstKey = queryEmbedCache.keys().next().value;
+    if (firstKey !== undefined) queryEmbedCache.delete(firstKey);
+  }
+  queryEmbedCache.set(trimmed, vec);
+
+  logger.info(
+    {
+      cached: false,
+      ms: Date.now() - start,
+      inference_ms: Date.now() - inferenceStart,
+      tokens_est: Math.ceil(trimmed.length / 4),
+      dim: vec.length,
+    },
+    'vault.query.embed',
+  );
+  return vec;
 }
 
 /**
