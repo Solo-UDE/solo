@@ -342,6 +342,12 @@ pub fn run() {
             worktree_commands::worktree_get_setup_commands,
             // Skills commands
             skills_commands::skills_list_available,
+            skills_commands::skills_write_skill,
+            skills_commands::skills_onboarding_status,
+            skills_commands::skills_onboarding_apply,
+            skills_commands::skills_onboarding_dismiss,
+            skills_commands::skills_onboarding_reset,
+            skills_commands::skills_set_imports,
             // ElevenLabs voice commands
             elevenlabs_commands::elevenlabs_set_api_key,
             elevenlabs_commands::elevenlabs_has_api_key,
