@@ -6,7 +6,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Editor, { OnMount, BeforeMount } from '@monaco-editor/react';
 import type * as Monaco from 'monaco-editor';
-import { FileText, WarningCircle } from '@phosphor-icons/react';
+import { FileTextIcon, ExclamationTriangleIcon } from '@radix-ui/react-icons';
 import { CodeSkeleton } from '@/components/ui/skeletons';
 import * as fs from '../../lib/tauri/fs';
 import { useEditorStore, isMarkdownFile, useMarkdownPreview } from '../../stores/editorStore';
@@ -317,7 +317,7 @@ export function CodeEditor({ filePath, className = '' }: CodeEditorProps) {
         <EditorTabs />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center space-y-4">
-            <FileText className="w-12 h-12 text-muted-foreground/50 mx-auto" />
+            <FileTextIcon className="w-12 h-12 text-muted-foreground/50 mx-auto" />
             <p className="text-muted-foreground">Select a file from the explorer to view it</p>
             <p className="text-xs text-muted-foreground/60">Double-click a file or press Enter</p>
           </div>
@@ -345,7 +345,7 @@ export function CodeEditor({ filePath, className = '' }: CodeEditorProps) {
         <EditorTabs />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center space-y-4 max-w-md px-4">
-            <WarningCircle className="w-8 h-8 text-destructive mx-auto" />
+            <ExclamationTriangleIcon className="w-8 h-8 text-destructive mx-auto" />
             <p className="text-sm text-destructive">Failed to load file</p>
             <p className="text-xs text-muted-foreground break-all">{error}</p>
           </div>
