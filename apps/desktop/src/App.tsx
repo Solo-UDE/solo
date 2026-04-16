@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { AnimatePresence, motion } from "motion/react";
-import { Bug, GearSix, SidebarSimple, SignOut, Terminal } from "@phosphor-icons/react";
+import { GearIcon, ExitIcon } from "@radix-ui/react-icons";
+import { Bug, Terminal, PanelLeft } from "lucide-react";
 import { PrimarySidebar } from "./components/sidebar";
 import { RepoRail } from "./components/sidebar/RepoRail";
 import { SidebarTerminal } from "./components/sidebar";
@@ -458,8 +459,7 @@ function AppContent() {
               )}
               title={isCollapsed ? 'Expand Sidebar (⌘B)' : 'Collapse Sidebar (⌘B)'}
             >
-              <SidebarSimple
-                weight={isCollapsed ? 'regular' : 'fill'}
+              <PanelLeft
                 className={cn('w-5 h-5 -translate-y-px', isCollapsed ? 'text-muted-foreground' : 'text-primary')}
               />
             </button>
@@ -487,7 +487,7 @@ function AppContent() {
           {splashComplete && (rootPath !== null || hasRepos) && (
             <TitlebarButton
               onClick={handleToggleTerminal}
-              icon={<Terminal className={cn('w-4 h-4', terminalPanelOpen ? 'text-primary' : 'text-muted-foreground')} />}
+              icon={<Terminal className={cn('w-4 h-4', terminalPanelOpen ? 'text-primary' : 'text-muted-foreground')} size={16} />}
               label="Terminal"
               active={terminalPanelOpen}
               title="Toggle Terminal (⌘J)"
@@ -495,19 +495,19 @@ function AppContent() {
           )}
           <TitlebarButton
             onClick={() => setBugReportOpen(true)}
-            icon={<Bug className="w-4 h-4 text-muted-foreground" />}
+            icon={<Bug className="w-4 h-4 text-muted-foreground" size={16} />}
             label="Report Bug"
             title="Report a Bug"
           />
           <TitlebarButton
             onClick={() => openSettings()}
-            icon={<GearSix className="w-4 h-4 text-muted-foreground" />}
+            icon={<GearIcon className="w-4 h-4 text-muted-foreground" />}
             label="Settings"
             title="Settings (⌘,)"
           />
           <TitlebarButton
             onClick={signOut}
-            icon={<SignOut className="w-4 h-4 text-muted-foreground" />}
+            icon={<ExitIcon className="w-4 h-4 text-muted-foreground" />}
             label="Sign Out"
             title="Sign out"
           />
