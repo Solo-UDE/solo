@@ -54,6 +54,8 @@ export function convertToMessageGroups(storeMessages: StoreMessage[]): MessageGr
           timestamp: msg.timestamp,
           attachments: msg.attachments,
           mentions: msg.mentions,
+          skills: msg.skills,
+          parts: msg.parts,
         }
       : {
           id: msg.id,
