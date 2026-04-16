@@ -5,7 +5,7 @@ import { LexicalErrorBoundary } from '@lexical/react/LexicalErrorBoundary';
 import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin';
 import { OnChangePlugin } from '@lexical/react/LexicalOnChangePlugin';
 import { PlainTextPlugin } from '@lexical/react/LexicalPlainTextPlugin';
-import { $createParagraphNode, $getRoot, $nodesOfType } from 'lexical';
+import { $createParagraphNode, $createTextNode, $getRoot, $nodesOfType, KEY_ARROW_UP_COMMAND, COMMAND_PRIORITY_LOW } from 'lexical';
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
 
 import { ClipboardImagePlugin } from './lexical/ClipboardImagePlugin';
@@ -20,6 +20,8 @@ export interface LexicalEditorHandle {
   clear: () => void;
   focus: () => void;
   insertText: (text: string) => void;
+  /** Replace the entire editor contents with plain text and place caret at the end. */
+  setText: (text: string) => void;
 }
 
 export interface LexicalEditorProps {
@@ -32,6 +34,12 @@ export interface LexicalEditorProps {
   disabled?: boolean;
   className?: string;
   mode?: 'planning' | 'fast';
+  /**
+   * Fires when the user presses UP with an empty editor. Return `true` to signal
+   * the caller consumed the event (UP will be swallowed); any falsy value lets
+   * default caret-movement behavior run.
+   */
+  onEmptyUpArrow?: () => boolean;
 }
 
 function OnChangePluginWrapper({
@@ -104,6 +112,34 @@ function EditorDisabledPlugin({ disabled }: { disabled: boolean }): null {
   return null;
 }
 
+/** Fires `onEmptyUpArrow` when the user presses UP while the editor is empty. */
+function EmptyUpArrowPlugin({ onEmptyUpArrow }: { onEmptyUpArrow?: () => boolean }): null {
+  const [editor] = useLexicalComposerContext();
+
+  useEffect(() => {
+    if (!onEmptyUpArrow) return;
+    return editor.registerCommand(
+      KEY_ARROW_UP_COMMAND,
+      (event) => {
+        let isEmpty = false;
+        editor.getEditorState().read(() => {
+          isEmpty = $getRoot().getTextContent().length === 0;
+        });
+        if (!isEmpty) return false;
+        const consumed = onEmptyUpArrow();
+        if (consumed) {
+          event?.preventDefault?.();
+          return true;
+        }
+        return false;
+      },
+      COMMAND_PRIORITY_LOW,
+    );
+  }, [editor, onEmptyUpArrow]);
+
+  return null;
+}
+
 export const LexicalEditor = forwardRef<LexicalEditorHandle, LexicalEditorProps>(({
   onChange,
   onKeyDown,
@@ -114,6 +150,7 @@ export const LexicalEditor = forwardRef<LexicalEditorHandle, LexicalEditorProps>
   disabled = false,
   className = '',
   mode: _mode,
+  onEmptyUpArrow,
 }, ref) => {
   const editorRef = useRef<LexicalEditorType | null>(null);
 
@@ -146,6 +183,19 @@ export const LexicalEditor = forwardRef<LexicalEditorHandle, LexicalEditorProps>
           }
         });
       }
+    },
+    setText: (text: string) => {
+      const editor = editorRef.current;
+      if (!editor) return;
+      editor.focus();
+      editor.update(() => {
+        const root = $getRoot();
+        root.clear();
+        const paragraph = $createParagraphNode();
+        if (text.length > 0) paragraph.append($createTextNode(text));
+        root.append(paragraph);
+        paragraph.selectEnd();
+      });
     },
   }));
 
@@ -192,6 +242,7 @@ export const LexicalEditor = forwardRef<LexicalEditorHandle, LexicalEditorProps>
           <OnChangePluginWrapper onChange={onChange} onMentionsChange={onMentionsChange} />
           <EditorRefPlugin editorRef={editorRef} />
           <EditorDisabledPlugin disabled={disabled} />
+          <EmptyUpArrowPlugin onEmptyUpArrow={onEmptyUpArrow} />
           {onKeyDown ? <KeyDownPlugin onKeyDown={onKeyDown} /> : null}
           <ClipboardImagePlugin />
           <MentionPlugin />
