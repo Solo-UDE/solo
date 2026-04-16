@@ -30,6 +30,7 @@ enableMapSet();
 const EMPTY_MESSAGES: Message[] = [];
 const EMPTY_SESSIONS: AgentSession[] = [];
 const EMPTY_PERMISSIONS: PermissionRequest[] = [];
+const EMPTY_QUEUE: QueuedMessage[] = [];
 
 // =============================================================================
 // Types
@@ -149,6 +150,17 @@ export interface SessionStreamState {
 	error: string | null;
 }
 
+/** A message the user submitted while the session was already streaming — flushed as a single concatenated turn once the current turn settles. */
+export interface QueuedMessage {
+	id: string;
+	content: string;
+	mode: MessageMode;
+	model: string;
+	attachments?: Attachment[];
+	mentions?: FileMention[];
+	createdAt: number;
+}
+
 // =============================================================================
 // Helpers
 // =============================================================================
@@ -264,6 +276,9 @@ interface AgentState {
 	// Per-session streaming state
 	sessionStreaming: Map<string, SessionStreamState>;
 
+	// Per-session user-message queue (populated while a turn is streaming, flushed on settle)
+	sessionQueues: Map<string, QueuedMessage[]>;
+
 	// Model selection
 	selectedModel: string;
 
@@ -294,6 +309,13 @@ interface AgentActions {
 	// Message handling
 	sendMessage: (sessionId: string, content: string, mode?: MessageMode, attachments?: Attachment[], mentions?: FileMention[]) => Promise<void>;
 	addUserMessage: (sessionId: string, content: string, mode?: MessageMode, attachments?: Attachment[], mentions?: FileMention[]) => string;
+
+	// Queued messages (while a turn is streaming)
+	enqueueMessage: (sessionId: string, draft: Omit<QueuedMessage, 'id' | 'createdAt'>) => void;
+	removeQueuedMessage: (sessionId: string, messageId: string) => void;
+	clearQueue: (sessionId: string) => void;
+	popQueueForRecall: (sessionId: string) => QueuedMessage[];
+	flushQueueForSession: (sessionId: string) => Promise<void>;
 
 	// Mode management
 	setPlanMode: (sessionId: string, enabled: boolean) => Promise<void>;
@@ -342,6 +364,7 @@ const initialState: AgentState = {
 	messages: new Map(),
 	pendingPermissions: new Map(),
 	sessionStreaming: new Map(),
+	sessionQueues: new Map(),
 	selectedModel: DEFAULT_MODEL_ID,
 	isAgentRunning: false,
 	error: null,
@@ -907,6 +930,77 @@ export const useAgentStore = create<AgentStore>()(
 		},
 
 		// =================================================================
+		// Message Queue (while streaming)
+		// =================================================================
+
+		enqueueMessage: (sessionId, draft) => {
+			if (!sessionId) return;
+			const entry: QueuedMessage = {
+				id: `q-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+				createdAt: Date.now(),
+				...draft,
+			};
+			set((state) => {
+				const list = state.sessionQueues.get(sessionId) ?? [];
+				list.push(entry);
+				state.sessionQueues.set(sessionId, list);
+			});
+		},
+
+		removeQueuedMessage: (sessionId, messageId) => {
+			set((state) => {
+				const list = state.sessionQueues.get(sessionId);
+				if (!list) return;
+				const next = list.filter((m) => m.id !== messageId);
+				if (next.length === 0) state.sessionQueues.delete(sessionId);
+				else state.sessionQueues.set(sessionId, next);
+			});
+		},
+
+		clearQueue: (sessionId) => {
+			set((state) => {
+				state.sessionQueues.delete(sessionId);
+			});
+		},
+
+		popQueueForRecall: (sessionId) => {
+			const current = get().sessionQueues.get(sessionId);
+			if (!current || current.length === 0) return [];
+			const popped = [...current];
+			set((state) => {
+				state.sessionQueues.delete(sessionId);
+			});
+			return popped;
+		},
+
+		flushQueueForSession: async (sessionId) => {
+			const queue = get().sessionQueues.get(sessionId);
+			if (!queue || queue.length === 0) return;
+			// Drain first to prevent re-entry from another 'result' event firing twice.
+			set((state) => {
+				state.sessionQueues.delete(sessionId);
+			});
+
+			const combinedContent = queue.map((q) => q.content).join('\n\n');
+			const last = queue[queue.length - 1];
+			const combinedAttachments = queue.flatMap((q) => q.attachments ?? []);
+			// De-dupe mentions by absolute path
+			const mentionMap = new Map<string, FileMention>();
+			for (const q of queue) {
+				for (const m of q.mentions ?? []) mentionMap.set(m.path, m);
+			}
+			const combinedMentions = Array.from(mentionMap.values());
+
+			await get().sendMessage(
+				sessionId,
+				combinedContent,
+				last.mode,
+				combinedAttachments.length ? combinedAttachments : undefined,
+				combinedMentions.length ? combinedMentions : undefined,
+			);
+		},
+
+		// =================================================================
 		// Mode Management
 		// =================================================================
 
@@ -1154,6 +1248,15 @@ export const useAgentStore = create<AgentStore>()(
 			// Persist on result/error
 			if (message.type === 'result' || message.type === 'error') {
 				get().persistSessions(sessionId);
+				// Auto-flush any queued messages once the current turn settles.
+				// Deferred via microtask so the current Immer set() finalizes
+				// before flushQueueForSession re-enters sendMessage (which calls set()).
+				queueMicrotask(() => {
+					const queue = get().sessionQueues.get(sessionId);
+					if (queue && queue.length > 0) {
+						void get().flushQueueForSession(sessionId);
+					}
+				});
 			}
 
 			// Auto-generate title after first assistant turn completes
@@ -1486,6 +1589,13 @@ export const useIsSessionStreaming = (sessionId: string | null): boolean => {
 	return useAgentStore((state) => {
 		if (!sessionId) return false;
 		return state.sessionStreaming.get(sessionId)?.isStreaming ?? false;
+	});
+};
+
+export const useSessionQueue = (sessionId: string | null): QueuedMessage[] => {
+	return useAgentStore((state) => {
+		if (!sessionId) return EMPTY_QUEUE;
+		return state.sessionQueues.get(sessionId) ?? EMPTY_QUEUE;
 	});
 };
 
