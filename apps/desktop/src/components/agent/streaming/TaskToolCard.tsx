@@ -5,7 +5,7 @@
  * optional model badge, and nested agent output.
  */
 
-import { Robot } from '@phosphor-icons/react';
+import { Bot } from 'lucide-react';
 
 import { ToolCard } from './ToolCard';
 
@@ -33,7 +33,7 @@ export const TaskToolCard: FC<TaskToolCardProps> = ({
 	<ToolCard
 		toolName="Task"
 		status={status}
-		icon={<Robot className={`h-3.5 w-3.5 shrink-0 ${status === 'running' ? 'text-primary animate-pulse' : 'text-muted-foreground'}`} />}
+		icon={<Bot className={`h-3.5 w-3.5 shrink-0 ${status === 'running' ? 'text-primary animate-pulse' : 'text-muted-foreground'}`} />}
 		label={status === 'running' ? 'Running Task...' : 'Task'}
 		primaryDisplay={description}
 		output={output}
