@@ -11,7 +11,7 @@ use std::sync::Arc;
 use tauri::{AppHandle, Emitter as _, State};
 
 use crate::agent::{
-    AttachmentContentBlock, Model, PermissionDecision, PermissionResponse, SessionConfig,
+    AttachmentContentBlock, PermissionDecision, PermissionResponse, SessionConfig,
     SessionManager,
 };
 use crate::fs_commands::FsState;
@@ -152,13 +152,6 @@ pub async fn agent_set_model(
     model: String,
     state: State<'_, Arc<SessionManager>>,
 ) -> Result<()> {
-    let model = match model.as_str() {
-        "haiku" => Model::Haiku,
-        "sonnet" => Model::Sonnet,
-        "opus" => Model::Opus,
-        _ => return Err("Invalid model: must be 'haiku', 'sonnet', or 'opus'".to_owned()),
-    };
-
     state.set_model(&session_id, model).map_err(to_error)
 }
 
@@ -200,6 +193,26 @@ pub async fn agent_get_accept_mode(
     state: State<'_, Arc<SessionManager>>,
 ) -> Result<bool> {
     state.get_accept_mode(&session_id).map_err(to_error)
+}
+
+/// Enable/disable Debug mode for a session. Turning on triggers goal capture
+/// on the next user prompt and a `session:goal_captured` event.
+#[tauri::command]
+pub async fn agent_set_debug_mode(
+    session_id: String,
+    enabled: bool,
+    state: State<'_, Arc<SessionManager>>,
+) -> Result<()> {
+    state.set_debug_mode(&session_id, enabled).map_err(to_error)
+}
+
+/// Get Debug mode for a session.
+#[tauri::command]
+pub async fn agent_get_debug_mode(
+    session_id: String,
+    state: State<'_, Arc<SessionManager>>,
+) -> Result<bool> {
+    state.get_debug_mode(&session_id).map_err(to_error)
 }
 
 /// Set tool permission policy for a session
@@ -461,6 +474,46 @@ pub fn setup_event_callbacks(app: &AppHandle, session_manager: &Arc<SessionManag
                 serde_json::json!({
                     "sessionId": session_id,
                     "enabled": enabled,
+                }),
+            ));
+        }
+        BridgeEvent::DebugModeChanged {
+            session_id,
+            enabled,
+        } => {
+            if tracing::enabled!(tracing::Level::DEBUG) {
+                let enabled_str = enabled.to_string();
+                tracing::debug!(
+                    "[agent:emit] DebugModeChanged\n{}",
+                    fmt_kv(&[("session", &session_id), ("enabled", &enabled_str)])
+                );
+            }
+            drop(app_handle.emit(
+                "agent:debug_mode_changed",
+                serde_json::json!({
+                    "sessionId": session_id,
+                    "enabled": enabled,
+                }),
+            ));
+        }
+        BridgeEvent::SessionGoalCaptured {
+            session_id,
+            goal,
+            captured_at,
+        } => {
+            if tracing::enabled!(tracing::Level::DEBUG) {
+                let captured_str = captured_at.to_string();
+                tracing::debug!(
+                    "[agent:emit] SessionGoalCaptured\n{}",
+                    fmt_kv(&[("session", &session_id), ("capturedAt", &captured_str)])
+                );
+            }
+            drop(app_handle.emit(
+                "agent:session_goal_captured",
+                serde_json::json!({
+                    "sessionId": session_id,
+                    "goal": goal,
+                    "capturedAt": captured_at,
                 }),
             ));
         }
