@@ -75,6 +75,8 @@ interface VaultState {
   error: string | null;
   backfill: BackfillState;
   pendingEmbeddings: number;
+  /** Entry currently open in the detail drawer, or null when closed. */
+  selectedEntryId: string | null;
 }
 
 interface VaultActions {
@@ -82,6 +84,7 @@ interface VaultActions {
   setFilter: (patch: Partial<VaultListFilters>) => void;
   setSearchQuery: (query: string) => void;
   setSearchMode: (mode: VaultSearchMode) => void;
+  setSelectedEntry: (id: string | null) => void;
   fetchEntries: () => Promise<void>;
   fetchUnsortedCount: () => Promise<void>;
   fetchPendingEmbeddings: () => Promise<void>;
@@ -125,10 +128,16 @@ export const useVaultStore = create<VaultState & VaultActions>()(
     error: null,
     backfill: EMPTY_BACKFILL,
     pendingEmbeddings: 0,
+    selectedEntryId: null,
 
     setScope: (scope) =>
       set((s) => {
         s.activeScope = scope;
+      }),
+
+    setSelectedEntry: (id) =>
+      set((s) => {
+        s.selectedEntryId = id;
       }),
 
     setFilter: (patch) =>
@@ -203,6 +212,10 @@ export const useVaultStore = create<VaultState & VaultActions>()(
     removeEntry: (entryId) =>
       set((s) => {
         s.entries.delete(entryId);
+        // Close the drawer if it was showing the deleted entry.
+        if (s.selectedEntryId === entryId) {
+          s.selectedEntryId = null;
+        }
       }),
 
     togglePinned: async (entryId) => {
