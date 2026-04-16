@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ListChecks, CaretRight, Circle, Check, CircleNotch } from '@phosphor-icons/react';
+import { ChevronRightIcon, CircleIcon, CheckIcon } from '@radix-ui/react-icons';
+import { ListChecks, Loader2 } from 'lucide-react';
 
 import type { FC } from 'react';
 import type { Message } from '@/stores/agentStore';
@@ -111,14 +112,15 @@ export const StickyTodoOverlay: FC<StickyTodoOverlayProps> = ({ messages, onHeig
           aria-expanded={expanded}
         >
           {anyRunning
-            ? <CircleNotch className="h-3.5 w-3.5 animate-spin text-muted-foreground shrink-0" />
+            ? <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground shrink-0" />
             : <ListChecks className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
           <span className="font-medium">
             {completed} out of {total} tasks completed
           </span>
           <div className="flex-1" />
-          <CaretRight
-            className={`h-3 w-3 text-muted-foreground/60 transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`}
+          <ChevronRightIcon
+            width={12} height={12}
+            className={`text-muted-foreground/60 transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`}
           />
         </button>
 
@@ -132,11 +134,11 @@ export const StickyTodoOverlay: FC<StickyTodoOverlayProps> = ({ messages, onHeig
                 <li key={`todo-${String(i)}`} className="flex items-start gap-2 text-[12px]">
                   <span className="mt-0.5 shrink-0">
                     {isDone ? (
-                      <Check className="h-3 w-3 text-success" weight="bold" />
+                      <CheckIcon width={12} height={12} className="text-success" />
                     ) : isRunning ? (
-                      <CircleNotch className="h-3 w-3 animate-spin text-muted-foreground" />
+                      <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
                     ) : (
-                      <Circle className="h-3 w-3 text-muted-foreground/60" />
+                      <CircleIcon width={12} height={12} className="text-muted-foreground/60" />
                     )}
                   </span>
                   <span className="text-muted-foreground/80 shrink-0 tabular-nums">{i + 1}.</span>
