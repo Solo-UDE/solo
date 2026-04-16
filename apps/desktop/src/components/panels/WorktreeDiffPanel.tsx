@@ -2,8 +2,9 @@
  * WorktreeDiffPanel — shows files changed in a worktree relative to its base commit
  */
 
-import { useState, useEffect, useCallback } from 'react';
-import { CircleNotch, WarningCircle, File, FilePlus, FileMinus, FileArrowUp } from '@phosphor-icons/react';
+import { useState, useEffect, useCallback, type ComponentType } from 'react';
+import { ExclamationTriangleIcon, FileIcon, FilePlusIcon, FileMinusIcon } from '@radix-ui/react-icons';
+import { Loader2, FileUp } from 'lucide-react';
 import { diffFromBase } from '@/lib/tauri/worktree';
 import { usePanelTabsStore } from '@/stores/panelTabsStore';
 import { BUILTIN_PANEL_TYPES } from '@/lib/panels';
@@ -16,11 +17,11 @@ interface WorktreeDiffData {
   branch: string;
 }
 
-const STATUS_CONFIG: Record<string, { label: string; color: string; icon: typeof File }> = {
-  added: { label: 'A', color: 'text-emerald-400 bg-emerald-400/10', icon: FilePlus },
-  modified: { label: 'M', color: 'text-amber-400 bg-amber-400/10', icon: File },
-  deleted: { label: 'D', color: 'text-red-400 bg-red-400/10', icon: FileMinus },
-  renamed: { label: 'R', color: 'text-blue-400 bg-blue-400/10', icon: FileArrowUp },
+const STATUS_CONFIG: Record<string, { label: string; color: string; icon: ComponentType<{ className?: string }> }> = {
+  added: { label: 'A', color: 'text-emerald-400 bg-emerald-400/10', icon: FilePlusIcon },
+  modified: { label: 'M', color: 'text-amber-400 bg-amber-400/10', icon: FileIcon },
+  deleted: { label: 'D', color: 'text-red-400 bg-red-400/10', icon: FileMinusIcon },
+  renamed: { label: 'R', color: 'text-blue-400 bg-blue-400/10', icon: FileUp as ComponentType<{ className?: string }> },
 };
 
 export const WorktreeDiffPanel = ({
@@ -66,7 +67,7 @@ export const WorktreeDiffPanel = ({
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <CircleNotch className="w-5 h-5 text-muted-foreground animate-spin" />
+        <Loader2 className="w-5 h-5 text-muted-foreground animate-spin" size={20} />
       </div>
     );
   }
@@ -74,7 +75,7 @@ export const WorktreeDiffPanel = ({
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-2 px-6">
-        <WarningCircle className="w-6 h-6 text-destructive" />
+        <ExclamationTriangleIcon className="w-6 h-6 text-destructive" />
         <p className="text-xs text-muted-foreground text-center">{error}</p>
       </div>
     );
@@ -83,7 +84,7 @@ export const WorktreeDiffPanel = ({
   if (entries.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-2 px-6">
-        <File className="w-8 h-8 text-muted-foreground/30" />
+        <FileIcon className="w-8 h-8 text-muted-foreground/30" />
         <p className="text-xs text-muted-foreground/60">No changes from base branch</p>
       </div>
     );
