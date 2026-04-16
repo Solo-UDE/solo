@@ -991,6 +991,48 @@ pub struct ModesConfig {
     pub debug: DebugModeConfig,
 }
 
+/// Which external skill sources Solo should scan alongside `.solo/skills/`.
+///
+/// Solo is polyglot by default: users arriving from Claude Code or Codex keep
+/// their existing skills without copying or reconfiguration. Each flag can be
+/// turned off independently via user settings.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub struct SkillsConfig {
+    /// Scan `~/.claude/skills/` (Claude Code user-personal skills).
+    #[serde(default = "default_true")]
+    pub import_claude_user: bool,
+    /// Scan `~/.claude/plugins/` using `installed_plugins.json` as the manifest.
+    #[serde(default = "default_true")]
+    pub import_claude_plugins: bool,
+    /// Scan `{workspace}/.claude/skills/` and ancestor `.claude/skills/` dirs.
+    #[serde(default = "default_true")]
+    pub import_claude_project: bool,
+    /// Scan `~/.codex/skills/` (forward-compat; harmless if the dir does not exist).
+    #[serde(default = "default_true")]
+    pub import_codex: bool,
+    /// Whether the first-launch onboarding dialog has been shown.
+    #[serde(default)]
+    pub onboarding_shown: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+impl Default for SkillsConfig {
+    fn default() -> Self {
+        Self {
+            import_claude_user: true,
+            import_claude_plugins: true,
+            import_claude_project: true,
+            import_codex: true,
+            onboarding_shown: false,
+        }
+    }
+}
+
 /// Full Solo settings, merged from user → project → local scopes.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../apps/desktop/src/bindings/")]
@@ -1000,6 +1042,8 @@ pub struct SoloSettings {
     pub permissions: PermissionsConfig,
     #[serde(default)]
     pub modes: ModesConfig,
+    #[serde(default)]
+    pub skills: SkillsConfig,
 }
 
 /// Outcome of a permission check. Mirrors Claude Code's `PermissionResult`.
@@ -1048,13 +1092,40 @@ pub struct SessionGoal {
 // Skills Protocol
 // =============================================================================
 
-/// Origin scope of a discovered skill
+/// Origin of a discovered skill. First two are Solo's native scopes; the rest
+/// are compatibility adapters so users keep the skills they already have.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../apps/desktop/src/bindings/")]
 #[serde(rename_all = "snake_case")]
 pub enum SkillSource {
+    /// `~/.solo/skills/`
     User,
+    /// `{workspace}/.solo/skills/`
     Project,
+    /// `~/.claude/skills/`
+    ClaudeUser,
+    /// `~/.claude/plugins/cache/<mkt>/<plugin>/<ver>/skills/`
+    ClaudePlugin,
+    /// `{workspace-or-ancestor}/.claude/skills/`
+    ClaudeProject,
+    /// `~/.codex/skills/`
+    Codex,
+}
+
+impl SkillSource {
+    /// Dedup priority — higher wins when two sources declare the same skill name.
+    /// Rationale: project-local wins over user; Solo-native wins over imports.
+    #[must_use]
+    pub fn priority(self) -> u8 {
+        match self {
+            Self::Project => 60,
+            Self::User => 50,
+            Self::ClaudeProject => 40,
+            Self::ClaudeUser => 30,
+            Self::ClaudePlugin => 20,
+            Self::Codex => 10,
+        }
+    }
 }
 
 /// Skill information returned to the frontend
@@ -1068,6 +1139,50 @@ pub struct SkillInfo {
     pub file_path: String,
     pub enabled: bool,
     pub priority: i32,
+}
+
+/// Request to create or overwrite a user/project skill on disk.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub struct SkillWriteRequest {
+    /// Filesystem-safe skill name (becomes directory under `.solo/skills/`).
+    pub name: String,
+    /// Only `User` or `Project` are valid write destinations.
+    pub scope: SkillSource,
+    /// Frontmatter `description` field.
+    pub description: String,
+    /// Markdown body (without frontmatter — Solo injects it).
+    pub body: String,
+    /// Project-scope writes need the workspace cwd.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cwd: Option<String>,
+}
+
+/// Result of first-launch onboarding probe.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub struct SkillsOnboardingStatus {
+    /// Whether the onboarding dialog should be shown.
+    pub should_prompt: bool,
+    /// Count of importable skills found outside `.solo/`.
+    pub importable_count: u32,
+    /// Whether `~/.solo/skills/` already has at least one skill.
+    pub has_solo_skills: bool,
+}
+
+/// How to bring external skills into Solo during onboarding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "snake_case")]
+pub enum OnboardingImportMode {
+    /// Leave external files in place, just keep the adapters enabled.
+    ReadOnly,
+    /// Copy every external skill into `~/.solo/skills/` (snapshot).
+    Copy,
+    /// Symlink every external skill into `~/.solo/skills/` (live sync).
+    Symlink,
 }
 
 #[cfg(test)]
