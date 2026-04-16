@@ -5,7 +5,8 @@
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { Plus, ChatTeardrop, PencilSimple, Trash, MagnifyingGlass } from '@phosphor-icons/react';
+import { PlusIcon, Pencil2Icon, TrashIcon, MagnifyingGlassIcon } from '@radix-ui/react-icons';
+import { MessageCircle } from 'lucide-react';
 import { useAgentStore, useSessions, useActiveSessionId } from '@/stores/agentStore';
 import type { Message } from '@/stores/agentStore';
 import { usePanelTabsStore } from '@/stores/panelTabsStore';
@@ -207,7 +208,7 @@ const SessionItem: FC<{
               <span className="w-2 h-2 rounded-full bg-primary animate-pulse shrink-0" />
             )}
 
-            <ChatTeardrop
+            <MessageCircle
               className={cn(
                 'h-3.5 w-3.5 shrink-0',
                 hasOpenTab ? 'text-primary' : ''
@@ -241,7 +242,7 @@ const SessionItem: FC<{
       </ContextMenuTrigger>
       <ContextMenuContent className="w-44">
         <ContextMenuItem onClick={onStartRename}>
-          <PencilSimple className="h-3.5 w-3.5" />
+          <Pencil2Icon width={14} height={14} />
           <span>Rename</span>
         </ContextMenuItem>
         <ContextMenuSeparator />
@@ -249,7 +250,7 @@ const SessionItem: FC<{
           onClick={onRequestDelete}
           className="text-destructive focus:text-destructive"
         >
-          <Trash className="h-3.5 w-3.5" />
+          <TrashIcon width={14} height={14} />
           <span>Delete</span>
         </ContextMenuItem>
       </ContextMenuContent>
@@ -333,7 +334,7 @@ export const SessionList: FC<SessionListProps> = ({
         transition={{ type: 'spring', stiffness: 400, damping: 25 }}
       >
         <div className="w-12 h-12 rounded-2xl bg-muted/50 flex items-center justify-center">
-          <ChatTeardrop className="w-6 h-6 text-muted-foreground/40" />
+          <MessageCircle className="w-6 h-6 text-muted-foreground/40" />
         </div>
         <div className="text-center space-y-1">
           <p className="text-sm font-medium text-muted-foreground">{emptyMessage}</p>
@@ -359,7 +360,7 @@ export const SessionList: FC<SessionListProps> = ({
             transition={{ duration: 0.3 }}
             className="w-full h-9 px-3 flex items-center gap-2 rounded-lg bg-primary text-primary-foreground hover:brightness-110 transition-[background-color] duration-200"
           >
-            <Plus className="h-4 w-4" />
+            <PlusIcon width={16} height={16} />
             <span className="text-sm font-medium">New session</span>
           </motion.button>
         </div>
@@ -367,7 +368,7 @@ export const SessionList: FC<SessionListProps> = ({
         {/* Search Input */}
         <div className="px-2 py-2">
           <div className="relative">
-            <MagnifyingGlass className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <MagnifyingGlassIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
             <input
               type="text"
               value={searchQuery}
@@ -387,7 +388,7 @@ export const SessionList: FC<SessionListProps> = ({
               animate={{ opacity: 1 }}
               transition={{ duration: 0.15 }}
             >
-              <MagnifyingGlass className="w-5 h-5 text-muted-foreground/30 mb-1" />
+              <MagnifyingGlassIcon className="w-5 h-5 text-muted-foreground/30 mb-1" />
               <p className="text-sm text-muted-foreground/60">No sessions found</p>
               <p className="text-xs text-muted-foreground/40">Try a different search</p>
             </motion.div>
