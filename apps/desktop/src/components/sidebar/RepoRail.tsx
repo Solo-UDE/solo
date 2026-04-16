@@ -8,7 +8,8 @@
 
 import { useCallback, useRef, useState, type FC } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, GitBranch, X, Trash } from '@phosphor-icons/react';
+import { PlusIcon, Cross2Icon, TrashIcon } from '@radix-ui/react-icons';
+import { GitBranch } from 'lucide-react';
 import { useRepoStore, useRepoList } from '@/stores/repoStore';
 import type { RepoEntry } from '@/stores/repoStore';
 import { getRepoIcon, getRepoColorVar, getRepoColorMutedVar } from '@/lib/repoIdentity';
@@ -98,7 +99,7 @@ export const RepoRail: FC = () => {
           title="Add Repository"
           aria-label="Add Repository"
         >
-          <Plus className="w-4 h-4 shrink-0" weight="bold" />
+          <PlusIcon className="w-4 h-4 shrink-0" />
           {railExpanded && <span className="text-xs truncate">Add Repository</span>}
         </button>
       </div>
@@ -182,7 +183,6 @@ const RailIcon: FC<RailIconProps> = ({ repo, isActive, expanded, onClick, onRemo
             >
               <Icon
                 className="w-[18px] h-[18px] shrink-0"
-                weight={isActive ? 'fill' : 'regular'}
                 style={{ color: isActive ? getRepoColorVar(repo.color) : undefined }}
               />
               <div className="flex flex-col min-w-0 flex-1">
@@ -197,7 +197,7 @@ const RailIcon: FC<RailIconProps> = ({ repo, isActive, expanded, onClick, onRemo
                 </span>
                 {repo.currentBranch && (
                   <span className="flex items-center gap-1 text-[10px] text-muted-foreground/60 leading-tight mt-0.5">
-                    <GitBranch className="w-2.5 h-2.5 shrink-0" weight="bold" />
+                    <GitBranch className="w-2.5 h-2.5 shrink-0" />
                     <span className="truncate" title={repo.currentBranch}>{repo.currentBranch}</span>
                   </span>
                 )}
@@ -227,7 +227,7 @@ const RailIcon: FC<RailIconProps> = ({ repo, isActive, expanded, onClick, onRemo
               title="Remove repository"
               aria-label={`Remove ${repo.name}`}
             >
-              <X className="w-3 h-3" weight="bold" />
+              <Cross2Icon className="w-3 h-3" />
             </button>
           </div>
         </ContextMenuTrigger>
@@ -236,7 +236,7 @@ const RailIcon: FC<RailIconProps> = ({ repo, isActive, expanded, onClick, onRemo
             onClick={onRemove}
             className="text-destructive focus:text-destructive"
           >
-            <Trash className="h-3.5 w-3.5" /> Remove
+            <TrashIcon className="h-3.5 w-3.5" /> Remove
           </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
@@ -284,7 +284,6 @@ const RailIcon: FC<RailIconProps> = ({ repo, isActive, expanded, onClick, onRemo
           >
             <Icon
               className="w-[18px] h-[18px]"
-              weight={isActive ? 'fill' : 'regular'}
               style={{ color: isActive ? getRepoColorVar(repo.color) : undefined }}
             />
           </motion.button>
@@ -320,7 +319,7 @@ const RailIcon: FC<RailIconProps> = ({ repo, isActive, expanded, onClick, onRemo
           onClick={onRemove}
           className="text-destructive focus:text-destructive"
         >
-          <Trash className="h-3.5 w-3.5" /> Remove
+          <TrashIcon className="h-3.5 w-3.5" /> Remove
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
