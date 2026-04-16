@@ -676,6 +676,30 @@ pub enum BackendEvent {
     /// Update error
     #[serde(rename = "update:error")]
     UpdateError { error: String },
+
+    // =========================================================================
+    // Settings events
+    // =========================================================================
+    /// Settings file changed on disk or via API.
+    ///
+    /// The payload carries the fully-merged settings after the change.
+    #[serde(rename = "settings:changed")]
+    SettingsChanged { settings: SoloSettings },
+
+    // =========================================================================
+    // Agent-session events (Debug mode)
+    // =========================================================================
+    /// Captured the initial goal for a session (fires once per session,
+    /// when the first user message lands while Debug mode is active).
+    #[serde(rename = "session:goal_captured")]
+    SessionGoalCaptured { goal: SessionGoal },
+
+    /// The permission mode for a session changed.
+    #[serde(rename = "session:mode_changed")]
+    SessionModeChanged {
+        session_id: String,
+        mode: PermissionMode,
+    },
 }
 
 // =============================================================================
@@ -841,6 +865,183 @@ pub struct ClaudeSetupStatus {
     pub error: Option<String>,
     pub cli_mode_available: bool,
     pub requires_cli_mode: bool,
+}
+
+// =============================================================================
+// Permission / Mode / Settings Protocol
+// =============================================================================
+
+/// Active permission mode for an agent session.
+///
+/// Inspired by Claude Code's permission modes. Each mode is an *overlay*
+/// on the baseline allow/ask/deny rules from settings:
+///
+/// - `Default` — strictly honor the allow/ask/deny lists; prompt on `ask`.
+/// - `Plan`    — read-only by default; writes are redirected to the plan file.
+/// - `Accept`  — bypass prompts (like `--dangerously-skip-permissions`), but
+///               the destructive tier still prompts (bypass-immune).
+/// - `Debug`   — same gating as `Default`; adds goal-capture + periodic review.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "lowercase")]
+pub enum PermissionMode {
+    Default,
+    Plan,
+    Accept,
+    Debug,
+}
+
+impl Default for PermissionMode {
+    fn default() -> Self {
+        Self::Default
+    }
+}
+
+/// Classification of a tool for permission gating.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "lowercase")]
+pub enum ToolTier {
+    /// Read-only operations (auto-allowed in every mode).
+    Read,
+    /// Mutating operations (file writes, shell commands, package installs).
+    Mutate,
+    /// Destructive operations (always prompt, even under Accept mode).
+    Destructive,
+}
+
+/// The scope a permission rule came from.
+///
+/// Mirrors Claude Code's settings hierarchy. Higher values override lower
+/// ones on merge, but `Deny` rules from any scope are bypass-immune.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub enum SettingsScope {
+    /// `~/.solo/settings.json`
+    User,
+    /// `<workspace>/.solo/settings.json`
+    Project,
+    /// `<workspace>/.solo/settings.local.json` (git-ignored)
+    Local,
+}
+
+/// Permission rules configured by the user.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub struct PermissionsConfig {
+    /// Starting mode when a new session is created.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_mode: Option<PermissionMode>,
+    /// Rules that auto-allow. Entries are `ToolName` or `ToolName(content-pattern)`.
+    #[serde(default)]
+    pub allow: Vec<String>,
+    /// Rules that auto-deny (bypass-immune).
+    #[serde(default)]
+    pub deny: Vec<String>,
+    /// Rules that force a prompt (bypass-immune under Accept mode).
+    #[serde(default)]
+    pub ask: Vec<String>,
+    /// Directories outside the workspace that should be treated as read-allowed.
+    #[serde(default)]
+    pub additional_directories: Vec<String>,
+    /// Disable Accept mode entirely (for managed / policy settings).
+    #[serde(default)]
+    pub disable_accept_mode: bool,
+}
+
+/// Debug mode configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub struct DebugModeConfig {
+    /// Number of assistant turns between review questions.
+    pub review_interval: u32,
+    /// How the goal is captured at session start.
+    pub initial_goal_capture: GoalCaptureMode,
+}
+
+impl Default for DebugModeConfig {
+    fn default() -> Self {
+        Self {
+            review_interval: 3,
+            initial_goal_capture: GoalCaptureMode::FirstMessage,
+        }
+    }
+}
+
+/// How Debug mode captures the user's goal at session start.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub enum GoalCaptureMode {
+    /// Treat the first user message verbatim as the goal.
+    FirstMessage,
+    /// Prompt the user for an explicit goal statement before the session starts.
+    Explicit,
+}
+
+/// Per-mode configuration bundle.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub struct ModesConfig {
+    #[serde(default)]
+    pub debug: DebugModeConfig,
+}
+
+/// Full Solo settings, merged from user → project → local scopes.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub struct SoloSettings {
+    #[serde(default)]
+    pub permissions: PermissionsConfig,
+    #[serde(default)]
+    pub modes: ModesConfig,
+}
+
+/// Outcome of a permission check. Mirrors Claude Code's `PermissionResult`.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(tag = "behavior", rename_all = "lowercase")]
+pub enum PermissionDecision {
+    /// Tool may proceed.
+    Allow {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reason: Option<String>,
+    },
+    /// Prompt the user.
+    Ask {
+        message: String,
+        /// Which tier triggered the prompt (for UI display).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        tier: Option<ToolTier>,
+    },
+    /// Tool is blocked.
+    Deny { message: String },
+}
+
+/// Request to check whether a tool call should be allowed.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub struct PermissionCheckRequest {
+    pub tool_name: String,
+    #[ts(type = "unknown")]
+    pub tool_input: serde_json::Value,
+    pub mode: PermissionMode,
+}
+
+/// Captured goal for a session in Debug mode.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub struct SessionGoal {
+    pub session_id: String,
+    pub goal: String,
+    pub captured_at: u64,
 }
 
 // =============================================================================
