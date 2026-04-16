@@ -3,7 +3,7 @@
  */
 
 import { useEffect, useRef } from 'react';
-import { Lightning } from '@phosphor-icons/react';
+import { Zap } from 'lucide-react';
 
 import type { FC, ComponentType } from 'react';
 
@@ -12,7 +12,7 @@ export interface SlashCommand {
 	label: string;
 	description: string;
 	category: 'local' | 'agent' | 'skill';
-	icon: ComponentType<{ className?: string; weight?: 'regular' | 'bold' | 'fill' }>;
+	icon: ComponentType<{ className?: string; size?: number }>;
 	/** For skills: whether the skill is currently attached */
 	attached?: boolean;
 }
@@ -97,7 +97,7 @@ export const SlashCommandDropdown: FC<SlashCommandDropdownProps> = ({
 								`}
 								type="button"
 							>
-								<Lightning className={`w-4 h-4 shrink-0 ${cmd.attached ? 'text-primary' : 'text-muted-foreground'}`} weight={cmd.attached ? 'fill' : 'regular'} />
+								<Zap className={`w-4 h-4 shrink-0 ${cmd.attached ? 'text-primary' : 'text-muted-foreground'}`} />
 								<div className="min-w-0 flex-1">
 									<div className="flex items-center gap-2">
 										<span className="font-mono text-foreground">{cmd.label}</span>
