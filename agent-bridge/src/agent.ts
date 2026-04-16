@@ -3,7 +3,7 @@
  */
 
 import { query, createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk';
-import { vaultSearchTool, fetchVaultContext } from './vault.js';
+import { vaultSearchTool, fetchVaultContext, loadEmbeddingsCache } from './vault.js';
 
 import * as fs from 'node:fs';
 
@@ -878,6 +878,14 @@ You should build your plan incrementally by writing to or editing this file. NOT
       logger.warn('Session already active');
       return;
     }
+
+    // V1.2: Pre-load the vault's semantic embedding cache for this session's
+    // scope. Fire-and-forget — the first semantic tool call will `await
+    // loadEmbeddingsCache()` internally if we haven't finished yet. This just
+    // shaves ~50-200ms off the first semantic hit on a warm run.
+    loadEmbeddingsCache(this.cwd).catch((err) => {
+      logger.warn({ err: String(err) }, 'vault.cache.preload_failed');
+    });
 
     // Fix PATH for production Electron apps launched from Finder/Dock
     // These don't inherit the user's shell PATH, so node/npm won't be found
