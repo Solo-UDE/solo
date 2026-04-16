@@ -7,7 +7,6 @@ import { ContextTracker } from './context-tracker';
 import { LexicalEditor } from './lexical-editor';
 import { ThinkingToggle } from './thinking-toggle';
 import { AttachmentBar } from './AttachmentBar';
-import { SkillBar } from './SkillBar';
 import { DropZoneOverlay } from './DropZoneOverlay';
 import {
   Popover,
@@ -23,7 +22,7 @@ import {
 } from '../../ui/select';
 
 import type { LexicalEditorHandle } from './lexical-editor';
-import type { FileMention, Attachment } from '../../../stores/agentStore';
+import type { FileMention, Attachment, UserContentPart } from '../../../stores/agentStore';
 import { useActiveSessionMessages } from '../../../stores/agentStore';
 import { ModeSelector } from './mode-selector';
 import { ModelPicker } from './model-picker';
@@ -51,11 +50,11 @@ export interface ChatInputContainerHandle {
 }
 
 export interface ChatInputContainerProps {
-  onSubmit: (content: string, mode: 'planning' | 'fast', model: string, attachments?: Attachment[], mentions?: FileMention[]) => void;
+  onSubmit: (content: string, mode: 'planning' | 'fast', model: string, attachments?: Attachment[], mentions?: FileMention[], skills?: string[], parts?: UserContentPart[]) => void;
   /** Called instead of `onSubmit` when `isAgentRunning` is true — message should be queued, not sent. */
-  onEnqueue?: (content: string, mode: 'planning' | 'fast', model: string, attachments?: Attachment[], mentions?: FileMention[]) => void;
+  onEnqueue?: (content: string, mode: 'planning' | 'fast', model: string, attachments?: Attachment[], mentions?: FileMention[], skills?: string[], parts?: UserContentPart[]) => void;
   /** Pops all queued messages back into the composer for editing. Returns `null` if the queue is empty. */
-  onRecallQueue?: () => { text: string; mentions?: FileMention[] } | null;
+  onRecallQueue?: () => { text: string; mentions?: FileMention[]; skills?: string[] } | null;
   onLocalCommand?: (commandId: string) => void;
   onAbort?: () => void;
   isAgentRunning?: boolean;
@@ -96,6 +95,7 @@ export const ChatInputContainer = forwardRef<ChatInputContainerHandle, ChatInput
     return 'default';
   });
   const [mentions, setMentions] = useState<FileMention[]>([]);
+  const [skillNames, setSkillNames] = useState<string[]>([]);
   const [sketchOpen, setSketchOpen] = useState(false);
   const selectedModel = useProviderStore((state) => state.selectedModel);
   const attachments = useAttachmentStore((s) => s.attachments);
@@ -135,24 +135,30 @@ export const ChatInputContainer = forwardRef<ChatInputContainerHandle, ChatInput
   const messageMode = mode === 'plan' ? 'planning' : 'fast';
 
   const handleSubmit = (): void => {
-    const hasContent = content.trim() || attachments.length > 0;
+    const hasContent = content.trim() || attachments.length > 0 || skillNames.length > 0;
     if (!hasContent) return;
 
     const model = selectedModel || DEFAULT_MODEL_ID;
     const attachmentsArg = attachments.length > 0 ? [...attachments] : undefined;
     const mentionsArg = mentions.length > 0 ? [...mentions] : undefined;
+    const skillsArg = skillNames.length > 0 ? [...skillNames] : undefined;
+    // Ordered parts snapshot the exact interleaving of text and chips so the
+    // rendered bubble can preserve chip-in-the-middle order.
+    const orderedParts = editorRef.current?.getOrderedParts() ?? [];
+    const partsArg = orderedParts.length > 0 ? orderedParts : undefined;
 
     if (isAgentRunning) {
       // Agent is busy — queue the message instead of sending. If the parent
       // didn't wire `onEnqueue`, fall back to the legacy block (no-op).
       if (!onEnqueue) return;
-      onEnqueue(content, messageMode, model, attachmentsArg, mentionsArg);
+      onEnqueue(content, messageMode, model, attachmentsArg, mentionsArg, skillsArg, partsArg);
     } else {
-      onSubmit(content, messageMode, model, attachmentsArg, mentionsArg);
+      onSubmit(content, messageMode, model, attachmentsArg, mentionsArg, skillsArg, partsArg);
     }
 
     setContent('');
     setMentions([]);
+    setSkillNames([]);
     clearAttachments();
     editorRef.current?.clear();
   };
@@ -172,6 +178,14 @@ export const ChatInputContainer = forwardRef<ChatInputContainerHandle, ChatInput
         for (const m of recalled.mentions ?? []) byPath.set(m.path, m);
         return Array.from(byPath.values());
       });
+    }
+    // Re-insert any skill chips that were attached to the recalled message.
+    // The editor's insertSkill handle de-dupes so we don't double-add when the
+    // user had the same skill queued multiple times.
+    if (recalled.skills && recalled.skills.length > 0) {
+      for (const name of recalled.skills) {
+        editorRef.current?.insertSkill(name);
+      }
     }
     return true;
   }, [onRecallQueue, content]);
@@ -283,22 +297,26 @@ export const ChatInputContainer = forwardRef<ChatInputContainerHandle, ChatInput
               onChange={setContent}
               onKeyDown={handleKeyDown}
               onMentionsChange={setMentions}
+              onSkillsChange={setSkillNames}
               onLocalCommand={onLocalCommand}
               onAgentCommand={handleAgentCommand}
-              placeholder={isAgentRunning ? 'Queue a follow-up… (Enter to queue)' : 'Ask anything, @ for context'}
+              placeholder={isAgentRunning ? 'Queue a follow-up… (Enter to queue)' : 'Ask anything, @ for context, / for skills'}
               mode={messageMode}
               onEmptyUpArrow={handleRecallQueue}
             />
           </DropZoneOverlay>
 
-          {/* Attached skill chips */}
-          <SkillBar />
-
           {/* Bottom Controls */}
           <div className="flex items-center justify-between px-3 pb-3 pt-1" style={{ fontFamily: 'var(--font-sans)' }}>
             <div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
               <ContextMenu disabled={isAgentRunning} />
-              <ModeSelector value={mode} onChange={handleModeChange} disabled={isAgentRunning} />
+              {/* Mode is intentionally togglable mid-turn. The pipeline reads
+                  the mode dynamically on every tool call (see
+                  `permissions.ts::resolveMode`), so switching to Accept while
+                  the agent is running takes effect on the next tool use. A
+                  pending permission prompt is auto-resolved by the bridge when
+                  Accept/Plan is toggled on — matching Claude Code's behavior. */}
+              <ModeSelector value={mode} onChange={handleModeChange} />
               <ModelPicker side="top" disabled={isAgentRunning} />
               <ThinkingToggle
                 enabled={thinkingEnabled}
