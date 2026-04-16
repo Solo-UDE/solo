@@ -4,7 +4,8 @@
  */
 
 import { useState, useMemo, useRef, type FC } from 'react';
-import { GitBranch, CaretDown, TreeStructure } from '@phosphor-icons/react';
+import { ChevronDownIcon } from '@radix-ui/react-icons';
+import { GitBranch, Network } from 'lucide-react';
 import { useActiveRepo } from '@/stores/repoStore';
 import { useGitStore } from '@/stores/gitStore';
 import { useActiveWorktree } from '@/stores/worktreeStore';
@@ -36,7 +37,6 @@ export const SidebarHeader: FC = () => {
       {Icon && (
         <Icon
           className="w-4 h-4 shrink-0"
-          weight="fill"
           style={{ color: getRepoColorVar(activeRepo.color) }}
         />
       )}
@@ -59,12 +59,12 @@ export const SidebarHeader: FC = () => {
             'ml-auto shrink-0 max-w-[100px]',
           )}
         >
-          <GitBranch className="w-3 h-3 shrink-0 text-primary/70" weight="bold" />
+          <GitBranch className="w-3 h-3 shrink-0 text-primary/70" />
           <span className="truncate">{branchName}</span>
           {activeWorktree && (
-            <TreeStructure className="w-2.5 h-2.5 text-primary/50 shrink-0" weight="bold" />
+            <Network className="w-2.5 h-2.5 text-primary/50 shrink-0" />
           )}
-          <CaretDown className="w-2.5 h-2.5 text-muted-foreground/50 shrink-0" weight="bold" />
+          <ChevronDownIcon className="w-2.5 h-2.5 text-muted-foreground/50 shrink-0" />
         </button>
       )}
 
