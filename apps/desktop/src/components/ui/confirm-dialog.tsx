@@ -4,7 +4,7 @@
  */
 
 import { useEffect, useRef } from 'react';
-import { Warning } from '@phosphor-icons/react';
+import { ExclamationTriangleIcon } from '@radix-ui/react-icons';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -51,7 +51,7 @@ export function ConfirmDialog({
         <AlertDialogHeader className="mb-3">
           <AlertDialogTitle className="flex items-center gap-2 text-sm font-medium">
             {variant === 'destructive' && (
-              <Warning className="w-4 h-4 text-destructive" />
+              <ExclamationTriangleIcon className="w-4 h-4 text-destructive" />
             )}
             {title}
           </AlertDialogTitle>
