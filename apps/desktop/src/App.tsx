@@ -41,6 +41,7 @@ import { WelcomeScreen } from "./components/welcome";
 import { KeyboardShortcutsOverlay } from "./components/KeyboardShortcutsOverlay";
 import { BugReportDialog } from "./components/bug-report/BugReportDialog";
 import { TabSwitcher } from "./components/panels/TabSwitcher";
+import { SkillsOnboardingDialog } from "./components/agent/SkillsOnboardingDialog";
 
 // Shared easing curve matching --ease-smooth
 const EASE_SMOOTH: [number, number, number, number] = [0.16, 1, 0.3, 1];
@@ -605,6 +606,7 @@ function AppContent() {
       />
       {bugReportOpen && <BugReportDialog onClose={() => setBugReportOpen(false)} />}
       <TabSwitcher open={tabSwitcherOpen} onClose={() => setTabSwitcherOpen(false)} />
+      <SkillsOnboardingDialog />
       <Toaster richColors position="bottom-right" theme={resolvedTheme} />
     </div>
   );
