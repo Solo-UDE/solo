@@ -38,8 +38,10 @@ mod embedding_commands;
 mod fs_commands;
 mod git_commands;
 mod parse_commands;
+mod plan_commands;
 mod provider_commands;
 mod session_commands;
+mod settings_commands;
 mod skills_commands;
 mod terminal_commands;
 mod update_commands;
@@ -215,6 +217,8 @@ pub fn run() {
             agent_commands::agent_get_plan_mode,
             agent_commands::agent_set_accept_mode,
             agent_commands::agent_get_accept_mode,
+            agent_commands::agent_set_debug_mode,
+            agent_commands::agent_get_debug_mode,
             agent_commands::agent_set_tool_policy,
             agent_commands::agent_generate_commit_message,
             agent_commands::agent_refine_transcript,
@@ -302,6 +306,23 @@ pub fn run() {
             session_commands::session_read_file,
             session_commands::session_write_file,
             session_commands::session_delete_file,
+            // Settings & permissions commands
+            settings_commands::settings_load,
+            settings_commands::settings_load_scope,
+            settings_commands::settings_save,
+            settings_commands::settings_add_allow_rule,
+            settings_commands::settings_add_deny_rule,
+            settings_commands::settings_add_ask_rule,
+            settings_commands::settings_get_permissions,
+            settings_commands::settings_default_mode,
+            settings_commands::permissions_check,
+            // Plan file commands
+            plan_commands::plan_new_slug,
+            plan_commands::plan_write,
+            plan_commands::plan_read,
+            plan_commands::plan_list,
+            plan_commands::plan_delete,
+            plan_commands::plan_path,
             // Worktree commands
             worktree_commands::worktree_list,
             worktree_commands::worktree_create,
