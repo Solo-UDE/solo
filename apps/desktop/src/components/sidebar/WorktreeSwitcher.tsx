@@ -4,14 +4,8 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { FC, RefObject } from 'react';
-import {
-  Plus,
-  CircleNotch,
-  GitBranch,
-  Trash,
-  ArrowUp,
-  ArrowDown,
-} from '@phosphor-icons/react';
+import { PlusIcon, TrashIcon } from '@radix-ui/react-icons';
+import { Loader2, GitBranch, ArrowUp, ArrowDown } from 'lucide-react';
 import { useGitStore } from '@/stores/gitStore';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -135,7 +129,7 @@ export const WorktreeSwitcher: FC<WorktreeSwitcherProps> = ({ onClose, triggerRe
           )}
           title="Create branch"
         >
-          <Plus className="w-3 h-3" weight="bold" />
+          <PlusIcon className="w-3 h-3" />
         </button>
       </div>
 
@@ -164,7 +158,7 @@ export const WorktreeSwitcher: FC<WorktreeSwitcherProps> = ({ onClose, triggerRe
               )}
             />
             {isCreatingBranch && (
-              <CircleNotch className="w-3.5 h-3.5 text-muted-foreground animate-spin shrink-0" />
+              <Loader2 className="w-3.5 h-3.5 text-muted-foreground animate-spin shrink-0" />
             )}
           </div>
           {branchCreateError && (
@@ -195,7 +189,6 @@ export const WorktreeSwitcher: FC<WorktreeSwitcherProps> = ({ onClose, triggerRe
             >
               <GitBranch
                 className={cn('w-3.5 h-3.5 shrink-0', isCurrent ? 'text-primary' : '')}
-                weight="bold"
               />
               <span className="truncate flex-1 text-left">{branch.name}</span>
 
@@ -223,9 +216,8 @@ export const WorktreeSwitcher: FC<WorktreeSwitcherProps> = ({ onClose, triggerRe
                   onClick={(e) => handleDeleteBranch(e, branch.name)}
                   className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
                 >
-                  <Trash
+                  <TrashIcon
                     className="w-3 h-3 text-muted-foreground hover:text-destructive transition-colors"
-                    weight="bold"
                   />
                 </span>
               )}
@@ -236,7 +228,7 @@ export const WorktreeSwitcher: FC<WorktreeSwitcherProps> = ({ onClose, triggerRe
         {/* Fallback when no branches loaded yet */}
         {branches.length === 0 && (
           <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs bg-primary/10 text-foreground">
-            <GitBranch className="w-3.5 h-3.5 text-primary" weight="bold" />
+            <GitBranch className="w-3.5 h-3.5 text-primary" />
             <span>{useGitStore.getState().currentBranch || 'main'}</span>
           </div>
         )}
