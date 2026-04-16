@@ -4,12 +4,20 @@ import { Split } from 'lucide-react';
 
 import { MessageFeed } from './messages';
 import { ChatInputContainer } from './input';
+import { QueuedMessagesStrip } from './input/queued-messages-strip';
 import { SoloEmptyState } from './SoloDecryptAnimation';
 import { StickyTodoOverlay } from './StickyTodoOverlay';
 import { convertToMessageGroups } from './messageAdapter';
 import { useAgentSession } from '../../hooks/useAgentSession';
 import { useProviderStore } from '../../stores/provider-store';
-import { useAgentStore, usePlanModeActive, useAcceptModeActive, useActiveAskUserQuestion } from '../../stores/agentStore';
+import {
+	useAgentStore,
+	usePlanModeActive,
+	useAcceptModeActive,
+	useDebugModeActive,
+	useActiveAskUserQuestion,
+	useSessionGoal,
+} from '../../stores/agentStore';
 import { AskUserQuestionCard } from './streaming/AskUserQuestionCard';
 import { usePanelTabsStore } from '../../stores/panelTabsStore';
 import { BUILTIN_PANEL_TYPES } from '../../lib/panels/constants';
@@ -141,6 +149,36 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 		[sendMessage]
 	);
 
+	// Queue a message for later flush when the current turn finishes.
+	const enqueueMessage = useAgentStore((state) => state.enqueueMessage);
+	const popQueueForRecall = useAgentStore((state) => state.popQueueForRecall);
+	const handleEnqueue = useCallback(
+		(content: string, mode: 'planning' | 'fast', model: string, attachments?: Attachment[], mentions?: FileMention[]) => {
+			if (!sessionId) return;
+			enqueueMessage(sessionId, {
+				content,
+				mode: mode as MessageMode,
+				model,
+				attachments,
+				mentions,
+			});
+		},
+		[sessionId, enqueueMessage]
+	);
+
+	const handleRecallQueue = useCallback((): { text: string; mentions?: FileMention[] } | null => {
+		if (!sessionId) return null;
+		const popped = popQueueForRecall(sessionId);
+		if (popped.length === 0) return null;
+		const text = popped.map((q) => q.content).join('\n\n');
+		const mentionMap = new Map<string, FileMention>();
+		for (const q of popped) {
+			for (const m of q.mentions ?? []) mentionMap.set(m.path, m);
+		}
+		const mentions = Array.from(mentionMap.values());
+		return { text, mentions: mentions.length ? mentions : undefined };
+	}, [sessionId, popQueueForRecall]);
+
 	// Abort session
 	const abortSession = useAgentStore((state) => state.abortSession);
 	const handleAbort = useCallback(() => {
@@ -166,21 +204,28 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 		[respondPermission]
 	);
 
-	// Plan mode / accept mode state from store (set by bridge events)
+	// Mode state from store (set by bridge events for plan/accept; local for debug)
 	const planModeActive = usePlanModeActive(sessionId ?? null);
 	const acceptModeActive = useAcceptModeActive(sessionId ?? null);
+	const debugModeActive = useDebugModeActive(sessionId ?? null);
+	const sessionGoal = useSessionGoal(sessionId ?? null);
+	const setDebugMode = useAgentStore((s) => s.setDebugMode);
 
 	// Active AskUserQuestion (floated above input)
 	const activeQuestion = useActiveAskUserQuestion(sessionId ?? null);
 
-	// Handle mode selector changes — sync to bridge
-	// Cycles: fast → planning → accept (click or Shift+Tab)
+	// Handle mode selector changes — modes are mutually exclusive overlays.
+	// Cycles: default → plan → accept → debug (click or Shift+Tab).
 	const handleModeChange = useCallback(
 		(mode: Mode) => {
-			setPlanMode(mode === 'planning');
+			if (!sessionId) return;
+			// Plan and Accept are sync'd to the bridge; Debug stays local until
+			// the Debug-backend phase lands (goal capture + periodic review).
+			setPlanMode(mode === 'plan');
 			setAcceptMode(mode === 'accept');
+			setDebugMode(sessionId, mode === 'debug');
 		},
-		[setPlanMode, setAcceptMode]
+		[sessionId, setPlanMode, setAcceptMode, setDebugMode]
 	);
 
 	// Handle thinking toggle — sync to bridge
@@ -251,8 +296,11 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 					</div>
 				)}
 
+				<QueuedMessagesStrip sessionId={sessionId ?? null} />
 				<ChatInputContainer
 					onSubmit={handleSubmit}
+					onEnqueue={handleEnqueue}
+					onRecallQueue={handleRecallQueue}
 					onLocalCommand={handleLocalCommand}
 					onAbort={handleAbort}
 					isAgentRunning={isRunning}
@@ -263,6 +311,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 					onThinkingChange={handleThinkingChange}
 					planModeActive={planModeActive}
 					acceptModeActive={acceptModeActive}
+					debugModeActive={debugModeActive}
 				/>
 			</div>
 		);
@@ -310,6 +359,21 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 					</DropdownMenuItem>
 				</DropdownMenuContent>
 			</DropdownMenu>
+
+			{debugModeActive && sessionGoal && (
+				<div
+					className="px-3 pt-2"
+					role="note"
+					aria-label="Debug mode session goal"
+				>
+					<div className="mx-auto max-w-3xl rounded-[10px] bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20 px-3 py-1.5 flex items-start gap-2">
+						<span className="text-[10px] font-semibold uppercase tracking-wider mt-0.5 shrink-0 opacity-80">
+							Goal
+						</span>
+						<span className="text-xs leading-tight line-clamp-2">{sessionGoal}</span>
+					</div>
+				</div>
+			)}
 
 			<MessageFeed
 				messageGroups={messageGroups}
@@ -361,8 +425,11 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 			{/* Sticky tasks pill — overlays above the input. Hidden when no tasks. */}
 			<div className="relative">
 				<StickyTodoOverlay messages={messages} onHeightChange={setOverlayHeightPx} />
+				<QueuedMessagesStrip sessionId={sessionId ?? null} />
 				<ChatInputContainer
 					onSubmit={handleSubmit}
+					onEnqueue={handleEnqueue}
+					onRecallQueue={handleRecallQueue}
 					onLocalCommand={handleLocalCommand}
 					onAbort={handleAbort}
 					isAgentRunning={isRunning}
@@ -373,6 +440,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 					onThinkingChange={handleThinkingChange}
 					planModeActive={planModeActive}
 					acceptModeActive={acceptModeActive}
+					debugModeActive={debugModeActive}
 				/>
 			</div>
 		</div>
