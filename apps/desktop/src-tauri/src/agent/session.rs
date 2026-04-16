@@ -4,7 +4,7 @@
 
 use super::bridge::{AgentBridge, BridgeError, EventCallback, Result};
 use super::protocol::{
-    AttachmentContentBlock, BridgeRequest, CommandResponse, Model, PermissionResponse,
+    AttachmentContentBlock, BridgeRequest, CommandResponse, PermissionResponse,
     SessionConfig,
 };
 use parking_lot::Mutex;
@@ -197,7 +197,7 @@ impl SessionManager {
     }
 
     /// Set model for a session
-    pub fn set_model(&self, session_id: &str, model: Model) -> Result<()> {
+    pub fn set_model(&self, session_id: &str, model: String) -> Result<()> {
         self.ensure_running()?;
 
         let request = BridgeRequest::SetModel {
@@ -276,6 +276,37 @@ impl SessionManager {
         self.ensure_running()?;
 
         let request = BridgeRequest::GetAcceptMode {
+            session_id: session_id.to_owned(),
+        };
+
+        let bridge = self.bridge.lock();
+        let response = bridge.send_request(&request)?;
+        Self::check_response_bool(response)
+    }
+
+    /// Enable/disable Debug mode for a session.
+    ///
+    /// When enabled, the next user prompt is captured as the session goal and
+    /// a `DebugModeChanged` event (plus, shortly after, a `SessionGoalCaptured`
+    /// event) flows back through the bridge event stream.
+    pub fn set_debug_mode(&self, session_id: &str, enabled: bool) -> Result<()> {
+        self.ensure_running()?;
+
+        let request = BridgeRequest::SetDebugMode {
+            session_id: session_id.to_owned(),
+            enabled,
+        };
+
+        let bridge = self.bridge.lock();
+        let response = bridge.send_request(&request)?;
+        Self::check_response(response)
+    }
+
+    /// Get Debug mode for a session.
+    pub fn get_debug_mode(&self, session_id: &str) -> Result<bool> {
+        self.ensure_running()?;
+
+        let request = BridgeRequest::GetDebugMode {
             session_id: session_id.to_owned(),
         };
 
