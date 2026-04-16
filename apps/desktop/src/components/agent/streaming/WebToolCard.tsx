@@ -4,7 +4,7 @@
  * Shows globe icon, URL or query display, and response preview.
  */
 
-import { Globe } from '@phosphor-icons/react';
+import { GlobeIcon } from '@radix-ui/react-icons';
 
 import { ToolCard } from './ToolCard';
 
@@ -36,7 +36,7 @@ export const WebToolCard: FC<WebToolCardProps> = ({
 		<ToolCard
 			toolName={toolName}
 			status={status}
-			icon={<Globe className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+			icon={<GlobeIcon width={14} height={14} className="shrink-0 text-muted-foreground" />}
 			label={
 				status === 'running'
 					? (isSearch ? 'Searching web...' : 'Fetching page...')
