@@ -62,5 +62,17 @@ apps/desktop/src/components/editor/CLAUDE.md
 docs/MIGRATION.md
 .claude/CLAUDE.md
 
+#.superpowers files
+.superpowers/*
+
+# claude sessions
+.claude/sessions/*
+
+# claude backups
+.claude/backups/*
+
+# claude todos
+.claude/todos/*
+
 # claude worktrees
 .claude/worktrees/*

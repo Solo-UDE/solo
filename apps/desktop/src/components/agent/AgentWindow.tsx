@@ -345,9 +345,9 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 				</div>
 			)}
 
-			{/* AskUserQuestion — flush above input */}
+			{/* AskUserQuestion — flush above input, z-30 to stay above StickyTodoOverlay (z-20) */}
 			{activeQuestion && (
-				<div className="w-full max-w-3xl mx-auto px-3">
+				<div className="relative z-30 w-full max-w-3xl mx-auto px-3">
 					<AskUserQuestionCard
 						requestId={activeQuestion.requestId}
 						toolInput={activeQuestion.toolInput}
