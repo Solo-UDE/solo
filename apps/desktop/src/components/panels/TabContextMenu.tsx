@@ -4,7 +4,7 @@
  */
 
 import { useCallback, useEffect, useRef } from 'react';
-import { X, XCircle, PushPin, PushPinSlash } from '@phosphor-icons/react';
+import { Cross2Icon, CrossCircledIcon, DrawingPinIcon, DrawingPinFilledIcon } from '@radix-ui/react-icons';
 import type { PanelInstanceId, TileId } from '@/lib/panels/types';
 
 interface ContextMenuPosition {
@@ -134,7 +134,7 @@ export function TabContextMenu({
     >
       {/* Close action */}
       <MenuItem
-        icon={<X className="w-4 h-4" />}
+        icon={<Cross2Icon className="w-4 h-4" />}
         label="Close"
         shortcut="⌘W"
         onClick={() => {
@@ -145,7 +145,7 @@ export function TabContextMenu({
 
       {/* Close Others action */}
       <MenuItem
-        icon={<XCircle className="w-4 h-4" />}
+        icon={<CrossCircledIcon className="w-4 h-4" />}
         label="Close Others"
         disabled={tabCount <= 1}
         onClick={() => {
@@ -156,7 +156,7 @@ export function TabContextMenu({
 
       {/* Close All action */}
       <MenuItem
-        icon={<XCircle className="w-4 h-4" />}
+        icon={<CrossCircledIcon className="w-4 h-4" />}
         label="Close All"
         onClick={() => {
           onCloseAll();
@@ -168,7 +168,7 @@ export function TabContextMenu({
 
       {/* Pin/Unpin action */}
       <MenuItem
-        icon={isPinned ? <PushPinSlash className="w-4 h-4" /> : <PushPin className="w-4 h-4" />}
+        icon={isPinned ? <DrawingPinFilledIcon className="w-4 h-4" /> : <DrawingPinIcon className="w-4 h-4" />}
         label={isPinned ? 'Unpin Tab' : 'Pin Tab'}
         onClick={() => {
           onTogglePin();
