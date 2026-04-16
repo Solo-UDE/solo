@@ -6,7 +6,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { FC } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { Plus, Broom, ArrowsClockwise, TreeStructure } from '@phosphor-icons/react';
+import { PlusIcon, ReloadIcon } from '@radix-ui/react-icons';
+import { Brush, Network } from 'lucide-react';
 import { WorktreeCardLarge } from './WorktreeCardLarge';
 import { WorktreeDetailView } from './WorktreeDetailView';
 import { useUIStore } from '@/stores/uiStore';
@@ -241,7 +242,7 @@ export const DevSidebar: FC<DevSidebarProps> = ({ onFileOpen }) => {
                   )}
                   title="New Worktree"
                 >
-                  <Plus className="w-3 h-3" weight="bold" />
+                  <PlusIcon className="w-3 h-3" />
                 </button>
                 <button
                   onClick={handleRefresh}
@@ -254,9 +255,8 @@ export const DevSidebar: FC<DevSidebarProps> = ({ onFileOpen }) => {
                   title="Refresh worktrees"
                   disabled={isSwitching}
                 >
-                  <ArrowsClockwise
+                  <ReloadIcon
                     className={cn('w-3 h-3', isSwitching && 'animate-spin')}
-                    weight="bold"
                   />
                 </button>
                 <button
@@ -268,7 +268,7 @@ export const DevSidebar: FC<DevSidebarProps> = ({ onFileOpen }) => {
                   )}
                   title="Prune stale worktrees"
                 >
-                  <Broom className="w-3 h-3" weight="bold" />
+                  <Brush className="w-3 h-3" />
                 </button>
               </div>
             </div>
@@ -322,7 +322,7 @@ export const DevSidebar: FC<DevSidebarProps> = ({ onFileOpen }) => {
               {worktrees.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-8 text-center px-4">
                   <div className="w-10 h-10 rounded-2xl bg-muted/50 flex items-center justify-center mb-2">
-                    <TreeStructure className="w-5 h-5 text-muted-foreground/40" />
+                    <Network className="w-5 h-5 text-muted-foreground/40" />
                   </div>
                   <p className="text-xs font-medium text-muted-foreground">No worktrees yet</p>
                   <p className="text-xs text-muted-foreground/60 mt-1">
