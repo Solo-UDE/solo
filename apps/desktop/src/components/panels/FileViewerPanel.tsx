@@ -7,7 +7,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Editor, { OnMount, BeforeMount } from '@monaco-editor/react';
 import type * as Monaco from 'monaco-editor';
-import { WarningCircle, CaretRight } from '@phosphor-icons/react';
+import { ExclamationTriangleIcon, ChevronRightIcon } from '@radix-ui/react-icons';
 import { FileIcon } from '@react-symbols/icons/utils';
 import { CodeSkeleton } from '@/components/ui/skeletons';
 import * as fs from '@/lib/tauri/fs';
@@ -364,7 +364,7 @@ export function FileViewerPanel({
     return (
       <div className="flex items-center justify-center h-full bg-background">
         <div className="text-center space-y-4 max-w-md px-4">
-          <WarningCircle className="w-8 h-8 text-destructive mx-auto" />
+          <ExclamationTriangleIcon className="w-8 h-8 text-destructive mx-auto" />
           <p className="text-sm text-destructive">Failed to load file</p>
           <p className="text-xs text-muted-foreground break-all">{error}</p>
         </div>
@@ -378,7 +378,7 @@ export function FileViewerPanel({
     return (
       <div className="flex items-center justify-center h-full bg-background">
         <div className="text-center space-y-4 max-w-md px-4">
-          <WarningCircle className="w-8 h-8 text-muted-foreground mx-auto" />
+          <ExclamationTriangleIcon className="w-8 h-8 text-muted-foreground mx-auto" />
           <p className="text-sm text-foreground">File too large to open</p>
           <p className="text-xs text-muted-foreground">
             This file is {sizeMB} MB. Files larger than 5 MB are not supported in the editor.
@@ -464,7 +464,7 @@ export function FileViewerPanel({
           {breadcrumbSegments.map((segment, i) => (
             <div key={segment.fullPath} className="flex items-center gap-1 shrink-0">
               {i > 0 && (
-                <CaretRight className="w-2.5 h-2.5 text-muted-foreground/40 shrink-0" weight="bold" />
+                <ChevronRightIcon className="w-2.5 h-2.5 text-muted-foreground/40 shrink-0" />
               )}
               {segment.isLast ? (
                 <span className="text-[11px] text-foreground/80 font-medium whitespace-nowrap">
