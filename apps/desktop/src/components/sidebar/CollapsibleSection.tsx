@@ -6,12 +6,12 @@
 
 import { useState, type FC, type ReactNode } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { CaretRight } from '@phosphor-icons/react';
+import { ChevronRightIcon } from '@radix-ui/react-icons';
 import { cn } from '@/lib/utils';
 
 interface CollapsibleSectionProps {
   title: string;
-  icon?: FC<{ className?: string; weight?: 'regular' | 'fill' | 'bold' }>;
+  icon?: FC<{ className?: string }>;
   defaultOpen?: boolean;
   /** Action buttons rendered in the section header */
   actions?: ReactNode;
@@ -55,10 +55,10 @@ export const CollapsibleSection: FC<CollapsibleSectionProps> = ({
           transition={{ type: 'spring', stiffness: 500, damping: 30 }}
           className="shrink-0"
         >
-          <CaretRight className="w-3 h-3" weight="bold" />
+          <ChevronRightIcon className="w-3 h-3" />
         </motion.div>
 
-        {Icon && <Icon className="w-3.5 h-3.5 shrink-0" weight="bold" />}
+        {Icon && <Icon className="w-3.5 h-3.5 shrink-0" />}
 
         <span className="uppercase tracking-wider text-[10px] flex-1 text-left">
           {title}
