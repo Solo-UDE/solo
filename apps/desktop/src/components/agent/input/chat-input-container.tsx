@@ -42,6 +42,10 @@ const LazySketchPopoverContent = lazy(() =>
 
 export interface ChatInputContainerProps {
   onSubmit: (content: string, mode: 'planning' | 'fast', model: string, attachments?: Attachment[], mentions?: FileMention[]) => void;
+  /** Called instead of `onSubmit` when `isAgentRunning` is true — message should be queued, not sent. */
+  onEnqueue?: (content: string, mode: 'planning' | 'fast', model: string, attachments?: Attachment[], mentions?: FileMention[]) => void;
+  /** Pops all queued messages back into the composer for editing. Returns `null` if the queue is empty. */
+  onRecallQueue?: () => { text: string; mentions?: FileMention[] } | null;
   onLocalCommand?: (commandId: string) => void;
   onAbort?: () => void;
   isAgentRunning?: boolean;
@@ -53,10 +57,13 @@ export interface ChatInputContainerProps {
   onThinkingChange?: (enabled: boolean) => void;
   planModeActive?: boolean;
   acceptModeActive?: boolean;
+  debugModeActive?: boolean;
 }
 
 export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
   onSubmit,
+  onEnqueue,
+  onRecallQueue,
   onLocalCommand,
   onAbort,
   isAgentRunning = false,
@@ -68,13 +75,15 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
   onThinkingChange,
   planModeActive = false,
   acceptModeActive = false,
+  debugModeActive = false,
 }) => {
   const [content, setContent] = useState('');
   // Derive initial mode from bridge state so remounted components get the right mode
   const [mode, setMode] = useState<Mode>(() => {
-    if (planModeActive) return 'planning';
+    if (planModeActive) return 'plan';
     if (acceptModeActive) return 'accept';
-    return 'fast';
+    if (debugModeActive) return 'debug';
+    return 'default';
   });
   const [mentions, setMentions] = useState<FileMention[]>([]);
   const [sketchOpen, setSketchOpen] = useState(false);
@@ -87,16 +96,18 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
   const worktrees = useWorktreeList();
   const sessionMessages = useActiveSessionMessages();
 
-  // Sync mode from bridge state changes (plan mode / accept mode)
+  // Sync mode from store state changes (plan / accept / debug overlays)
   useEffect(() => {
     if (planModeActive) {
-      setMode('planning');
+      setMode('plan');
     } else if (acceptModeActive) {
       setMode('accept');
+    } else if (debugModeActive) {
+      setMode('debug');
     } else {
-      setMode('fast');
+      setMode('default');
     }
-  }, [planModeActive, acceptModeActive]);
+  }, [planModeActive, acceptModeActive, debugModeActive]);
 
   // Build context from recent chat messages for STT transcription improvement
   const voiceContext = useMemo(() => {
@@ -108,33 +119,60 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
       .slice(0, 2000);
   }, [sessionMessages]);
 
-  // Map 3-state mode to message mode (accept sends as 'fast')
-  const messageMode = mode === 'planning' ? 'planning' : 'fast';
+  // Map the 4-state PermissionMode to the wire-level MessageMode ('planning' | 'fast')
+  // used for the per-message marker. Only 'plan' flips to 'planning'; everything
+  // else sends as 'fast'.
+  const messageMode = mode === 'plan' ? 'planning' : 'fast';
 
   const handleSubmit = (): void => {
     const hasContent = content.trim() || attachments.length > 0;
-    if (hasContent && !isAgentRunning) {
-      onSubmit(
-        content,
-        messageMode,
-        selectedModel || DEFAULT_MODEL_ID,
-        attachments.length > 0 ? [...attachments] : undefined,
-        mentions.length > 0 ? [...mentions] : undefined,
-      );
-      setContent('');
-      setMentions([]);
-      clearAttachments();
-      editorRef.current?.clear();
+    if (!hasContent) return;
+
+    const model = selectedModel || DEFAULT_MODEL_ID;
+    const attachmentsArg = attachments.length > 0 ? [...attachments] : undefined;
+    const mentionsArg = mentions.length > 0 ? [...mentions] : undefined;
+
+    if (isAgentRunning) {
+      // Agent is busy — queue the message instead of sending. If the parent
+      // didn't wire `onEnqueue`, fall back to the legacy block (no-op).
+      if (!onEnqueue) return;
+      onEnqueue(content, messageMode, model, attachmentsArg, mentionsArg);
+    } else {
+      onSubmit(content, messageMode, model, attachmentsArg, mentionsArg);
     }
+
+    setContent('');
+    setMentions([]);
+    clearAttachments();
+    editorRef.current?.clear();
   };
+
+  const handleRecallQueue = useCallback((): boolean => {
+    if (!onRecallQueue) return false;
+    const recalled = onRecallQueue();
+    if (!recalled) return false;
+    // Merge recalled text with whatever the user has already typed (current
+    // content goes at the end so the cursor lands past everything).
+    const merged = [recalled.text, content].filter((s) => s.length > 0).join('\n\n');
+    editorRef.current?.setText(merged);
+    setContent(merged);
+    if (recalled.mentions && recalled.mentions.length > 0) {
+      setMentions((prev) => {
+        const byPath = new Map(prev.map((m) => [m.path, m]));
+        for (const m of recalled.mentions ?? []) byPath.set(m.path, m);
+        return Array.from(byPath.values());
+      });
+    }
+    return true;
+  }, [onRecallQueue, content]);
 
   const handleAgentCommand = (commandText: string): void => {
     onSubmit(commandText, messageMode, selectedModel || DEFAULT_MODEL_ID);
   };
 
-  // Cycle mode: fast → planning → accept → fast
+  // Cycle mode: default → plan → accept → debug → default
   const cycleMode = useCallback(() => {
-    const order: Mode[] = ['fast', 'planning', 'accept'];
+    const order: Mode[] = ['default', 'plan', 'accept', 'debug'];
     const nextMode = order[(order.indexOf(mode) + 1) % order.length];
     setMode(nextMode);
     onModeChange?.(nextMode);
@@ -193,8 +231,8 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
           {/* Attachment chips/thumbnails — above editor (like Conductor) */}
           <AttachmentBar />
 
-          {/* Editor with drop zone */}
-          <DropZoneOverlay disabled={isAgentRunning}>
+          {/* Editor with drop zone — stays live while the agent is running so users can queue messages. */}
+          <DropZoneOverlay>
             <LexicalEditor
               ref={editorRef}
               onChange={setContent}
@@ -202,9 +240,9 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
               onMentionsChange={setMentions}
               onLocalCommand={onLocalCommand}
               onAgentCommand={handleAgentCommand}
-              placeholder="Ask anything, @ for context"
-              disabled={isAgentRunning}
+              placeholder={isAgentRunning ? 'Queue a follow-up… (Enter to queue)' : 'Ask anything, @ for context'}
               mode={messageMode}
+              onEmptyUpArrow={handleRecallQueue}
             />
           </DropZoneOverlay>
 
