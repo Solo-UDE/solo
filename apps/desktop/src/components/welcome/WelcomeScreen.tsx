@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
-import { FolderOpen, GitBranch, Clock, FolderSimple, X } from '@phosphor-icons/react';
+import { Cross2Icon } from '@radix-ui/react-icons';
+import { FolderOpen, GitBranch, Clock, Folder } from 'lucide-react';
 import { Button, IconButton } from '@solo/ui';
 import SoloDecryptAnimation from '../agent/SoloDecryptAnimation';
 import { StarsBackground } from '@/components/ui/stars-background';
@@ -146,7 +147,7 @@ export function WelcomeScreen({ onProjectOpen }: WelcomeScreenProps = {}) {
             onClick={handleOpenProject}
             className="text-xs shadow-sm"
           >
-            <FolderOpen className="w-3.5 h-3.5" weight="duotone" />
+            <FolderOpen className="w-3.5 h-3.5" size={14} />
             Open Project
             <kbd className="ml-1 text-[10px] opacity-60 font-normal">⌘O</kbd>
           </Button>
@@ -198,7 +199,7 @@ export function WelcomeScreen({ onProjectOpen }: WelcomeScreenProps = {}) {
                       willChange: 'opacity, transform, filter',
                     }}
                   >
-                    <FolderSimple className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                    <Folder className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                     <div className="flex-1 min-w-0 text-left">
                       <div className="text-foreground/80 truncate">{dirName(path)}</div>
                       <div
@@ -215,7 +216,7 @@ export function WelcomeScreen({ onProjectOpen }: WelcomeScreenProps = {}) {
                       className="w-5 h-5 opacity-0 group-hover:opacity-100 hover:bg-destructive/10 transition-opacity duration-150"
                       title="Remove from recents"
                     >
-                      <X className="w-3 h-3 text-muted-foreground" />
+                      <Cross2Icon className="w-3 h-3 text-muted-foreground" />
                     </IconButton>
                   </div>
                 ))}
