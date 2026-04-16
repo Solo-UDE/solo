@@ -6,7 +6,7 @@
 
 import { useCallback, forwardRef } from 'react';
 import { motion } from 'motion/react';
-import { FolderPlus as FolderPlusIcon } from '@phosphor-icons/react';
+import { FolderPlus as FolderPlusIcon } from 'lucide-react';
 import { ModeToggle } from './ModeToggle';
 import { DevSidebar } from './DevSidebar';
 import { StudioSidebar } from './StudioSidebar';
