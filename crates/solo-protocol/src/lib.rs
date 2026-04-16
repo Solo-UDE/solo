@@ -915,6 +915,25 @@ pub enum BackendEvent {
     /// Count of entries in the Unsorted review tray changed
     #[serde(rename = "vault:unsorted_count_changed")]
     VaultUnsortedCountChanged { count: u32 },
+
+    /// Progress for the semantic embeddings backfill job.
+    ///
+    /// Emitted once per batch while `vault_backfill_embeddings` runs, plus a
+    /// final event with `done = true` that carries the terminal totals. The
+    /// frontend subscribes to this to animate a "Rebuilding index…" toast.
+    #[serde(rename = "vault:backfill_progress")]
+    VaultBackfillProgress {
+        /// Total chunks pending embedding at start of this backfill run.
+        total: u64,
+        /// Chunks successfully embedded so far (cumulative across batches).
+        completed: u64,
+        /// Chunks that failed (dim mismatch, corrupt BLOB, provider error).
+        failed: u64,
+        /// Wall-clock milliseconds elapsed since backfill started.
+        elapsed_ms: u64,
+        /// `true` on the last event for this run; `false` for ticks.
+        done: bool,
+    },
 }
 
 // =============================================================================
