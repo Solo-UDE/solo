@@ -6,6 +6,7 @@ import { useEffect, useRef } from 'react';
 import { Zap } from 'lucide-react';
 
 import type { FC, ComponentType } from 'react';
+import type { SkillSource } from '../../../../bindings/SkillSource';
 
 export interface SlashCommand {
 	id: string;
@@ -15,7 +16,18 @@ export interface SlashCommand {
 	icon: ComponentType<{ className?: string; size?: number }>;
 	/** For skills: whether the skill is currently attached */
 	attached?: boolean;
+	/** For skills: where the skill was discovered (drives the source badge) */
+	source?: SkillSource;
 }
+
+const SOURCE_BADGES: Record<SkillSource, { label: string; className: string }> = {
+	user: { label: 'Solo', className: 'text-primary bg-primary/10' },
+	project: { label: 'Project', className: 'text-primary bg-primary/10' },
+	claude_user: { label: 'Claude', className: 'text-orange-500 bg-orange-500/10' },
+	claude_plugin: { label: 'Plugin', className: 'text-orange-500 bg-orange-500/10' },
+	claude_project: { label: 'Claude·Proj', className: 'text-orange-500 bg-orange-500/10' },
+	codex: { label: 'Codex', className: 'text-sky-500 bg-sky-500/10' },
+};
 
 export interface SlashCommandDropdownProps {
 	commands: SlashCommand[];
@@ -101,6 +113,13 @@ export const SlashCommandDropdown: FC<SlashCommandDropdownProps> = ({
 								<div className="min-w-0 flex-1">
 									<div className="flex items-center gap-2">
 										<span className="font-mono text-foreground">{cmd.label}</span>
+										{cmd.source && (
+											<span
+												className={`text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded-full ${SOURCE_BADGES[cmd.source].className}`}
+											>
+												{SOURCE_BADGES[cmd.source].label}
+											</span>
+										)}
 										{cmd.attached && (
 											<span className="text-[9px] font-semibold uppercase tracking-wider text-primary bg-primary/10 px-1.5 py-0.5 rounded-full">
 												Active
