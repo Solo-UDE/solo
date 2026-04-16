@@ -35,7 +35,6 @@ import { cn } from "./lib/utils";
 import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
 import { Toaster } from "sonner";
-import { WorkspaceSwitcher } from "./components/titlebar/WorkspaceSwitcher";
 import { TitlebarButton } from "./components/titlebar/TitlebarButton";
 import { WelcomeScreen } from "./components/welcome";
 import { KeyboardShortcutsOverlay } from "./components/KeyboardShortcutsOverlay";
@@ -467,9 +466,10 @@ function AppContent() {
           )}
         </div>
 
-        <WorkspaceSwitcher />
+        {/* Center drag region — fills remaining space so the entire titlebar is draggable */}
+        <div className="flex-1" data-tauri-drag-region />
 
-        <div className="flex-1 flex items-center justify-end gap-2">
+        <div className="flex items-center justify-end gap-2 mr-1.5">
           <div
             className={`w-2 h-2 rounded-full ${
               backendStatus.includes("connected")
