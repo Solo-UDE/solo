@@ -5,20 +5,16 @@
 import { useState, useCallback, useMemo } from 'react';
 import type { FC } from 'react';
 import {
-  ArrowCounterClockwise,
-  ArrowsClockwise,
-  ArrowUp,
-  CaretDown,
-  CaretRight,
-  Check,
-  CircleNotch,
-  Eye,
-  MagnifyingGlass,
-  Minus,
-  Plus,
-  Rows,
-  Sparkle,
-} from '@phosphor-icons/react';
+  CounterClockwiseClockIcon,
+  ReloadIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  CheckIcon,
+  MagnifyingGlassIcon,
+  MinusIcon,
+  PlusIcon,
+} from '@radix-ui/react-icons';
+import { ArrowUp, Loader2, Eye, Rows3, Sparkle } from 'lucide-react';
 import { useGitStore } from '@/stores/gitStore';
 import { useUIStore } from '@/stores/uiStore';
 import { usePanelTabsStore } from '@/stores/panelTabsStore';
@@ -254,9 +250,9 @@ export const WorktreeChangesView: FC<WorktreeChangesViewProps> = ({ className })
             title="Generate commit message with AI"
           >
             {isGeneratingMessage ? (
-              <CircleNotch className="w-3.5 h-3.5 animate-spin" />
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
             ) : (
-              <Sparkle className="w-3.5 h-3.5" weight="bold" />
+              <Sparkle className="w-3.5 h-3.5" />
             )}
           </button>
           <button
@@ -273,9 +269,9 @@ export const WorktreeChangesView: FC<WorktreeChangesViewProps> = ({ className })
             title={stagedFiles.length === 0 ? 'Stage files before committing' : 'Commit staged changes (Cmd+Enter)'}
           >
             {isCommitting ? (
-              <ArrowsClockwise className="w-3.5 h-3.5 animate-spin" />
+              <ReloadIcon className="w-3.5 h-3.5 animate-spin" />
             ) : (
-              <Check className="w-3.5 h-3.5" weight="bold" />
+              <CheckIcon className="w-3.5 h-3.5" />
             )}
             {isCommitting ? 'Committing...' : 'Commit'}
           </button>
@@ -297,9 +293,9 @@ export const WorktreeChangesView: FC<WorktreeChangesViewProps> = ({ className })
             title={commitsAhead ? `Push ${commitsAhead} commit${commitsAhead !== 1 ? 's' : ''} to remote` : 'Nothing to push'}
           >
             {isPushing ? (
-              <ArrowsClockwise className="w-3.5 h-3.5 animate-spin" />
+              <ReloadIcon className="w-3.5 h-3.5 animate-spin" />
             ) : (
-              <ArrowUp className="w-3.5 h-3.5" weight="bold" />
+              <ArrowUp className="w-3.5 h-3.5" />
             )}
             {isPushing ? 'Pushing...' : 'Push'}
             {commitsAhead != null && commitsAhead > 0 && (
@@ -329,9 +325,9 @@ export const WorktreeChangesView: FC<WorktreeChangesViewProps> = ({ className })
             title="AI review changes (Opus)"
           >
             {isLaunchingReview ? (
-              <CircleNotch className="w-3 h-3 animate-spin" />
+              <Loader2 className="w-3 h-3 animate-spin" />
             ) : (
-              <MagnifyingGlass className="w-3 h-3" weight="bold" />
+              <MagnifyingGlassIcon className="w-3 h-3" />
             )}
           </button>
           <button
@@ -343,7 +339,7 @@ export const WorktreeChangesView: FC<WorktreeChangesViewProps> = ({ className })
             )}
             title="View all changes"
           >
-            <Eye className="w-3 h-3" weight="bold" />
+            <Eye className="w-3 h-3" />
           </button>
         </div>
       </div>
@@ -362,9 +358,9 @@ export const WorktreeChangesView: FC<WorktreeChangesViewProps> = ({ className })
               )}
             >
               {stagedOpen ? (
-                <CaretDown className="w-3 h-3" weight="bold" />
+                <ChevronDownIcon className="w-3 h-3" />
               ) : (
-                <CaretRight className="w-3 h-3" weight="bold" />
+                <ChevronRightIcon className="w-3 h-3" />
               )}
               Staged Changes
               <span
@@ -379,9 +375,8 @@ export const WorktreeChangesView: FC<WorktreeChangesViewProps> = ({ className })
                 className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity"
                 onClick={handleUnstageAll}
               >
-                <Minus
+                <MinusIcon
                   className="w-3.5 h-3.5 text-muted-foreground hover:text-foreground transition-colors"
-                  weight="bold"
                 />
               </span>
             </button>
@@ -413,9 +408,9 @@ export const WorktreeChangesView: FC<WorktreeChangesViewProps> = ({ className })
           )}
         >
           {changesOpen ? (
-            <CaretDown className="w-3 h-3" weight="bold" />
+            <ChevronDownIcon className="w-3 h-3" />
           ) : (
-            <CaretRight className="w-3 h-3" weight="bold" />
+            <ChevronRightIcon className="w-3 h-3" />
           )}
           Changes
           {unstagedFiles.length > 0 && (
@@ -447,18 +442,16 @@ export const WorktreeChangesView: FC<WorktreeChangesViewProps> = ({ className })
                 }}
                 title="View all branch changes"
               >
-                <Rows
+                <Rows3
                   className="w-3.5 h-3.5 text-muted-foreground hover:text-foreground transition-colors"
-                  weight="bold"
                 />
               </span>
             )}
             {unstagedFiles.length > 0 && (
               <>
                 <span onClick={handleStageAll}>
-                  <Plus
+                  <PlusIcon
                     className="w-3.5 h-3.5 text-muted-foreground hover:text-foreground transition-colors"
-                    weight="bold"
                   />
                 </span>
                 <span
@@ -467,9 +460,8 @@ export const WorktreeChangesView: FC<WorktreeChangesViewProps> = ({ className })
                     handleDiscardAll();
                   }}
                 >
-                  <ArrowCounterClockwise
+                  <CounterClockwiseClockIcon
                     className="w-3.5 h-3.5 text-muted-foreground hover:text-destructive transition-colors"
-                    weight="bold"
                   />
                 </span>
               </>
@@ -487,7 +479,7 @@ export const WorktreeChangesView: FC<WorktreeChangesViewProps> = ({ className })
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.15 }}
               >
-                <Check className="w-4 h-4 text-muted-foreground/30 mb-0.5" weight="bold" />
+                <CheckIcon className="w-4 h-4 text-muted-foreground/30 mb-0.5" />
                 <p className="text-[11px] text-muted-foreground/50">No changes detected</p>
               </motion.div>
             ) : (
