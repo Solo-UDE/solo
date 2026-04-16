@@ -4,7 +4,8 @@
 
 import { useEffect } from 'react';
 import { listen } from '@tauri-apps/api/event';
-import { FolderOpen, X } from '@phosphor-icons/react';
+import { Cross2Icon } from '@radix-ui/react-icons';
+import { FolderOpen } from 'lucide-react';
 import { motion } from 'motion/react';
 import { FileTree } from './FileTree';
 import { useFileExplorerStore } from '../../stores/fileExplorerStore';
@@ -64,7 +65,7 @@ export function FileExplorer({ onFileOpen, className = '' }: FileExplorerProps) 
             onClick={() => setError(null)}
             className="p-1 hover:bg-destructive/20 rounded"
           >
-            <X className="w-4 h-4" />
+            <Cross2Icon className="w-4 h-4" />
           </button>
         </div>
       )}
