@@ -5,7 +5,7 @@
 
 import type { FC } from 'react';
 import { motion } from 'motion/react';
-import { ChatTeardrop, Vault, Lightning, PenNib } from '@phosphor-icons/react';
+import { MessageCircle, Vault, Zap, PenTool } from 'lucide-react';
 import { SessionList } from '@/components/agent';
 import { VaultPlaceholder } from './studio/VaultPlaceholder';
 import { AutomationsPlaceholder } from './studio/AutomationsPlaceholder';
@@ -18,15 +18,15 @@ import { cn } from '@/lib/utils';
 interface NavItem {
   key: StudioNav;
   label: string;
-  icon: FC<{ className?: string; weight?: 'regular' | 'fill' | 'bold' | 'duotone' }>;
+  icon: FC<{ className?: string }>;
   badge?: string;
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { key: 'sessions', label: 'Sessions', icon: ChatTeardrop },
+  { key: 'sessions', label: 'Sessions', icon: MessageCircle },
   { key: 'vault', label: 'Vault', icon: Vault, badge: 'Soon' },
-  { key: 'automations', label: 'Automations', icon: Lightning },
-  { key: 'content-creation', label: 'Content Creation', icon: PenNib },
+  { key: 'automations', label: 'Automations', icon: Zap },
+  { key: 'content-creation', label: 'Content Creation', icon: PenTool },
 ];
 
 const CONTENT_MAP: Record<StudioNav, FC<{ onSessionSelect: (id: string) => void; onNewSession: () => void }>> = {
@@ -71,7 +71,7 @@ export const StudioSidebar: FC = () => {
                 transition={{ type: 'spring', stiffness: 500, damping: 35 }}
               />
             )}
-            <Icon className="relative w-4 h-4 shrink-0" weight={studioActiveNav === key ? 'fill' : 'regular'} />
+            <Icon className="relative w-4 h-4 shrink-0" />
             <span className="relative flex-1 text-left font-medium">{label}</span>
             {badge && (
               <span className="relative text-[9px] px-1.5 py-0.5 rounded-full bg-primary/8 text-primary/60 font-medium">

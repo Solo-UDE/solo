@@ -4,7 +4,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import type { FC } from 'react';
-import { Plus, Lock, LockOpen, Trash, TreeStructure, CircleNotch, Broom, GitDiff, ArrowLineUp, Robot } from '@phosphor-icons/react';
+import { PlusIcon, LockClosedIcon, LockOpen1Icon, TrashIcon } from '@radix-ui/react-icons';
+import { Network, Loader2, Brush, GitCompareArrows, ArrowUpFromLine, Bot } from 'lucide-react';
 import { motion } from 'motion/react';
 import { ListSkeleton } from '@/components/ui/skeletons';
 import { useWorktreeStore, useWorktreeList } from '@/stores/worktreeStore';
@@ -144,7 +145,7 @@ export const WorktreePanel: FC<WorktreePanelProps> = ({ className, embedded, sho
                 className="p-1 rounded hover:bg-muted/60 transition-colors"
                 title={`Prune stale worktrees (${staleCount})`}
               >
-                <Broom className="w-3.5 h-3.5 text-muted-foreground" />
+                <Brush className="w-3.5 h-3.5 text-muted-foreground" />
               </button>
             )}
             <button
@@ -152,7 +153,7 @@ export const WorktreePanel: FC<WorktreePanelProps> = ({ className, embedded, sho
               className="p-1 rounded hover:bg-muted/60 transition-colors"
               title="Create worktree"
             >
-              <Plus className="w-3.5 h-3.5 text-muted-foreground" />
+              <PlusIcon className="w-3.5 h-3.5 text-muted-foreground" />
             </button>
           </div>
         </div>
@@ -216,7 +217,7 @@ export const WorktreePanel: FC<WorktreePanelProps> = ({ className, embedded, sho
               className="h-6 px-3 text-xs bg-muted/60 text-foreground rounded hover:bg-muted/80 disabled:opacity-50 flex items-center gap-1"
               title="Create worktree and start an agent session in it"
             >
-              <Robot className="w-3 h-3" />
+              <Bot className="w-3 h-3" />
               {isCreating ? '...' : '+ Agent'}
             </button>
             <button
@@ -241,7 +242,7 @@ export const WorktreePanel: FC<WorktreePanelProps> = ({ className, embedded, sho
             transition={{ type: 'spring', stiffness: 400, damping: 25 }}
           >
             <div className="w-10 h-10 rounded-2xl bg-muted/50 flex items-center justify-center mb-2">
-              <TreeStructure className="w-5 h-5 text-muted-foreground/40" />
+              <Network className="w-5 h-5 text-muted-foreground/40" />
             </div>
             <p className="text-xs font-medium text-muted-foreground">No worktrees yet</p>
             <p className="text-xs text-muted-foreground/60 mt-1">
@@ -313,7 +314,7 @@ const WorktreeCard: FC<WorktreeCardProps> = ({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5 min-w-0">
           {isSettingUp && (
-            <CircleNotch className="w-3 h-3 text-primary animate-spin shrink-0" />
+            <Loader2 className="w-3 h-3 text-primary animate-spin shrink-0" />
           )}
           <span className={cn(
             'text-xs truncate',
@@ -323,7 +324,7 @@ const WorktreeCard: FC<WorktreeCardProps> = ({
             {worktree.is_main ? 'main' : (worktree.branch ?? worktree.id)}
           </span>
           {worktree.is_locked && (
-            <Lock className="w-3 h-3 text-warning shrink-0" />
+            <LockClosedIcon className="w-3 h-3 text-warning shrink-0" />
           )}
           {worktree.is_dirty && (
             <span className="w-1.5 h-1.5 rounded-full bg-warning shrink-0" title="Uncommitted changes" />
@@ -338,14 +339,14 @@ const WorktreeCard: FC<WorktreeCardProps> = ({
               className="p-0.5 rounded hover:bg-muted/60"
               title="View diff from base"
             >
-              <GitDiff className="w-3 h-3 text-muted-foreground" />
+              <GitCompareArrows className="w-3 h-3 text-muted-foreground" />
             </button>
             <button
               onClick={(e) => { e.stopPropagation(); onPromoteToggle(); }}
               className="p-0.5 rounded hover:bg-muted/60"
               title="Promote to branch"
             >
-              <ArrowLineUp className="w-3 h-3 text-muted-foreground" />
+              <ArrowUpFromLine className="w-3 h-3 text-muted-foreground" />
             </button>
             <button
               onClick={(e) => { e.stopPropagation(); onToggleLock(); }}
@@ -353,8 +354,8 @@ const WorktreeCard: FC<WorktreeCardProps> = ({
               title={worktree.is_locked ? 'Unlock' : 'Lock'}
             >
               {worktree.is_locked
-                ? <LockOpen className="w-3 h-3 text-muted-foreground" />
-                : <Lock className="w-3 h-3 text-muted-foreground" />
+                ? <LockOpen1Icon className="w-3 h-3 text-muted-foreground" />
+                : <LockClosedIcon className="w-3 h-3 text-muted-foreground" />
               }
             </button>
             <button
@@ -362,7 +363,7 @@ const WorktreeCard: FC<WorktreeCardProps> = ({
               className="p-0.5 rounded hover:bg-destructive/20"
               title="Remove"
             >
-              <Trash className="w-3 h-3 text-muted-foreground hover:text-destructive" />
+              <TrashIcon className="w-3 h-3 text-muted-foreground hover:text-destructive" />
             </button>
           </div>
         )}

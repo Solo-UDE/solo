@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { CaretRight } from '@phosphor-icons/react';
+import { ChevronRightIcon } from '@radix-ui/react-icons';
 import { StreamdownNarrative as AgentNarrative } from './StreamdownNarrative';
 import { InterruptIndicator } from './interrupt-indicator';
 import { MessageActions } from './message-actions';
@@ -12,7 +12,7 @@ import { renderToolCard } from '../streaming/tool-registry';
 import { StreamingSkeleton } from '../streaming/StreamingSkeleton';
 import { ToolApprovalCard } from '../streaming/ToolApprovalCard';
 import { ElapsedTimer } from '../streaming/ElapsedTimer';
-import { ChatCircleDots } from '@phosphor-icons/react';
+import { MessageCircle } from 'lucide-react';
 import { ProgressTracker } from '../streaming/ProgressTracker';
 import { ProgressTrackerItem } from '../streaming/ProgressTrackerItem';
 import { deriveProgressPhases, buildInterleavedTimeline } from '@/lib/deriveProgressPhases';
@@ -224,8 +224,9 @@ export const AgentMessage: FC<AgentMessageProps> = ({
                   ? `Worked for ${formatDuration(finalDurationMsRef.current)}`
                   : 'Worked'}
               </span>
-              <CaretRight
-                className={`h-3 w-3 text-muted-foreground/50 transition-transform duration-200 ${
+              <ChevronRightIcon
+                width={12} height={12}
+                className={`text-muted-foreground/50 transition-transform duration-200 ${
                   traceExpanded ? 'rotate-90' : ''
                 }`}
               />
@@ -300,7 +301,7 @@ export const AgentMessage: FC<AgentMessageProps> = ({
                         key={`block-${idx}`}
                         className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/5 border border-primary/15 text-xs text-primary/70"
                       >
-                        <ChatCircleDots className="h-3.5 w-3.5 shrink-0" weight="fill" />
+                        <MessageCircle className="h-3.5 w-3.5 shrink-0" />
                         <span>Waiting for your answer below...</span>
                       </div>
                     );

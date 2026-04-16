@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { ChatTeardrop } from '@phosphor-icons/react';
+import { MessageCircle } from 'lucide-react';
 import { Button } from '@solo/ui';
 import SoloDecryptAnimation from '../agent/SoloDecryptAnimation';
 import { useAgentStore } from '@/stores/agentStore';
@@ -63,7 +63,7 @@ export function StudioWelcomeScreen() {
           onClick={handleNewSession}
           className="text-xs shadow-sm"
         >
-          <ChatTeardrop className="w-3.5 h-3.5" weight="duotone" />
+          <MessageCircle className="w-3.5 h-3.5" size={14} />
           New Session
         </Button>
       </div>

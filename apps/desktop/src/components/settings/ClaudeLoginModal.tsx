@@ -4,7 +4,8 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { CheckCircle, WarningCircle, Terminal, ArrowsClockwise } from '@phosphor-icons/react';
+import { CheckCircledIcon, ExclamationTriangleIcon, ReloadIcon } from '@radix-ui/react-icons';
+import { Terminal } from 'lucide-react';
 import { Skeleton } from '@solo/ui';
 import {
 	Dialog,
@@ -102,7 +103,7 @@ export function ClaudeLoginModal({ isOpen, onClose, onSuccess }: ClaudeLoginModa
 			>
 				{/* Header */}
 				<div className="flex items-center gap-2.5 px-5 py-4 border-b border-border">
-					<Terminal className="w-4 h-4 text-muted-foreground" />
+					<Terminal className="w-4 h-4 text-muted-foreground" size={16} />
 					<DialogTitle className="text-sm font-medium text-foreground">Sign in with Claude</DialogTitle>
 				</div>
 
@@ -131,7 +132,7 @@ export function ClaudeLoginModal({ isOpen, onClose, onSuccess }: ClaudeLoginModa
 								onClick={handleOpenTerminal}
 								className="w-full h-10 px-4 bg-primary text-primary-foreground rounded-none text-sm font-medium hover:brightness-110 active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2"
 							>
-								<Terminal className="w-4 h-4" />
+								<Terminal className="w-4 h-4" size={16} />
 								Open Terminal
 							</button>
 						</>
@@ -150,7 +151,7 @@ export function ClaudeLoginModal({ isOpen, onClose, onSuccess }: ClaudeLoginModa
 
 							{error && (
 								<div className="flex items-start gap-2 p-3 bg-destructive/10 rounded-none">
-									<WarningCircle className="w-4 h-4 text-destructive mt-0.5 shrink-0" />
+									<ExclamationTriangleIcon className="w-4 h-4 text-destructive mt-0.5 shrink-0" />
 									<p className="text-xs text-destructive">{error}</p>
 								</div>
 							)}
@@ -161,7 +162,7 @@ export function ClaudeLoginModal({ isOpen, onClose, onSuccess }: ClaudeLoginModa
 									onClick={handleOpenTerminal}
 									className="flex-1 h-10 px-4 bg-muted hover:bg-muted/80 text-foreground rounded-none text-sm font-medium active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2"
 								>
-									<Terminal className="w-4 h-4" />
+									<Terminal className="w-4 h-4" size={16} />
 									Reopen Terminal
 								</button>
 								<button
@@ -169,7 +170,7 @@ export function ClaudeLoginModal({ isOpen, onClose, onSuccess }: ClaudeLoginModa
 									onClick={handleVerify}
 									className="flex-1 h-10 px-4 bg-primary text-primary-foreground rounded-none text-sm font-medium hover:brightness-110 active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2"
 								>
-									<CheckCircle className="w-4 h-4" />
+									<CheckCircledIcon className="w-4 h-4" />
 									Verify
 								</button>
 							</div>
@@ -178,7 +179,7 @@ export function ClaudeLoginModal({ isOpen, onClose, onSuccess }: ClaudeLoginModa
 
 					{step === 'complete' && (
 						<div className="flex flex-col items-center justify-center gap-3 py-6">
-							<CheckCircle className="w-8 h-8 text-success" />
+							<CheckCircledIcon className="w-8 h-8 text-success" />
 							<div className="text-center">
 								<p className="text-sm font-medium text-success">Successfully authenticated!</p>
 								<p className="text-xs text-muted-foreground mt-1">You can now use Claude in Solo</p>
@@ -189,7 +190,7 @@ export function ClaudeLoginModal({ isOpen, onClose, onSuccess }: ClaudeLoginModa
 					{step === 'error' && (
 						<>
 							<div className="flex items-start gap-2 p-4 bg-destructive/10 rounded-none">
-								<WarningCircle className="w-4 h-4 text-destructive mt-0.5 shrink-0" />
+								<ExclamationTriangleIcon className="w-4 h-4 text-destructive mt-0.5 shrink-0" />
 								<div>
 									<p className="text-sm text-destructive font-medium">Something went wrong</p>
 									<p className="text-xs text-muted-foreground mt-1">{error}</p>
@@ -200,7 +201,7 @@ export function ClaudeLoginModal({ isOpen, onClose, onSuccess }: ClaudeLoginModa
 								onClick={checkAuth}
 								className="w-full h-10 px-4 bg-primary text-primary-foreground rounded-none text-sm font-medium hover:brightness-110 active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2"
 							>
-								<ArrowsClockwise className="w-4 h-4" />
+								<ReloadIcon className="w-4 h-4" />
 								Try Again
 							</button>
 						</>

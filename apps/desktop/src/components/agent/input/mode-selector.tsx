@@ -1,4 +1,4 @@
-import { Lightning, Brain, ShieldCheck } from '@phosphor-icons/react';
+import { Zap, Brain, ShieldCheck } from 'lucide-react';
 import React from 'react';
 
 import { cn } from '../../../lib/utils';
@@ -8,10 +8,10 @@ export type Mode = 'fast' | 'planning' | 'accept';
 
 const MODE_ORDER: Mode[] = ['fast', 'planning', 'accept'];
 
-const MODE_CONFIG: Record<Mode, { label: string; icon: typeof Lightning }> = {
+const MODE_CONFIG: Record<Mode, { label: string; icon: typeof Zap }> = {
   fast: {
     label: 'Fast',
-    icon: Lightning,
+    icon: Zap,
   },
   planning: {
     label: 'Planning',
@@ -56,7 +56,7 @@ export const ModeSelector: React.FC<ModeSelectorProps> = ({
         disabled && 'opacity-50 cursor-not-allowed',
       )}
     >
-      <Icon className="h-3.5 w-3.5" weight={value !== 'fast' ? 'fill' : 'regular'} />
+      <Icon className="h-3.5 w-3.5" />
       <span className="text-xs font-medium">{config.label}</span>
     </button>
   );

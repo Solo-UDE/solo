@@ -1,4 +1,4 @@
-import { Copy, Check } from '@phosphor-icons/react';
+import { CopyIcon, CheckIcon } from '@radix-ui/react-icons';
 import { useState } from 'react';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 
@@ -38,8 +38,8 @@ export const CopyButton: FC<CopyButtonProps> = ({ text, className = '' }) => {
       title={isCopied ? 'Copied!' : 'Copy to clipboard'}
     >
       <span className="relative w-4 h-4 inline-flex">
-        <Copy className={`h-4 w-4 absolute inset-0 transition-opacity duration-150 ${isCopied ? 'opacity-0' : 'opacity-100'}`} />
-        <Check className={`h-4 w-4 absolute inset-0 transition-opacity duration-150 text-success ${isCopied ? 'opacity-100' : 'opacity-0'}`} />
+        <CopyIcon width={16} height={16} className={`absolute inset-0 transition-opacity duration-150 ${isCopied ? 'opacity-0' : 'opacity-100'}`} />
+        <CheckIcon width={16} height={16} className={`absolute inset-0 transition-opacity duration-150 text-success ${isCopied ? 'opacity-100' : 'opacity-0'}`} />
       </span>
     </button>
   );

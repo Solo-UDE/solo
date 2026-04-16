@@ -1,4 +1,5 @@
-import { Terminal, CaretDown, CircleNotch } from '@phosphor-icons/react';
+import { ChevronDownIcon } from '@radix-ui/react-icons';
+import { Terminal, Loader2 } from 'lucide-react';
 import { useState } from 'react';
 
 import { ExpandRegion } from '../shared/ExpandRegion';
@@ -39,9 +40,9 @@ export const BashToolWidget: FC<BashToolWidgetProps> = ({
           <span className="text-sm font-medium text-foreground">
             {isRunning ? 'Running Bash' : 'Ran Bash'}
           </span>
-          {isRunning ? <CircleNotch className="h-3 w-3 animate-spin text-muted-foreground" /> : null}
+          {isRunning ? <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" /> : null}
         </div>
-        <CaretDown className={`h-4 w-4 text-muted-foreground transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+        <ChevronDownIcon className={`h-4 w-4 text-muted-foreground transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
       </button>
 
       {/* Collapsible content */}
@@ -67,7 +68,7 @@ export const BashToolWidget: FC<BashToolWidgetProps> = ({
           <div className="p-3">
             {isRunning && !output ? (
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <CircleNotch className="h-3 w-3 animate-spin" />
+                <Loader2 className="h-3 w-3 animate-spin" />
                 <span>Running command...</span>
               </div>
             ) : output ? (

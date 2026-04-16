@@ -4,7 +4,7 @@
 
 import { useState, useCallback } from 'react';
 import type { FC } from 'react';
-import { ArrowCounterClockwise, Plus, Minus } from '@phosphor-icons/react';
+import { PlusIcon, MinusIcon, CounterClockwiseClockIcon } from '@radix-ui/react-icons';
 import type { GitChangedFile } from '@/bindings/GitChangedFile';
 import type { GitFileStatus } from '@/bindings/GitFileStatus';
 import { cn } from '@/lib/utils';
@@ -127,9 +127,9 @@ export const FileChangeItem: FC<FileChangeItemProps> = ({ file, onDiscard, onVie
             title={file.is_staged ? 'Unstage' : 'Stage'}
           >
             {file.is_staged ? (
-              <Minus className="w-3 h-3" weight="bold" />
+              <MinusIcon className="w-3 h-3" />
             ) : (
-              <Plus className="w-3 h-3" weight="bold" />
+              <PlusIcon className="w-3 h-3" />
             )}
           </button>
 
@@ -144,7 +144,7 @@ export const FileChangeItem: FC<FileChangeItemProps> = ({ file, onDiscard, onVie
               )}
               title="Discard changes"
             >
-              <ArrowCounterClockwise className="w-3 h-3" weight="bold" />
+              <CounterClockwiseClockIcon className="w-3 h-3" />
             </button>
           )}
         </span>

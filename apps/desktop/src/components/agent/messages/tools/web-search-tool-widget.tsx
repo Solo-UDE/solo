@@ -1,4 +1,5 @@
-import { Globe, CircleNotch } from '@phosphor-icons/react';
+import { GlobeIcon } from '@radix-ui/react-icons';
+import { Loader2 } from 'lucide-react';
 import { useState } from 'react';
 
 import { ExpandRegion } from '../shared/ExpandRegion';
@@ -24,12 +25,12 @@ export const WebSearchToolWidget: FC<WebSearchToolWidgetProps> = ({
         onClick={() => { setIsExpanded(!isExpanded); }}
         className={`w-full flex items-center gap-2 px-3 py-1.5 bg-muted hover:bg-accent/50 transition-colors ${isExpanded ? 'border-b tool-widget-divider' : ''}`}
       >
-        <Globe className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+        <GlobeIcon width={14} height={14} className="text-muted-foreground shrink-0" />
         <span className="text-sm font-medium text-foreground">
           {isRunning ? 'Searching web...' : 'Web Search'}
         </span>
         <span className="text-xs text-muted-foreground truncate">{query}</span>
-        {isRunning ? <CircleNotch className="h-3 w-3 animate-spin text-muted-foreground ml-auto" /> : null}
+        {isRunning ? <Loader2 className="h-3 w-3 animate-spin text-muted-foreground ml-auto" /> : null}
       </button>
 
       <ExpandRegion isExpanded={isExpanded}>

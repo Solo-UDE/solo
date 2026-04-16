@@ -4,7 +4,7 @@
  */
 
 import { useCallback, useState } from 'react';
-import { X, FileText } from '@phosphor-icons/react';
+import { Cross2Icon, FileTextIcon } from '@radix-ui/react-icons';
 import { useEditorStore, getFileName } from '../../stores/editorStore';
 import { ConfirmDialog } from '../ui/confirm-dialog';
 
@@ -105,7 +105,7 @@ export function EditorTabs({ className = '' }: EditorTabsProps) {
               `}
               title={path}
             >
-              <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
+              <FileTextIcon className="w-4 h-4 text-muted-foreground shrink-0" />
               <span
                 className={`text-[13px] truncate transition-colors ${isActive ? 'text-foreground' : 'text-muted-foreground'}`}
               >
@@ -130,7 +130,7 @@ export function EditorTabs({ className = '' }: EditorTabsProps) {
                   `}
                   title="Close"
                 >
-                  <X className="w-3 h-3 text-muted-foreground" />
+                  <Cross2Icon className="w-3 h-3 text-muted-foreground" />
                 </button>
               </div>
             </div>

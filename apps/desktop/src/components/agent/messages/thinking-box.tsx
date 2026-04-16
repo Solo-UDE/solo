@@ -1,4 +1,5 @@
-import { Brain, CaretDown } from '@phosphor-icons/react';
+import { ChevronDownIcon } from '@radix-ui/react-icons';
+import { Brain } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 import { StreamdownNarrative } from './StreamdownNarrative';
@@ -94,8 +95,9 @@ export const ThinkingBox: FC<ThinkingBoxProps> = ({
         <div className="flex-1" />
 
         {/* Expand/collapse caret */}
-        <CaretDown
-          className={`h-3.5 w-3.5 shrink-0 transition-transform duration-200 ${
+        <ChevronDownIcon
+          width={14} height={14}
+          className={`shrink-0 transition-transform duration-200 ${
             isExpanded ? 'rotate-0' : '-rotate-90'
           }`}
         />

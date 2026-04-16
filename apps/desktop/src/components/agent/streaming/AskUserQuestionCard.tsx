@@ -7,7 +7,8 @@
  */
 
 import { type FC, useCallback, useState } from 'react';
-import { ChatCircleDots, Check, PaperPlaneTilt, CaretLeft, CaretRight } from '@phosphor-icons/react';
+import { CheckIcon, ChevronLeftIcon, ChevronRightIcon, PaperPlaneIcon } from '@radix-ui/react-icons';
+import { MessageCircle } from 'lucide-react';
 import { Button } from '@solo/ui';
 
 interface QuestionOption {
@@ -163,8 +164,8 @@ export const AskUserQuestionCard: FC<AskUserQuestionCardProps> = ({
 								disabled={submitted}
 								className={`w-full text-left px-3 py-2 rounded-lg border transition-all duration-150 ${
 									isSelected
-										? 'border-primary/40 bg-primary/10 text-foreground'
-										: 'border-border/30 bg-muted/20 text-muted-foreground hover:bg-muted/40 hover:border-border/50'
+										? 'border-primary/60 bg-primary/15 text-foreground'
+										: 'border-border/60 bg-muted/60 text-foreground/85 hover:bg-muted/80 hover:border-border'
 								} disabled:opacity-50 disabled:cursor-not-allowed`}
 							>
 								<div className="flex items-start gap-2">
@@ -181,13 +182,13 @@ export const AskUserQuestionCard: FC<AskUserQuestionCardProps> = ({
 										}`}
 									>
 										{isSelected ? (
-											<Check weight="bold" className="w-2.5 h-2.5 text-primary-foreground" />
+											<CheckIcon width={10} height={10} className="text-primary-foreground" />
 										) : null}
 									</div>
 									<div className="flex-1 min-w-0">
-										<span className="text-xs font-medium">{opt.label}</span>
+										<span className="text-sm font-semibold text-foreground">{opt.label}</span>
 										{opt.description ? (
-											<p className="text-[11px] text-muted-foreground/70 mt-0.5">{opt.description}</p>
+											<p className="text-xs text-muted-foreground mt-0.5">{opt.description}</p>
 										) : null}
 									</div>
 								</div>
@@ -199,8 +200,8 @@ export const AskUserQuestionCard: FC<AskUserQuestionCardProps> = ({
 					<div
 						className={`px-3 py-2 rounded-lg border transition-all duration-150 ${
 							hasOther
-								? 'border-primary/40 bg-primary/10'
-								: 'border-border/30 bg-muted/20'
+								? 'border-primary/60 bg-primary/15'
+								: 'border-border/60 bg-muted/60'
 						}`}
 					>
 						<div className="flex items-center gap-2">
@@ -216,7 +217,7 @@ export const AskUserQuestionCard: FC<AskUserQuestionCardProps> = ({
 								}`}
 							>
 								{hasOther ? (
-									<Check weight="bold" className="w-2.5 h-2.5 text-primary-foreground" />
+									<CheckIcon width={10} height={10} className="text-primary-foreground" />
 								) : null}
 							</div>
 							<input
@@ -235,8 +236,8 @@ export const AskUserQuestionCard: FC<AskUserQuestionCardProps> = ({
 	};
 
 	const containerClass = floating
-		? 'w-full rounded-t-xl rounded-b-none bg-primary/5 backdrop-blur-sm border border-primary/20 border-b-0 overflow-hidden flex flex-col max-h-[70vh] animate-in fade-in-0 slide-in-from-bottom-1 duration-200'
-		: 'w-full my-2 rounded-xl bg-primary/5 backdrop-blur-sm border border-primary/20 overflow-hidden flex flex-col max-h-[70vh] animate-in fade-in-0 slide-in-from-bottom-1 duration-200';
+		? 'w-full rounded-t-xl rounded-b-none bg-card border border-primary/40 border-b-0 shadow-[0_-4px_20px_-4px_rgba(0,0,0,0.25)] overflow-hidden flex flex-col max-h-[70vh] animate-in fade-in-0 slide-in-from-bottom-1 duration-200'
+		: 'w-full my-2 rounded-xl bg-card border border-primary/40 shadow-[0_4px_16px_-4px_rgba(0,0,0,0.2)] overflow-hidden flex flex-col max-h-[70vh] animate-in fade-in-0 slide-in-from-bottom-1 duration-200';
 
 	return (
 		<div
@@ -245,9 +246,9 @@ export const AskUserQuestionCard: FC<AskUserQuestionCardProps> = ({
 			aria-label="Agent question"
 		>
 			{/* Header — label + counter (no arrows here) */}
-			<div className="flex items-center justify-between px-3 py-2.5 border-b border-primary/10">
+			<div className="flex items-center justify-between px-3 py-2.5 border-b border-border/60 bg-primary/5">
 				<div className="flex items-center gap-2">
-					<ChatCircleDots className="h-4 w-4 text-primary shrink-0" weight="fill" />
+					<MessageCircle className="h-4 w-4 text-primary shrink-0" />
 					<span className="text-xs font-semibold text-primary">Question</span>
 				</div>
 
@@ -275,7 +276,7 @@ export const AskUserQuestionCard: FC<AskUserQuestionCardProps> = ({
 							disabled={submitted}
 							className="h-7 px-2.5 text-xs gap-1"
 						>
-							<CaretLeft className="w-3 h-3" weight="bold" />
+							<ChevronLeftIcon width={12} height={12} />
 							Back
 						</Button>
 					) : (
@@ -294,7 +295,7 @@ export const AskUserQuestionCard: FC<AskUserQuestionCardProps> = ({
 							className="h-7 px-2.5 text-xs gap-1"
 						>
 							Next
-							<CaretRight className="w-3 h-3" weight="bold" />
+							<ChevronRightIcon width={12} height={12} />
 						</Button>
 					) : (
 						<Button
@@ -306,12 +307,12 @@ export const AskUserQuestionCard: FC<AskUserQuestionCardProps> = ({
 						>
 							{submitted ? (
 								<>
-									<Check className="h-3 w-3" weight="bold" />
+									<CheckIcon width={12} height={12} />
 									Submitted
 								</>
 							) : (
 								<>
-									<PaperPlaneTilt className="h-3 w-3" weight="fill" />
+									<PaperPlaneIcon width={12} height={12} />
 									Submit
 								</>
 							)}

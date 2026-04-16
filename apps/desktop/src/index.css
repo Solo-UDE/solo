@@ -955,6 +955,40 @@ html.dark .hover-lift:hover {
   animation: streaming-dot 1.2s ease-in-out infinite;
 }
 
+/* =============================================================================
+   AGENT TAB ATTENTION — collapsed pill animations
+   Intrinsic pulse (no external glow) so animation stays inside the pill bounds
+   and never clips against sibling tabs or the scrollable tab bar.
+   ============================================================================= */
+
+@keyframes agent-attention-pulse {
+  0%, 100% { background-color: oklch(from var(--warning) l c h / 0.18); }
+  50% { background-color: oklch(from var(--warning) l c h / 0.35); }
+}
+
+@keyframes agent-attention-dot {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.25); opacity: 0.8; }
+}
+
+.agent-attention-pill {
+  animation: agent-attention-pulse 1.6s ease-in-out infinite;
+}
+
+.agent-attention-pill .agent-attention-dot {
+  animation: agent-attention-dot 1.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-attention-pill,
+  .agent-attention-pill .agent-attention-dot {
+    animation: none;
+  }
+  .agent-attention-pill {
+    background-color: oklch(from var(--warning) l c h / 0.3);
+  }
+}
+
 /* Sidebar gradient separator — fades at edges */
 .sidebar-section-separator {
   height: 1px;

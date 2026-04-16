@@ -3,7 +3,7 @@
  */
 
 import { useState, type FC } from 'react';
-import { Files, ChatTeardrop, GitBranch } from '@phosphor-icons/react';
+import { Files, MessageCircle, GitBranch } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useUIStore } from '@/stores/uiStore';
 import type { SidebarTab } from '@/stores/uiStore';
@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils';
 
 const TABS: { key: SidebarTab; icon: typeof Files; label: string }[] = [
   { key: 'explorer', icon: Files, label: 'Explorer' },
-  { key: 'sessions', icon: ChatTeardrop, label: 'Sessions' },
+  { key: 'sessions', icon: MessageCircle, label: 'Sessions' },
   { key: 'source-control', icon: GitBranch, label: 'Source Control' },
 ];
 
@@ -60,7 +60,6 @@ export const IconRail: FC = () => {
         >
           <Icon
             className="w-[18px] h-[18px]"
-            weight={activeTab === key ? 'fill' : 'regular'}
             aria-hidden="true"
           />
           {key === 'sessions' && showHint && (

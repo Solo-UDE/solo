@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { CaretDown, CaretUp } from '@phosphor-icons/react';
+import { ChevronDownIcon, ChevronUpIcon } from '@radix-ui/react-icons';
 import { ClaudeLogo } from '../../icons/ClaudeLogo';
 import { GeminiLogo } from '../../icons/GeminiLogo';
 import { OpenAILogo } from '../../icons/OpenAILogo';
@@ -85,7 +85,7 @@ export const ModelPicker: FC<ModelPickerProps> = ({
     [selectedModel]
   );
 
-  const ChevronIcon = chevronIcon === 'up' ? CaretUp : CaretDown;
+  const ChevronIcon = chevronIcon === 'up' ? ChevronUpIcon : ChevronDownIcon;
 
   const handleModelSelect = async (modelValue: string) => {
     const model = MODEL_OPTIONS.find((m) => m.value === modelValue);
@@ -125,7 +125,7 @@ export const ModelPicker: FC<ModelPickerProps> = ({
               >
                 {renderModelIcon(currentModel.iconType, 13)}
                 <span className="text-xs font-medium">{currentModel.label}</span>
-                <ChevronIcon size={12} className="opacity-50" />
+                <ChevronIcon width={12} height={12} className="opacity-50" />
               </button>
             </DropdownMenuTrigger>
           </TooltipTrigger>

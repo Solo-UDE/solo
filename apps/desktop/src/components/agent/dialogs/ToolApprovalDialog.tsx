@@ -7,12 +7,8 @@
  */
 
 import { type FC, useCallback, useEffect, useMemo } from 'react';
-import {
-	CircleNotch,
-	Terminal,
-	FileText,
-	MagnifyingGlass,
-} from '@phosphor-icons/react';
+import { FileTextIcon, MagnifyingGlassIcon } from '@radix-ui/react-icons';
+import { Terminal, Loader2 } from 'lucide-react';
 import type { PendingApproval } from '../messages/agent-message';
 
 // =============================================================================
@@ -138,7 +134,7 @@ export const ToolApprovalInline: FC<ToolApprovalInlineProps> = ({
 		<div className="my-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
 			<div className="flex items-center gap-2">
 				{/* Spinner */}
-				<CircleNotch className="h-4 w-4 text-primary animate-spin shrink-0" />
+				<Loader2 className="h-4 w-4 text-primary animate-spin shrink-0" />
 
 				{/* Confirm label */}
 				<span className="text-sm font-medium text-primary shrink-0">{confirmLabel}</span>
@@ -149,7 +145,7 @@ export const ToolApprovalInline: FC<ToolApprovalInlineProps> = ({
 						className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-muted hover:bg-accent transition-colors min-w-0"
 						title={filePath}
 					>
-						<FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+						<FileTextIcon width={14} height={14} className="text-muted-foreground shrink-0" />
 						<span className="text-sm truncate">{fileName}</span>
 					</span>
 				) : isBash ? (
@@ -158,7 +154,7 @@ export const ToolApprovalInline: FC<ToolApprovalInlineProps> = ({
 					</span>
 				) : isSearch ? (
 					<span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-muted">
-						<MagnifyingGlass className="h-3.5 w-3.5 text-muted-foreground" />
+						<MagnifyingGlassIcon width={14} height={14} className="text-muted-foreground" />
 					</span>
 				) : null}
 

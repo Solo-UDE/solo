@@ -4,16 +4,8 @@
 
 import { useCallback, type FC } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import {
-  CaretRight,
-  GitBranch,
-  Folder,
-  X,
-  TreeStructure,
-  CircleNotch,
-  Lock,
-  CircleDashed,
-} from '@phosphor-icons/react';
+import { ChevronRightIcon, Cross2Icon, LockClosedIcon } from '@radix-ui/react-icons';
+import { GitBranch, Folder, Network, Loader2, CircleDashed } from 'lucide-react';
 import type { RepoEntry } from '@/stores/repoStore';
 import { useRepoStore } from '@/stores/repoStore';
 import { cn } from '@/lib/utils';
@@ -68,11 +60,11 @@ export const RepoItem: FC<RepoItemProps> = ({ repo }) => {
           transition={{ type: 'spring', stiffness: 500, damping: 30 }}
           className="shrink-0"
         >
-          <CaretRight className="w-3 h-3" weight="bold" />
+          <ChevronRightIcon className="w-3 h-3" />
         </motion.div>
 
         {/* Repo icon */}
-        <Folder className="w-3.5 h-3.5 shrink-0" weight={isActive ? 'fill' : 'regular'} />
+        <Folder className="w-3.5 h-3.5 shrink-0" />
 
         {/* Repo name */}
         <span className="text-xs font-medium truncate flex-1">{repo.name}</span>
@@ -101,7 +93,7 @@ export const RepoItem: FC<RepoItemProps> = ({ repo }) => {
           )}
           title="Remove repository"
         >
-          <X className="w-3 h-3" />
+          <Cross2Icon className="w-3 h-3" />
         </button>
       </div>
 
@@ -143,7 +135,7 @@ export const RepoItem: FC<RepoItemProps> = ({ repo }) => {
               {/* Loading state */}
               {!repo._worktreesLoaded && (
                 <div className="flex items-center gap-2 h-7 px-2 text-muted-foreground/50">
-                  <CircleNotch className="w-3 h-3 animate-spin" />
+                  <Loader2 className="w-3 h-3 animate-spin" />
                   <span className="text-[11px]">Loading...</span>
                 </div>
               )}
@@ -174,7 +166,7 @@ const WorktreeRow: FC<WorktreeRowProps> = ({
   isDirty,
   onClick,
 }) => {
-  const Icon = icon === 'branch' ? GitBranch : TreeStructure;
+  const Icon = icon === 'branch' ? GitBranch : Network;
 
   return (
     <button
@@ -189,10 +181,9 @@ const WorktreeRow: FC<WorktreeRowProps> = ({
     >
       <Icon
         className={cn('w-3 h-3 shrink-0', isActive && 'text-primary')}
-        weight={isActive ? 'fill' : 'regular'}
       />
       <span className="truncate flex-1 text-left">{label}</span>
-      {isLocked && <Lock className="w-3 h-3 text-muted-foreground/40 shrink-0" />}
+      {isLocked && <LockClosedIcon className="w-3 h-3 text-muted-foreground/40 shrink-0" />}
       {isDirty && <CircleDashed className="w-3 h-3 text-yellow-500/60 shrink-0" />}
     </button>
   );

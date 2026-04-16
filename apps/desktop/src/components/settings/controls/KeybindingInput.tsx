@@ -3,7 +3,8 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { Keyboard, ArrowCounterClockwise, X } from '@phosphor-icons/react';
+import { Cross2Icon, CounterClockwiseClockIcon } from '@radix-ui/react-icons';
+import { Keyboard } from 'lucide-react';
 
 interface KeybindingInputProps {
   value: string;
@@ -128,7 +129,7 @@ export function KeybindingInput({
             }
           `}
         >
-          <Keyboard className="w-3.5 h-3.5" />
+          <Keyboard className="w-3.5 h-3.5" size={14} />
           {isRecording ? (
             <span className="text-xs">Press keys...</span>
           ) : value ? (
@@ -145,7 +146,7 @@ export function KeybindingInput({
             className="p-1.5 rounded-lg hover:bg-muted transition-colors cursor-pointer"
             title="Clear"
           >
-            <X className="w-3.5 h-3.5 text-muted-foreground" />
+            <Cross2Icon className="w-3.5 h-3.5 text-muted-foreground" />
           </button>
         )}
 
@@ -156,7 +157,7 @@ export function KeybindingInput({
             className="p-1.5 rounded-lg hover:bg-muted transition-colors cursor-pointer"
             title="Reset to default"
           >
-            <ArrowCounterClockwise className="w-3.5 h-3.5 text-muted-foreground" />
+            <CounterClockwiseClockIcon className="w-3.5 h-3.5 text-muted-foreground" />
           </button>
         )}
       </div>

@@ -6,7 +6,8 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import type { FC } from 'react';
-import { GithubLogo, Plus, Lock, Globe, CircleNotch, SignOut } from '@phosphor-icons/react';
+import { GitHubLogoIcon, PlusIcon, LockClosedIcon, GlobeIcon, ExitIcon } from '@radix-ui/react-icons';
+import { Loader2 } from 'lucide-react';
 import { Button, IconButton, Input } from '@solo/ui';
 import { useGitStore } from '@/stores/gitStore';
 import { useGitHubAccountsStore } from '@/stores/githubAccountsStore';
@@ -89,7 +90,7 @@ export const GitHubSetup: FC<GitHubSetupProps> = ({ className }) => {
             'bg-muted/40',
           )}
         >
-          <GithubLogo className="w-7 h-7 text-muted-foreground" weight="fill" />
+          <GitHubLogoIcon className="w-7 h-7 text-muted-foreground" />
         </div>
         <h3 className="text-sm font-semibold text-foreground mb-1">Connect to GitHub</h3>
         <p className="text-xs text-muted-foreground/60 text-center mb-5 leading-relaxed max-w-[200px]">
@@ -108,9 +109,9 @@ export const GitHubSetup: FC<GitHubSetupProps> = ({ className }) => {
           className="h-[34px] px-4 text-xs bg-foreground text-background hover:bg-foreground/90 hover:brightness-100"
         >
           {isConnecting ? (
-            <CircleNotch className="w-4 h-4 animate-spin" />
+            <Loader2 className="w-4 h-4 animate-spin" size={16} />
           ) : (
-            <GithubLogo className="w-4 h-4" weight="bold" />
+            <GitHubLogoIcon className="w-4 h-4" />
           )}
           {isConnecting ? 'Starting...' : 'Sign in with GitHub'}
         </Button>
@@ -137,7 +138,7 @@ export const GitHubSetup: FC<GitHubSetupProps> = ({ className }) => {
           onClick={handleDisconnect}
           title="Disconnect GitHub"
         >
-          <SignOut className="w-3.5 h-3.5 text-muted-foreground" />
+          <ExitIcon className="w-3.5 h-3.5 text-muted-foreground" />
         </IconButton>
       </div>
 
@@ -166,7 +167,7 @@ export const GitHubSetup: FC<GitHubSetupProps> = ({ className }) => {
               'transition-[background-color,box-shadow] duration-150',
             )}
           >
-            <Lock className="w-3 h-3" weight="bold" />
+            <LockClosedIcon className="w-3 h-3" />
             Private
           </button>
           <button
@@ -179,7 +180,7 @@ export const GitHubSetup: FC<GitHubSetupProps> = ({ className }) => {
               'transition-[background-color,box-shadow] duration-150',
             )}
           >
-            <Globe className="w-3 h-3" weight="bold" />
+            <GlobeIcon className="w-3 h-3" />
             Public
           </button>
         </div>
@@ -196,9 +197,9 @@ export const GitHubSetup: FC<GitHubSetupProps> = ({ className }) => {
           className="w-full h-[34px] text-xs"
         >
           {isCreating ? (
-            <CircleNotch className="w-3.5 h-3.5 animate-spin" />
+            <Loader2 className="w-3.5 h-3.5 animate-spin" size={14} />
           ) : (
-            <Plus className="w-3.5 h-3.5" weight="bold" />
+            <PlusIcon className="w-3.5 h-3.5" />
           )}
           {isCreating ? 'Creating...' : 'Create Repository'}
         </Button>

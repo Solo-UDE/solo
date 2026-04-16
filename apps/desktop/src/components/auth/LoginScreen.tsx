@@ -3,7 +3,8 @@
  */
 
 import { useState, useCallback } from "react";
-import { GithubLogo, Envelope, CircleNotch, WarningCircle, ArrowSquareOut } from "@phosphor-icons/react";
+import { GitHubLogoIcon, EnvelopeClosedIcon, ExclamationTriangleIcon, ExternalLinkIcon } from "@radix-ui/react-icons";
+import { Loader2 } from "lucide-react";
 import { Button, Input } from "@solo/ui";
 import {
   useAuthStore,
@@ -53,7 +54,7 @@ export function LoginScreen() {
         {/* Error message */}
         {error && (
           <div className="mb-6 p-3 rounded-lg bg-destructive/10 flex items-start gap-2" role="alert">
-            <WarningCircle className="w-4 h-4 text-destructive shrink-0 mt-0.5" aria-hidden="true" />
+            <ExclamationTriangleIcon className="w-4 h-4 text-destructive shrink-0 mt-0.5" aria-hidden="true" />
             <p className="text-sm text-destructive">{error}</p>
           </div>
         )}
@@ -67,9 +68,9 @@ export function LoginScreen() {
           className="w-full bg-foreground text-background hover:bg-foreground/90 hover:brightness-100"
         >
           {isAuthenticating ? (
-            <CircleNotch weight="bold" className="w-4 h-4 animate-spin" />
+            <Loader2 className="w-4 h-4 animate-spin" size={16} />
           ) : (
-            <GithubLogo className="w-4 h-4" />
+            <GitHubLogoIcon className="w-4 h-4" />
           )}
           Continue with GitHub
         </Button>
@@ -77,7 +78,7 @@ export function LoginScreen() {
         {/* Browser notice */}
         {isAuthenticating && (
           <p className="mt-3 text-center text-xs text-muted-foreground flex items-center justify-center gap-1">
-            <ArrowSquareOut className="w-3 h-3" />
+            <ExternalLinkIcon className="w-3 h-3" />
             Complete sign in in your browser
           </p>
         )}
@@ -95,7 +96,7 @@ export function LoginScreen() {
         {/* Magic link form */}
         {magicLinkSent ? (
           <div className="text-center p-4 rounded-lg bg-muted/50 shadow-sm">
-            <Envelope className="w-8 h-8 mx-auto text-primary mb-2" />
+            <EnvelopeClosedIcon className="w-8 h-8 mx-auto text-primary mb-2" />
             <p className="text-sm text-foreground font-medium mb-1">
               Check your email
             </p>
@@ -134,9 +135,9 @@ export function LoginScreen() {
               className="w-full mt-3"
             >
               {isAuthenticating ? (
-                <CircleNotch weight="bold" className="w-4 h-4 animate-spin" />
+                <Loader2 className="w-4 h-4 animate-spin" size={16} />
               ) : (
-                <Envelope className="w-4 h-4" />
+                <EnvelopeClosedIcon className="w-4 h-4" />
               )}
               Send Magic Link
             </Button>

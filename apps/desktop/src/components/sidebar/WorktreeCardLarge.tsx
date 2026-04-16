@@ -6,7 +6,8 @@
 import { useCallback } from 'react';
 import type { FC } from 'react';
 import { motion } from 'motion/react';
-import { Lock, LockOpen, Trash, GitDiff, Robot, CircleNotch } from '@phosphor-icons/react';
+import { LockClosedIcon, LockOpen1Icon, TrashIcon } from '@radix-ui/react-icons';
+import { GitCompareArrows, Bot, Loader2 } from 'lucide-react';
 import type { WorktreeInfo } from '../../bindings';
 import { cn } from '@/lib/utils';
 
@@ -66,7 +67,7 @@ export const WorktreeCardLarge: FC<WorktreeCardLargeProps> = ({
         {/* Branch name */}
         <div className="flex items-center gap-1.5">
           {isSettingUp && (
-            <CircleNotch className="w-3.5 h-3.5 text-primary animate-spin shrink-0" />
+            <Loader2 className="w-3.5 h-3.5 text-primary animate-spin shrink-0" />
           )}
           <span className={cn(
             'text-[12px] font-semibold truncate',
@@ -82,10 +83,10 @@ export const WorktreeCardLarge: FC<WorktreeCardLargeProps> = ({
             <span className="w-1.5 h-1.5 rounded-full bg-warning shrink-0" title="Uncommitted changes" />
           )}
           {worktree.is_locked && (
-            <span title="Locked"><Lock className="w-3 h-3 text-warning shrink-0" /></span>
+            <span title="Locked"><LockClosedIcon className="w-3 h-3 text-warning shrink-0" /></span>
           )}
           {worktree.agent_session_id && (
-            <span title="Agent session active"><Robot className="w-3 h-3 text-primary/70 shrink-0" /></span>
+            <span title="Agent session active"><Bot className="w-3 h-3 text-primary/70 shrink-0" /></span>
           )}
           {shortSha && (
             <span className="text-[10px] text-muted-foreground/60 font-mono">
@@ -100,16 +101,16 @@ export const WorktreeCardLarge: FC<WorktreeCardLargeProps> = ({
           already has its own hover bg for separation from the page. */}
       {!worktree.is_main && (
         <div className="absolute right-2 top-2.5 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-          <ActionButton onClick={(e) => handleAction(e, onViewDiff)} title="View diff" icon={GitDiff} />
+          <ActionButton onClick={(e) => handleAction(e, onViewDiff)} title="View diff" icon={GitCompareArrows} />
           <ActionButton
             onClick={(e) => handleAction(e, onToggleLock)}
             title={worktree.is_locked ? 'Unlock' : 'Lock'}
-            icon={worktree.is_locked ? LockOpen : Lock}
+            icon={worktree.is_locked ? LockOpen1Icon : LockClosedIcon}
           />
           <ActionButton
             onClick={(e) => handleAction(e, onRemove)}
             title="Remove"
-            icon={Trash}
+            icon={TrashIcon}
             variant="destructive"
           />
         </div>
@@ -121,7 +122,7 @@ export const WorktreeCardLarge: FC<WorktreeCardLargeProps> = ({
 const ActionButton: FC<{
   onClick: (e: React.MouseEvent) => void;
   title: string;
-  icon: React.ComponentType<{ className?: string; weight?: 'bold' }>;
+  icon: React.ComponentType<{ className?: string }>;
   variant?: 'default' | 'destructive';
 }> = ({ onClick, title, icon: Icon, variant = 'default' }) => (
   <button
@@ -135,6 +136,6 @@ const ActionButton: FC<{
     )}
     title={title}
   >
-    <Icon className="w-3 h-3" weight="bold" />
+    <Icon className="w-3 h-3" />
   </button>
 );

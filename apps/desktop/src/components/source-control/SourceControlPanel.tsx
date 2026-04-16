@@ -5,22 +5,24 @@
 import { useState, useCallback, useMemo } from 'react';
 import type { FC } from 'react';
 import {
+  ChevronDownIcon,
+  ChevronRightIcon,
+  CheckIcon,
+  MinusIcon,
+  PlusIcon,
+  StarFilledIcon,
+  ReloadIcon,
+  GitHubLogoIcon,
+  CounterClockwiseClockIcon,
+} from '@radix-ui/react-icons';
+import {
   ArrowDown,
-  ArrowsClockwise,
-  ArrowCounterClockwise,
   ArrowUp,
-  CaretDown,
-  CaretRight,
-  Check,
-  CircleNotch,
-  CloudArrowDown,
+  Loader2,
   GitBranch,
-  GithubLogo,
-  Minus,
-  Plus,
-  Sparkle,
-  Rows,
-} from '@phosphor-icons/react';
+  Rows3,
+  CloudDownload,
+} from 'lucide-react';
 import { useGitStore } from '@/stores/gitStore';
 import { useGitHubAccountsStore } from '@/stores/githubAccountsStore';
 import { usePanelTabsStore } from '@/stores/panelTabsStore';
@@ -312,9 +314,9 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
                 title="Generate commit message with AI"
               >
                 {isGeneratingMessage ? (
-                  <CircleNotch className="w-3.5 h-3.5 animate-spin" />
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 ) : (
-                  <Sparkle className="w-3.5 h-3.5" weight="bold" />
+                  <StarFilledIcon className="w-3.5 h-3.5" />
                 )}
               </button>
               <button
@@ -331,9 +333,9 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
                 title={stagedFiles.length === 0 ? 'Stage files before committing' : 'Commit staged changes (Cmd+Enter)'}
               >
                 {isCommitting ? (
-                  <ArrowsClockwise className="w-3.5 h-3.5 animate-spin" />
+                  <ReloadIcon className="w-3.5 h-3.5 animate-spin" />
                 ) : (
-                  <Check className="w-3.5 h-3.5" weight="bold" />
+                  <CheckIcon className="w-3.5 h-3.5" />
                 )}
                 {isCommitting ? 'Committing...' : 'Commit'}
               </button>
@@ -357,9 +359,9 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
                 title="Fetch from remote"
               >
                 {isFetching ? (
-                  <ArrowsClockwise className="w-3.5 h-3.5 animate-spin" />
+                  <ReloadIcon className="w-3.5 h-3.5 animate-spin" />
                 ) : (
-                  <CloudArrowDown className="w-3.5 h-3.5" weight="bold" />
+                  <CloudDownload className="w-3.5 h-3.5" size={14} />
                 )}
                 Fetch
               </button>
@@ -377,9 +379,9 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
                 title="Pull from remote"
               >
                 {isPulling ? (
-                  <ArrowsClockwise className="w-3.5 h-3.5 animate-spin" />
+                  <ReloadIcon className="w-3.5 h-3.5 animate-spin" />
                 ) : (
-                  <ArrowDown className="w-3.5 h-3.5" weight="bold" />
+                  <ArrowDown className="w-3.5 h-3.5" />
                 )}
                 Pull
               </button>
@@ -397,9 +399,9 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
                 title="Push to remote"
               >
                 {isPushing ? (
-                  <ArrowsClockwise className="w-3.5 h-3.5 animate-spin" />
+                  <ReloadIcon className="w-3.5 h-3.5 animate-spin" />
                 ) : (
-                  <ArrowUp className="w-3.5 h-3.5" weight="bold" />
+                  <ArrowUp className="w-3.5 h-3.5" />
                 )}
                 Push
                 {commitsAhead != null && commitsAhead > 0 && (
@@ -424,7 +426,7 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
                   'transition-[transform,background-color] duration-200',
                 )}
               >
-                <GithubLogo className="w-3.5 h-3.5" weight="bold" />
+                <GitHubLogoIcon className="w-3.5 h-3.5" />
                 Sign in to push &amp; pull
               </button>
             </div>
@@ -447,9 +449,9 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
                   )}
                 >
                   {stagedOpen ? (
-                    <CaretDown className="w-3 h-3" weight="bold" />
+                    <ChevronDownIcon className="w-3 h-3" />
                   ) : (
-                    <CaretRight className="w-3 h-3" weight="bold" />
+                    <ChevronRightIcon className="w-3 h-3" />
                   )}
                   Staged Changes
                   <span
@@ -464,10 +466,9 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
                     className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity"
                     onClick={handleUnstageAll}
                   >
-                    <Minus
+                    <MinusIcon
                       className="w-3.5 h-3.5 text-muted-foreground hover:text-foreground transition-colors"
-                      weight="bold"
-                    />
+                                         />
                   </span>
                 </button>
 
@@ -499,9 +500,9 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
               )}
             >
               {changesOpen ? (
-                <CaretDown className="w-3 h-3" weight="bold" />
+                <ChevronDownIcon className="w-3 h-3" />
               ) : (
-                <CaretRight className="w-3 h-3" weight="bold" />
+                <ChevronRightIcon className="w-3 h-3" />
               )}
               Changes
               {unstagedFiles.length > 0 && (
@@ -533,19 +534,17 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
                     }}
                     title="View all branch changes"
                   >
-                    <Rows
+                    <Rows3
                       className="w-3.5 h-3.5 text-muted-foreground hover:text-foreground transition-colors"
-                      weight="bold"
-                    />
+                                         />
                   </span>
                 )}
                 {unstagedFiles.length > 0 && (
                   <>
                     <span onClick={handleStageAll}>
-                      <Plus
+                      <PlusIcon
                         className="w-3.5 h-3.5 text-muted-foreground hover:text-foreground transition-colors"
-                        weight="bold"
-                      />
+                                             />
                     </span>
                     <span
                       onClick={(e) => {
@@ -553,10 +552,9 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
                         handleDiscardAll();
                       }}
                     >
-                      <ArrowCounterClockwise
+                      <CounterClockwiseClockIcon
                         className="w-3.5 h-3.5 text-muted-foreground hover:text-destructive transition-colors"
-                        weight="bold"
-                      />
+                                             />
                     </span>
                   </>
                 )}
@@ -573,7 +571,7 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
                     animate={{ opacity: 1 }}
                     transition={{ duration: 0.15 }}
                   >
-                    <Check className="w-4 h-4 text-muted-foreground/30 mb-0.5" weight="bold" />
+                    <CheckIcon className="w-4 h-4 text-muted-foreground/30 mb-0.5" />
                     <p className="text-[11px] text-muted-foreground/50">No changes detected</p>
                   </motion.div>
                 ) : (

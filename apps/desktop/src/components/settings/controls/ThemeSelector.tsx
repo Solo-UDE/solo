@@ -2,7 +2,7 @@
  * ThemeSelector - Visual preview cards for theme selection
  */
 
-import { Monitor, Sun, Moon } from '@phosphor-icons/react';
+import { DesktopIcon, SunIcon, MoonIcon } from '@radix-ui/react-icons';
 import type { ColorScheme } from '@/stores/settingsStore';
 
 interface ThemeSelectorProps {
@@ -132,10 +132,10 @@ const SystemPreview = () => (
   </div>
 );
 
-const options: { value: ColorScheme; label: string; Icon: typeof Monitor }[] = [
-  { value: 'system', label: 'System', Icon: Monitor },
-  { value: 'light', label: 'Light', Icon: Sun },
-  { value: 'dark', label: 'Dark', Icon: Moon },
+const options: { value: ColorScheme; label: string; Icon: typeof DesktopIcon }[] = [
+  { value: 'system', label: 'System', Icon: DesktopIcon },
+  { value: 'light', label: 'Light', Icon: SunIcon },
+  { value: 'dark', label: 'Dark', Icon: MoonIcon },
 ];
 
 export function ThemeSelector({ value, onChange }: ThemeSelectorProps) {
@@ -180,8 +180,8 @@ export function ThemeSelector({ value, onChange }: ThemeSelectorProps) {
             {/* Label */}
             <div className="flex items-center gap-1.5">
               <Icon
-                size={14}
-                weight={selected ? 'fill' : 'regular'}
+                width={14}
+                height={14}
                 className={selected ? 'text-primary' : 'text-muted-foreground'}
               />
               <span

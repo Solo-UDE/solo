@@ -4,17 +4,8 @@
  */
 
 import { useCallback, useState, type FC } from 'react';
-import {
-  GitBranch,
-  TreeStructure,
-  Lock,
-  LockOpen,
-  CircleDashed,
-  Robot,
-  GitDiff,
-  Trash,
-  Plus,
-} from '@phosphor-icons/react';
+import { PlusIcon, LockClosedIcon, LockOpen1Icon, TrashIcon } from '@radix-ui/react-icons';
+import { GitBranch, Network, CircleDashed, Bot, GitCompareArrows } from 'lucide-react';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { CreateWorktreePopover } from './CreateWorktreePopover';
 import type { RepoEntry } from '@/stores/repoStore';
@@ -115,7 +106,7 @@ export const InlineWorktreeList: FC<InlineWorktreeListProps> = ({ repo }) => {
               'transition-colors duration-150',
             )}
           >
-            <Plus className="w-3 h-3" weight="bold" />
+            <PlusIcon className="w-3 h-3" />
             <span>New Worktree</span>
           </button>
         </PopoverTrigger>
@@ -149,7 +140,7 @@ const WorktreeRow: FC<WorktreeRowProps> = ({
   onToggleLock,
   onRemove,
 }) => {
-  const Icon = icon === 'branch' ? GitBranch : TreeStructure;
+  const Icon = icon === 'branch' ? GitBranch : Network;
   const showActions = !worktree.is_main;
 
   return (
@@ -165,19 +156,18 @@ const WorktreeRow: FC<WorktreeRowProps> = ({
     >
       <Icon
         className={cn('w-3 h-3 shrink-0', isActive && 'text-primary')}
-        weight={isActive ? 'fill' : 'regular'}
       />
       <span className="truncate flex-1 text-left">{label}</span>
 
       {/* Status indicators */}
       {worktree.is_locked && !showActions && (
-        <Lock className="w-3 h-3 text-muted-foreground/40 shrink-0" />
+        <LockClosedIcon className="w-3 h-3 text-muted-foreground/40 shrink-0" />
       )}
       {worktree.is_dirty && (
         <CircleDashed className="w-3 h-3 text-yellow-500/60 shrink-0" />
       )}
       {worktree.agent_session_id && (
-        <Robot className="w-3 h-3 text-primary/60 shrink-0" />
+        <Bot className="w-3 h-3 text-primary/60 shrink-0" />
       )}
 
       {/* Hover actions for linked worktrees */}
@@ -189,7 +179,7 @@ const WorktreeRow: FC<WorktreeRowProps> = ({
               className="w-5 h-5 flex items-center justify-center rounded hover:bg-muted/60"
               title="View diff"
             >
-              <GitDiff className="w-3 h-3" />
+              <GitCompareArrows className="w-3 h-3" />
             </span>
           )}
           {onToggleLock && (
@@ -199,8 +189,8 @@ const WorktreeRow: FC<WorktreeRowProps> = ({
               title={worktree.is_locked ? 'Unlock' : 'Lock'}
             >
               {worktree.is_locked
-                ? <LockOpen className="w-3 h-3" />
-                : <Lock className="w-3 h-3" />
+                ? <LockOpen1Icon className="w-3 h-3" />
+                : <LockClosedIcon className="w-3 h-3" />
               }
             </span>
           )}
@@ -210,7 +200,7 @@ const WorktreeRow: FC<WorktreeRowProps> = ({
               className="w-5 h-5 flex items-center justify-center rounded hover:bg-destructive/20"
               title="Remove worktree"
             >
-              <Trash className="w-3 h-3 text-destructive/60" />
+              <TrashIcon className="w-3 h-3 text-destructive/60" />
             </span>
           )}
         </div>

@@ -3,7 +3,8 @@
  * Skills persist across messages (session-scoped), unlike attachments.
  */
 
-import { Lightning, X } from '@phosphor-icons/react';
+import { Cross2Icon } from '@radix-ui/react-icons';
+import { Zap } from 'lucide-react';
 import { useSkillStore } from '../../../stores/skillStore';
 
 import type { FC } from 'react';
@@ -25,7 +26,7 @@ export const SkillBar: FC = () => {
 					className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-medium transition-all duration-150 hover:bg-primary/15"
 					title={skill.description || skill.name}
 				>
-					<Lightning className="w-3 h-3 shrink-0" weight="fill" />
+					<Zap className="w-3 h-3 shrink-0" />
 					<span className="truncate max-w-[120px]">{skill.name}</span>
 					<button
 						onClick={() => detachSkill(skill.name)}
@@ -33,7 +34,7 @@ export const SkillBar: FC = () => {
 						tabIndex={-1}
 						type="button"
 					>
-						<X className="w-2.5 h-2.5" weight="bold" />
+						<Cross2Icon width={10} height={10} />
 					</button>
 				</span>
 			))}

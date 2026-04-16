@@ -10,6 +10,8 @@ export const TAB_BAR = {
   minTabWidth: 80,
   /** Maximum tab width in pixels */
   maxTabWidth: 200,
+  /** Collapsed agent pill width in pixels */
+  collapsedAgentWidth: 32,
 } as const;
 
 /** Tile constraints */

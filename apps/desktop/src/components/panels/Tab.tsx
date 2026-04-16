@@ -4,19 +4,21 @@
  * tab type signatures, repo-colored active indicator, and ghost dimming.
  */
 
-import { useCallback, useMemo, type MouseEvent } from 'react';
+import { useCallback, useMemo, useState, useRef, type MouseEvent } from 'react';
 import { useDrag, useDrop } from 'react-dnd';
 import { motion } from 'motion/react';
-import { X, PushPin, ChatTeardrop } from '@phosphor-icons/react';
+import { Cross2Icon, DrawingPinIcon } from '@radix-ui/react-icons';
+import { MessageCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { PanelInstance, TileId, PanelInstanceId, TabDragItem } from '@/lib/panels/types';
 import { DragItemTypes } from '@/lib/panels/types';
 import { useIsSessionStreaming } from '@/stores/agentStore';
-import { BUILTIN_PANEL_TYPES } from '@/lib/panels/constants';
+import { BUILTIN_PANEL_TYPES, TAB_BAR } from '@/lib/panels/constants';
 import { getRepoColorVar, getRepoColorMutedVar } from '@/lib/repoIdentity';
 import type { RepoColorName } from '@/lib/repoIdentity';
 import { getTabTypeVisuals } from '@/lib/panels/tabTypeVisuals';
 import { useIsGhostTab } from '@/hooks/useGhostTabs';
+import { useAgentTabState } from '@/hooks/useAgentTabState';
 
 interface TabProps {
   instance: PanelInstance;
@@ -144,27 +146,60 @@ export function Tab({
   const isGhost = useIsGhostTab(instance.id);
   const ghostActive = isGhost && !isActive;
 
+  // Collapsible agent tab state
+  const { needsAttention } = useAgentTabState(agentSessionId);
+  const [isHovered, setIsHovered] = useState(false);
+  const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const isCollapsedAgent = isAgentTab && !isActive && !isHovered;
+
+  const handleMouseEnter = useCallback(() => {
+    if (!isAgentTab) return;
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+      hoverTimeoutRef.current = null;
+    }
+    setIsHovered(true);
+  }, [isAgentTab]);
+
+  const handleMouseLeave = useCallback(() => {
+    if (!isAgentTab) return;
+    // Delay collapse so close button clicks register before the tab shrinks
+    hoverTimeoutRef.current = setTimeout(() => setIsHovered(false), 250);
+  }, [isAgentTab]);
+
   return (
     <motion.div
       ref={combinedRef}
       role="tab"
       aria-selected={isActive}
+      aria-label={instance.title}
+      title={isCollapsedAgent ? instance.title : undefined}
       tabIndex={isActive ? 0 : -1}
       animate={{
         opacity: ghostActive ? 0.5 : isDragging ? 0.5 : 1,
         scale: ghostActive ? 0.97 : 1,
+        width: isCollapsedAgent ? TAB_BAR.collapsedAgentWidth : undefined,
       }}
-      transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+      transition={{
+        default: { type: 'spring', stiffness: 400, damping: 30 },
+        width: { type: 'spring', stiffness: 180, damping: 24, mass: 0.9 },
+      }}
       className={cn(
-        'group relative flex items-center gap-1.5 h-[32px] px-3',
+        'group relative flex items-center h-[32px]',
         'transition-[color,background-color,box-shadow] duration-150 ease-out',
         'cursor-pointer select-none',
-        'shrink-0 min-w-[80px] max-w-[200px]',
-        'rounded-md bg-foreground/[0.06]',
+        'shrink-0 rounded-md overflow-hidden',
+        isCollapsedAgent
+          ? 'justify-center px-0'
+          : isAgentTab && isHovered && !isActive
+            ? 'gap-1.5 px-3 min-w-[200px] max-w-[320px]'
+            : 'gap-1.5 px-3 min-w-[80px] max-w-[200px]',
         isActive
-          ? 'text-foreground'
-          : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.10]',
-        isOver && !isDragging && 'bg-foreground/[0.12]',
+          ? 'bg-foreground/[0.08] text-foreground'
+          : 'text-foreground/60 hover:text-foreground/80 hover:bg-foreground/[0.06]',
+        isOver && !isDragging && 'bg-foreground/[0.10]',
+        needsAttention && isCollapsedAgent && 'agent-attention-pill',
       )}
       style={{
         backgroundColor: isActive
@@ -176,63 +211,90 @@ export function Tab({
           ? repoColor
             ? `inset 0 0 0 1px color-mix(in oklch, ${getRepoColorVar(repoColor)} 25%, transparent), 0 0 8px 0 color-mix(in oklch, ${getRepoColorVar(repoColor)} 12%, transparent)`
             : 'inset 0 0 0 1px oklch(from var(--primary) l c h / 15%), 0 0 8px 0 oklch(from var(--primary) l c h / 12%)'
-          : 'inset 0 0 0 1px oklch(from var(--primary) l c h / 8%)',
+          : undefined,
       }}
       onClick={onActivate}
       onMouseDown={handleMouseDown}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
       onContextMenu={handleContextMenu}
     >
-      {/* B2: Language dot for file tabs */}
-      {visuals.languageDot && (
-        <span
-          className="w-2 h-2 rounded-full shrink-0"
-          style={{ backgroundColor: visuals.languageDot }}
-        />
-      )}
-
-      {/* Streaming indicator (pulsing dot) takes priority over dirty indicator */}
-      {!visuals.languageDot && isSessionCurrentlyStreaming ? (
-        <span className="w-2 h-2 rounded-full bg-primary animate-pulse shrink-0" />
-      ) : !visuals.languageDot && instance.isDirty ? (
-        <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
-      ) : null}
-
-      {/* Session icon for agent tabs */}
+      {/* Collapsed indicator — pinned to left 32px, so icon stays at same X as pill widens */}
       {isAgentTab && (
-        <ChatTeardrop className="w-3 h-3 shrink-0 text-muted-foreground" weight="fill" />
-      )}
-
-      {/* Tab title - B2: apply type-specific class */}
-      <span className={cn('text-[12px] truncate flex-1', visuals.titleClass)}>
-        {instance.title}
-      </span>
-
-      {/* Pin icon for pinned tabs, close button for unpinned */}
-      {instance.isPinned ? (
-        <span
-          className="p-0.5 shrink-0 text-muted-foreground"
-          title="Pinned - right-click to unpin"
+        <motion.span
+          className="absolute inset-y-0 left-0 w-8 flex items-center justify-center pointer-events-none z-10"
+          initial={false}
+          animate={{ opacity: isCollapsedAgent ? 1 : 0 }}
+          transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
         >
-          <PushPin className="w-3 h-3" />
-        </span>
-      ) : (
-        <button
-          className={cn(
-            'p-0.5 rounded-md',
-            'opacity-0 group-hover:opacity-100',
-            'hover:bg-muted active:scale-95',
-            'transition-[transform,opacity] duration-100',
-            'shrink-0',
-            // Always show close button if dirty
-            instance.isDirty && 'opacity-100'
+          {needsAttention ? (
+            <span className="agent-attention-dot w-2 h-2 rounded-full bg-warning shrink-0" />
+          ) : isSessionCurrentlyStreaming ? (
+            <span className="w-2 h-2 rounded-full bg-primary animate-pulse shrink-0" />
+          ) : (
+            <MessageCircle className="w-3.5 h-3.5 shrink-0 text-muted-foreground" size={14} />
           )}
-          onClick={handleCloseClick}
-          tabIndex={-1}
-          aria-label={`Close ${instance.title}`}
-        >
-          <X className="w-3.5 h-3.5" />
-        </button>
+        </motion.span>
       )}
+
+      {/* Expanded content — rendered in flow, opacity+x animate with isCollapsedAgent */}
+      <motion.div
+        className="flex items-center gap-1.5 flex-1 min-w-0"
+        initial={false}
+        animate={{
+          opacity: isAgentTab ? (isCollapsedAgent ? 0 : 1) : 1,
+          x: isAgentTab && isCollapsedAgent ? -6 : 0,
+        }}
+        transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
+        style={{ pointerEvents: isCollapsedAgent ? 'none' : 'auto' }}
+      >
+        {/* B2: Language dot for file tabs */}
+        {visuals.languageDot && (
+          <span
+            className="w-2 h-2 rounded-full shrink-0"
+            style={{ backgroundColor: visuals.languageDot }}
+          />
+        )}
+
+        {/* Streaming indicator (pulsing dot) takes priority over dirty indicator */}
+        {!visuals.languageDot && isSessionCurrentlyStreaming ? (
+          <span className="w-2 h-2 rounded-full bg-primary animate-pulse shrink-0" />
+        ) : !visuals.languageDot && instance.isDirty ? (
+          <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
+        ) : null}
+
+        {/* Tab title - B2: apply type-specific class */}
+        <span className={cn('text-[12px] truncate flex-1', visuals.titleClass)}>
+          {instance.title}
+        </span>
+
+        {/* Pin icon for pinned tabs, close button for unpinned */}
+        {instance.isPinned ? (
+          <span
+            className="p-0.5 shrink-0 text-muted-foreground"
+            title="Pinned - right-click to unpin"
+          >
+            <DrawingPinIcon className="w-3 h-3" />
+          </span>
+        ) : (
+          <button
+            className={cn(
+              'p-0.5 rounded-md',
+              'opacity-0 group-hover:opacity-100',
+              'hover:bg-muted active:scale-95',
+              'transition-[transform,opacity] duration-100',
+              'shrink-0',
+              // Always show close button if dirty
+              instance.isDirty && 'opacity-100'
+            )}
+            onClick={handleCloseClick}
+            tabIndex={-1}
+            aria-label={`Close ${instance.title}`}
+          >
+            <Cross2Icon className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </motion.div>
 
     </motion.div>
   );

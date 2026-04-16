@@ -1,4 +1,5 @@
-import { File as FileIcon, Image as ImageIcon, At } from '@phosphor-icons/react';
+import { FileIcon, ImageIcon } from '@radix-ui/react-icons';
+import { AtSign } from 'lucide-react';
 import { convertFileSrc } from '@tauri-apps/api/core';
 
 import type { FC } from 'react';
@@ -64,9 +65,9 @@ export const UserMessage: FC<UserMessageProps> = ({
                 title={file.path}
               >
                 {file.mimeType?.startsWith('image/') ? (
-                  <ImageIcon className="w-3.5 h-3.5 flex-shrink-0" />
+                  <ImageIcon width={14} height={14} className="flex-shrink-0" />
                 ) : (
-                  <FileIcon className="w-3.5 h-3.5 flex-shrink-0" />
+                  <FileIcon width={14} height={14} className="flex-shrink-0" />
                 )}
                 <span className="truncate max-w-[150px]">{file.name}</span>
               </div>
@@ -83,7 +84,7 @@ export const UserMessage: FC<UserMessageProps> = ({
                 className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-muted/40 text-xs text-muted-foreground"
                 title={mention.path}
               >
-                <At className="w-3 h-3 flex-shrink-0" />
+                <AtSign className="w-3 h-3 flex-shrink-0" />
                 <span className="truncate max-w-[200px]">{mention.relativePath || mention.name}</span>
               </div>
             ))}

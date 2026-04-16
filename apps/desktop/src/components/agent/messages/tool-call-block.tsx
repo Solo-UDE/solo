@@ -1,4 +1,5 @@
-import { Terminal, CaretRight, CircleNotch, CheckCircle, XCircle } from '@phosphor-icons/react';
+import { ChevronRightIcon, CheckCircledIcon, CrossCircledIcon } from '@radix-ui/react-icons';
+import { Terminal, Loader2 } from 'lucide-react';
 import { useState } from 'react';
 
 import { ExpandRegion } from './shared/ExpandRegion';
@@ -22,11 +23,11 @@ const formatToolName = (name: string): string => {
 const getStatusIcon = (status: string) => {
   switch (status) {
     case 'running':
-      return <CircleNotch className="w-3.5 h-3.5 text-muted-foreground animate-spin" />;
+      return <Loader2 className="w-3.5 h-3.5 text-muted-foreground animate-spin" />;
     case 'success':
-      return <CheckCircle className="w-3.5 h-3.5 text-success" weight="fill" />;
+      return <CheckCircledIcon width={14} height={14} className="text-success" />;
     case 'error':
-      return <XCircle className="w-3.5 h-3.5 text-destructive" weight="fill" />;
+      return <CrossCircledIcon width={14} height={14} className="text-destructive" />;
     default:
       return null;
   }
@@ -87,14 +88,14 @@ export const ToolCallBlock: FC<ToolCallBlockProps> = ({
         ) : null}
         {getStatusIcon(status)}
         {canExpand ? (
-          <CaretRight className={`h-3 w-3 text-muted-foreground/50 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+          <ChevronRightIcon width={12} height={12} className={`text-muted-foreground/50 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
         ) : null}
       </button>
 
       <ExpandRegion isExpanded={isExpanded}>
         {status === 'running' && !output ? (
           <div className="mt-1 ml-5 flex items-center gap-2 text-xs text-muted-foreground">
-            <CircleNotch className="h-3 w-3 animate-spin" />
+            <Loader2 className="h-3 w-3 animate-spin" />
             <span>Running...</span>
           </div>
         ) : hasOutput ? (

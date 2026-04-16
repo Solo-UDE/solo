@@ -1,5 +1,6 @@
 import React, { useRef, useState, useCallback, useEffect, useMemo, lazy, Suspense } from 'react';
-import { Stop, PaintBrush } from '@phosphor-icons/react';
+import { StopIcon } from '@radix-ui/react-icons';
+import { Paintbrush } from 'lucide-react';
 
 import { ContextMenu } from './context-menu';
 import { ContextTracker } from './context-tracker';
@@ -13,6 +14,13 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '../../ui/popover';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../../ui/select';
 
 import type { LexicalEditorHandle } from './lexical-editor';
 import type { FileMention, Attachment } from '../../../stores/agentStore';
@@ -217,20 +225,26 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
               <ContextTracker disabled={isAgentRunning} />
 
               {showWorktreeSelector && (
-                <select
-                  value={worktreeId ?? ''}
-                  onChange={(e) => onWorktreeChange(e.target.value || null)}
+                <Select
+                  value={worktreeId ?? '__main__'}
+                  onValueChange={(v) => onWorktreeChange(v === '__main__' ? null : v)}
                   disabled={isAgentRunning}
-                  className="h-[30px] px-2.5 text-xs font-medium rounded-[8px] bg-transparent text-muted-foreground hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/30 transition-[transform,background-color,color] duration-200 disabled:opacity-50 disabled:cursor-not-allowed max-w-[120px] truncate"
-                  title="Worktree"
                 >
-                  <option value="">Main workspace</option>
-                  {worktrees.filter((wt) => !wt.is_main).map((wt) => (
-                    <option key={wt.id} value={wt.id}>
-                      {wt.branch ?? wt.id}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger
+                    className="h-[30px] px-2.5 text-xs font-medium rounded-[8px] bg-transparent text-muted-foreground hover:bg-muted/60 hover:text-foreground max-w-[120px] truncate"
+                    title="Worktree"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__main__">Main workspace</SelectItem>
+                    {worktrees.filter((wt) => !wt.is_main).map((wt) => (
+                      <SelectItem key={wt.id} value={wt.id}>
+                        {wt.branch ?? wt.id}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               )}
             </div>
 
@@ -268,7 +282,7 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
                     title="Sketch"
                     disabled={isAgentRunning}
                   >
-                    <PaintBrush size={16} />
+                    <Paintbrush size={16} />
                   </button>
                 </PopoverTrigger>
                 <PopoverContent
@@ -290,7 +304,7 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
                   className="inline-flex items-center justify-center h-[30px] w-[30px] rounded-[8px] bg-destructive text-white shadow-[0_0_8px_-2px] shadow-destructive/40 hover:brightness-110 hover:scale-105 active:scale-95 transition-[transform,background-color,filter] duration-200"
                   aria-label="Stop generation"
                 >
-                  <Stop weight="fill" className="h-3.5 w-3.5" />
+                  <StopIcon width={14} height={14} />
                 </button>
               ) : (
                 <SubmitButton

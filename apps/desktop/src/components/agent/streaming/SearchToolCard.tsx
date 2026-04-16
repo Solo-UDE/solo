@@ -5,7 +5,7 @@
  * match/file count badge, and results list.
  */
 
-import { MagnifyingGlass } from '@phosphor-icons/react';
+import { MagnifyingGlassIcon } from '@radix-ui/react-icons';
 import { AnimatedList } from '@/components/ui/animated-list';
 
 import { ToolCard } from './ToolCard';
@@ -52,7 +52,7 @@ export const SearchToolCard: FC<SearchToolCardProps> = ({
 		<ToolCard
 			toolName={toolName}
 			status={status}
-			icon={<MagnifyingGlass className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+			icon={<MagnifyingGlassIcon width={14} height={14} className="shrink-0 text-muted-foreground" />}
 			label={status === 'running' ? 'Searching...' : (isGlob ? 'Glob' : 'Grep')}
 			primaryDisplay={pattern}
 			collapsible={resultCount > 0}

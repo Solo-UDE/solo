@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Sun, Code, Terminal, FolderOpen, Keyboard, Brain, Microphone, BookOpen, ArrowSquareOut, SignOut, ArrowLeft, ArrowCounterClockwise } from '@phosphor-icons/react';
+import { SunIcon, CodeIcon, ArrowLeftIcon, ExitIcon, ExternalLinkIcon, ReaderIcon, CounterClockwiseClockIcon } from '@radix-ui/react-icons';
+import { Terminal, FolderOpen, Keyboard, Brain, Mic } from 'lucide-react';
 import { useUIStore, type SettingsTabId } from '../../stores/uiStore';
 import { useAuthStore } from '../../stores/authStore';
 import { useSettingsStore } from '../../stores/settingsStore';
@@ -12,13 +13,13 @@ interface TabDef {
 }
 
 const TABS: TabDef[] = [
-  { id: 'general', label: 'General', icon: Sun },
-  { id: 'editor', label: 'Editor', icon: Code },
+  { id: 'general', label: 'General', icon: SunIcon },
+  { id: 'editor', label: 'Editor', icon: CodeIcon },
   { id: 'terminal', label: 'Terminal', icon: Terminal },
   { id: 'files', label: 'Files', icon: FolderOpen },
   { id: 'shortcuts', label: 'Shortcuts', icon: Keyboard },
   { id: 'ai', label: 'Providers', icon: Brain },
-  { id: 'voice', label: 'Voice', icon: Microphone },
+  { id: 'voice', label: 'Voice', icon: Mic },
 ];
 
 export function SettingsSidebar() {
@@ -46,7 +47,7 @@ export function SettingsSidebar() {
         onClick={closeSettings}
         className="flex items-center gap-2 px-2 py-1.5 mb-4 text-sm text-muted-foreground hover:text-foreground transition-colors cursor-pointer rounded hover:bg-background/50"
       >
-        <ArrowLeft className="w-3.5 h-3.5" />
+        <ArrowLeftIcon className="w-3.5 h-3.5" />
         <span>Back to app</span>
         <kbd className="ml-auto text-[10px] text-muted-foreground/60 bg-muted/50 px-1.5 py-0.5 rounded">Esc</kbd>
       </button>
@@ -82,9 +83,9 @@ export function SettingsSidebar() {
           onClick={() => window.open('https://docs.solo.dev', '_blank')}
           className="w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors cursor-pointer text-muted-foreground hover:text-foreground hover:bg-background/50 rounded"
         >
-          <BookOpen className="w-4 h-4" />
+          <ReaderIcon className="w-4 h-4" />
           <span>Docs</span>
-          <ArrowSquareOut className="w-3 h-3 ml-auto opacity-50" />
+          <ExternalLinkIcon className="w-3 h-3 ml-auto opacity-50" />
         </button>
         {showResetConfirm ? (
           <div className="px-3 py-2 space-y-2">
@@ -109,7 +110,7 @@ export function SettingsSidebar() {
             onClick={() => setShowResetConfirm(true)}
             className="w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors cursor-pointer text-muted-foreground hover:text-foreground hover:bg-background/50 rounded"
           >
-            <ArrowCounterClockwise className="w-4 h-4" />
+            <CounterClockwiseClockIcon className="w-4 h-4" />
             <span>Reset All Settings</span>
           </button>
         )}
@@ -117,7 +118,7 @@ export function SettingsSidebar() {
           onClick={handleLogout}
           className="w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors cursor-pointer text-muted-foreground hover:text-foreground hover:bg-background/50 rounded"
         >
-          <SignOut className="w-4 h-4" />
+          <ExitIcon className="w-4 h-4" />
           <span>Log out</span>
         </button>
       </div>

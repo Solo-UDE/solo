@@ -1,4 +1,5 @@
-import { PencilSimple, CaretDown, CircleNotch } from '@phosphor-icons/react';
+import { Pencil2Icon, ChevronDownIcon } from '@radix-ui/react-icons';
+import { Loader2 } from 'lucide-react';
 import { useState } from 'react';
 
 import type { FC } from 'react';
@@ -38,7 +39,7 @@ export const EditToolWidget: FC<EditToolWidgetProps> = ({
         onClick={() => { setIsExpanded(!isExpanded); }}
         className="w-full flex items-center gap-2 px-3 py-2 hover:bg-accent/50 transition-colors"
       >
-        <PencilSimple className={`h-4 w-4 shrink-0 ${isRunning ? 'text-muted-foreground animate-pulse' : 'text-warning'}`} />
+        <Pencil2Icon className={`h-4 w-4 shrink-0 ${isRunning ? 'text-muted-foreground animate-pulse' : 'text-warning'}`} />
 
         <div className="flex items-center gap-2 flex-1 min-w-0">
           <span className="text-sm font-medium text-foreground truncate" title={filePath}>
@@ -50,13 +51,13 @@ export const EditToolWidget: FC<EditToolWidgetProps> = ({
         <div className="flex items-center gap-2 shrink-0">
           {isRunning ? (
             <div className="flex items-center gap-1.5 text-muted-foreground">
-              <CircleNotch className="h-3 w-3 animate-spin" />
+              <Loader2 className="h-3 w-3 animate-spin" />
               <span className="text-xs">Editing...</span>
             </div>
           ) : (
             <DiffStat additions={additions} deletions={deletions} />
           )}
-          <CaretDown className={`h-4 w-4 text-muted-foreground transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+          <ChevronDownIcon className={`h-4 w-4 text-muted-foreground transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
         </div>
       </button>
 
@@ -96,7 +97,7 @@ export const EditToolWidget: FC<EditToolWidgetProps> = ({
             onClick={() => { setIsExpanded(true); }}
             className="w-full py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors border-t tool-widget-divider flex items-center justify-center gap-1"
           >
-            <CaretDown className="h-3 w-3" />
+            <ChevronDownIcon className="h-3 w-3" />
             <span>Show all changes</span>
           </button>
         ) : null}

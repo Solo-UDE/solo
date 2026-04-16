@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Gauge } from '@phosphor-icons/react';
+import { Gauge } from 'lucide-react';
 import {
   Popover,
   PopoverContent,

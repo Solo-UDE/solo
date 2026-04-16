@@ -4,7 +4,8 @@
 
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
 import { $getNodeByKey } from 'lexical';
-import { At, X } from '@phosphor-icons/react';
+import { Cross2Icon } from '@radix-ui/react-icons';
+import { AtSign } from 'lucide-react';
 
 import type { FC } from 'react';
 
@@ -34,7 +35,7 @@ export const MentionChip: FC<MentionChipProps> = ({ fileName, relativePath, node
 			title={relativePath}
 			contentEditable={false}
 		>
-			<At className="w-3 h-3 shrink-0" weight="bold" />
+			<AtSign className="w-3 h-3 shrink-0" />
 			<span className="truncate max-w-[120px]">{fileName}</span>
 			<button
 				onClick={handleRemove}
@@ -42,7 +43,7 @@ export const MentionChip: FC<MentionChipProps> = ({ fileName, relativePath, node
 				tabIndex={-1}
 				type="button"
 			>
-				<X className="w-2.5 h-2.5" weight="bold" />
+				<Cross2Icon width={10} height={10} />
 			</button>
 		</span>
 	);

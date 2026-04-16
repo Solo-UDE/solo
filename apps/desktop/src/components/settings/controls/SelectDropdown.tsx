@@ -1,9 +1,14 @@
 /**
- * SelectDropdown - Enum selection control
- * Updated with sharp corners and improved styling
+ * SelectDropdown - Enum selection control built on Radix Select primitives.
  */
 
-import { CaretDown } from '@phosphor-icons/react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../../ui/select';
 import { cn } from '../../../lib/utils';
 
 interface Option<T extends string | number> {
@@ -26,35 +31,23 @@ export function SelectDropdown<T extends string | number>({
   disabled = false,
   className = '',
 }: SelectDropdownProps<T>) {
+  const handleChange = (raw: string) => {
+    const option = options.find((o) => String(o.value) === raw);
+    if (option) onChange(option.value);
+  };
+
   return (
-    <div className={cn("relative", className)}>
-      <select
-        value={String(value)}
-        onChange={(e) => {
-          const raw = e.target.value;
-          // Handle numeric values
-          const option = options.find((o) => String(o.value) === raw);
-          if (option) {
-            onChange(option.value);
-          }
-        }}
-        disabled={disabled}
-        className={cn(
-          "appearance-none w-full min-w-[160px] px-3 py-2 pr-8",
-          "bg-muted/40 border-none rounded-lg",
-          "text-sm text-foreground",
-          "focus:outline-none focus:bg-muted/60 focus:ring-1 focus:ring-ring/30",
-          "disabled:cursor-not-allowed disabled:opacity-50",
-          "cursor-pointer transition-colors"
-        )}
-      >
+    <Select value={String(value)} onValueChange={handleChange} disabled={disabled}>
+      <SelectTrigger className={cn('min-w-[160px]', className)}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
         {options.map((option) => (
-          <option key={String(option.value)} value={String(option.value)}>
+          <SelectItem key={String(option.value)} value={String(option.value)}>
             {option.label}
-          </option>
+          </SelectItem>
         ))}
-      </select>
-      <CaretDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-    </div>
+      </SelectContent>
+    </Select>
   );
 }

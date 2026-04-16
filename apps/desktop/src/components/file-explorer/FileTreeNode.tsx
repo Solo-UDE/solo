@@ -4,18 +4,17 @@
 
 import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
+import { ChevronRightIcon, Pencil2Icon } from '@radix-ui/react-icons';
 import {
-  CaretRight,
-  CircleNotch,
-  DotsThree,
+  Loader2,
+  MoreHorizontal,
   FilePlus,
   FolderPlus,
-  PencilSimple,
   Trash,
   Copy,
   FolderOpen,
   Terminal,
-} from '@phosphor-icons/react';
+} from 'lucide-react';
 import { useDragStore } from '../../stores/dragStore';
 import { FileIcon, FolderIcon } from '@react-symbols/icons/utils';
 import { Git } from '@react-symbols/icons/files';
@@ -242,9 +241,9 @@ export const FileTreeNode = memo(function FileTreeNode({
             aria-label={isExpanded ? `Collapse ${entry.name}` : `Expand ${entry.name}`}
           >
             {isLoading ? (
-              <CircleNotch weight="bold" className="w-3 h-3 animate-spin text-muted-foreground" />
+              <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" size={12} />
             ) : (
-              <CaretRight className={`w-3 h-3 text-muted-foreground transition-transform duration-150 ${isExpanded ? 'rotate-90' : ''}`} />
+              <ChevronRightIcon className={`w-3 h-3 text-muted-foreground transition-transform duration-150 ${isExpanded ? 'rotate-90' : ''}`} />
             )}
           </button>
         ) : (
@@ -284,7 +283,7 @@ export const FileTreeNode = memo(function FileTreeNode({
                 onClick={(e) => e.stopPropagation()}
                 aria-label={`Actions for ${entry.name}`}
               >
-                <DotsThree weight="bold" className="h-4 w-4" aria-hidden="true" />
+                <MoreHorizontal className="h-4 w-4" size={16} aria-hidden="true" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent side="right" align="start" className="w-48">
@@ -296,7 +295,7 @@ export const FileTreeNode = memo(function FileTreeNode({
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onStartRename(); }}>
-                <PencilSimple className="h-3.5 w-3.5" /> Rename
+                <Pencil2Icon className="h-3.5 w-3.5" /> Rename
                 <DropdownMenuShortcut>F2</DropdownMenuShortcut>
               </DropdownMenuItem>
               <DropdownMenuItem
@@ -402,7 +401,7 @@ function ContextMenuPortal({
       <ContextMenuItem onClick={() => handleAction(onNewFile)} icon={FilePlus} label="New File" />
       <ContextMenuItem onClick={() => handleAction(onNewFolder)} icon={FolderPlus} label="New Folder" />
       <div className="h-px bg-border/50 my-1" />
-      <ContextMenuItem onClick={() => handleAction(onStartRename)} icon={PencilSimple} label="Rename" shortcut="F2" />
+      <ContextMenuItem onClick={() => handleAction(onStartRename)} icon={Pencil2Icon} label="Rename" shortcut="F2" />
       <ContextMenuItem onClick={() => handleAction(onDelete)} icon={Trash} label="Delete" shortcut="Del" destructive />
       <div className="h-px bg-border/50 my-1" />
       <ContextMenuItem onClick={() => handleAction(onCopyPath)} icon={Copy} label="Copy Path" />

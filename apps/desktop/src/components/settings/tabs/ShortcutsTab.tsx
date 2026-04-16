@@ -3,7 +3,7 @@
  */
 
 import { useState, useMemo, useCallback } from 'react';
-import { MagnifyingGlass, ArrowCounterClockwise } from '@phosphor-icons/react';
+import { MagnifyingGlassIcon, CounterClockwiseClockIcon } from '@radix-ui/react-icons';
 import { useSettingsStore } from '../../../stores/settingsStore';
 import { KeybindingInput } from '../controls';
 import {
@@ -72,7 +72,7 @@ export function ShortcutsTab() {
       {/* Search and Reset */}
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
-          <MagnifyingGlass className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <input
             type="text"
             placeholder="Search shortcuts..."
@@ -87,7 +87,7 @@ export function ShortcutsTab() {
             onClick={resetAllKeybindings}
             className="flex items-center gap-1.5 px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
           >
-            <ArrowCounterClockwise className="w-4 h-4" />
+            <CounterClockwiseClockIcon className="w-4 h-4" />
             Reset All
           </button>
         )}
@@ -126,7 +126,7 @@ export function ShortcutsTab() {
 
         {filteredCategories.length === 0 && (
           <div className="flex flex-col items-center justify-center py-8 gap-1.5">
-            <MagnifyingGlass className="w-5 h-5 text-muted-foreground/30" />
+            <MagnifyingGlassIcon className="w-5 h-5 text-muted-foreground/30" />
             <p className="text-sm text-muted-foreground/60">No shortcuts found</p>
             <p className="text-xs text-muted-foreground/40">Try a different search term</p>
           </div>

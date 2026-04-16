@@ -3,7 +3,8 @@
  */
 
 import type { FC } from 'react';
-import { FolderPlus, GithubLogo, SpinnerGap, SignOut } from '@phosphor-icons/react';
+import { GitHubLogoIcon, ExitIcon } from '@radix-ui/react-icons';
+import { FolderPlus, Loader2 } from 'lucide-react';
 import { useGitHubAccountsStore } from '@/stores/githubAccountsStore';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
@@ -33,7 +34,7 @@ export const RepoListHeader: FC<RepoListHeaderProps> = ({ onAddRepo }) => {
             title="Connecting to GitHub..."
             disabled
           >
-            <SpinnerGap className="w-3.5 h-3.5 animate-spin" />
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
           </button>
         ) : token && user ? (
           <Popover>
@@ -62,7 +63,7 @@ export const RepoListHeader: FC<RepoListHeaderProps> = ({ onAddRepo }) => {
                 onClick={disconnectGitHub}
                 className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
               >
-                <SignOut className="w-4 h-4" />
+                <ExitIcon className="w-4 h-4" />
                 Disconnect
               </button>
             </PopoverContent>
@@ -77,7 +78,7 @@ export const RepoListHeader: FC<RepoListHeaderProps> = ({ onAddRepo }) => {
             )}
             title="Sign in to GitHub"
           >
-            <GithubLogo className="w-3.5 h-3.5" />
+            <GitHubLogoIcon className="w-3.5 h-3.5" />
           </button>
         )}
 
@@ -91,7 +92,7 @@ export const RepoListHeader: FC<RepoListHeaderProps> = ({ onAddRepo }) => {
           )}
           title="Add Repository"
         >
-          <FolderPlus className="w-3.5 h-3.5" weight="bold" />
+          <FolderPlus className="w-3.5 h-3.5" />
         </button>
       </div>
     </div>

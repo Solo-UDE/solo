@@ -1,4 +1,4 @@
-import { Lightbulb } from '@phosphor-icons/react';
+import { Lightbulb } from 'lucide-react';
 import React from 'react';
 
 import { cn } from '../../../lib/utils';
@@ -35,7 +35,7 @@ export const ThinkingToggle: React.FC<ThinkingToggleProps> = ({
         background: 'radial-gradient(ellipse 80% 50% at center, oklch(from var(--info) l c h / 15%) 0%, transparent 70%)',
       } : undefined}
     >
-      <Lightbulb className="h-4 w-4" weight={enabled ? 'fill' : 'regular'} />
+      <Lightbulb className="h-4 w-4" />
       <span>Think</span>
     </button>
   );

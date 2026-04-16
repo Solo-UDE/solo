@@ -4,7 +4,8 @@
  */
 
 import { useState, useCallback } from 'react';
-import { CaretRight, CaretDown, TreeStructure } from '@phosphor-icons/react';
+import { ChevronRightIcon, ChevronDownIcon } from '@radix-ui/react-icons';
+import { Network } from 'lucide-react';
 import { motion } from 'motion/react';
 import { ListSkeleton } from '@/components/ui/skeletons';
 import type { Symbol, SymbolKind } from '../../lib/tauri/parse';
@@ -92,9 +93,9 @@ function SymbolNode({ symbol, depth, onSymbolClick }: SymbolNodeProps) {
               className="p-0.5 hover:bg-muted rounded-md transition-colors duration-150"
             >
               {expanded ? (
-                <CaretDown className="w-3 h-3 text-muted-foreground" />
+                <ChevronDownIcon className="w-3 h-3 text-muted-foreground" />
               ) : (
-                <CaretRight className="w-3 h-3 text-muted-foreground" />
+                <ChevronRightIcon className="w-3 h-3 text-muted-foreground" />
               )}
             </button>
           ) : null}
@@ -168,7 +169,7 @@ export function SymbolOutline({
         animate={{ opacity: 1, y: 0 }}
         transition={{ type: 'spring', stiffness: 400, damping: 25 }}
       >
-        <TreeStructure className="w-5 h-5 text-muted-foreground/30 mb-0.5" />
+        <Network className="w-5 h-5 text-muted-foreground/30 mb-0.5" size={20} />
         <p className="text-xs text-muted-foreground/60">No symbols found</p>
       </motion.div>
     );

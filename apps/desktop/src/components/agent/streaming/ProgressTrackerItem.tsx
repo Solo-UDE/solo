@@ -1,4 +1,4 @@
-import { Check } from '@phosphor-icons/react';
+import { CheckIcon } from '@radix-ui/react-icons';
 import { AgentAnimatedDots } from './AgentAnimatedDots';
 import { AgentLoadingGrid } from './AgentLoadingGrid';
 
@@ -46,7 +46,7 @@ export const ProgressTrackerItem: FC<ProgressTrackerItemProps> = ({ label, statu
             className="flex items-center justify-center w-[18px] h-[18px] rounded-full border border-primary"
             style={{ animation: 'spring-pop 400ms ease both' }}
           >
-            <Check weight="bold" className="w-3 h-3 text-primary" />
+            <CheckIcon width={12} height={12} className="text-primary" />
           </div>
         ) : (
           <div

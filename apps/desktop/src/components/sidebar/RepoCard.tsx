@@ -6,14 +6,8 @@
 
 import { useCallback, type FC, type ReactNode } from 'react';
 import { motion } from 'motion/react';
-import {
-  CaretRight,
-  Folder,
-  X,
-  ArrowUp,
-  CircleDashed,
-  CircleNotch,
-} from '@phosphor-icons/react';
+import { ChevronRightIcon, Cross2Icon } from '@radix-ui/react-icons';
+import { Folder, ArrowUp, CircleDashed, Loader2 } from 'lucide-react';
 import type { RepoEntry } from '@/stores/repoStore';
 import { useRepoStore } from '@/stores/repoStore';
 import { cn } from '@/lib/utils';
@@ -81,12 +75,11 @@ export const RepoCard: FC<RepoCardProps> = ({ repo, isActive, children }) => {
             transition={{ type: 'spring', stiffness: 500, damping: 30 }}
             className="shrink-0"
           >
-            <CaretRight className="w-3 h-3" weight="bold" />
+            <ChevronRightIcon className="w-3 h-3" />
           </motion.div>
 
           <Folder
             className="w-3.5 h-3.5 shrink-0"
-            weight={isActive ? 'fill' : 'regular'}
           />
 
           <span className="text-xs font-medium truncate flex-1">
@@ -117,7 +110,7 @@ export const RepoCard: FC<RepoCardProps> = ({ repo, isActive, children }) => {
             )}
             title="Remove repository"
           >
-            <X className="w-3 h-3" />
+            <Cross2Icon className="w-3 h-3" />
           </button>
         </div>
 
@@ -145,7 +138,7 @@ export const RepoCard: FC<RepoCardProps> = ({ repo, isActive, children }) => {
         {/* Loading indicator */}
         {repo.isExpanded && !repo._worktreesLoaded && (
           <div className="flex items-center gap-2 h-6 pl-[30px] pr-2 text-muted-foreground/50">
-            <CircleNotch className="w-3 h-3 animate-spin" />
+            <Loader2 className="w-3 h-3 animate-spin" />
             <span className="text-[11px]">Loading...</span>
           </div>
         )}

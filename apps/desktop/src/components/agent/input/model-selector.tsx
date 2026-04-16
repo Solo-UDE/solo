@@ -1,4 +1,4 @@
-import { CaretDown, Sparkle } from '@phosphor-icons/react';
+import { ChevronDownIcon, StarFilledIcon } from '@radix-ui/react-icons';
 import React from 'react';
 
 import { cn } from '../../../lib/utils';
@@ -43,11 +43,11 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
           ${disabled ? 'opacity-50 cursor-not-allowed' : ''}
         `}
       >
-        <Sparkle className="h-4 w-4 text-foreground" />
+        <StarFilledIcon width={16} height={16} className="text-foreground" />
         <span className="text-sm font-medium text-foreground">
           {selectedModel?.name ?? 'Select Model'}
         </span>
-        <CaretDown className="h-3 w-3 text-muted-foreground" />
+        <ChevronDownIcon width={12} height={12} className="text-muted-foreground" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-64">
         {models.map((model) => (
@@ -61,7 +61,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
               value === model.id && 'bg-accent'
             )}
           >
-            <Sparkle className="h-4 w-4 mt-0.5 text-foreground" />
+            <StarFilledIcon width={16} height={16} className="mt-0.5 text-foreground" />
             <div className="flex flex-col">
               <span className="text-sm font-medium">{model.name}</span>
               <span className="text-xs text-muted-foreground">{model.description}</span>

@@ -36,8 +36,8 @@ export function MarkdownEditor({ content, onContentChange }: MarkdownEditorProps
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
-        // Disable code block from StarterKit — we use the default (plain) code block
         codeBlock: { HTMLAttributes: { class: '' } },
+        link: false,
       }),
       Link.configure({
         openOnClick: false,

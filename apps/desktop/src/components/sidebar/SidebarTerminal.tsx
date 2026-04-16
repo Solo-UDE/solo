@@ -6,7 +6,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FC } from 'react';
-import { Plus, TerminalWindow, X } from '@phosphor-icons/react';
+import { PlusIcon, Cross2Icon } from '@radix-ui/react-icons';
+import { Terminal } from 'lucide-react';
 import { TerminalView } from '@/components/terminal/TerminalView';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { useUIStore } from '@/stores/uiStore';
@@ -127,7 +128,7 @@ export const SidebarTerminal: FC = () => {
                   : 'text-muted-foreground hover:text-foreground',
               )}
             >
-              <TerminalWindow className={cn('w-3 h-3 shrink-0', !t.isAlive && 'opacity-50')} />
+              <Terminal className={cn('w-3 h-3 shrink-0', !t.isAlive && 'opacity-50')} />
               {rename.renamingId === t.id ? (
                 <input
                   {...rename.getInputProps()}
@@ -142,7 +143,7 @@ export const SidebarTerminal: FC = () => {
                 onClick={(e) => { e.stopPropagation(); handleCloseTab(t.id); }}
                 className="ml-auto shrink-0 p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-muted-foreground/20 transition-opacity duration-100 focus:opacity-100 focus:outline-none focus:ring-1 focus:ring-primary/50"
               >
-                <X className="w-3 h-3" />
+                <Cross2Icon className="w-3 h-3" />
               </button>
               {/* Accent bar under active tab */}
               {t.id === activeTerminalId && (
@@ -160,7 +161,7 @@ export const SidebarTerminal: FC = () => {
             className="p-1 rounded-lg cursor-pointer text-muted-foreground hover:text-foreground hover:bg-muted/60 hover:scale-105 active:scale-95 transition-[transform,background-color,color] duration-150"
             title="New Terminal (⌃⇧`)"
           >
-            <Plus className="w-3.5 h-3.5" />
+            <PlusIcon className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
