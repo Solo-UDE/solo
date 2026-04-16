@@ -12,7 +12,7 @@ import {
   type ReactNode,
   type ComponentPropsWithoutRef,
 } from 'react';
-import { Copy, Check } from '@phosphor-icons/react';
+import { CopyIcon, CheckIcon } from '@radix-ui/react-icons';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import { cn } from '@/lib/utils';
 
@@ -115,9 +115,9 @@ export const MarkdownTable: FC<MarkdownTableProps> = ({ children }) => {
         title={copied ? 'Copied!' : 'Copy table as TSV'}
       >
         {copied ? (
-          <Check className="w-3.5 h-3.5" />
+          <CheckIcon className="w-3.5 h-3.5" />
         ) : (
-          <Copy className="w-3.5 h-3.5" />
+          <CopyIcon className="w-3.5 h-3.5" />
         )}
       </button>
     </div>
