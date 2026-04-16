@@ -1,22 +1,36 @@
 /**
- * Skills system for Solo IDE Agent.
+ * Skills system for the Solo IDE agent bridge.
  *
- * Discovers, parses, and formats skill instruction files from:
- *   - User-scoped:    ~/.solo/skills/
- *   - Project-scoped: {cwd}/.solo/skills/
+ * Solo's canonical directories are `~/.solo/skills/` (user) and
+ * `{cwd}/.solo/skills/` (project). On top of that, the bridge reads
+ * compatibility adapters so users keep skills they already authored for
+ * other tools — Claude Code (personal + plugin marketplace + project
+ * ancestors) and Codex (forward-compat).
  *
- * Skill files are markdown with optional YAML-like frontmatter.
- * Project skills override user skills by name.
+ * Adapter toggles live in `~/.solo/settings.json` under the `skills`
+ * section. Defaults: all adapters on. Skills collide → highest-priority
+ * source wins (project > user > claude_project > claude_user > claude_plugin > codex).
+ *
+ * Provider-agnostic: the merged list is formatted as plain markdown and
+ * injected into the agent system prompt by `agent.ts`.
  */
 
 import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs';
-import { join, basename, extname } from 'node:path';
+import { join, basename, extname, resolve, dirname } from 'node:path';
 import { homedir } from 'node:os';
 import { createLogger } from './logger.js';
 
 const logger = createLogger('Skills');
 
 // ── Types ────────────────────────────────────────────────────────────
+
+export type SkillSource =
+  | 'user'
+  | 'project'
+  | 'claude_user'
+  | 'claude_plugin'
+  | 'claude_project'
+  | 'codex';
 
 export interface SkillMetadata {
   name: string;
@@ -28,18 +42,39 @@ export interface SkillMetadata {
 export interface LoadedSkill {
   metadata: SkillMetadata;
   content: string;
-  source: 'user' | 'project';
+  source: SkillSource;
   filePath: string;
 }
+
+interface SkillsConfig {
+  importClaudeUser: boolean;
+  importClaudePlugins: boolean;
+  importClaudeProject: boolean;
+  importCodex: boolean;
+  onboardingShown: boolean;
+}
+
+const DEFAULT_CONFIG: SkillsConfig = {
+  importClaudeUser: true,
+  importClaudePlugins: true,
+  importClaudeProject: true,
+  importCodex: true,
+  onboardingShown: false,
+};
+
+const SOURCE_PRIORITY: Record<SkillSource, number> = {
+  project: 60,
+  user: 50,
+  claude_project: 40,
+  claude_user: 30,
+  claude_plugin: 20,
+  codex: 10,
+};
 
 // ── Frontmatter Parsing ─────────────────────────────────────────────
 
 const FRONTMATTER_RE = /^---\s*\n([\s\S]*?)\n---\s*\n?/;
 
-/**
- * Parse YAML-like frontmatter from a skill file.
- * No external YAML dependency — simple key: value line parsing.
- */
 export function parseFrontmatter(raw: string): { metadata: Partial<SkillMetadata>; body: string } {
   const match = raw.match(FRONTMATTER_RE);
   if (!match) {
@@ -57,7 +92,6 @@ export function parseFrontmatter(raw: string): { metadata: Partial<SkillMetadata
     const value = line.slice(colonIdx + 1).trim();
     if (!key) continue;
 
-    // Type coercion for known fields
     if (value === 'true') metadata[key] = true;
     else if (value === 'false') metadata[key] = false;
     else if (/^\d+$/.test(value)) metadata[key] = parseInt(value, 10);
@@ -69,16 +103,7 @@ export function parseFrontmatter(raw: string): { metadata: Partial<SkillMetadata
 
 // ── Directory Discovery ─────────────────────────────────────────────
 
-/**
- * Discover skill files in a directory.
- * Supports:
- *   - Flat files: my-skill.md
- *   - Directory-based: my-skill/SKILL.md
- */
-export function discoverSkillsFromDir(
-  dirPath: string,
-  scope: 'user' | 'project'
-): LoadedSkill[] {
+export function discoverSkillsFromDir(dirPath: string, source: SkillSource): LoadedSkill[] {
   if (!existsSync(dirPath)) return [];
 
   const skills: LoadedSkill[] = [];
@@ -100,12 +125,10 @@ export function discoverSkillsFromDir(
       const stat = statSync(fullPath);
 
       if (stat.isFile() && extname(entry) === '.md') {
-        // Flat file: my-skill.md
         raw = readFileSync(fullPath, 'utf-8');
         skillFilePath = fullPath;
         derivedName = basename(entry, '.md');
       } else if (stat.isDirectory()) {
-        // Directory-based: my-skill/SKILL.md
         const skillMd = join(fullPath, 'SKILL.md');
         if (!existsSync(skillMd)) continue;
         raw = readFileSync(skillMd, 'utf-8');
@@ -124,11 +147,11 @@ export function discoverSkillsFromDir(
       metadata: {
         name: typeof metadata.name === 'string' ? metadata.name : derivedName,
         description: typeof metadata.description === 'string' ? metadata.description : '',
-        enabled: metadata.enabled !== false, // default true
+        enabled: metadata.enabled !== false,
         priority: typeof metadata.priority === 'number' ? metadata.priority : 0,
       },
       content: body,
-      source: scope,
+      source,
       filePath: skillFilePath,
     });
   }
@@ -136,26 +159,82 @@ export function discoverSkillsFromDir(
   return skills;
 }
 
+// ── Adapter Sources ─────────────────────────────────────────────────
+
+function loadSkillsConfig(): SkillsConfig {
+  const settingsPath = join(homedir(), '.solo', 'settings.json');
+  if (!existsSync(settingsPath)) return DEFAULT_CONFIG;
+  try {
+    const raw = readFileSync(settingsPath, 'utf-8');
+    const parsed = JSON.parse(raw) as { skills?: Partial<SkillsConfig> };
+    return { ...DEFAULT_CONFIG, ...(parsed.skills ?? {}) };
+  } catch (err) {
+    logger.warn({ err }, 'skills settings parse failed, using defaults');
+    return DEFAULT_CONFIG;
+  }
+}
+
+function discoverClaudePlugins(): LoadedSkill[] {
+  const manifestPath = join(homedir(), '.claude', 'plugins', 'installed_plugins.json');
+  if (!existsSync(manifestPath)) return [];
+  let parsed: { plugins?: Record<string, Array<{ installPath?: string }>> };
+  try {
+    parsed = JSON.parse(readFileSync(manifestPath, 'utf-8'));
+  } catch (err) {
+    logger.warn({ err }, 'claude plugins manifest parse failed');
+    return [];
+  }
+
+  const out: LoadedSkill[] = [];
+  const plugins = parsed.plugins ?? {};
+  for (const installs of Object.values(plugins)) {
+    for (const install of installs) {
+      if (!install.installPath) continue;
+      const skillsDir = join(install.installPath, 'skills');
+      out.push(...discoverSkillsFromDir(skillsDir, 'claude_plugin'));
+    }
+  }
+  return out;
+}
+
+/**
+ * Walk from `cwd` up to `$HOME`, at most 12 hops, collecting any
+ * `.claude/skills/` directories encountered. Lets users who keep skills
+ * at a monorepo root (`Orbit_Main/.claude/skills/`) have them show up
+ * inside any sub-project.
+ */
+function discoverClaudeProjectAncestors(cwd: string): LoadedSkill[] {
+  const home = homedir();
+  const out: LoadedSkill[] = [];
+  let current = resolve(cwd);
+  let hops = 0;
+  while (hops < 12) {
+    if (current === home) break;
+    const candidate = join(current, '.claude', 'skills');
+    if (existsSync(candidate)) {
+      out.push(...discoverSkillsFromDir(candidate, 'claude_project'));
+    }
+    const parent = dirname(current);
+    if (parent === current) break;
+    current = parent;
+    hops += 1;
+  }
+  return out;
+}
+
 // ── Merging ─────────────────────────────────────────────────────────
 
 /**
- * Merge user and project skills. Project skills override user skills by name.
- * Filters disabled skills. Sorts by priority (desc), then name (asc).
+ * Collapse name collisions by keeping the highest-priority source, then
+ * drop disabled entries and sort: priority desc, name asc.
  */
-export function mergeSkills(
-  userSkills: LoadedSkill[],
-  projectSkills: LoadedSkill[]
-): LoadedSkill[] {
+export function mergeSkills(all: LoadedSkill[]): LoadedSkill[] {
   const map = new Map<string, LoadedSkill>();
-
-  // User skills first
-  for (const skill of userSkills) {
-    map.set(skill.metadata.name, skill);
-  }
-
-  // Project skills overwrite
-  for (const skill of projectSkills) {
-    map.set(skill.metadata.name, skill);
+  for (const skill of all) {
+    const existing = map.get(skill.metadata.name);
+    if (!existing || SOURCE_PRIORITY[skill.source] > SOURCE_PRIORITY[existing.source]) {
+      map.set(skill.metadata.name, skill);
+    }
   }
 
   return Array.from(map.values())
@@ -169,37 +248,49 @@ export function mergeSkills(
 
 // ── Prompt Formatting ───────────────────────────────────────────────
 
-/**
- * Format loaded skills as a plain markdown string for injection into
- * the agent system prompt. Provider-agnostic.
- */
 export function formatSkillsForPrompt(skills: LoadedSkill[]): string {
   if (skills.length === 0) return '';
-
-  const sections = skills.map(
-    (s) => `### ${s.metadata.name}\n\n${s.content}`
-  );
-
-  return `\n## Active Skills\n\nThe following skill instructions are loaded from .solo/skills/:\n\n${sections.join('\n\n---\n\n')}`;
+  const sections = skills.map((s) => `### ${s.metadata.name}\n\n${s.content}`);
+  return `\n## Active Skills\n\nThe following skill instructions are loaded from .solo/skills/ and imported sources:\n\n${sections.join(
+    '\n\n---\n\n'
+  )}`;
 }
 
 // ── Main Entry ──────────────────────────────────────────────────────
 
-/**
- * Load all skills from user and project directories.
- * Returns merged, filtered, sorted skills ready for prompt injection.
- */
 export function loadSkills(cwd: string): LoadedSkill[] {
-  const userDir = join(homedir(), '.solo', 'skills');
-  const projectDir = join(cwd, '.solo', 'skills');
+  const config = loadSkillsConfig();
+  const all: LoadedSkill[] = [];
 
-  const userSkills = discoverSkillsFromDir(userDir, 'user');
-  const projectSkills = discoverSkillsFromDir(projectDir, 'project');
-  const merged = mergeSkills(userSkills, projectSkills);
+  // Solo-native (always on)
+  all.push(...discoverSkillsFromDir(join(homedir(), '.solo', 'skills'), 'user'));
+  all.push(...discoverSkillsFromDir(join(cwd, '.solo', 'skills'), 'project'));
+
+  // Compatibility adapters (toggleable)
+  if (config.importClaudeUser) {
+    all.push(...discoverSkillsFromDir(join(homedir(), '.claude', 'skills'), 'claude_user'));
+  }
+  if (config.importClaudeProject) {
+    all.push(...discoverClaudeProjectAncestors(cwd));
+  }
+  if (config.importClaudePlugins) {
+    all.push(...discoverClaudePlugins());
+  }
+  if (config.importCodex) {
+    all.push(...discoverSkillsFromDir(join(homedir(), '.codex', 'skills'), 'codex'));
+  }
+
+  const merged = mergeSkills(all);
 
   if (merged.length > 0) {
     logger.info(
-      { count: merged.length, names: merged.map((s) => s.metadata.name) },
+      {
+        count: merged.length,
+        bySource: merged.reduce<Record<string, number>>((acc, s) => {
+          acc[s.source] = (acc[s.source] ?? 0) + 1;
+          return acc;
+        }, {}),
+      },
       'Skills loaded'
     );
   } else {
