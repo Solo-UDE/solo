@@ -59,11 +59,13 @@
 //! ```
 
 pub mod errors;
+pub mod git_watcher;
 pub mod operations;
 pub mod tree;
 pub mod watcher;
 
 // Re-export commonly used types
 pub use errors::{FsError, FsResult};
+pub use git_watcher::{GitRefWatcher, SharedGitRefWatcher};
 pub use tree::{read_directory, FileMetadata};
 pub use watcher::{FileEventType, FileWatchEvent, FileWatcher};
