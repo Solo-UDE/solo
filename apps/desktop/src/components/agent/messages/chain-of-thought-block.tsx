@@ -1,5 +1,6 @@
 import * as Collapsible from '@radix-ui/react-collapsible';
-import { Brain, CaretRight } from '@phosphor-icons/react';
+import { ChevronRightIcon } from '@radix-ui/react-icons';
+import { Brain } from 'lucide-react';
 import { useState } from 'react';
 
 import { StreamdownNarrative } from './StreamdownNarrative';
@@ -27,8 +28,9 @@ export const ChainOfThoughtBlock: FC<ChainOfThoughtBlockProps> = ({
         >
           <Brain className="w-3.5 h-3.5 text-muted-foreground/70 flex-shrink-0" />
           <span className="text-xs font-medium text-muted-foreground/70">Thinking</span>
-          <CaretRight
-            className={`w-3 h-3 text-muted-foreground/50 ml-auto transition-transform duration-150 ${open ? 'rotate-90' : ''}`}
+          <ChevronRightIcon
+            width={12} height={12}
+            className={`text-muted-foreground/50 ml-auto transition-transform duration-150 ${open ? 'rotate-90' : ''}`}
           />
         </button>
       </Collapsible.Trigger>
