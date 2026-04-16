@@ -1,4 +1,4 @@
-import { XCircle } from '@phosphor-icons/react';
+import { CrossCircledIcon } from '@radix-ui/react-icons';
 
 import type { FC } from 'react';
 
@@ -9,7 +9,7 @@ interface InterruptIndicatorProps {
 export const InterruptIndicator: FC<InterruptIndicatorProps> = ({ onFeedback }) => {
   return (
     <div className="flex items-center gap-2 py-2 text-destructive/70">
-      <XCircle className="h-4 w-4" />
+      <CrossCircledIcon width={16} height={16} />
 
       {onFeedback ? (
         <button
