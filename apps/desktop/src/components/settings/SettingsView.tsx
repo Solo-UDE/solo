@@ -9,8 +9,9 @@ import { FilesTab } from './tabs/FilesTab';
 import { ShortcutsTab } from './tabs/ShortcutsTab';
 import { AITab } from './tabs/AITab';
 import { VoiceTab } from './tabs/VoiceTab';
+import { SkillsTab } from './tabs/SkillsTab';
 
-const TAB_ORDER: SettingsTabId[] = ['general', 'editor', 'terminal', 'files', 'shortcuts', 'ai', 'voice'];
+const TAB_ORDER: SettingsTabId[] = ['general', 'editor', 'terminal', 'files', 'shortcuts', 'ai', 'voice', 'skills'];
 
 const TAB_LABELS: Record<SettingsTabId, string> = {
   general: 'General',
@@ -20,6 +21,7 @@ const TAB_LABELS: Record<SettingsTabId, string> = {
   shortcuts: 'Shortcuts',
   ai: 'Providers',
   voice: 'Voice',
+  skills: 'Skills',
 };
 
 export function SettingsView() {
@@ -44,6 +46,8 @@ export function SettingsView() {
         return <AITab />;
       case 'voice':
         return <VoiceTab />;
+      case 'skills':
+        return <SkillsTab />;
       default:
         return null;
     }
