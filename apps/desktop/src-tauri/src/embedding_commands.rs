@@ -30,6 +30,13 @@ impl EmbeddingState {
             provider: Arc::new(RwLock::new(None)),
         }
     }
+
+    /// Borrow the current embedding provider, if any. Used by other
+    /// subsystems (e.g. solo-vault) that want to share the same provider
+    /// instance instead of constructing a second one.
+    pub async fn current_provider(&self) -> Option<Arc<dyn EmbeddingProvider>> {
+        self.provider.read().await.clone()
+    }
 }
 
 impl Default for EmbeddingState {
@@ -72,6 +79,13 @@ pub async fn embedding_init(
         Some("text-embedding-ada-002") => OpenAIEmbeddingModel::TextEmbeddingAda002,
         _ => OpenAIEmbeddingModel::TextEmbedding3Small,
     };
+
+    // Mirror the key into the process env so the agent-bridge sidecar
+    // inherits it on next spawn. The sidecar reads `OPENAI_API_KEY` in
+    // vault.ts to embed semantic search queries. Setting this here (in
+    // addition to the startup pre-warm) covers the case where the user
+    // adds a key mid-session.
+    std::env::set_var("OPENAI_API_KEY", &api_key);
 
     let provider = Arc::new(OpenAIEmbeddingProvider::with_model(api_key, model));
 
