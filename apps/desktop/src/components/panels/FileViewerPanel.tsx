@@ -12,7 +12,7 @@ import { FileIcon } from '@react-symbols/icons/utils';
 import { CodeSkeleton } from '@/components/ui/skeletons';
 import * as fs from '@/lib/tauri/fs';
 import { registerSoloTheme, SOLO_THEME_NAME, SOLO_LIGHT_THEME_NAME, registerSoloLightTheme } from '@/components/editor/theme';
-import { MarkdownEditor } from '@/components/editor/MarkdownEditor';
+import { MarkdownPreview } from '@/components/editor/MarkdownPreview';
 import { MarkdownToggle } from '@/components/editor/MarkdownToggle';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useFileExplorerStore } from '@/stores/fileExplorerStore';
@@ -493,10 +493,9 @@ export function FileViewerPanel({
           render above the breadcrumb's stacking context. */}
       <div className="relative z-10 flex-1 overflow-hidden">
         {isMarkdown && markdownMode === 'preview' ? (
-          <MarkdownEditor
+          <MarkdownPreview
             key={filePath}
             content={content}
-            onContentChange={(md) => setContent(md)}
           />
         ) : (
           monacoEditor
