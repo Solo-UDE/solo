@@ -24,11 +24,15 @@ use tracing::{debug, error, info, warn};
 
 use crate::{Result, VaultError};
 
-/// Dimension of the embedding vectors we store. Matches OpenAI
-/// `text-embedding-3-small`. If we swap models later we either: (a) bump
-/// this constant and force a backfill, or (b) add a per-row `dim` column
-/// for coexistence. V1.2 picks (a).
-pub const EMBEDDING_DIM: usize = 1536;
+/// Dimension of the embedding vectors we store.
+///
+/// V1.2.1 default: **384** — matches `all-MiniLM-L6-v2` from fastembed-rs.
+/// We deliberately picked (a) "bump this constant and force a backfill"
+/// over (b) per-row dim coexistence: the blob_to_f32_vec dim check rejects
+/// any pre-existing 1536-dim rows from the V1.2 OpenAI era and the search
+/// path auto-nulls them. `vault_backfill_embeddings` then re-embeds them
+/// with the local model.
+pub const EMBEDDING_DIM: usize = 384;
 
 const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS entries (
