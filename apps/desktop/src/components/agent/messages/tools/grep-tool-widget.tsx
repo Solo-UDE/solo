@@ -1,4 +1,5 @@
-import { MagnifyingGlass, CircleNotch } from '@phosphor-icons/react';
+import { MagnifyingGlassIcon } from '@radix-ui/react-icons';
+import { Loader2 } from 'lucide-react';
 import { useState } from 'react';
 
 import { ExpandRegion } from '../shared/ExpandRegion';
@@ -31,13 +32,13 @@ export const GrepToolWidget: FC<GrepToolWidgetProps> = ({
         onClick={() => { setIsExpanded(!isExpanded); }}
         className={`w-full flex items-center gap-2 px-3 py-1.5 bg-muted hover:bg-accent/50 transition-colors ${isExpanded ? 'border-b tool-widget-divider' : ''}`}
       >
-        <MagnifyingGlass className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+        <MagnifyingGlassIcon width={14} height={14} className="text-muted-foreground shrink-0" />
         <span className="text-sm font-medium text-foreground">
           {isRunning ? 'Searching...' : 'Grep'}
         </span>
         <code className="text-xs font-mono text-muted-foreground truncate">{pattern}</code>
         {isRunning ? (
-          <CircleNotch className="h-3 w-3 animate-spin text-muted-foreground ml-auto" />
+          <Loader2 className="h-3 w-3 animate-spin text-muted-foreground ml-auto" />
         ) : matchCount > 0 ? (
           <span className="text-xs text-muted-foreground ml-auto">{matchCount} results</span>
         ) : null}
