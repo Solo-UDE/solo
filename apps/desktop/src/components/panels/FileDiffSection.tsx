@@ -3,7 +3,7 @@
  */
 
 import { useState, useCallback, memo } from 'react';
-import { CaretDown, CaretRight } from '@phosphor-icons/react';
+import { ChevronDownIcon, ChevronRightIcon } from '@radix-ui/react-icons';
 import type { FileDiff, DiffHunk } from '@/lib/tauri/git';
 import { cn } from '@/lib/utils';
 
@@ -126,9 +126,9 @@ export const FileDiffSection = memo(({ file, defaultOpen = true }: FileDiffSecti
         )}
       >
         {isOpen ? (
-          <CaretDown className="w-3 h-3 shrink-0 text-muted-foreground" weight="bold" />
+          <ChevronDownIcon className="w-3 h-3 shrink-0 text-muted-foreground" />
         ) : (
-          <CaretRight className="w-3 h-3 shrink-0 text-muted-foreground" weight="bold" />
+          <ChevronRightIcon className="w-3 h-3 shrink-0 text-muted-foreground" />
         )}
         <span className="truncate text-foreground">{fileName}</span>
         {dirPath && (
