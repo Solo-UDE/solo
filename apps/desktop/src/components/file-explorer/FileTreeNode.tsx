@@ -40,7 +40,7 @@ interface FileTreeNodeProps {
   style: React.CSSProperties;
   onToggle: () => void;
   onClick: (event: React.MouseEvent) => void;
-  onDoubleClick: () => void;
+  onDoubleClick?: () => void;
   onRenameSubmit: (newName: string) => void;
   onRenameCancel: () => void;
   onNewFile: () => void;

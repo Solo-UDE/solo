@@ -6,17 +6,20 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { FC } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { Plus, Broom, TreeStructure } from '@phosphor-icons/react';
+import { Plus, Broom, ArrowsClockwise, TreeStructure } from '@phosphor-icons/react';
 import { WorktreeCardLarge } from './WorktreeCardLarge';
 import { WorktreeDetailView } from './WorktreeDetailView';
 import { useUIStore } from '@/stores/uiStore';
-import { useWorktreeStore, useWorktreeList } from '@/stores/worktreeStore';
+import { useWorktreeStore } from '@/stores/worktreeStore';
 import { useRepoStore } from '@/stores/repoStore';
 import { usePanelTabsStore } from '@/stores/panelTabsStore';
 import { BUILTIN_PANEL_TYPES } from '@/lib/panels';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { wtLog, wtSnapshot } from '@/lib/worktreeLogger';
 import type { WorktreeInfo } from '../../bindings';
+
+const EMPTY_WORKTREES: WorktreeInfo[] = [];
 
 interface DevSidebarProps {
   readonly onFileOpen: (path: string) => void;
@@ -27,8 +30,15 @@ export const DevSidebar: FC<DevSidebarProps> = ({ onFileOpen }) => {
   const drillIntoWorktree = useUIStore((s) => s.drillIntoWorktree);
   const drillOutOfWorktree = useUIStore((s) => s.drillOutOfWorktree);
   const activeRepoPath = useRepoStore((s) => s.activeRepoPath);
+  const isSwitching = useRepoStore((s) => s.isSwitching);
+  const refreshRepoWorktrees = useRepoStore((s) => s.refreshWorktrees);
 
-  const worktrees = useWorktreeList();
+  // Source the displayed list from repoStore — updates instantly when the user
+  // switches projects, no extra IPC round-trip required.
+  const worktrees = useRepoStore((s) =>
+    s.activeRepoPath ? s.repos.get(s.activeRepoPath)?.worktrees ?? EMPTY_WORKTREES : EMPTY_WORKTREES,
+  );
+
   const activeWorktreeId = useWorktreeStore((s) => s.activeWorktreeId);
   const setActive = useWorktreeStore((s) => s.setActive);
   const lock = useWorktreeStore((s) => s.lock);
@@ -44,33 +54,99 @@ export const DevSidebar: FC<DevSidebarProps> = ({ onFileOpen }) => {
   const [branchName, setBranchName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
 
-  // Load worktrees on mount
+  // Sync per-repo cache from disk whenever the active repo changes.
+  // Also kick off the worktreeStore sync so action handlers have fresh state.
   useEffect(() => {
-    loadWorktrees();
-  }, [loadWorktrees]);
+    if (!activeRepoPath) return;
+    wtLog('info', 'active repo changed → refreshing worktree caches', {
+      action: 'repoSwitch',
+      activeRepoPath,
+    });
+    void refreshRepoWorktrees(activeRepoPath);
+    void loadWorktrees();
+  }, [activeRepoPath, refreshRepoWorktrees, loadWorktrees]);
 
   // Reset drill-in view when repo changes
   useEffect(() => {
     drillOutOfWorktree();
   }, [activeRepoPath, drillOutOfWorktree]);
 
+  // Helper: after any mutation, update both stores so the UI stays consistent.
+  const syncCachesAfterMutation = useCallback(async () => {
+    if (!activeRepoPath) return;
+    await Promise.all([refreshRepoWorktrees(activeRepoPath), loadWorktrees()]);
+  }, [activeRepoPath, refreshRepoWorktrees, loadWorktrees]);
+
   const handleSelectWorktree = useCallback(async (wt: WorktreeInfo) => {
-    const id = wt.is_main ? null : wt.id;
-    await setActive(id);
-    drillIntoWorktree(wt.id);
-  }, [setActive, drillIntoWorktree]);
+    wtLog('info', 'user clicked worktree', { action: 'ui:select', ...wtSnapshot(wt) });
+    try {
+      const id = wt.is_main ? null : wt.id;
+      await setActive(id);
+      drillIntoWorktree(wt.id);
+    } catch (err) {
+      const msg = String(err);
+      wtLog('error', 'select failed', { action: 'ui:select', ...wtSnapshot(wt), error: msg });
+      if (msg.includes('Worktree not found') || msg.includes('No such file or directory')) {
+        toast.error('Worktree folder is missing', {
+          description: 'Try the refresh or prune button to clean up stale entries.',
+        });
+        await syncCachesAfterMutation();
+      } else {
+        toast.error('Could not open worktree', { description: msg });
+      }
+    }
+  }, [setActive, drillIntoWorktree, syncCachesAfterMutation]);
 
   const handleToggleLock = useCallback(async (wt: WorktreeInfo) => {
-    if (wt.is_locked) {
-      await unlock(wt.id);
-    } else {
-      await lock(wt.id, 'Locked from sidebar');
+    wtLog('info', `user ${wt.is_locked ? 'unlocking' : 'locking'} worktree`, {
+      action: 'ui:toggleLock',
+      ...wtSnapshot(wt),
+    });
+    try {
+      if (wt.is_locked) {
+        await unlock(wt.id);
+      } else {
+        await lock(wt.id, 'Locked from sidebar');
+      }
+      await syncCachesAfterMutation();
+    } catch (err) {
+      const msg = String(err);
+      wtLog('error', 'toggle lock failed', { action: 'ui:toggleLock', ...wtSnapshot(wt), error: msg });
+      toast.error('Failed to change lock state', { description: msg });
     }
-  }, [lock, unlock]);
+  }, [lock, unlock, syncCachesAfterMutation]);
 
   const handleRemove = useCallback(async (wt: WorktreeInfo) => {
-    await removeWorktree(wt.id, wt.is_locked);
-  }, [removeWorktree]);
+    wtLog('info', 'user clicked remove', { action: 'ui:remove', ...wtSnapshot(wt) });
+    try {
+      await removeWorktree(wt.id, wt.is_locked);
+      await syncCachesAfterMutation();
+    } catch (err) {
+      const msg = String(err);
+      wtLog('error', 'remove failed', { action: 'ui:remove', ...wtSnapshot(wt), error: msg });
+      // Stale entry: backend has no record but frontend does — fall back to prune
+      if (msg.includes('Worktree not found') || msg.includes('No such file or directory')) {
+        try {
+          const pruned = await pruneWorktrees();
+          toast.success(
+            pruned.length > 0
+              ? `Cleaned up ${pruned.length} stale worktree${pruned.length > 1 ? 's' : ''}`
+              : 'Worktree already removed — refreshed list',
+          );
+          await syncCachesAfterMutation();
+        } catch (pruneErr) {
+          wtLog('error', 'fallback prune failed', {
+            action: 'ui:remove:fallbackPrune',
+            ...wtSnapshot(wt),
+            error: String(pruneErr),
+          });
+          toast.error('Failed to clean up worktree', { description: String(pruneErr) });
+        }
+        return;
+      }
+      toast.error('Failed to remove worktree', { description: msg });
+    }
+  }, [removeWorktree, pruneWorktrees, syncCachesAfterMutation]);
 
   const handleViewDiff = useCallback((wt: WorktreeInfo) => {
     usePanelTabsStore.getState().openPanel(BUILTIN_PANEL_TYPES.WORKTREE_DIFF, {
@@ -80,29 +156,63 @@ export const DevSidebar: FC<DevSidebarProps> = ({ onFileOpen }) => {
   }, []);
 
   const handlePrune = useCallback(async () => {
+    wtLog('info', 'user clicked prune', { action: 'ui:prune', activeRepoPath });
     try {
       const pruned = await pruneWorktrees();
       if (pruned.length > 0) {
         toast.success(`Pruned ${pruned.length} worktree${pruned.length > 1 ? 's' : ''}`);
+      } else {
+        toast.info('No stale worktrees to prune');
       }
+      await syncCachesAfterMutation();
     } catch (err) {
+      wtLog('error', 'prune failed', {
+        action: 'ui:prune',
+        activeRepoPath,
+        error: String(err),
+      });
       toast.error('Prune failed', { description: String(err) });
     }
-  }, [pruneWorktrees]);
+  }, [pruneWorktrees, syncCachesAfterMutation, activeRepoPath]);
+
+  const handleRefresh = useCallback(async () => {
+    wtLog('info', 'user clicked refresh', { action: 'ui:refresh', activeRepoPath });
+    try {
+      await syncCachesAfterMutation();
+      toast.success('Worktrees refreshed');
+    } catch (err) {
+      wtLog('error', 'refresh failed', {
+        action: 'ui:refresh',
+        activeRepoPath,
+        error: String(err),
+      });
+      toast.error('Refresh failed', { description: String(err) });
+    }
+  }, [syncCachesAfterMutation, activeRepoPath]);
 
   const handleCreate = useCallback(async () => {
     if (!branchName.trim()) return;
     setIsCreating(true);
+    wtLog('info', 'user creating worktree', {
+      action: 'ui:create',
+      branch: branchName.trim(),
+      activeRepoPath,
+    });
     try {
       await createWorktree(branchName.trim(), true);
       setBranchName('');
       setShowCreate(false);
-    } catch {
-      // Error is set in the store
+      await syncCachesAfterMutation();
+    } catch (err) {
+      wtLog('error', 'create failed', {
+        action: 'ui:create',
+        branch: branchName.trim(),
+        error: String(err),
+      });
     } finally {
       setIsCreating(false);
     }
-  }, [branchName, createWorktree]);
+  }, [branchName, createWorktree, syncCachesAfterMutation, activeRepoPath]);
 
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
@@ -132,6 +242,22 @@ export const DevSidebar: FC<DevSidebarProps> = ({ onFileOpen }) => {
                   title="New Worktree"
                 >
                   <Plus className="w-3 h-3" weight="bold" />
+                </button>
+                <button
+                  onClick={handleRefresh}
+                  className={cn(
+                    'w-5 h-5 flex items-center justify-center rounded',
+                    'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
+                    'active:scale-95 transition-all duration-200',
+                    isSwitching && 'opacity-60',
+                  )}
+                  title="Refresh worktrees"
+                  disabled={isSwitching}
+                >
+                  <ArrowsClockwise
+                    className={cn('w-3 h-3', isSwitching && 'animate-spin')}
+                    weight="bold"
+                  />
                 </button>
                 <button
                   onClick={handlePrune}
@@ -186,8 +312,13 @@ export const DevSidebar: FC<DevSidebarProps> = ({ onFileOpen }) => {
               )}
             </AnimatePresence>
 
-            {/* Worktree cards */}
-            <div className="flex-1 overflow-y-auto py-1.5">
+            {/* Worktree cards — keyed by repo so a project switch remounts
+                the AnimatePresence tree and cards appear instantly,
+                while add/remove within the same repo still animates. */}
+            <div
+              key={activeRepoPath ?? 'no-repo'}
+              className="flex-1 overflow-y-auto py-1.5"
+            >
               {worktrees.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-8 text-center px-4">
                   <div className="w-10 h-10 rounded-2xl bg-muted/50 flex items-center justify-center mb-2">

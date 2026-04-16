@@ -3,7 +3,7 @@
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import type { FC } from 'react';
+import type { FC, RefObject } from 'react';
 import {
   Plus,
   CircleNotch,
@@ -18,9 +18,10 @@ import { toast } from 'sonner';
 
 interface WorktreeSwitcherProps {
   onClose: () => void;
+  triggerRef?: RefObject<HTMLButtonElement | null>;
 }
 
-export const WorktreeSwitcher: FC<WorktreeSwitcherProps> = ({ onClose }) => {
+export const WorktreeSwitcher: FC<WorktreeSwitcherProps> = ({ onClose, triggerRef }) => {
   const popoverRef = useRef<HTMLDivElement>(null);
 
   // Branch state
@@ -37,16 +38,19 @@ export const WorktreeSwitcher: FC<WorktreeSwitcherProps> = ({ onClose }) => {
   const [branchCreateError, setBranchCreateError] = useState('');
   const branchInputRef = useRef<HTMLInputElement>(null);
 
-  // Close on outside click
+  // Close on outside click. Skip when the click lands on the trigger button so
+  // the trigger's own onClick can toggle the popover closed cleanly (otherwise
+  // mousedown closes it, then click reopens it).
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
+      if (triggerRef?.current?.contains(e.target as Node)) return;
       if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
         onClose();
       }
     };
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
-  }, [onClose]);
+  }, [onClose, triggerRef]);
 
   // Focus input when form opens
   useEffect(() => {

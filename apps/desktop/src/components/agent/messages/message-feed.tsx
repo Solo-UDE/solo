@@ -17,6 +17,10 @@ export interface MessageFeedProps {
   isStreaming?: boolean;
   onToolApproval?: (toolCallId: string, approved: boolean) => void;
   onAnswerQuestion?: (requestId: string, answers: Record<string, string>) => void;
+  /** Reserved space below the message list. Used so floating overlays
+      anchored above the input (e.g. sticky tasks pill) never occlude the
+      latest streamed content. Auto-scroll lands below this padding. */
+  bottomReservePx?: number;
   className?: string;
 }
 
@@ -26,6 +30,7 @@ export const MessageFeed: FC<MessageFeedProps> = ({
   isStreaming = false,
   onToolApproval,
   onAnswerQuestion,
+  bottomReservePx = 0,
   className = '',
 }) => {
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
@@ -154,6 +159,11 @@ export const MessageFeed: FC<MessageFeedProps> = ({
           );
         })}
       </div>
+      {/* Spacer matching the sticky overlay height so the bottom of the
+          virtualised list is never occluded by floating UI above the input. */}
+      {bottomReservePx > 0 ? (
+        <div aria-hidden="true" style={{ height: `${String(bottomReservePx)}px` }} />
+      ) : null}
     </div>
   );
 };

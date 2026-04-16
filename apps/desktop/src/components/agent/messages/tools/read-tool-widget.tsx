@@ -17,7 +17,7 @@ export const ReadToolWidget: FC<ReadToolWidgetProps> = ({
   const lineCount = content ? content.split('\n').length : undefined;
 
   return (
-    <div className="my-1 inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-muted/50 border border-border/50">
+    <div className="my-1 inline-flex items-center gap-1.5 px-2 py-1 rounded-md tool-widget-inline-chip">
       {isRunning ? (
         <CircleNotch className="h-3.5 w-3.5 text-muted-foreground animate-spin shrink-0" />
       ) : (

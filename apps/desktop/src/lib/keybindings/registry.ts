@@ -41,9 +41,9 @@ export const DEFAULT_KEYBINDINGS: KeybindingDefinition[] = [
   // View
   { id: 'view.toggleSidebar', label: 'Toggle Sidebar', description: 'Show/hide the sidebar', defaultKey: 'Cmd+B', category: 'view', implemented: false },
   { id: 'view.toggleTerminal', label: 'Toggle Terminal', description: 'Show/hide the terminal', defaultKey: 'Cmd+J', category: 'view' },
-  { id: 'view.zoomIn', label: 'Zoom In', description: 'Increase editor zoom', defaultKey: 'Cmd+=', category: 'view', implemented: false },
-  { id: 'view.zoomOut', label: 'Zoom Out', description: 'Decrease editor zoom', defaultKey: 'Cmd+-', category: 'view', implemented: false },
-  { id: 'view.resetZoom', label: 'Reset Zoom', description: 'Reset editor zoom', defaultKey: 'Cmd+0', category: 'view', implemented: false },
+  { id: 'view.zoomIn', label: 'Zoom In', description: 'Increase application zoom', defaultKey: 'Cmd+=', category: 'view' },
+  { id: 'view.zoomOut', label: 'Zoom Out', description: 'Decrease application zoom', defaultKey: 'Cmd+-', category: 'view' },
+  { id: 'view.resetZoom', label: 'Reset Zoom', description: 'Reset application zoom to 100%', defaultKey: 'Cmd+0', category: 'view' },
   { id: 'view.showShortcuts', label: 'Show Keyboard Shortcuts', description: 'Open keyboard shortcuts overlay', defaultKey: 'Cmd+Shift+/', category: 'view' },
 
   // Terminal

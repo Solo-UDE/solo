@@ -18,10 +18,11 @@ import { toast } from 'sonner';
 
 interface PrimarySidebarProps {
   readonly width: number;
+  readonly isResizing?: boolean;
   readonly onFileOpen: (path: string) => void;
 }
 
-export const PrimarySidebar = forwardRef<HTMLElement, PrimarySidebarProps>(({ width, onFileOpen }, ref) => {
+export const PrimarySidebar = forwardRef<HTMLElement, PrimarySidebarProps>(({ width, isResizing = false, onFileOpen }, ref) => {
   const isCollapsed = useIsLeftSidebarCollapsed();
   const addRepo = useRepoStore((state) => state.addRepo);
   const activeRepoPath = useRepoStore((state) => state.activeRepoPath);
@@ -40,14 +41,12 @@ export const PrimarySidebar = forwardRef<HTMLElement, PrimarySidebarProps>(({ wi
     }
   }, [addRepo]);
 
-  const isResizing = typeof document !== 'undefined' && document.body.classList.contains('is-resizing');
-
   return (
     <motion.aside
       ref={ref}
-      className="h-full flex flex-col relative bg-sidebar overflow-hidden pt-[38px]"
-      animate={{ width }}
-      transition={isResizing ? { duration: 0 } : { type: 'spring', stiffness: 400, damping: 30 }}
+      className={`h-full flex flex-col relative bg-sidebar overflow-hidden pt-[38px] ${
+        isResizing ? '' : 'transition-[width] duration-200 ease-[var(--ease-smooth)]'
+      }`}
       style={{ width }}
     >
       {/* Loading overlay during repo switch */}

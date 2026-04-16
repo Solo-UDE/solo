@@ -1,6 +1,12 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* Tailwind v4: scan Streamdown's compiled output so its utility classes survive purging. */
+@source "../../../node_modules/streamdown/dist/*.js";
+@source "../../../node_modules/@streamdown/code/dist/*.js";
+@source "../../../node_modules/@streamdown/math/dist/*.js";
+@source "../../../node_modules/@streamdown/mermaid/dist/*.js";
+
 /* CRITICAL: Tell Tailwind v4 how to handle dark mode */
 @custom-variant dark (&:is(.dark *));
 
@@ -102,6 +108,21 @@
   --color-agent-assistant-bg: var(--agent-assistant-bg);
   --color-agent-tool-bg: var(--agent-tool-bg);
   --color-agent-streaming: var(--agent-streaming);
+  --color-chat-area: var(--chat-area);
+  --color-tool-output-bg: var(--tool-output-bg);
+  --color-border-tool: var(--border-tool);
+
+  /* Orbit Geist 10-step neutral scale (ported from Orbit) */
+  --color-orbit-100: var(--orbit-100);
+  --color-orbit-200: var(--orbit-200);
+  --color-orbit-300: var(--orbit-300);
+  --color-orbit-400: var(--orbit-400);
+  --color-orbit-500: var(--orbit-500);
+  --color-orbit-600: var(--orbit-600);
+  --color-orbit-700: var(--orbit-700);
+  --color-orbit-800: var(--orbit-800);
+  --color-orbit-900: var(--orbit-900);
+  --color-orbit-1000: var(--orbit-1000);
 
   /* Syntax highlighting */
   --color-syntax-keyword: var(--syntax-keyword);
@@ -156,7 +177,7 @@
   /* Enable system color scheme for proper scrollbar colors */
   color-scheme: light dark;
 
-  --radius: 0.625rem;
+  --radius: 0.375rem;
 
   /* Base */
   --background: oklch(0.98 0.005 75);
@@ -174,9 +195,10 @@
   --primary: oklch(0.68 0.17 140);
   --primary-foreground: oklch(0.98 0.01 75);
 
-  /* Secondary */
-  --secondary: oklch(0.80 0.05 65);
-  --secondary-foreground: oklch(0.30 0.02 60);
+  /* Secondary — Codex-style: subtle gray surface (slightly darker than the
+     page bg so it has shape on its own without needing a border), near-black ink */
+  --secondary: oklch(0.94 0 0);
+  --secondary-foreground: oklch(0.20 0 0);
 
   /* Muted */
   --muted: oklch(0.92 0.01 70);
@@ -226,11 +248,31 @@
   --sidebar-foreground: oklch(0.25 0.02 60);
   --sidebar-border: oklch(0.92 0.01 70);
 
-  /* Agent-specific */
-  --agent-user-bg: oklch(0.68 0.17 140 / 80%);
-  --agent-assistant-bg: oklch(0.96 0.008 70);
-  --agent-tool-bg: oklch(0.94 0.01 70);
-  --agent-streaming: oklch(0.68 0.17 140);
+  /* ── Orbit Geist 10-step neutral scale (light) ────────────────────────
+     Ported from Orbit for a disciplined monochromatic chat surface.
+     Chroma = 0 where possible — no warm tint in structural grays. */
+  --orbit-100: #dbdbdb;
+  --orbit-200: #d2d2d2;
+  --orbit-300: #cacaca;
+  --orbit-400: #c1c1c1;
+  --orbit-500: #b5b5b5;
+  --orbit-600: #a1a1a1;
+  --orbit-700: #737373;
+  --orbit-800: #696969;
+  --orbit-900: #4c4c4c;
+  --orbit-1000: #202020;
+
+  /* Chat surface tokens — Codex-flat: tool blocks blend into the page,
+     code/output uses a barely-tinted gray, hairline borders only. */
+  --chat-area: oklch(0.96 0.005 75);
+  --tool-output-bg: oklch(0.97 0 0);
+  --border-tool: oklch(0 0 0 / 0.05);
+
+  /* Agent-specific — neutral gray bubble, transparent assistant, distinct tool surface */
+  --agent-user-bg: #dbdbdb;
+  --agent-assistant-bg: transparent;
+  --agent-tool-bg: var(--tool-output-bg);
+  --agent-streaming: oklch(0.55 0.02 60);
 
   /* Repo identity colors (light mode) */
   --repo-blue: oklch(0.55 0.18 250);
@@ -313,8 +355,8 @@ html.dark {
   --primary: oklch(0.86 0.14 135);
   --primary-foreground: oklch(0.15 0.01 60);
 
-  /* Secondary */
-  --secondary: oklch(0.28 0.02 58);
+  /* Secondary — neutral mid-dark, lighter than bg so it reads as a button without a border */
+  --secondary: oklch(0.28 0 0);
   --secondary-foreground: oklch(0.90 0.01 75);
 
   /* Muted */
@@ -397,11 +439,29 @@ html.dark {
   --sidebar-foreground: oklch(0.93 0.01 75);
   --sidebar-border: oklch(1 0 0 / 10%);
 
-  /* Agent-specific (dark mode) */
-  --agent-user-bg: oklch(0.86 0.14 135 / 80%);
-  --agent-assistant-bg: oklch(0.22 0.015 58);
-  --agent-tool-bg: oklch(0.25 0.015 58);
-  --agent-streaming: oklch(0.86 0.14 135);
+  /* ── Orbit Geist 10-step neutral scale (dark) ──────────────────────── */
+  --orbit-100: #232323;
+  --orbit-200: #2a2a2a;
+  --orbit-300: #313131;
+  --orbit-400: #3a3a3a;
+  --orbit-500: #484848;
+  --orbit-600: #606060;
+  --orbit-700: #6d6d6d;
+  --orbit-800: #7b7b7b;
+  --orbit-900: #b3b3b3;
+  --orbit-1000: #eeeeee;
+
+  /* Chat surface tokens (dark) — Codex-flat: tool blocks blend into the page,
+     code/output uses a barely-tinted gray, hairline borders only. */
+  --chat-area: #181818;
+  --tool-output-bg: oklch(0.20 0 0);
+  --border-tool: oklch(1 0 0 / 0.06);
+
+  /* Agent-specific (dark) — neutral bubble, transparent assistant, distinct tool surface */
+  --agent-user-bg: #272727;
+  --agent-assistant-bg: transparent;
+  --agent-tool-bg: var(--tool-output-bg);
+  --agent-streaming: oklch(0.7 0.02 60);
 }
 
 /* =============================================================================
@@ -705,10 +765,14 @@ html.dark ::-webkit-scrollbar-thumb:hover {
 
 /* Fix Monaco horizontal overflow in @monaco-editor/react's internal row flex.
    The library wraps the editor in display:flex (row) — the mount div
-   defaults to min-width:auto, preventing shrink below content width. */
+   defaults to min-width:auto, preventing shrink below content width.
+   Keep horizontal clipping for that fix, but let vertical overflow show so
+   the find widget's hover tooltips (which pop UP from their buttons) aren't
+   clipped by the breadcrumb above. */
 .monaco-mount {
   min-width: 0;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: visible;
 }
 
 /* Zero state (no tiles) */
@@ -900,32 +964,169 @@ html.dark .hover-lift:hover {
 
 
 /* =============================================================================
-   STREAMDOWN THEME OVERRIDES
-   Solo-branded styling for streaming markdown elements
+   STREAMDOWN OVERRIDES — exact port from Orbit
+   Claude.ai-style code blocks: hairline border, no header bar, hover-reveal
+   copy button with backdrop blur. Easing: ease-out-quart.
+   Source: Orbit/apps/agent/src/globals.css lines 720-891
    ============================================================================= */
 
-/* Code blocks — rounded, subtle border, soft shadow */
+/* Headings — break unbreakable runs (e.g. "===="/"----" ASCII dividers that
+   markdown keeps inside a setext heading during streaming) so they can't push
+   the flex message row past its allotted width. */
+[data-streamdown^='heading-'] {
+  overflow-wrap: anywhere;
+}
+
+/* Inline code — subtle border + tinted background, Claude.ai style */
+[data-streamdown='inline-code'] {
+  background: transparent !important;
+  border: 0.5px solid color-mix(in oklch, var(--border) 50%, transparent) !important;
+  border-radius: 0.375rem !important;
+  padding: 1px 4px !important;
+  font-size: 0.9em !important;
+  color: var(--primary) !important;
+  white-space: pre-wrap !important;
+}
+
+/* Outer frame — matches tool widget content boxes */
+[data-streamdown='code-block'],
+[data-streamdown='code-block-container'] {
+  position: relative !important;
+  margin: 0.75rem 0 !important;
+  border-radius: 0.75rem !important;
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
+  background-color: var(--chat-area) !important;
+  overflow: hidden !important;
+}
+
+html.dark [data-streamdown='code-block'],
+html.dark [data-streamdown='code-block-container'] {
+  border-color: rgba(255, 255, 255, 0.05) !important;
+  background-color: oklch(23% 0 0) !important;
+}
+
+/* Header — dissolve as layout box so children position in code-block.
+   When no language detected, the header strip collapses to zero height. */
+[data-streamdown='code-block-header'] {
+  display: contents !important;
+}
+
+/* Language label — visible only when populated.
+   Left padding matches code-block-body (0.5rem) so the label's x-origin
+   lines up with the first character of the code content below. */
+[data-streamdown='code-block-header'] > span:first-child {
+  display: block !important;
+  margin-left: 0 !important;
+  padding: 0.5rem 0.5rem 0 !important;
+  font-size: 0.6875rem !important; /* 11px */
+  line-height: 1 !important;
+  color: var(--orbit-900) !important;
+}
+
+/* Collapse empty language label — no ghost strip */
+[data-streamdown='code-block-header'] > span:first-child:empty {
+  display: none !important;
+}
+
+/* Button tray — anchor top-right of code-block container */
+[data-streamdown='code-block-header'] > div:last-child {
+  position: absolute !important;
+  top: 0.375rem !important;
+  right: 0.375rem !important;
+  z-index: 10 !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 0.25rem !important;
+}
+
+/* Hide download button */
+[data-streamdown='code-block-download-button'] {
+  display: none;
+}
+
+/* Copy button — hidden by default, glass effect on reveal.
+   ease-out-quart: cubic-bezier(0.165, 0.85, 0.45, 1) */
+[data-streamdown='code-block-copy-button'] {
+  height: 1.75rem !important;
+  width: 1.75rem !important;
+  padding: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 9px !important;
+  background: transparent !important;
+  color: var(--muted-foreground) !important;
+  opacity: 0 !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition:
+    opacity 300ms cubic-bezier(0.165, 0.85, 0.45, 1),
+    background-color 150ms cubic-bezier(0.4, 0, 0.2, 1),
+    color 150ms cubic-bezier(0.4, 0, 0.2, 1),
+    transform 80ms cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+/* Reveal on container hover */
+[data-streamdown='code-block']:hover [data-streamdown='code-block-copy-button'] {
+  opacity: 1 !important;
+}
+
+[data-streamdown='code-block-copy-button'] svg {
+  width: 0.875rem !important;
+  height: 0.875rem !important;
+}
+
+[data-streamdown='code-block-copy-button']:hover {
+  background: rgba(0, 0, 0, 0.06) !important;
+  color: var(--foreground) !important;
+}
+
+html.dark [data-streamdown='code-block-copy-button']:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+[data-streamdown='code-block-copy-button']:active {
+  transform: scale(0.95) !important;
+}
+
+/* Body — no separator, flows from label, wraps long lines */
+[data-streamdown='code-block-body'] {
+  margin: 0 !important;
+  padding: 0.5rem 0.5rem 0.75rem !important;
+  font-size: 0.75rem !important; /* 12px */
+  line-height: 1.5 !important;
+  background-color: transparent !important;
+  border-top: none !important;
+  overflow-x: hidden !important;
+  white-space: pre-wrap !important;
+  word-break: break-word !important;
+}
+
+/* Line spans — no gutter, no line numbers */
+[data-streamdown='code-block-body'] code > span {
+  min-height: 1lh !important;
+  padding-left: 0 !important;
+}
+
+/* Hide line numbers — Streamdown bakes counter ::before via Tailwind classes;
+   suppress them entirely so code sits flush-left. */
+[data-streamdown='code-block-body'] code > span::before {
+  display: none !important;
+}
+
+/* Trim trailing blank line — Streamdown always appends one empty <span>
+   for the final newline. Removing min-height lets it collapse to zero. */
+[data-streamdown='code-block-body'] code > span:last-child {
+  min-height: 0 !important;
+}
+
+/* Force content-visibility: visible to prevent virtualization jank. */
 [data-streamdown="code-block"] {
-  border-radius: 10px;
-  border: 1px solid oklch(from var(--border) l c h / 0.3);
-  box-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.06);
-  overflow: hidden;
-  margin: 0.75rem 0;
+  content-visibility: visible !important;
+  contain-intrinsic-size: none !important;
 }
 
-html.dark [data-streamdown="code-block"] {
-  box-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.2);
-}
-
-/* Code block header (filename, language, copy button) */
-[data-streamdown="code-header"] {
-  background: oklch(from var(--muted) l c h / 0.5);
-  border-bottom: 1px solid oklch(from var(--border) l c h / 0.2);
-  padding: 0.375rem 0.75rem;
-  font-size: 0.75rem;
-}
-
-/* Tables — rounded container with subtle borders */
+/* ── Tables (Solo-specific, additive — Orbit doesn't override these) ── */
 [data-streamdown="table"] {
   border-radius: 10px;
   overflow: hidden;
@@ -951,7 +1152,7 @@ html.dark [data-streamdown="code-block"] {
   border-bottom: 1px solid oklch(from var(--border) l c h / 0.1);
 }
 
-/* Blockquotes — left accent border, subtle background */
+/* Blockquotes — left accent, subtle tint */
 [data-streamdown="blockquote"] {
   border-left: 3px solid oklch(from var(--primary) l c h / 0.3);
   background: oklch(from var(--muted) l c h / 0.2);
@@ -960,18 +1161,10 @@ html.dark [data-streamdown="code-block"] {
   margin: 0.75rem 0;
 }
 
-/* Streaming caret — Solo green pulse */
+/* Streaming caret */
 [data-streamdown="caret"] {
   background: var(--primary);
   opacity: 0.8;
-}
-
-/* Inline code in streamdown context */
-[data-streamdown] code:not([class*="language-"]):not([class*="shiki"]) {
-  background: oklch(from var(--muted) l c h / 0.5);
-  border-radius: 4px;
-  padding: 0.125rem 0.375rem;
-  font-size: 0.85em;
 }
 
 /* Mermaid diagrams — rounded container */
@@ -1021,4 +1214,95 @@ html.dark [data-streamdown="code-block"] {
   text-align: right;
   color: var(--muted-foreground);
   opacity: 0.5;
+}
+
+/* =============================================================================
+   ORBIT-STYLE CHAT SURFACE (13px VS-Code scale)
+   Scoped to agent chat only — does not affect sidebar/editor/terminal.
+   ============================================================================= */
+.chat-surface {
+  font-family: "Geist Variable", "Inter Variable", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+  line-height: 1.6;
+  font-feature-settings: "rlig" 1, "calt" 1, "cv11" 1;
+}
+
+.chat-surface code,
+.chat-surface pre,
+.chat-surface .font-mono {
+  font-family: "Geist Mono Variable", ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.chat-surface .chat-markdown {
+  font-size: 13px;
+  line-height: 1.75;
+  color: var(--foreground);
+}
+
+/* VS-Code-ish heading scale inside chat markdown */
+.chat-surface .chat-markdown h1 { font-size: 20px; font-weight: 600; line-height: 1.25; margin: 1.25rem 0 0.5rem; }
+.chat-surface .chat-markdown h2 { font-size: 16px; font-weight: 600; line-height: 1.3;  margin: 1.25rem 0 0.375rem; }
+.chat-surface .chat-markdown h3 { font-size: 14px; font-weight: 600; line-height: 1.35; margin: 1rem 0 0.25rem; }
+.chat-surface .chat-markdown h4,
+.chat-surface .chat-markdown h5,
+.chat-surface .chat-markdown h6 { font-size: 13px; font-weight: 600; margin: 0.875rem 0 0.25rem; }
+.chat-surface .chat-markdown > *:first-child { margin-top: 0; }
+
+/* Inline code — hairline border, muted tint, mono font (matches Orbit) */
+.chat-surface .chat-markdown code:not([class*="language-"]):not([class*="shiki"]) {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background: transparent;
+  border: 0.5px solid color-mix(in oklch, var(--border) 60%, transparent);
+  border-radius: 0.375rem;
+  padding: 1px 4px;
+  color: var(--foreground);
+}
+
+/* =============================================================================
+   FLOW-TOKEN STREAMING ANIMATION
+   Per-word fade-in during assistant streaming. Streamdown emits its own
+   animated spans when `isAnimating` is true; this keyframe also catches any
+   span.flow-token we author directly (matches Orbit's approach).
+   ============================================================================= */
+@keyframes flow-token-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+[data-streaming="true"] .flow-token {
+  animation: flow-token-in 300ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-streaming="true"] .flow-token { animation: none; }
+}
+
+/* =============================================================================
+   ORBIT-STYLE TOOL WIDGET SURFACES
+   Two-layer elevation: outer widget frame on --tool-output-bg,
+   inner output panes on --chat-area. Borders use --border-tool.
+   ============================================================================= */
+/* Codex-flat: no card chrome on the outer tool frame. The header is just an
+   inline text row; only expanded output gets a subtle tinted block. */
+.tool-widget-frame {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+}
+
+.tool-widget-divider {
+  border-color: var(--border-tool);
+}
+
+.tool-widget-output {
+  background: var(--tool-output-bg);
+  border: 0;
+  border-radius: 0.5rem;
+}
+
+.tool-widget-inline-chip {
+  background: transparent;
+  border: 0;
 }

@@ -32,6 +32,31 @@ interface UIState {
   devSidebarView: DevSidebarView;
   devDetailWorktreeId: string | null;
   studioActiveNav: StudioNav;
+  zoomLevel: number;
+}
+
+export const ZOOM = {
+  min: 0.5,
+  max: 2.5,
+  step: 0.1,
+  default: 1.0,
+} as const;
+
+const ZOOM_STORAGE_KEY = 'solo.zoomLevel';
+
+function loadPersistedZoom(): number {
+  if (typeof window === 'undefined') return ZOOM.default;
+  const raw = window.localStorage.getItem(ZOOM_STORAGE_KEY);
+  if (!raw) return ZOOM.default;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return ZOOM.default;
+  return Math.max(ZOOM.min, Math.min(ZOOM.max, n));
+}
+
+function clampZoom(n: number): number {
+  // Round to one decimal to avoid floating-point drift across many step presses.
+  const rounded = Math.round(n * 10) / 10;
+  return Math.max(ZOOM.min, Math.min(ZOOM.max, rounded));
 }
 
 interface UIActions {
@@ -55,6 +80,10 @@ interface UIActions {
   drillIntoWorktree: (worktreeId: string) => void;
   drillOutOfWorktree: () => void;
   setStudioNav: (nav: StudioNav) => void;
+  zoomIn: () => void;
+  zoomOut: () => void;
+  resetZoom: () => void;
+  setZoom: (level: number) => void;
 }
 
 type UIStore = UIState & UIActions;
@@ -75,6 +104,7 @@ export const useUIStore = create<UIStore>()(
     devSidebarView: 'worktree-list' as DevSidebarView,
     devDetailWorktreeId: null,
     studioActiveNav: 'sessions' as StudioNav,
+    zoomLevel: loadPersistedZoom(),
 
     toggleLeftSidebar: (): void => {
       set((state) => {
@@ -217,8 +247,44 @@ export const useUIStore = create<UIStore>()(
         state.studioActiveNav = nav;
       });
     },
+
+    zoomIn: (): void => {
+      set((state) => {
+        state.zoomLevel = clampZoom(state.zoomLevel + ZOOM.step);
+      });
+    },
+
+    zoomOut: (): void => {
+      set((state) => {
+        state.zoomLevel = clampZoom(state.zoomLevel - ZOOM.step);
+      });
+    },
+
+    resetZoom: (): void => {
+      set((state) => {
+        state.zoomLevel = ZOOM.default;
+      });
+    },
+
+    setZoom: (level: number): void => {
+      set((state) => {
+        state.zoomLevel = clampZoom(level);
+      });
+    },
   }))
 );
+
+if (typeof window !== 'undefined') {
+  useUIStore.subscribe((state, prev) => {
+    if (state.zoomLevel !== prev.zoomLevel) {
+      try {
+        window.localStorage.setItem(ZOOM_STORAGE_KEY, String(state.zoomLevel));
+      } catch {
+        // localStorage may be unavailable (private mode, quota); zoom still works in-session.
+      }
+    }
+  });
+}
 
 // Selector hooks
 export const useIsLeftSidebarCollapsed = (): boolean => {

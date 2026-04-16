@@ -14,9 +14,11 @@ import {
 	CheckCircle,
 	XCircle,
 	ShieldWarning,
-	CaretDown,
+	CaretRight,
 } from '@phosphor-icons/react';
 import { useState, useMemo } from 'react';
+
+import { ExpandRegion } from '../messages/shared/ExpandRegion';
 
 import type { FC, ReactNode } from 'react';
 
@@ -79,7 +81,8 @@ export const ToolCard: FC<ToolCardProps> = ({
 	className = '',
 	style,
 }) => {
-	const resolvedDefault = defaultExpanded ?? (status === 'running' || status === 'success');
+	// Codex parity: default collapsed. Caller can override with defaultExpanded.
+	const resolvedDefault = defaultExpanded ?? false;
 	const [isExpanded, setIsExpanded] = useState(resolvedDefault);
 
 	const { displayOutput, isTruncated, totalLines } = useMemo(() => {
@@ -96,102 +99,81 @@ export const ToolCard: FC<ToolCardProps> = ({
 
 	const [showAllOutput, setShowAllOutput] = useState(false);
 
+	const hasContent = !!(output || children);
+	const canExpand = collapsible && hasContent;
+
 	const toggleExpanded = () => {
-		if (collapsible) setIsExpanded(!isExpanded);
+		if (canExpand) setIsExpanded(!isExpanded);
 	};
 
 	return (
 		<div
-			className={`my-2 rounded-xl bg-card/60 backdrop-blur-sm border border-border/20 shadow-sm overflow-hidden transition-shadow duration-200 hover:shadow-md animate-in fade-in-0 slide-in-from-bottom-1 duration-200 fill-mode-both ${className}`}
+			className={`group my-0.5 animate-in fade-in-0 duration-150 ${className}`}
 			style={style}
 		>
-			{/* Header */}
+			{/* Single-line Codex-style header — flat, no card chrome */}
 			<button
+				type="button"
 				onClick={toggleExpanded}
-				className={`w-full flex items-center gap-2 px-3 py-2 hover:bg-muted/30 transition-colors ${
-					collapsible ? 'cursor-pointer' : 'cursor-default'
+				className={`flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors py-0.5 ${
+					canExpand ? 'cursor-pointer' : 'cursor-default'
 				}`}
 				aria-expanded={isExpanded}
+				disabled={!canExpand}
 			>
-				{/* Tool icon or status icon */}
 				{icon ?? <StatusIcon status={status} />}
 
-				{/* Label */}
-				<span className="text-xs font-medium text-foreground">
+				<span className="text-foreground/85">
 					{label ?? defaultLabel(toolName, status)}
 				</span>
 
-				{/* Status indicator for running */}
-				{status === 'running' && !icon ? (
-					<CircleNotch className="h-3 w-3 animate-spin text-muted-foreground" />
-				) : null}
-
-				{/* Primary display */}
 				{primaryDisplay ? (
-					<code className="text-xs font-mono text-muted-foreground truncate max-w-[300px]">
+					<code className="font-mono text-muted-foreground truncate max-w-[480px]">
 						{primaryDisplay}
 					</code>
 				) : null}
 
-				{/* Spacer */}
-				<div className="flex-1" />
-
-				{/* Collapse indicator */}
-				{collapsible ? (
-					<CaretDown
-						className={`h-3.5 w-3.5 text-muted-foreground transition-transform duration-200 ${
-							isExpanded ? 'rotate-0' : '-rotate-90'
+				{canExpand ? (
+					<CaretRight
+						className={`h-3 w-3 text-muted-foreground/50 transition-transform duration-200 ${
+							isExpanded ? 'rotate-90' : ''
 						}`}
 					/>
 				) : null}
 			</button>
 
-			{/* Collapsible content — CSS grid-rows transition */}
-			<div
-				className="grid transition-[grid-template-rows] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]"
-				style={{ gridTemplateRows: isExpanded ? '1fr' : '0fr' }}
-			>
-				<div className="overflow-hidden min-h-0">
-					{/* Custom children slot */}
-					{children ? (
-						<div className="px-3 pb-2">
-							{children}
-						</div>
-					) : null}
+			{/* Expanded content — subtle tinted block, no border, indented under header */}
+			<ExpandRegion isExpanded={isExpanded}>
+				{children ? (
+					<div className="mt-1.5 ml-5">
+						{children}
+					</div>
+				) : null}
 
-					{/* Output section */}
-					{status === 'running' && !output && !children ? (
-						<div className="flex items-center gap-2 px-3 pb-3 text-xs text-muted-foreground">
-							<CircleNotch className="h-3 w-3 animate-spin" />
-							<span>Processing...</span>
+				{status === 'running' && !output && !children ? (
+					<div className="mt-1 ml-5 flex items-center gap-2 text-xs text-muted-foreground">
+						<CircleNotch className="h-3 w-3 animate-spin" />
+						<span>Processing...</span>
+					</div>
+				) : displayOutput ? (
+					<div className="mt-1.5 ml-5">
+						<div className="relative font-mono text-xs tool-widget-output p-2.5 max-h-[320px] overflow-y-auto">
+							<pre className="whitespace-pre-wrap break-words text-foreground/85">
+								{showAllOutput ? output : displayOutput}
+							</pre>
+							{isTruncated && !showAllOutput ? (
+								<button
+									type="button"
+									onClick={(e) => { e.stopPropagation(); setShowAllOutput(true); }}
+									className="mt-2 text-[11px] text-primary hover:text-primary/80 transition-colors"
+								>
+									Show all {totalLines} lines
+								</button>
+							) : null}
 						</div>
-					) : displayOutput ? (
-						<div className="px-3 pb-3">
-							<div className="relative font-mono text-xs bg-muted/30 rounded-lg p-3 max-h-[300px] overflow-y-auto">
-								<pre className="whitespace-pre-wrap break-words text-foreground/80">
-									{showAllOutput ? output : displayOutput}
-								</pre>
-								{/* Truncation fade + "show more" */}
-								{isTruncated && !showAllOutput ? (
-									<div className="sticky bottom-0 left-0 right-0">
-										<div className="h-8 bg-gradient-to-t from-muted/30 to-transparent" />
-										<button
-											onClick={(e) => { e.stopPropagation(); setShowAllOutput(true); }}
-											className="text-xs text-primary hover:text-primary/80 transition-colors"
-										>
-											Show all {totalLines} lines
-										</button>
-									</div>
-								) : null}
-							</div>
-						</div>
-					) : !children && status !== 'running' ? (
-						<div className="px-3 pb-3 text-xs text-muted-foreground italic">
-							No output
-						</div>
-					) : null}
-				</div>
-			</div>
+					</div>
+				) : null}
+			</ExpandRegion>
 		</div>
 	);
 };

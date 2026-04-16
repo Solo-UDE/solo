@@ -27,7 +27,7 @@ export const WriteToolWidget: FC<WriteToolWidgetProps> = ({
   const hasMore = lines.length > maxCollapsedLines;
 
   return (
-    <div className="my-2 rounded-lg border border-border bg-card overflow-hidden">
+    <div className="my-2 tool-widget-frame">
       {/* Header */}
       <button
         onClick={() => { setIsExpanded(!isExpanded); }}
@@ -55,8 +55,11 @@ export const WriteToolWidget: FC<WriteToolWidgetProps> = ({
         </div>
       </button>
 
-      {/* Content preview */}
-      <div className={`border-t border-border overflow-hidden transition-all ${isExpanded ? 'max-h-[500px]' : 'max-h-[200px]'}`}>
+      {/* Content preview — max-h animates with ease-out-quart */}
+      <div
+        className={`border-t tool-widget-divider overflow-hidden ${isExpanded ? 'max-h-[500px]' : 'max-h-[200px]'}`}
+        style={{ transition: 'max-height 250ms cubic-bezier(0.25, 1, 0.5, 1)' }}
+      >
         <div className="overflow-auto">
           {displayLines.map((line, index) => (
             <div key={`line-${String(index)}`} className="flex font-mono text-xs leading-5 bg-success/10">
@@ -70,7 +73,7 @@ export const WriteToolWidget: FC<WriteToolWidgetProps> = ({
         {hasMore && !isExpanded ? (
           <button
             onClick={() => { setIsExpanded(true); }}
-            className="w-full py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors border-t border-border flex items-center justify-center gap-1"
+            className="w-full py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors border-t tool-widget-divider flex items-center justify-center gap-1"
           >
             <CaretDown className="h-3 w-3" />
             <span>Show all ({lines.length} lines)</span>

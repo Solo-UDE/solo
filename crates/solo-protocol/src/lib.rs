@@ -519,6 +519,9 @@ pub struct WorktreeInfo {
     pub agent_session_id: Option<String>,
     /// Creation timestamp (Unix epoch seconds)
     pub created_at: u64,
+    /// Whether the worktree directory still exists on disk.
+    /// `false` indicates a stale config entry that needs pruning.
+    pub exists_on_disk: bool,
 }
 
 /// Request to create a new worktree

@@ -3,30 +3,29 @@ import { cn } from "../utils/cn";
 
 export interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   /** Size of the button */
-  size?: "sm" | "md" | "lg";
+  size?: "xs" | "sm" | "md" | "lg";
   /** Variant style */
-  variant?: "ghost" | "muted";
+  variant?: "ghost" | "muted" | "outline";
 }
 
 /**
- * IconButton component for icon-only actions
+ * Compact square icon button — Orbit dev-tool density.
  *
- * Features:
- * - Square aspect ratio
- * - Subtle hover states
- * - Scale feedback on press
+ * No hover scale. Uses --radius tokens so global radius tuning applies.
  */
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
   ({ className, size = "md", variant = "ghost", children, ...props }, ref) => {
     const sizes = {
-      sm: "w-7 h-7",
-      md: "w-8 h-8",
-      lg: "w-10 h-10",
+      xs: "w-5 h-5 rounded-sm",
+      sm: "w-6 h-6 rounded-sm",
+      md: "w-7 h-7 rounded-md",
+      lg: "w-8 h-8 rounded-md",
     };
 
     const variants = {
-      ghost: "bg-transparent hover:bg-muted/60",
+      ghost: "bg-transparent hover:bg-accent",
       muted: "bg-muted/40 hover:bg-muted/60",
+      outline: "border border-input bg-transparent hover:bg-accent",
     };
 
     return (
@@ -34,11 +33,10 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
         ref={ref}
         className={cn(
           "inline-flex items-center justify-center",
-          "rounded-lg",
-          "transition-[transform,background-color,color] duration-150",
-          "hover:scale-105 active:scale-95",
+          "transition-[background-color,color,border-color] duration-150",
+          "active:scale-95",
           "disabled:opacity-50 disabled:pointer-events-none",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+          "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
           sizes[size],
           variants[variant],
           className

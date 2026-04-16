@@ -9,6 +9,7 @@ import { immer } from 'zustand/middleware/immer';
 import { enableMapSet } from 'immer';
 import type { WorktreeInfo } from '../bindings';
 import * as worktreeApi from '../lib/tauri/worktree';
+import { wtLog, wtTrace, wtSnapshot } from '../lib/worktreeLogger';
 
 enableMapSet();
 
@@ -63,16 +64,27 @@ export const useWorktreeStore = create<WorktreeStore>()(
 		...initialState,
 
 		loadWorktrees: async () => {
+			// Optimistically clear so stale data from a previous repo never lingers
 			set((state) => {
 				state.isLoading = true;
 				state.error = null;
+				state.worktrees.clear();
 			});
 
 			try {
-				const list = await worktreeApi.listWorktrees();
+				const list = await wtTrace('loadWorktrees', {}, () => worktreeApi.listWorktrees());
 				set((state) => {
 					state.worktrees = new Map(list.map((wt) => [wt.id, wt]));
 					state.isLoading = false;
+				});
+				wtLog('info', `loaded ${list.length} worktree(s)`, {
+					action: 'loadWorktrees',
+					counts: {
+						total: list.length,
+						existing: list.filter((w) => w.exists_on_disk).length,
+						stale: list.filter((w) => !w.exists_on_disk).length,
+					},
+					ids: list.map((w) => w.id),
 				});
 			} catch (error) {
 				const msg = error instanceof Error ? error.message : String(error);
@@ -88,22 +100,41 @@ export const useWorktreeStore = create<WorktreeStore>()(
 				state.error = null;
 			});
 
-			const info = await worktreeApi.createWorktree({
-				branch,
-				path: null,
-				create_branch: createBranch,
-				base: base ?? null,
-			});
+			const info = await wtTrace(
+				'createWorktree',
+				{ branch, createBranch, base: base ?? null },
+				() =>
+					worktreeApi.createWorktree({
+						branch,
+						path: null,
+						create_branch: createBranch,
+						base: base ?? null,
+					}),
+			);
 
 			set((state) => {
 				state.worktrees.set(info.id, info);
+			});
+			wtLog('info', 'worktree added to store', {
+				action: 'createWorktree',
+				...wtSnapshot(info),
 			});
 
 			return info;
 		},
 
 		removeWorktree: async (id, force = false) => {
-			const restoredPath = await worktreeApi.removeWorktree({ id, force });
+			const before = _get().worktrees.get(id);
+			const restoredPath = await wtTrace(
+				'removeWorktree',
+				{
+					worktreeId: id,
+					force,
+					path: before?.path,
+					existsOnDisk: before?.exists_on_disk,
+				},
+				() => worktreeApi.removeWorktree({ id, force }),
+			);
 
 			const wasActive = _get().activeWorktreeId === id;
 
@@ -131,7 +162,11 @@ export const useWorktreeStore = create<WorktreeStore>()(
 			const { useFileExplorerStore } = await import('@/stores/fileExplorerStore');
 			const currentRoot = useFileExplorerStore.getState().rootPath;
 
-			const targetPath = await worktreeApi.setActiveWorktree(id);
+			const targetPath = await wtTrace(
+				'setActiveWorktree',
+				{ worktreeId: id ?? '<main>', currentRoot },
+				() => worktreeApi.setActiveWorktree(id),
+			);
 
 			set((state) => {
 				if (id !== null && state._originalWorkspaceRoot === null) {
@@ -154,7 +189,9 @@ export const useWorktreeStore = create<WorktreeStore>()(
 		},
 
 		lock: async (id, reason) => {
-			await worktreeApi.lockWorktree(id, reason);
+			await wtTrace('lockWorktree', { worktreeId: id, reason }, () =>
+				worktreeApi.lockWorktree(id, reason),
+			);
 
 			set((state) => {
 				const wt = state.worktrees.get(id);
@@ -166,7 +203,9 @@ export const useWorktreeStore = create<WorktreeStore>()(
 		},
 
 		unlock: async (id) => {
-			await worktreeApi.unlockWorktree(id);
+			await wtTrace('unlockWorktree', { worktreeId: id }, () =>
+				worktreeApi.unlockWorktree(id),
+			);
 
 			set((state) => {
 				const wt = state.worktrees.get(id);
@@ -180,7 +219,13 @@ export const useWorktreeStore = create<WorktreeStore>()(
 		pruneWorktrees: async () => {
 			const activeId = _get().activeWorktreeId;
 			const originalRoot = _get()._originalWorkspaceRoot;
-			const pruned = await worktreeApi.pruneWorktrees();
+			const pruned = await wtTrace('pruneWorktrees', { activeId }, () =>
+				worktreeApi.pruneWorktrees(),
+			);
+			wtLog('info', `pruned ${pruned.length} stale worktree(s)`, {
+				action: 'pruneWorktrees',
+				prunedIds: pruned,
+			});
 
 			let activeWasPruned = false;
 			set((state) => {

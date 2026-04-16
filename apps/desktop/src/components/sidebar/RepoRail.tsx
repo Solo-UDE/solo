@@ -203,7 +203,13 @@ const RailIcon: FC<RailIconProps> = ({ repo, isActive, expanded, onClick, onRemo
                 )}
               </div>
               {repo.worktrees.length > 1 && (
-                <span className="text-[10px] text-muted-foreground/50 tabular-nums shrink-0">
+                <span
+                  className={cn(
+                    'text-[10px] text-muted-foreground/50 tabular-nums shrink-0',
+                    'transition-opacity duration-150',
+                    'group-hover:opacity-0',
+                  )}
+                >
                   {repo.worktrees.length}wt
                 </span>
               )}

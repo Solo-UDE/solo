@@ -1,7 +1,6 @@
 /**
  * Shared markdown table component with scroll shadows, auto-compact mode,
- * and copy-as-TSV. Used by both MarkdownPreview and AgentNarrative via
- * react-markdown's `components` prop.
+ * and copy-as-TSV. Passed to Streamdown's `components` prop.
  */
 
 import {
@@ -126,7 +125,7 @@ export const MarkdownTable: FC<MarkdownTableProps> = ({ children }) => {
 };
 
 /**
- * Component overrides for react-markdown's `components` prop.
+ * Component overrides for Streamdown's `components` prop.
  * Spread into the components object: `{ ...markdownTableComponents, ... }`
  */
 export const markdownTableComponents: Record<

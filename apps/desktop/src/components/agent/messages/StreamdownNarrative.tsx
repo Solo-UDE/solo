@@ -1,7 +1,7 @@
 /**
  * Streaming-optimized markdown renderer powered by Streamdown.
  *
- * Replaces react-markdown + useStreamingText + fixUnterminatedFences
+ * Wraps Streamdown with Solo's chat animation + component overrides.
  * with a single component that handles all of these natively:
  * - Progressive text reveal (isAnimating + caret) with word-level fadeIn
  * - Unterminated fence handling (built-in)
@@ -93,14 +93,17 @@ export const StreamdownNarrative: FC<StreamdownNarrativeProps> = ({
 	isStreaming = false,
 	className = '',
 }) => (
-	<div className={`prose prose-sm dark:prose-invert max-w-none ${className}`}>
+	<div
+		className={`chat-markdown prose prose-sm dark:prose-invert max-w-none ${className}`}
+		data-streaming={isStreaming ? 'true' : 'false'}
+	>
 		<Streamdown
 			plugins={{ code, math, mermaid }}
 			isAnimating={isStreaming}
 			animated={{
-				animation: 'fadeIn',
-				duration: 130,
-				easing: 'ease-out',
+				animation: 'blurIn',
+				duration: 200,
+				easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
 				sep: 'word',
 			}}
 			caret="circle"

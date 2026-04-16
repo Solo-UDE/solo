@@ -27,7 +27,7 @@ export const TodoToolWidget: FC<TodoToolWidgetProps> = ({
   const items = todos?.map(parseTodo) ?? [];
 
   return (
-    <div className="my-2 rounded-md border border-border bg-card overflow-hidden">
+    <div className="my-2 tool-widget-frame">
       <div className="flex items-center gap-2 px-3 py-1.5 bg-muted">
         <ListChecks className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
         <span className="text-sm font-medium text-foreground">
