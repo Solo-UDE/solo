@@ -7,7 +7,8 @@
 import { useCallback, useMemo, useRef, useState, useEffect, type MouseEvent } from 'react';
 import { useDrop } from 'react-dnd';
 import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
-import { CaretLeft, CaretRight, Broom } from '@phosphor-icons/react';
+import { ChevronLeftIcon, ChevronRightIcon } from '@radix-ui/react-icons';
+import { Brush } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Tab } from './Tab';
 import { TabGroupComponent } from './TabGroup';
@@ -231,7 +232,7 @@ export function TabBar({
           onClick={scrollLeft}
           aria-label="Scroll tabs left"
         >
-          <CaretLeft className="w-4 h-4 text-muted-foreground" />
+          <ChevronLeftIcon className="w-4 h-4 text-muted-foreground" />
         </button>
       )}
 
@@ -311,7 +312,7 @@ export function TabBar({
           title={`Close ${ghostCount} inactive tab${ghostCount > 1 ? 's' : ''}`}
           aria-label={`Close ${ghostCount} ghost tabs`}
         >
-          <Broom className="w-4 h-4 text-muted-foreground" />
+          <Brush className="w-4 h-4 text-muted-foreground" size={16} />
           <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] flex items-center justify-center rounded-full bg-primary text-[9px] font-bold text-primary-foreground leading-none px-0.5">
             {ghostCount}
           </span>
@@ -329,7 +330,7 @@ export function TabBar({
           onClick={scrollRight}
           aria-label="Scroll tabs right"
         >
-          <CaretRight className="w-4 h-4 text-muted-foreground" />
+          <ChevronRightIcon className="w-4 h-4 text-muted-foreground" />
         </button>
       )}
     </div>
