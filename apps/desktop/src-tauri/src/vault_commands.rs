@@ -1,15 +1,14 @@
 //! Vault command handlers.
 //!
-//! V1   : classifier + SQLite + FTS5 lexical search.
-//! V1.2 : semantic embeddings (OpenAI `text-embedding-3-small`) with
-//!        cosine-in-RAM search; best-effort embedding during ingest;
-//!        backfill command for after-the-fact recovery.
-//!
-//! Shared embedding provider: the vault uses the same
-//! `Arc<dyn EmbeddingProvider>` stored in `EmbeddingState`. Whenever a
-//! command runs, we re-sync the provider (cheap — just an `Arc` clone)
-//! so that adding an OpenAI key mid-session immediately unlocks semantic
-//! retrieval for the vault.
+//! V1    : classifier + SQLite + FTS5 lexical search.
+//! V1.2  : semantic embeddings + cosine-in-RAM search; best-effort embed
+//!         during ingest; backfill command for post-hoc recovery.
+//! V1.2.1: **local** embeddings via `fastembed-rs` (`all-MiniLM-L6-v2`,
+//!         384 dims, ~90 MB model lazy-downloaded to
+//!         `~/.solo/vault/models/`). Zero API keys, zero per-user cost,
+//!         zero network per query. The first-ever vault interaction kicks
+//!         off a background task to pull the model; the UI stays
+//!         responsive throughout and FTS keeps working.
 
 use std::sync::Arc;
 
@@ -21,8 +20,6 @@ use solo_vault::{BackfillProgress, BackfillStats, Vault};
 use tauri::{AppHandle, Emitter, State};
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
-
-use crate::embedding_commands::EmbeddingState;
 
 // =============================================================================
 // State
@@ -42,48 +39,31 @@ impl Default for VaultState {
     fn default() -> Self { Self::new() }
 }
 
-/// Resolve the singleton Vault, opening it if needed, and re-sync the
-/// embedding provider from `EmbeddingState` on every call.
-///
-/// Provider-sync is O(1) (atomic read + compare) so doing it per command
-/// avoids the user-adds-key-mid-session footgun without any measurable
-/// overhead.
-async fn get_vault(
-    vault_state: &State<'_, VaultState>,
-    embed_state: &State<'_, EmbeddingState>,
-) -> Result<Arc<Vault>, String> {
+/// Resolve the singleton Vault, opening it lazily on first call. After
+/// the very first open we also kick off a background task to download +
+/// load the local embedding model — subsequent calls are no-ops.
+async fn get_vault(vault_state: &State<'_, VaultState>) -> Result<Arc<Vault>, String> {
     // Fast path — already-open vault.
     {
         let guard = vault_state.inner.read().await;
         if let Some(v) = guard.as_ref() {
-            sync_provider(v, embed_state).await;
             return Ok(v.clone());
         }
     }
     // Slow path — open lazily.
     let mut guard = vault_state.inner.write().await;
     if let Some(v) = guard.as_ref() {
-        sync_provider(v, embed_state).await;
         return Ok(v.clone());
     }
     let root = Vault::default_root();
     info!(root = %root.display(), "Opening vault");
     let v = Arc::new(Vault::open(root).map_err(|e| e.to_string())?);
-    sync_provider(&v, embed_state).await;
     *guard = Some(v.clone());
+    // Non-blocking model load. If the user's offline or the first download
+    // is in progress, FTS still works and ingest succeeds; semantic search
+    // activates as soon as the model lands.
+    v.spawn_local_embedder_load();
     Ok(v)
-}
-
-/// Mirror the current `EmbeddingState::provider` onto the Vault.
-/// Cheap: reads a tokio RwLock + an Arc clone. Logs only when the provider
-/// transitions between present / absent.
-async fn sync_provider(vault: &Vault, embed_state: &State<'_, EmbeddingState>) {
-    let shared = embed_state.current_provider().await;
-    match (&shared, vault.has_embedding_provider()) {
-        (Some(_), false) => vault.set_embedding_provider(shared),
-        (None, true) => vault.set_embedding_provider(None),
-        _ => {} // no change
-    }
 }
 
 // =============================================================================
@@ -97,9 +77,8 @@ pub async fn vault_drop_paths(
     memory_type: MemoryType,
     app: AppHandle,
     state: State<'_, VaultState>,
-    embed_state: State<'_, EmbeddingState>,
 ) -> Result<Vec<String>, String> {
-    let vault = get_vault(&state, &embed_state).await?;
+    let vault = get_vault(&state).await?;
     debug!(
         count = paths.len(),
         has_provider = vault.has_embedding_provider(),
@@ -139,9 +118,8 @@ pub async fn vault_list(
     scope: VaultScope,
     filters: VaultListFilters,
     state: State<'_, VaultState>,
-    embed_state: State<'_, EmbeddingState>,
 ) -> Result<Vec<VaultEntry>, String> {
-    let vault = get_vault(&state, &embed_state).await?;
+    let vault = get_vault(&state).await?;
     vault.list(&scope, &filters).map_err(|e| e.to_string())
 }
 
@@ -149,9 +127,8 @@ pub async fn vault_list(
 pub async fn vault_get(
     entry_id: String,
     state: State<'_, VaultState>,
-    embed_state: State<'_, EmbeddingState>,
 ) -> Result<Option<VaultEntry>, String> {
-    let vault = get_vault(&state, &embed_state).await?;
+    let vault = get_vault(&state).await?;
     vault.get(&entry_id).map_err(|e| e.to_string())
 }
 
@@ -161,9 +138,8 @@ pub async fn vault_update_tags(
     tags: Vec<String>,
     app: AppHandle,
     state: State<'_, VaultState>,
-    embed_state: State<'_, EmbeddingState>,
 ) -> Result<Option<VaultEntry>, String> {
-    let vault = get_vault(&state, &embed_state).await?;
+    let vault = get_vault(&state).await?;
     let updated = vault.update_tags(&entry_id, &tags).map_err(|e| e.to_string())?;
     if updated.is_some() {
         let _ = app.emit("backend-event", BackendEvent::VaultEntryUpdated { entry_id });
@@ -177,9 +153,8 @@ pub async fn vault_set_pinned(
     pinned: bool,
     app: AppHandle,
     state: State<'_, VaultState>,
-    embed_state: State<'_, EmbeddingState>,
 ) -> Result<Option<VaultEntry>, String> {
-    let vault = get_vault(&state, &embed_state).await?;
+    let vault = get_vault(&state).await?;
     let updated = vault.set_pinned(&entry_id, pinned).map_err(|e| e.to_string())?;
     if updated.is_some() {
         let _ = app.emit("backend-event", BackendEvent::VaultEntryUpdated { entry_id });
@@ -193,9 +168,8 @@ pub async fn vault_move_scope(
     new_scope: VaultScope,
     app: AppHandle,
     state: State<'_, VaultState>,
-    embed_state: State<'_, EmbeddingState>,
 ) -> Result<Option<VaultEntry>, String> {
-    let vault = get_vault(&state, &embed_state).await?;
+    let vault = get_vault(&state).await?;
     let updated = vault.move_scope(&entry_id, new_scope).map_err(|e| e.to_string())?;
     if updated.is_some() {
         let _ = app.emit("backend-event", BackendEvent::VaultEntryUpdated { entry_id });
@@ -209,9 +183,8 @@ pub async fn vault_move_bucket(
     new_kind: EntryKind,
     app: AppHandle,
     state: State<'_, VaultState>,
-    embed_state: State<'_, EmbeddingState>,
 ) -> Result<Option<VaultEntry>, String> {
-    let vault = get_vault(&state, &embed_state).await?;
+    let vault = get_vault(&state).await?;
     let updated = vault.move_bucket(&entry_id, new_kind).map_err(|e| e.to_string())?;
     if updated.is_some() {
         let _ = app.emit("backend-event", BackendEvent::VaultEntryUpdated { entry_id });
@@ -230,9 +203,8 @@ pub async fn vault_delete(
     _also_remote: bool,
     app: AppHandle,
     state: State<'_, VaultState>,
-    embed_state: State<'_, EmbeddingState>,
 ) -> Result<(), String> {
-    let vault = get_vault(&state, &embed_state).await?;
+    let vault = get_vault(&state).await?;
     vault.delete(&entry_id).map_err(|e| e.to_string())?;
     let _ = app.emit(
         "backend-event",
@@ -253,9 +225,8 @@ pub async fn vault_search(
     top_k: usize,
     mode: VaultSearchMode,
     state: State<'_, VaultState>,
-    embed_state: State<'_, EmbeddingState>,
 ) -> Result<Vec<VaultSearchResult>, String> {
-    let vault = get_vault(&state, &embed_state).await?;
+    let vault = get_vault(&state).await?;
     match mode {
         VaultSearchMode::Fts => vault
             .fts_search(&query, &scope, top_k)
@@ -300,13 +271,12 @@ pub async fn vault_backfill_embeddings(
     batch_size: Option<u32>,
     app: AppHandle,
     state: State<'_, VaultState>,
-    embed_state: State<'_, EmbeddingState>,
 ) -> Result<VaultBackfillResult, String> {
-    let vault = get_vault(&state, &embed_state).await?;
+    let vault = get_vault(&state).await?;
     if !vault.has_embedding_provider() {
-        warn!("vault_backfill_embeddings: no provider — aborting");
+        warn!("vault_backfill_embeddings: local model not loaded yet — aborting");
         return Err(
-            "No embedding provider configured. Add an OpenAI key in Settings first."
+            "Local embedding model is still loading. Try again in a few seconds."
                 .to_string(),
         );
     }
@@ -356,9 +326,8 @@ pub async fn vault_backfill_embeddings(
 #[tauri::command]
 pub async fn vault_pending_embeddings_count(
     state: State<'_, VaultState>,
-    embed_state: State<'_, EmbeddingState>,
 ) -> Result<u64, String> {
-    let vault = get_vault(&state, &embed_state).await?;
+    let vault = get_vault(&state).await?;
     vault.pending_embeddings_count().map_err(|e| e.to_string())
 }
 
@@ -376,9 +345,8 @@ pub async fn vault_log_classifier_correction(
 #[tauri::command]
 pub async fn vault_unsorted_count(
     state: State<'_, VaultState>,
-    embed_state: State<'_, EmbeddingState>,
 ) -> Result<u32, String> {
-    let vault = get_vault(&state, &embed_state).await?;
+    let vault = get_vault(&state).await?;
     Ok(vault.unsorted_count())
 }
 
