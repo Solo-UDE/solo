@@ -21,6 +21,12 @@ solo-fs = { path = "../solo-fs" }
 solo-parse = { path = "../solo-parse" }
 solo-embeddings = { path = "../solo-embeddings" }
 
+# Local ONNX-backed embedding model (MiniLM / BGE / E5 / etc.).
+# Vault ships with `all-MiniLM-L6-v2` (384 dims) so users get semantic
+# retrieval for free — no OpenAI key, no network per query, no per-user
+# cost. Model is lazy-downloaded on first use to `~/.solo/vault/models/`.
+fastembed = "5"
+
 # SQLite with FTS5 (bundled — no system dep, consistent across platforms)
 rusqlite = { version = "0.32", features = ["bundled"] }
 
