@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react';
 import type { MosaicBranch } from 'react-mosaic-component';
-import { ChatCircle } from '@phosphor-icons/react';
+import { MessageCircle } from 'lucide-react';
 import { usePanelTabsStore, useTabsForTile, useActiveTabId } from '@/stores/panelTabsStore';
 import { usePanelLayoutStore } from '@/stores/panelLayoutStore';
 import { useAgentStore } from '@/stores/agentStore';
@@ -292,7 +292,7 @@ function EmptyTile() {
           onClick={handleNewChat}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-primary-foreground bg-primary rounded-lg hover:brightness-110 active:scale-[0.97] transition-all duration-200"
         >
-          <ChatCircle className="w-3.5 h-3.5" weight="bold" />
+          <MessageCircle className="w-3.5 h-3.5" size={14} />
           New AI Chat
         </button>
       </div>
