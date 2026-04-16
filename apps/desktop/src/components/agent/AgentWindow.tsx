@@ -1,5 +1,6 @@
 import { useEffect, useCallback, useMemo, useRef, useState } from 'react';
-import { Plus, PencilSimpleLine, ArrowsSplit } from '@phosphor-icons/react';
+import { PlusIcon, Pencil2Icon } from '@radix-ui/react-icons';
+import { Split } from 'lucide-react';
 
 import { MessageFeed } from './messages';
 import { ChatInputContainer } from './input';
@@ -279,7 +280,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 						className="absolute top-2 right-2 z-10 w-7 h-7 flex items-center justify-center rounded-full bg-primary text-primary-foreground hover:brightness-110 active:scale-[0.97] transition-all duration-200"
 						title="New Session"
 					>
-						<Plus className="w-4 h-4" weight="bold" />
+						<PlusIcon width={16} height={16} />
 					</button>
 				</DropdownMenuTrigger>
 				<DropdownMenuContent align="end" side="bottom" className="w-52">
@@ -288,7 +289,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 						className="flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer hover:bg-primary/10 hover:scale-[1.01] active:scale-[0.99] transition-all duration-150 animate-in fade-in-0 slide-in-from-top-1"
 					>
 						<div className="w-5 h-5 flex items-center justify-center rounded bg-primary/10 shrink-0">
-							<PencilSimpleLine className="w-3 h-3 text-primary" />
+							<Pencil2Icon width={12} height={12} className="text-primary" />
 						</div>
 						<div className="flex flex-col">
 							<span className="text-xs font-medium">New chat</span>
@@ -300,7 +301,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 						className="flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer hover:bg-primary/10 hover:scale-[1.01] active:scale-[0.99] transition-all duration-150 animate-in fade-in-0 slide-in-from-top-1 [animation-delay:50ms]"
 					>
 						<div className="w-5 h-5 flex items-center justify-center rounded bg-primary/10 shrink-0">
-							<ArrowsSplit className="w-3 h-3 text-primary" />
+							<Split className="w-3 h-3 text-primary" />
 						</div>
 						<div className="flex flex-col">
 							<span className="text-xs font-medium">Continue as new</span>
