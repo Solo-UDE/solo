@@ -149,7 +149,7 @@ export const VaultPanel: FC = () => {
           <button
             type="button"
             onClick={() => setSearchMode('semantic')}
-            title="Semantic — cosine similarity over OpenAI embeddings"
+            title="Semantic — cosine similarity over local MiniLM embeddings (runs on-device, no API key)"
             className={`h-7 w-7 rounded-md flex items-center justify-center transition-all duration-150 active:scale-[0.94] ${
               searchMode === 'semantic'
                 ? 'bg-background shadow-[0_1px_3px_rgba(0,0,0,0.08)] text-foreground'
