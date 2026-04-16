@@ -5,7 +5,8 @@
  * operation label (edited/read/created), and line count.
  */
 
-import { FileText, PencilSimple, FilePlus } from '@phosphor-icons/react';
+import { FileTextIcon, Pencil2Icon } from '@radix-ui/react-icons';
+import { FilePlus } from 'lucide-react';
 
 import { ToolCard } from './ToolCard';
 
@@ -25,9 +26,9 @@ export interface FileToolCardProps {
 const getFileIcon = (toolName: string): ReactNode => {
 	const cls = 'h-3.5 w-3.5 shrink-0 text-muted-foreground';
 	switch (toolName.toLowerCase()) {
-		case 'edit': return <PencilSimple className={cls} />;
+		case 'edit': return <Pencil2Icon width={14} height={14} className="shrink-0 text-muted-foreground" />;
 		case 'write': return <FilePlus className={cls} />;
-		default: return <FileText className={cls} />;
+		default: return <FileTextIcon width={14} height={14} className="shrink-0 text-muted-foreground" />;
 	}
 };
 
