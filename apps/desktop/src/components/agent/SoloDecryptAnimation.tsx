@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
-import { Code, Lightning, GitBranch } from '@phosphor-icons/react';
+import { CodeIcon } from '@radix-ui/react-icons';
+import { Zap, GitBranch } from 'lucide-react';
 
 import type { FC } from 'react';
 
@@ -251,8 +252,8 @@ const SoloDecryptAnimation: FC = () => {
 
 // ─── Suggested Prompts ──────────────────────────────────────────────────────
 const SUGGESTED_PROMPTS = [
-	{ icon: Code, label: '> write code', prompt: 'Help me write a function that...' },
-	{ icon: Lightning, label: '> fix a bug', prompt: 'I have a bug in my code where...' },
+	{ icon: CodeIcon, label: '> write code', prompt: 'Help me write a function that...' },
+	{ icon: Zap, label: '> fix a bug', prompt: 'I have a bug in my code where...' },
 	{ icon: GitBranch, label: '> git help', prompt: 'Help me with my git workflow...' },
 ];
 
