@@ -4,7 +4,7 @@
  * and OS file drops (via Tauri v2's onDragDropEvent).
  */
 
-import { UploadSimple } from '@phosphor-icons/react';
+import { Upload } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
@@ -162,7 +162,7 @@ export const DropZoneOverlay: FC<DropZoneOverlayProps> = ({ disabled, children }
 			{children}
 			{showOverlay && (
 				<div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-primary/50 bg-background/80 backdrop-blur-sm pointer-events-none">
-					<UploadSimple className="w-8 h-8 text-primary/60" weight="bold" />
+					<Upload className="w-8 h-8 text-primary/60" />
 					<span className="text-sm font-medium text-primary/80">Drop files here</span>
 					<span className="text-xs text-muted-foreground">
 						Images, PDFs, text files, or folders
