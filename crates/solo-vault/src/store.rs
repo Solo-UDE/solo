@@ -1,20 +1,34 @@
 //! SQLite + FTS5 store for vault entries and chunks.
 //!
-//! V1: scalar columns + FTS5 for lexical search. Semantic search (vectors)
-//! lands in V1.2 — vectors stored as BLOB and loaded into an in-memory
-//! cosine index on demand.
+//! V1: scalar columns + FTS5 for lexical search.
+//! V1.2: semantic search — vectors stored as little-endian f32 BLOB in the
+//!       existing `chunks.embedding` column; cosine similarity computed in
+//!       RAM at query time.
+//!
+//! ## Observability
+//! Every public fn emits structured `tracing` events. Enable with
+//! `RUST_LOG=solo_vault=debug` to see per-candidate scan timings.
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::time::Instant;
 
 use rusqlite::{params, Connection, OptionalExtension};
 use serde_json;
+use solo_embeddings::cosine_similarity;
 use solo_protocol::{
     CloudSyncState, EntryKind, IndexStatus, MemoryType, RetrievalStats, VaultChunk, VaultEntry,
     VaultListFilters, VaultScope,
 };
+use tracing::{debug, error, info, warn};
 
 use crate::{Result, VaultError};
+
+/// Dimension of the embedding vectors we store. Matches OpenAI
+/// `text-embedding-3-small`. If we swap models later we either: (a) bump
+/// this constant and force a backfill, or (b) add a per-row `dim` column
+/// for coexistence. V1.2 picks (a).
+pub const EMBEDDING_DIM: usize = 1536;
 
 const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS entries (
@@ -329,6 +343,325 @@ impl Store {
             params![now as i64, entry_id],
         ).map_err(to_vault)?;
         Ok(())
+    }
+
+    // =========================================================================
+    // V1.2 — Semantic embeddings
+    // =========================================================================
+
+    /// Write (or overwrite) the embedding vector for a chunk. Rejects vectors
+    /// that don't match `EMBEDDING_DIM` so we never store junk.
+    pub fn update_chunk_embedding(&self, chunk_id: &str, vec: &[f32]) -> Result<()> {
+        if vec.len() != EMBEDDING_DIM {
+            warn!(
+                chunk_id,
+                dim = vec.len(),
+                expected = EMBEDDING_DIM,
+                "vault.store.update_chunk_embedding.dim_mismatch"
+            );
+            return Err(VaultError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!(
+                    "embedding dim mismatch: expected {}, got {}",
+                    EMBEDDING_DIM,
+                    vec.len()
+                ),
+            )));
+        }
+        let blob = f32_slice_to_blob(vec);
+        let conn = self.conn.lock().expect("vault store mutex poisoned");
+        let rows = conn
+            .execute(
+                "UPDATE chunks SET embedding = ?1 WHERE id = ?2",
+                params![blob, chunk_id],
+            )
+            .map_err(to_vault)?;
+        if rows == 0 {
+            warn!(chunk_id, "vault.store.update_chunk_embedding: no matching chunk");
+        } else {
+            debug!(chunk_id, bytes = blob.len(), "vault.store.update_chunk_embedding.ok");
+        }
+        Ok(())
+    }
+
+    /// Count chunks that still need an embedding (null `embedding` column).
+    pub fn count_chunks_missing_embeddings(&self) -> Result<u64> {
+        let conn = self.conn.lock().expect("vault store mutex poisoned");
+        let n: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM chunks WHERE embedding IS NULL",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(to_vault)?;
+        Ok(n.max(0) as u64)
+    }
+
+    /// Paged read of chunks that still need embedding. Returns
+    /// `(chunk_id, content)` tuples ordered by insert order so that backfill
+    /// progress is deterministic and resumable.
+    pub fn chunks_missing_embeddings(&self, limit: usize) -> Result<Vec<(String, String)>> {
+        let conn = self.conn.lock().expect("vault store mutex poisoned");
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, content FROM chunks WHERE embedding IS NULL ORDER BY rowid LIMIT ?1",
+            )
+            .map_err(to_vault)?;
+        let rows: rusqlite::Result<Vec<(String, String)>> = stmt
+            .query_map(params![limit as i64], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(to_vault)?
+            .collect();
+        Ok(rows.map_err(to_vault)?)
+    }
+
+    /// Null out the embedding for a chunk. Used when we detect corruption /
+    /// dim mismatch during a search scan so that the next backfill repairs it.
+    pub fn null_chunk_embedding(&self, chunk_id: &str) -> Result<()> {
+        let conn = self.conn.lock().expect("vault store mutex poisoned");
+        conn.execute(
+            "UPDATE chunks SET embedding = NULL WHERE id = ?1",
+            params![chunk_id],
+        )
+        .map_err(to_vault)?;
+        Ok(())
+    }
+
+    /// Semantic similarity search over stored chunk embeddings.
+    ///
+    /// - Loads all scope-matching rows whose `embedding IS NOT NULL` into
+    ///   memory, decodes the f32 BLOB, computes cosine vs. `query_vec`.
+    /// - Sorts descending and keeps the top-K plus their entry rows.
+    /// - Corrupt / dim-mismatched rows are skipped and flagged for
+    ///   re-embedding (their `embedding` column is nulled on the fly so the
+    ///   next backfill picks them up).
+    ///
+    /// At V1.2 scale (hundreds of entries → low thousands of chunks) a flat
+    /// in-RAM scan is comfortable; sub-ms rank on a modern laptop. Revisit
+    /// with sqlite-vec or HNSW once we're measuring pain.
+    pub fn semantic_search(
+        &self,
+        query_vec: &[f32],
+        scope: &VaultScope,
+        top_k: usize,
+    ) -> Result<Vec<(VaultChunk, VaultEntry, f32)>> {
+        let start = Instant::now();
+        if query_vec.len() != EMBEDDING_DIM {
+            warn!(
+                dim = query_vec.len(),
+                expected = EMBEDDING_DIM,
+                "vault.search.semantic.query_dim_mismatch"
+            );
+            return Ok(Vec::new());
+        }
+
+        let (_scope_type, scope_project_id) = split_scope(scope);
+        let conn = self.conn.lock().expect("vault store mutex poisoned");
+
+        // Phase 1: Pull every in-scope chunk with its embedding blob.
+        let mut stmt = conn
+            .prepare(
+                r#"
+                SELECT c.id, c.entry_id, c.chunk_index, c.content, c.token_count, c.embedding
+                FROM chunks c
+                JOIN entries e ON e.id = c.entry_id
+                WHERE c.embedding IS NOT NULL
+                  AND (e.scope_type = 'global'
+                       OR (e.scope_type = 'project' AND e.scope_project_id = ?1))
+                "#,
+            )
+            .map_err(to_vault)?;
+
+        let raw: rusqlite::Result<Vec<(VaultChunk, Vec<u8>)>> = stmt
+            .query_map(params![scope_project_id], |row| {
+                Ok((
+                    VaultChunk {
+                        id: row.get::<_, String>(0)?,
+                        entry_id: row.get::<_, String>(1)?,
+                        chunk_index: row.get::<_, i64>(2)? as u32,
+                        content: row.get::<_, String>(3)?,
+                        token_count: row.get::<_, Option<i64>>(4)?.map(|n| n as u32),
+                    },
+                    row.get::<_, Vec<u8>>(5)?,
+                ))
+            })
+            .map_err(to_vault)?
+            .collect();
+        let raw = raw.map_err(to_vault)?;
+        drop(stmt);
+
+        let raw_n = raw.len();
+        let load_ms = start.elapsed().as_millis() as u64;
+
+        // Phase 2: Decode + score. Collect corrupt IDs for a post-scan NULL sweep.
+        let mut candidates: Vec<(VaultChunk, f32)> = Vec::with_capacity(raw.len());
+        let mut corrupt_ids: Vec<String> = Vec::new();
+        for (chunk, blob) in raw {
+            match blob_to_f32_vec(&blob, EMBEDDING_DIM) {
+                Ok(vec) => {
+                    let score = cosine_similarity(query_vec, &vec);
+                    if score.is_finite() {
+                        candidates.push((chunk, score));
+                    } else {
+                        debug!(chunk_id = %chunk.id, score, "vault.search.non_finite_score");
+                    }
+                }
+                Err(e) => {
+                    error!(chunk_id = %chunk.id, err = %e, "vault.embed.dim_mismatch");
+                    corrupt_ids.push(chunk.id.clone());
+                }
+            }
+        }
+        let score_ms = start.elapsed().as_millis() as u64 - load_ms;
+        debug!(
+            candidates_n = candidates.len(),
+            raw_n,
+            load_ms,
+            score_ms,
+            corrupt = corrupt_ids.len(),
+            "vault.search.scan"
+        );
+
+        // Phase 3: Partial sort for top-k.
+        candidates.sort_by(|a, b| {
+            b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal)
+        });
+        candidates.truncate(top_k);
+
+        let rank_ms = start.elapsed().as_millis() as u64 - load_ms - score_ms;
+        let top_score = candidates.first().map(|(_, s)| *s).unwrap_or(0.0);
+        let median_score = if candidates.is_empty() {
+            0.0
+        } else {
+            candidates[candidates.len() / 2].1
+        };
+        let bottom_score = candidates.last().map(|(_, s)| *s).unwrap_or(0.0);
+        info!(
+            mode = "semantic",
+            rank_ms,
+            returned_n = candidates.len(),
+            top_score = top_score as f64,
+            median_score = median_score as f64,
+            bottom_score = bottom_score as f64,
+            "vault.search.rank"
+        );
+
+        // Phase 4: Join entries for the survivors.
+        let mut out = Vec::with_capacity(candidates.len());
+        for (chunk, score) in candidates {
+            let entry_id = chunk.entry_id.clone();
+            let mut stmt2 = conn
+                .prepare("SELECT * FROM entries WHERE id = ?1")
+                .map_err(to_vault)?;
+            let entry = stmt2
+                .query_row(params![&entry_id], row_to_entry)
+                .map_err(to_vault)?;
+            drop(stmt2);
+            out.push((chunk, entry, score));
+        }
+
+        // Phase 5: Post-scan repair — null corrupt embeddings so the next
+        // backfill picks them up. Best-effort; failures are logged.
+        for id in &corrupt_ids {
+            if let Err(e) = conn.execute(
+                "UPDATE chunks SET embedding = NULL WHERE id = ?1",
+                params![id],
+            ) {
+                error!(chunk_id = %id, err = %e, "vault.search.null_corrupt_failed");
+            }
+        }
+
+        let total_ms = start.elapsed().as_millis() as u64;
+        info!(total_ms, "vault.search.done");
+        Ok(out)
+    }
+}
+
+// =============================================================================
+// BLOB helpers (little-endian f32 array)
+// =============================================================================
+
+/// Serialize an f32 slice to a packed little-endian BLOB.
+#[inline]
+pub(crate) fn f32_slice_to_blob(vec: &[f32]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(vec.len() * 4);
+    for &f in vec {
+        out.extend_from_slice(&f.to_le_bytes());
+    }
+    out
+}
+
+/// Decode a packed little-endian BLOB into an f32 vector, validating the
+/// expected dimension. Returns an error string suitable for logging rather
+/// than a rich typed error — callers just want to skip the row and log.
+#[inline]
+pub(crate) fn blob_to_f32_vec(bytes: &[u8], expected_dim: usize) -> std::result::Result<Vec<f32>, String> {
+    if bytes.len() % 4 != 0 {
+        return Err(format!(
+            "embedding blob length {} not a multiple of 4",
+            bytes.len()
+        ));
+    }
+    let got = bytes.len() / 4;
+    if got != expected_dim {
+        return Err(format!(
+            "embedding dim mismatch: expected {}, got {}",
+            expected_dim, got
+        ));
+    }
+    let mut out = Vec::with_capacity(got);
+    for c in bytes.chunks_exact(4) {
+        let arr: [u8; 4] = [c[0], c[1], c[2], c[3]];
+        out.push(f32::from_le_bytes(arr));
+    }
+    Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn blob_roundtrips_exact_bits() {
+        // Mix of ordinary, tiny, negative, and "interesting" floats.
+        let input: Vec<f32> = vec![
+            0.0,
+            1.0,
+            -1.0,
+            std::f32::consts::PI,
+            -std::f32::consts::E,
+            1e-20,
+            1e20,
+            f32::MIN_POSITIVE,
+        ];
+        let blob = f32_slice_to_blob(&input);
+        assert_eq!(blob.len(), input.len() * 4);
+        let out = blob_to_f32_vec(&blob, input.len()).expect("decode");
+        // Bit-exact: we're not doing any arithmetic, just IEEE-754 memcpy.
+        assert_eq!(input, out);
+    }
+
+    #[test]
+    fn blob_detects_dim_mismatch() {
+        let v: Vec<f32> = vec![1.0, 2.0, 3.0];
+        let blob = f32_slice_to_blob(&v);
+        assert!(blob_to_f32_vec(&blob, 4).is_err());
+        assert!(blob_to_f32_vec(&blob, 3).is_ok());
+    }
+
+    #[test]
+    fn blob_detects_truncation() {
+        // Length not a multiple of 4.
+        let broken = vec![0u8, 1u8, 2u8];
+        assert!(blob_to_f32_vec(&broken, 0).is_err());
+    }
+
+    #[test]
+    fn blob_is_little_endian() {
+        // 1.0f32 = 0x3F800000; in LE bytes: 00 00 80 3F.
+        let blob = f32_slice_to_blob(&[1.0]);
+        assert_eq!(blob, vec![0x00, 0x00, 0x80, 0x3F]);
     }
 }
 
