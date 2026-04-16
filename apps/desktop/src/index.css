@@ -765,10 +765,14 @@ html.dark ::-webkit-scrollbar-thumb:hover {
 
 /* Fix Monaco horizontal overflow in @monaco-editor/react's internal row flex.
    The library wraps the editor in display:flex (row) — the mount div
-   defaults to min-width:auto, preventing shrink below content width. */
+   defaults to min-width:auto, preventing shrink below content width.
+   Keep horizontal clipping for that fix, but let vertical overflow show so
+   the find widget's hover tooltips (which pop UP from their buttons) aren't
+   clipped by the breadcrumb above. */
 .monaco-mount {
   min-width: 0;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: visible;
 }
 
 /* Zero state (no tiles) */

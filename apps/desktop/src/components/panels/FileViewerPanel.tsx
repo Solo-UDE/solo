@@ -136,7 +136,6 @@ export function FileViewerPanel({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [fileTooLarge, setFileTooLarge] = useState<{ size: number } | null>(null);
-  const [cursorPosition, setCursorPosition] = useState({ line: 1, col: 1 });
 
   // Markdown mode state — defaults to 'preview' for markdown files
   const [markdownMode, setMarkdownMode] = useState<MarkdownMode>('preview');
@@ -294,14 +293,6 @@ export function FileViewerPanel({
         saveFileRef.current();
       });
 
-      // Track cursor position changes
-      editor.onDidChangeCursorPosition((e) => {
-        setCursorPosition({
-          line: e.position.lineNumber,
-          col: e.position.column,
-        });
-      });
-
       // A5: Restore saved view state
       if (viewStateRef.current) {
         editor.restoreViewState(viewStateRef.current);
@@ -398,7 +389,6 @@ export function FileViewerPanel({
   }
 
   const language = filePath ? getMonacoLanguage(filePath) : 'plaintext';
-  const lineCount = content.split('\n').length;
 
   // Font family (already includes fallback chain from settings)
   const resolvedFontFamily = editorFontFamily;
@@ -458,8 +448,11 @@ export function FileViewerPanel({
 
   return (
     <div className="flex flex-col h-full bg-background">
-      {/* Interactive breadcrumb with markdown toggle */}
-      <div className="flex items-center justify-between h-6 px-3 bg-background/40 backdrop-blur-md border-b border-white/[0.04] shrink-0">
+      {/* Interactive breadcrumb with markdown toggle.
+          z-0 so the editor below (z-10) wins the stacking order — that way
+          Monaco's find-widget hover tooltips (which can extend upward into
+          this strip) render on top of the breadcrumb instead of behind it. */}
+      <div className="relative z-0 flex items-center justify-between h-6 px-3 bg-background/40 border-b border-white/[0.04] shrink-0">
         <div className="flex items-center gap-1 overflow-x-auto scrollbar-none flex-1 min-w-0">
           {breadcrumbSegments.length > 0 && (
             <FileIcon
@@ -496,8 +489,9 @@ export function FileViewerPanel({
         )}
       </div>
 
-      {/* Editor content */}
-      <div className="flex-1 overflow-hidden">
+      {/* Editor content — relative + z-10 so Monaco's find-widget overlays
+          render above the breadcrumb's stacking context. */}
+      <div className="relative z-10 flex-1 overflow-hidden">
         {isMarkdown && markdownMode === 'preview' ? (
           <MarkdownEditor
             key={filePath}
@@ -509,20 +503,6 @@ export function FileViewerPanel({
         )}
       </div>
 
-      {/* Status bar */}
-      <div className="flex items-center justify-between h-6 px-3 bg-background/30 backdrop-blur-md text-muted-foreground text-[11px] border-t border-white/[0.04] shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-primary/60 shrink-0" />
-            <span>{language}</span>
-          </div>
-          <span className="text-muted-foreground/50">UTF-8</span>
-        </div>
-        <div className="flex items-center gap-3 text-muted-foreground/60">
-          <span>Ln {cursorPosition.line}, Col {cursorPosition.col}</span>
-          <span>{lineCount} lines</span>
-        </div>
-      </div>
     </div>
   );
 }
