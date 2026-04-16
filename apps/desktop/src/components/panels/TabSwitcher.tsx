@@ -6,7 +6,7 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { MagnifyingGlass } from '@phosphor-icons/react';
+import { MagnifyingGlassIcon } from '@radix-ui/react-icons';
 import { cn } from '@/lib/utils';
 import { usePanelTabsStore } from '@/stores/panelTabsStore';
 import { useRepoStore } from '@/stores/repoStore';
@@ -211,7 +211,7 @@ export function TabSwitcher({ open, onClose }: TabSwitcherProps) {
           >
             {/* Search input */}
             <div className="flex items-center gap-2 px-4 py-3 border-b border-border/30">
-              <MagnifyingGlass className="w-4 h-4 text-muted-foreground shrink-0" />
+              <MagnifyingGlassIcon className="w-4 h-4 text-muted-foreground shrink-0" />
               <input
                 ref={inputRef}
                 type="text"
@@ -303,7 +303,7 @@ function RepoGroupHeader({ repoPath }: { repoPath: string | null }) {
 
   return (
     <div className="flex items-center gap-1.5 px-4 py-1">
-      <Icon className="w-3 h-3" weight="fill" style={{ color: colorVar }} />
+      <Icon className="w-3 h-3" style={{ color: colorVar }} />
       <span
         className="text-[10px] font-medium uppercase tracking-wider"
         style={{ color: colorVar }}
