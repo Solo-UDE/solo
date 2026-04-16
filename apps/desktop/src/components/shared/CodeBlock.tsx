@@ -9,7 +9,8 @@ import { codeToHtml } from 'shiki';
 
 // Ensure code block, callout, mermaid, and KaTeX CSS is always loaded
 import '@/components/editor/markdown-preview.css';
-import { Copy, Check, TextIndent } from '@phosphor-icons/react';
+import { CopyIcon, CheckIcon } from '@radix-ui/react-icons';
+import { IndentIncrease } from 'lucide-react';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import { cn } from '@/lib/utils';
 import { getSoloTheme } from '@/lib/markdown/shiki-theme';
@@ -194,7 +195,7 @@ export const CodeBlock: FC<CodeBlockProps> = ({
 									: 'Enable word wrap'
 							}
 						>
-							<TextIndent className="w-3.5 h-3.5" />
+							<IndentIncrease className="w-3.5 h-3.5" size={14} />
 						</button>
 						<button
 							onClick={handleCopy}
@@ -205,9 +206,9 @@ export const CodeBlock: FC<CodeBlockProps> = ({
 							title={copied ? 'Copied!' : 'Copy code'}
 						>
 							{copied ? (
-								<Check className="w-3.5 h-3.5" />
+								<CheckIcon className="w-3.5 h-3.5" />
 							) : (
-								<Copy className="w-3.5 h-3.5" />
+								<CopyIcon className="w-3.5 h-3.5" />
 							)}
 						</button>
 					</div>
