@@ -1,9 +1,9 @@
 import { FileIcon, ImageIcon } from '@radix-ui/react-icons';
-import { AtSign } from 'lucide-react';
+import { AtSign, Zap } from 'lucide-react';
 import { convertFileSrc } from '@tauri-apps/api/core';
 
-import type { FC } from 'react';
-import type { Attachment, FileMention } from '@/stores/agentStore';
+import type { FC, ReactNode } from 'react';
+import type { Attachment, FileMention, UserContentPart } from '@/stores/agentStore';
 
 export interface UserMessageProps {
   content: string;
@@ -11,7 +11,34 @@ export interface UserMessageProps {
   userName?: string;
   attachments?: Attachment[];
   mentions?: FileMention[];
+  /** Flat skill names — fallback for messages without ordered `parts`. */
+  skills?: string[];
+  /** Ordered text/skill sequence from the editor. When present, wins over `skills` + `content`. */
+  parts?: UserContentPart[];
   className?: string;
+}
+
+/** Inline chip styling shared between the interleaved renderer and the legacy header-chip fallback. */
+const InlineSkillChip: FC<{ name: string }> = ({ name }) => (
+  <span
+    className="inline-flex items-center gap-0.5 px-1.5 py-0.5 mx-0.5 rounded bg-primary/15 text-primary text-[11px] font-medium align-middle"
+    title={`/${name}`}
+  >
+    <Zap className="w-3 h-3 shrink-0" />
+    <span>/{name}</span>
+  </span>
+);
+
+/**
+ * Render the interleaved `parts` array preserving chip-in-the-middle order.
+ * Text parts that are just whitespace-between-chips are kept verbatim so the
+ * bubble matches what the user typed.
+ */
+function renderParts(parts: UserContentPart[]): ReactNode {
+  return parts.map((p, i) => {
+    if (p.type === 'skill') return <InlineSkillChip key={`skill-${i}`} name={p.name} />;
+    return <span key={`text-${i}`}>{p.text}</span>;
+  });
 }
 
 export const UserMessage: FC<UserMessageProps> = ({
@@ -20,6 +47,8 @@ export const UserMessage: FC<UserMessageProps> = ({
   userName: _userName = 'You',
   attachments,
   mentions,
+  skills,
+  parts,
   className = '',
 }) => {
   const imageAttachments = attachments?.filter((a) => a.type === 'image');
@@ -30,7 +59,22 @@ export const UserMessage: FC<UserMessageProps> = ({
       {/* Neutral bubble — Orbit style (no green border, no username header) */}
       <div className="max-w-[85%] rounded-xl bg-agent-user-bg text-foreground px-3.5 py-2.5 space-y-1 shadow-xs">
         <div className="text-[13px] whitespace-pre-wrap break-words leading-relaxed">
-          {content}
+          {parts && parts.length > 0 ? (
+            // Ordered rendering: chips appear exactly where the user put them.
+            renderParts(parts)
+          ) : (
+            <>
+              {/* Fallback for messages without `parts` (legacy or missing): chips grouped up front. */}
+              {skills && skills.length > 0 && (
+                <span className="inline-flex flex-wrap gap-1 mr-1.5 align-middle">
+                  {skills.map((name) => (
+                    <InlineSkillChip key={name} name={name} />
+                  ))}
+                </span>
+              )}
+              {content}
+            </>
+          )}
         </div>
 
         {/* Attached images */}
