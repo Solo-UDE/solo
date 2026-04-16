@@ -6,7 +6,7 @@
  * and a backfill progress toast at the bottom.
  */
 
-import { useEffect, type FC } from 'react';
+import { useEffect, useRef, type FC } from 'react';
 import {
   Vault as VaultIcon,
   PushPin,
@@ -17,11 +17,15 @@ import {
   TextAa,
 } from '@phosphor-icons/react';
 import { useVaultStore } from '@/stores/vaultStore';
+import { useVaultDragDrop } from '@/hooks/useVaultDragDrop';
+import { cn } from '@/lib/utils';
 import { VaultScopeToggle } from './VaultScopeToggle';
 import { VaultDropZone } from './VaultDropZone';
 import { VaultEntryList } from './VaultEntryList';
 import { VaultEmptyState } from './VaultEmptyState';
 import { VaultSearchResults } from './VaultSearchResults';
+import { VaultUnsortedTray } from './VaultUnsortedTray';
+import { VaultEntryDrawer } from './VaultEntryDrawer';
 
 export const VaultPanel: FC = () => {
   const entries = useVaultStore((s) => s.entries);
@@ -42,6 +46,14 @@ export const VaultPanel: FC = () => {
   const pendingEmbeddings = useVaultStore((s) => s.pendingEmbeddings);
   const backfill = useVaultStore((s) => s.backfill);
   const isSearchingState = useVaultStore((s) => s.isSearching);
+  const selectedEntryId = useVaultStore((s) => s.selectedEntryId);
+  const setSelectedEntry = useVaultStore((s) => s.setSelectedEntry);
+
+  // V1.3: native Finder drag-drop forwarding. The panelRef defines the
+  // "in-bounds" region; drops outside fall through to other listeners
+  // (e.g. the agent input).
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const { isNativeDragOver } = useVaultDragDrop({ targetRef: panelRef });
 
   useEffect(() => {
     void fetchEntries();
@@ -66,8 +78,28 @@ export const VaultPanel: FC = () => {
       ? Math.min(100, Math.round((backfill.completed / backfill.total) * 100))
       : 0;
 
+  const selectedEntry = selectedEntryId ? entries.get(selectedEntryId) ?? null : null;
+
   return (
-    <div className="h-full flex flex-col min-h-0 relative">
+    <div
+      ref={panelRef}
+      className={cn(
+        'h-full flex flex-col min-h-0 relative transition-colors duration-200',
+        isNativeDragOver && 'bg-primary/5',
+      )}
+    >
+      {/* Native drag-drop hint overlay */}
+      {isNativeDragOver && (
+        <div
+          className="absolute inset-2 rounded-[16px] ring-2 ring-primary/40 ring-offset-0 bg-primary/5 pointer-events-none z-20 flex items-center justify-center"
+          aria-hidden="true"
+        >
+          <span className="text-xs font-medium text-primary bg-background/80 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-sm">
+            Drop to remember
+          </span>
+        </div>
+      )}
+
       {/* Header */}
       <div className="px-3 pt-3 pb-2 flex items-center gap-2 shrink-0">
         <VaultIcon className="w-4 h-4 text-muted-foreground" weight="fill" />
@@ -170,6 +202,9 @@ export const VaultPanel: FC = () => {
         {/* Drop zone always available */}
         <VaultDropZone />
 
+        {/* Unsorted review tray — only renders when there are unsorted items */}
+        <VaultUnsortedTray />
+
         {isSearching ? (
           <VaultSearchResults />
         ) : hasEntries ? (
@@ -238,6 +273,14 @@ export const VaultPanel: FC = () => {
         <span className="sr-only" role="status">
           Searching vault…
         </span>
+      )}
+
+      {/* Entry detail drawer — slides over the whole panel */}
+      {selectedEntry && (
+        <VaultEntryDrawer
+          entry={selectedEntry}
+          onClose={() => setSelectedEntry(null)}
+        />
       )}
     </div>
   );
