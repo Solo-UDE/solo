@@ -1,4 +1,4 @@
-import { FolderOpen, CircleNotch } from '@phosphor-icons/react';
+import { FolderOpen, Loader2 } from 'lucide-react';
 import { useState } from 'react';
 
 import { ExpandRegion } from '../shared/ExpandRegion';
@@ -34,7 +34,7 @@ export const GlobToolWidget: FC<GlobToolWidgetProps> = ({
         </span>
         <code className="text-xs font-mono text-muted-foreground truncate">{pattern}</code>
         {isRunning ? (
-          <CircleNotch className="h-3 w-3 animate-spin text-muted-foreground ml-auto" />
+          <Loader2 className="h-3 w-3 animate-spin text-muted-foreground ml-auto" />
         ) : fileCount > 0 ? (
           <span className="text-xs text-muted-foreground ml-auto">{fileCount} files</span>
         ) : null}
