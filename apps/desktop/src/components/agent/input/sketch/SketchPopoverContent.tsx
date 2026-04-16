@@ -1,5 +1,5 @@
 import { useRef, useCallback, useState } from 'react';
-import { X, Eraser, PaperPlaneTilt } from '@phosphor-icons/react';
+import { Cross2Icon, PaperPlaneIcon, EraserIcon } from '@radix-ui/react-icons';
 import { SketchCanvas } from './SketchCanvas';
 import { useAttachmentStore } from '../../../../stores/attachmentStore';
 import type { SketchCanvasHandle } from './SketchCanvas';
@@ -55,7 +55,7 @@ export function SketchPopoverContent({ onClose }: SketchPopoverContentProps) {
           className="inline-flex items-center justify-center h-6 w-6 rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground transition-colors"
           aria-label="Close sketch"
         >
-          <X size={14} />
+          <Cross2Icon width={14} height={14} />
         </button>
       </div>
 
@@ -69,7 +69,7 @@ export function SketchPopoverContent({ onClose }: SketchPopoverContentProps) {
           onClick={handleClear}
           className="inline-flex items-center gap-1.5 h-[30px] px-2.5 rounded-[8px] text-xs font-medium text-muted-foreground hover:bg-muted/60 hover:text-foreground transition-colors"
         >
-          <Eraser size={14} />
+          <EraserIcon width={14} height={14} />
           Clear
         </button>
         <button
@@ -78,7 +78,7 @@ export function SketchPopoverContent({ onClose }: SketchPopoverContentProps) {
           disabled={isExporting}
           className="inline-flex items-center gap-1.5 h-[30px] px-3 rounded-[8px] text-xs font-medium bg-foreground text-background hover:bg-foreground/90 active:scale-[0.97] transition-[transform,background-color] duration-200 disabled:opacity-50"
         >
-          <PaperPlaneTilt size={14} />
+          <PaperPlaneIcon width={14} height={14} />
           Attach to chat
         </button>
       </div>
