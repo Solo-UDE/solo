@@ -13922,6 +13922,8 @@ config(en_default());
 // src/vault.ts
 var logger = createLogger("vault");
 var VAULT_DB = join2(homedir2(), ".solo", "vault", "index.sqlite");
+var EMBEDDING_DIM = 1536;
+var VAULT_DEBUG = process.env.VAULT_DEBUG === "1" || process.env.VAULT_DEBUG === "true";
 function openDb() {
   if (!existsSync(VAULT_DB)) {
     return null;
@@ -14066,23 +14068,318 @@ function sanitizeFts(raw) {
   if (terms.length === 0) return "";
   return terms.join(" OR ");
 }
+var semanticCache = null;
+var semanticCacheScope = null;
+var semanticCacheLoading = null;
+async function loadEmbeddingsCache(projectId) {
+  const scopeKey = projectId ? `project:${projectId}` : "global";
+  if (semanticCache !== null && semanticCacheScope === scopeKey) {
+    return;
+  }
+  if (semanticCacheLoading) {
+    return semanticCacheLoading;
+  }
+  const p = (async () => {
+    const start = Date.now();
+    logger.info({ scope: scopeKey }, "vault.cache.load.start");
+    const db = openDb();
+    if (!db) {
+      semanticCache = [];
+      semanticCacheScope = scopeKey;
+      logger.warn({ path: VAULT_DB }, "vault.cache.load.no_db");
+      return;
+    }
+    try {
+      const stmt = db.query(`
+        SELECT
+          c.id          AS chunk_id,
+          c.entry_id    AS entry_id,
+          c.chunk_index AS chunk_index,
+          c.content     AS content,
+          c.embedding   AS embedding,
+          e.title       AS title,
+          e.kind        AS kind,
+          e.pinned      AS pinned
+        FROM chunks c
+        JOIN entries e ON e.id = c.entry_id
+        WHERE c.embedding IS NOT NULL
+          AND (e.scope_type = 'global'
+               OR (e.scope_type = 'project' AND e.scope_project_id = ?))
+      `);
+      const rows = stmt.all(projectId ?? null);
+      const out = [];
+      let totalBytes = 0;
+      let skipped = 0;
+      for (const r of rows) {
+        const vec = decodeEmbedding(r.embedding, EMBEDDING_DIM);
+        if (!vec) {
+          skipped++;
+          continue;
+        }
+        totalBytes += r.embedding.byteLength;
+        out.push({
+          chunkId: r.chunk_id,
+          entryId: r.entry_id,
+          entryTitle: r.title,
+          kind: r.kind,
+          pinned: r.pinned !== 0,
+          chunkIndex: r.chunk_index,
+          content: r.content,
+          embedding: vec
+        });
+      }
+      semanticCache = out;
+      semanticCacheScope = scopeKey;
+      logger.info(
+        {
+          chunks: out.length,
+          bytes: totalBytes,
+          ms: Date.now() - start,
+          dim: EMBEDDING_DIM,
+          skipped_corrupt: skipped,
+          scope: scopeKey
+        },
+        "vault.cache.loaded"
+      );
+    } catch (err) {
+      logger.error({ err: String(err) }, "vault.cache.load_failed");
+      semanticCache = [];
+      semanticCacheScope = scopeKey;
+    } finally {
+      try {
+        db.close();
+      } catch {
+      }
+    }
+  })();
+  semanticCacheLoading = p;
+  try {
+    await p;
+  } finally {
+    semanticCacheLoading = null;
+  }
+}
+function decodeEmbedding(bytes, expectedDim) {
+  if (bytes.byteLength % 4 !== 0) return null;
+  const gotDim = bytes.byteLength / 4;
+  if (gotDim !== expectedDim) return null;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const out = new Float32Array(gotDim);
+  for (let i = 0; i < gotDim; i++) {
+    out[i] = view.getFloat32(
+      i * 4,
+      /* littleEndian */
+      true
+    );
+  }
+  return out;
+}
+function cosine(a, b) {
+  if (a.length !== b.length) return 0;
+  let dot = 0;
+  let ma = 0;
+  let mb = 0;
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i];
+    const y = b[i];
+    dot += x * y;
+    ma += x * x;
+    mb += y * y;
+  }
+  const denom = Math.sqrt(ma) * Math.sqrt(mb);
+  if (!Number.isFinite(denom) || denom === 0) return 0;
+  const c = dot / denom;
+  return Number.isFinite(c) ? c : 0;
+}
+var QUERY_CACHE_MAX = 128;
+var queryEmbedCache = /* @__PURE__ */ new Map();
+async function embedQuery(text) {
+  const start = Date.now();
+  const trimmed = text.trim();
+  if (trimmed.length === 0) return null;
+  const cached2 = queryEmbedCache.get(trimmed);
+  if (cached2) {
+    queryEmbedCache.delete(trimmed);
+    queryEmbedCache.set(trimmed, cached2);
+    logger.info(
+      {
+        cached: true,
+        ms: Date.now() - start,
+        tokens_est: Math.ceil(trimmed.length / 4)
+      },
+      "vault.query.embed"
+    );
+    return cached2;
+  }
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    logger.warn("vault.query.embed.no_key");
+    return null;
+  }
+  const MAX_ATTEMPTS = 3;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const attemptStart = Date.now();
+    try {
+      const res = await fetch("https://api.openai.com/v1/embeddings", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: "text-embedding-3-small",
+          input: trimmed
+        })
+      });
+      if (res.status === 429) {
+        const waitMs = (1 << attempt) * 1e3;
+        logger.warn(
+          { attempt, status: 429, wait_ms: waitMs },
+          "vault.query.embed.retry"
+        );
+        await new Promise((r) => setTimeout(r, waitMs));
+        continue;
+      }
+      if (!res.ok) {
+        const errBody = await res.text().catch(() => "<unreadable>");
+        logger.error(
+          { status: res.status, attempt, body_preview: errBody.slice(0, 200) },
+          "vault.query.embed.failed"
+        );
+        return null;
+      }
+      const json2 = await res.json();
+      const raw = json2.data?.[0]?.embedding;
+      if (!raw || !Array.isArray(raw)) {
+        logger.error({ attempt }, "vault.query.embed.malformed_response");
+        return null;
+      }
+      const vec = new Float32Array(raw);
+      if (queryEmbedCache.size >= QUERY_CACHE_MAX) {
+        const firstKey = queryEmbedCache.keys().next().value;
+        if (firstKey !== void 0) queryEmbedCache.delete(firstKey);
+      }
+      queryEmbedCache.set(trimmed, vec);
+      logger.info(
+        {
+          cached: false,
+          ms: Date.now() - start,
+          api_ms: Date.now() - attemptStart,
+          tokens_est: Math.ceil(trimmed.length / 4),
+          attempts: attempt + 1
+        },
+        "vault.query.embed"
+      );
+      return vec;
+    } catch (err) {
+      logger.warn(
+        { err: String(err), attempt },
+        "vault.query.embed.retry"
+      );
+      if (attempt === MAX_ATTEMPTS - 1) {
+        logger.error({ err: String(err) }, "vault.query.embed.failed");
+        return null;
+      }
+      await new Promise((r) => setTimeout(r, (1 << attempt) * 1e3));
+    }
+  }
+  return null;
+}
+async function searchVaultSemantic(query2, opts = {}) {
+  const start = Date.now();
+  const { projectId, topK = 6 } = opts;
+  await loadEmbeddingsCache(projectId);
+  if (!semanticCache || semanticCache.length === 0) {
+    logger.warn(
+      { reason: "cache_empty", candidates: 0 },
+      "vault.tool.semantic_unavailable"
+    );
+    return [];
+  }
+  const queryVec = await embedQuery(query2);
+  if (!queryVec) {
+    logger.warn(
+      { reason: "query_embed_failed" },
+      "vault.tool.semantic_unavailable"
+    );
+    return [];
+  }
+  const rankStart = Date.now();
+  const scored = semanticCache.map((c) => ({
+    c,
+    score: cosine(queryVec, c.embedding)
+  }));
+  scored.sort((a, b) => b.score - a.score);
+  const top = scored.slice(0, topK);
+  const rankMs = Date.now() - rankStart;
+  const hits = top.map(({ c, score }) => ({
+    entryId: c.entryId,
+    entryTitle: c.entryTitle,
+    kind: c.kind,
+    pinned: c.pinned,
+    chunkIndex: c.chunkIndex,
+    content: c.content,
+    score
+  }));
+  logger.info(
+    {
+      mode: "semantic",
+      query_len: query2.length,
+      top_k: topK,
+      candidates: semanticCache.length,
+      rank_ms: rankMs,
+      total_ms: Date.now() - start,
+      top_scores: hits.slice(0, 5).map((h) => ({
+        title: h.entryTitle,
+        score: Math.round(h.score * 1e3) / 1e3
+      }))
+    },
+    "vault.tool.search"
+  );
+  return hits;
+}
 var vaultSearchTool = tool(
   "vault_search",
-  `Search the user's personal vault (agent memory) for indexed content. The vault holds documents, code, screenshots, and data the user has chosen to remember across sessions. ALWAYS use this tool before asking the user to re-explain something they've indexed \u2014 especially when they refer to "that spec", "the schema I shared", "my notes on X", or ask "did I put X in the vault?". Returns the top matching chunks with titles.`,
+  `Search the user's personal vault (agent memory) for indexed content. The vault holds documents, code, screenshots, and data the user has chosen to remember across sessions. ALWAYS use this tool before asking the user to re-explain something they've indexed \u2014 especially when they refer to "that spec", "the schema I shared", "my notes on X", or ask "did I put X in the vault?". Pick mode="fts" for exact keyword recall and mode="semantic" for conceptual / paraphrased queries. When unsure, start with fts; if it returns nothing, retry with semantic.`,
   {
     query: external_exports.string().min(2).describe(
-      "Free-text search query. Use keywords from the user's message. Supports lexical (FTS5) matching over chunk content."
+      "Free-text search query. Keywords from the user's message work well for fts mode; natural-language phrases work better for semantic mode."
+    ),
+    mode: external_exports.enum(["fts", "semantic"]).default("fts").describe(
+      'Retrieval strategy. "fts" = BM25 keyword match (fast, precise). "semantic" = OpenAI embedding + cosine (recalls paraphrased matches).'
     ),
     top_k: external_exports.number().int().min(1).max(20).default(6).describe("Maximum chunks to return (default 6).")
   },
   async (args) => {
-    const hits = searchVault(args.query, { topK: args.top_k ?? 6 });
+    const start = Date.now();
+    const mode = args.mode ?? "fts";
+    const topK = args.top_k ?? 6;
+    let hits;
+    if (mode === "semantic") {
+      hits = await searchVaultSemantic(args.query, { topK });
+    } else {
+      hits = searchVault(args.query, { topK });
+      logger.info(
+        {
+          mode: "fts",
+          query_len: args.query.length,
+          top_k: topK,
+          ms: Date.now() - start,
+          returned: hits.length,
+          top_scores: hits.slice(0, 5).map((h) => ({
+            title: h.entryTitle,
+            score: Math.round(h.score * 1e3) / 1e3
+          }))
+        },
+        "vault.tool.search"
+      );
+    }
     if (hits.length === 0) {
       return {
         content: [
           {
             type: "text",
-            text: `No vault entries matched "${args.query}".`
+            text: `No vault entries matched "${args.query}" (mode: ${mode}).`
           }
         ]
       };
@@ -14092,8 +14389,15 @@ var vaultSearchTool = tool(
 score: ${(h.score * 100).toFixed(0)}%
 ${h.content.trim()}`
     ).join("\n\n---\n\n");
+    const debugFooter = VAULT_DEBUG ? `
+
+---
+<vault-debug>
+mode=${mode} top_k=${topK} returned=${hits.length} ms=${Date.now() - start}
+${hits.map((h) => `  ${h.entryTitle} \u2192 ${h.score.toFixed(4)}`).join("\n")}
+</vault-debug>` : "";
     return {
-      content: [{ type: "text", text: body }]
+      content: [{ type: "text", text: body + debugFooter }]
     };
   }
 );
@@ -15768,6 +16072,9 @@ You should build your plan incrementally by writing to or editing this file. NOT
       logger5.warn("Session already active");
       return;
     }
+    loadEmbeddingsCache(this.cwd).catch((err) => {
+      logger5.warn({ err: String(err) }, "vault.cache.preload_failed");
+    });
     const currentPath = process.env.PATH ?? "";
     const homeDir = process.env.HOME ?? "";
     const additionalPaths = [
