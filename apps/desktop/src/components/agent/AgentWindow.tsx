@@ -30,7 +30,7 @@ import {
 
 import type { FC } from 'react';
 import type { Mode } from './input/mode-selector';
-import type { MessageMode, Attachment, FileMention, SessionConnectionState } from '../../stores/agentStore';
+import type { MessageMode, Attachment, FileMention, SessionConnectionState, UserContentPart } from '../../stores/agentStore';
 
 export interface AgentWindowCallbacks {
 	onFileOpen?: (path: string) => void;
@@ -147,8 +147,8 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 	}, [sessionId, callbacks]);
 
 	const handleSubmit = useCallback(
-		async (content: string, mode: 'planning' | 'fast', _model: string, attachments?: Attachment[], mentions?: FileMention[]) => {
-			await sendMessage(content, mode as MessageMode, attachments, mentions);
+		async (content: string, mode: 'planning' | 'fast', _model: string, attachments?: Attachment[], mentions?: FileMention[], skills?: string[], parts?: UserContentPart[]) => {
+			await sendMessage(content, mode as MessageMode, attachments, mentions, skills, parts);
 		},
 		[sendMessage]
 	);
@@ -157,7 +157,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 	const enqueueMessage = useAgentStore((state) => state.enqueueMessage);
 	const popQueueForRecall = useAgentStore((state) => state.popQueueForRecall);
 	const handleEnqueue = useCallback(
-		(content: string, mode: 'planning' | 'fast', model: string, attachments?: Attachment[], mentions?: FileMention[]) => {
+		(content: string, mode: 'planning' | 'fast', model: string, attachments?: Attachment[], mentions?: FileMention[], skills?: string[], parts?: UserContentPart[]) => {
 			if (!sessionId) return;
 			enqueueMessage(sessionId, {
 				content,
@@ -165,22 +165,31 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 				model,
 				attachments,
 				mentions,
+				skills,
+				parts,
 			});
 		},
 		[sessionId, enqueueMessage]
 	);
 
-	const handleRecallQueue = useCallback((): { text: string; mentions?: FileMention[] } | null => {
+	const handleRecallQueue = useCallback((): { text: string; mentions?: FileMention[]; skills?: string[] } | null => {
 		if (!sessionId) return null;
 		const popped = popQueueForRecall(sessionId);
 		if (popped.length === 0) return null;
 		const text = popped.map((q) => q.content).join('\n\n');
 		const mentionMap = new Map<string, FileMention>();
+		const skillSet = new Set<string>();
 		for (const q of popped) {
 			for (const m of q.mentions ?? []) mentionMap.set(m.path, m);
+			for (const n of q.skills ?? []) skillSet.add(n);
 		}
 		const mentions = Array.from(mentionMap.values());
-		return { text, mentions: mentions.length ? mentions : undefined };
+		const skills = Array.from(skillSet);
+		return {
+			text,
+			mentions: mentions.length ? mentions : undefined,
+			skills: skills.length ? skills : undefined,
+		};
 	}, [sessionId, popQueueForRecall]);
 
 	// Abort session
