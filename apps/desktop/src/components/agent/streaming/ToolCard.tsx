@@ -9,13 +9,8 @@
  * - Slot for specialized content via children prop
  */
 
-import {
-	CircleNotch,
-	CheckCircle,
-	XCircle,
-	ShieldWarning,
-	CaretRight,
-} from '@phosphor-icons/react';
+import { CheckCircledIcon, CrossCircledIcon, ChevronRightIcon } from '@radix-ui/react-icons';
+import { Loader2, ShieldAlert } from 'lucide-react';
 import { useState, useMemo } from 'react';
 
 import { ExpandRegion } from '../messages/shared/ExpandRegion';
@@ -47,13 +42,13 @@ export interface ToolCardProps {
 const StatusIcon: FC<{ status: ToolStatus }> = ({ status }) => {
 	switch (status) {
 		case 'running':
-			return <CircleNotch className="h-3.5 w-3.5 text-muted-foreground animate-spin shrink-0" />;
+			return <Loader2 className="h-3.5 w-3.5 text-muted-foreground animate-spin shrink-0" />;
 		case 'success':
-			return <CheckCircle className="h-3.5 w-3.5 text-status-success shrink-0" weight="fill" />;
+			return <CheckCircledIcon width={14} height={14} className="text-status-success shrink-0" />;
 		case 'error':
-			return <XCircle className="h-3.5 w-3.5 text-status-error shrink-0" weight="fill" />;
+			return <CrossCircledIcon width={14} height={14} className="text-status-error shrink-0" />;
 		case 'awaiting-permission':
-			return <ShieldWarning className="h-3.5 w-3.5 text-status-warning shrink-0" weight="fill" />;
+			return <ShieldAlert className="h-3.5 w-3.5 text-status-warning shrink-0" />;
 	}
 };
 
@@ -134,8 +129,9 @@ export const ToolCard: FC<ToolCardProps> = ({
 				) : null}
 
 				{canExpand ? (
-					<CaretRight
-						className={`h-3 w-3 text-muted-foreground/50 transition-transform duration-200 ${
+					<ChevronRightIcon
+						width={12} height={12}
+						className={`text-muted-foreground/50 transition-transform duration-200 ${
 							isExpanded ? 'rotate-90' : ''
 						}`}
 					/>
@@ -152,7 +148,7 @@ export const ToolCard: FC<ToolCardProps> = ({
 
 				{status === 'running' && !output && !children ? (
 					<div className="mt-1 ml-5 flex items-center gap-2 text-xs text-muted-foreground">
-						<CircleNotch className="h-3 w-3 animate-spin" />
+						<Loader2 className="h-3 w-3 animate-spin" />
 						<span>Processing...</span>
 					</div>
 				) : displayOutput ? (
