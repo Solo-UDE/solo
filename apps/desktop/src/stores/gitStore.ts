@@ -166,8 +166,12 @@ export const useGitStore = create<GitState & GitActions>()(
       if (!useFileExplorerStore.getState().rootPath) return;
       // Skip when active worktree's directory is gone — prevents poll-loop console spam
       if (shouldSkipForMissingWorktree()) return;
+
+      const seq = get()._fetchSeq;
       try {
         const status = await gitGetStatus();
+        // Discard stale response (a mutation bumped _fetchSeq while in-flight)
+        if (get()._fetchSeq !== seq) return;
         set((state) => {
           state.repoStatus = status;
           state.commitsAhead = status.commits_ahead;
@@ -179,6 +183,7 @@ export const useGitStore = create<GitState & GitActions>()(
           }
         });
       } catch (err) {
+        if (get()._fetchSeq !== seq) return;
         console.error('Failed to fetch repo status:', err);
       }
     },
@@ -211,7 +216,11 @@ export const useGitStore = create<GitState & GitActions>()(
     },
 
     commit: async (commitMessage: string) => {
-      set((state) => { state.isCommitting = true; state._pendingOps += 1; });
+      set((state) => {
+        state.isCommitting = true;
+        state._pendingOps += 1;
+        state._fetchSeq += 1;
+      });
       try {
         await gitCommit(commitMessage);
         set((state) => {
@@ -235,16 +244,22 @@ export const useGitStore = create<GitState & GitActions>()(
       const accessToken = await githubGetToken();
       if (!accessToken) throw new Error('Not connected to GitHub. Please connect first.');
 
-      set((state) => { state.isPushing = true; });
+      set((state) => {
+        state.isPushing = true;
+        state._pendingOps += 1;
+        state._fetchSeq += 1;
+      });
       try {
         await gitPush(accessToken, githubRepoUrl, currentBranch);
         set((state) => { state.isPushing = false; });
-        await get().fetchChanges();
-        await get().fetchRepoStatus();
       } catch (err) {
         set((state) => { state.isPushing = false; });
         throw err;
+      } finally {
+        set((state) => { state._pendingOps -= 1; });
       }
+      await get().fetchChanges();
+      await get().fetchRepoStatus();
     },
 
     pull: async (forceReset?: boolean) => {
@@ -254,21 +269,31 @@ export const useGitStore = create<GitState & GitActions>()(
       const accessToken = await githubGetToken();
       if (!accessToken) throw new Error('Not connected to GitHub. Please connect first.');
 
-      set((state) => { state.isPulling = true; });
+      set((state) => {
+        state.isPulling = true;
+        state._pendingOps += 1;
+        state._fetchSeq += 1;
+      });
       try {
         await gitPull(accessToken, githubRepoUrl, currentBranch, forceReset ?? false);
         set((state) => { state.isPulling = false; });
-        await get().fetchChanges();
-        await get().fetchRepoStatus();
       } catch (err) {
         set((state) => { state.isPulling = false; });
         throw err;
+      } finally {
+        set((state) => { state._pendingOps -= 1; });
       }
+      await get().fetchChanges();
+      await get().fetchRepoStatus();
     },
 
     discardFile: async (filePath: string) => {
       const { currentBranch } = get();
-      set((state) => { state.isDiscarding = true; state._pendingOps += 1; });
+      set((state) => {
+        state.isDiscarding = true;
+        state._pendingOps += 1;
+        state._fetchSeq += 1;
+      });
       try {
         await gitDiscardFile(filePath, currentBranch);
         set((state) => { state.isDiscarding = false; });
@@ -283,7 +308,11 @@ export const useGitStore = create<GitState & GitActions>()(
 
     discardAll: async () => {
       const { currentBranch } = get();
-      set((state) => { state.isDiscarding = true; state._pendingOps += 1; });
+      set((state) => {
+        state.isDiscarding = true;
+        state._pendingOps += 1;
+        state._fetchSeq += 1;
+      });
       try {
         await gitDiscardAll(currentBranch);
         set((state) => { state.isDiscarding = false; });
@@ -297,7 +326,7 @@ export const useGitStore = create<GitState & GitActions>()(
     },
 
     stageFile: async (filePath: string) => {
-      set((state) => { state._pendingOps += 1; });
+      set((state) => { state._pendingOps += 1; state._fetchSeq += 1; });
       try {
         await gitStageFile(filePath);
       } catch (err) {
@@ -310,7 +339,7 @@ export const useGitStore = create<GitState & GitActions>()(
     },
 
     unstageFile: async (filePath: string) => {
-      set((state) => { state._pendingOps += 1; });
+      set((state) => { state._pendingOps += 1; state._fetchSeq += 1; });
       try {
         await gitUnstageFile(filePath);
       } catch (err) {
@@ -323,7 +352,7 @@ export const useGitStore = create<GitState & GitActions>()(
     },
 
     stageAllFiles: async () => {
-      set((state) => { state._pendingOps += 1; });
+      set((state) => { state._pendingOps += 1; state._fetchSeq += 1; });
       try {
         await gitStageAll();
       } catch (err) {
@@ -336,7 +365,7 @@ export const useGitStore = create<GitState & GitActions>()(
     },
 
     unstageAllFiles: async () => {
-      set((state) => { state._pendingOps += 1; });
+      set((state) => { state._pendingOps += 1; state._fetchSeq += 1; });
       try {
         await gitUnstageAll();
       } catch (err) {
@@ -349,7 +378,7 @@ export const useGitStore = create<GitState & GitActions>()(
     },
 
     createBranch: async (name: string) => {
-      set((state) => { state.isCreatingBranch = true; });
+      set((state) => { state.isCreatingBranch = true; state._fetchSeq += 1; });
       try {
         await gitCreateBranch(name);
         set((state) => { state.isCreatingBranch = false; });
@@ -369,11 +398,12 @@ export const useGitStore = create<GitState & GitActions>()(
       const accessToken = await githubGetToken();
       if (!accessToken) throw new Error('Not connected to GitHub. Please connect first.');
 
-      set((state) => { state.isFetching = true; });
+      set((state) => { state.isFetching = true; state._fetchSeq += 1; });
       try {
         await gitFetch(accessToken, githubRepoUrl, currentBranch);
         set((state) => { state.isFetching = false; });
         await get().fetchRepoStatus();
+        await get().fetchChanges();
         await get().listBranches();
       } catch (err) {
         set((state) => { state.isFetching = false; });
@@ -392,7 +422,7 @@ export const useGitStore = create<GitState & GitActions>()(
     },
 
     checkoutBranch: async (name: string) => {
-      set((state) => { state.isCheckingOut = true; });
+      set((state) => { state.isCheckingOut = true; state._fetchSeq += 1; });
       try {
         await gitCheckoutBranch(name);
         set((state) => { state.isCheckingOut = false; });
@@ -406,16 +436,17 @@ export const useGitStore = create<GitState & GitActions>()(
     },
 
     deleteBranch: async (name: string, force?: boolean) => {
-      try {
-        await gitDeleteBranch(name, force ?? false);
-        await get().listBranches();
-      } catch (err) {
-        throw err;
-      }
+      set((state) => { state._fetchSeq += 1; });
+      await gitDeleteBranch(name, force ?? false);
+      // Force-deleting the current branch can leave HEAD/changes in a new state —
+      // refresh all three, not just the branch list.
+      await get().fetchRepoStatus();
+      await get().fetchChanges();
+      await get().listBranches();
     },
 
     merge: async (sourceBranch: string) => {
-      set((state) => { state.isMerging = true; });
+      set((state) => { state.isMerging = true; state._fetchSeq += 1; });
       try {
         const result = await gitMerge(sourceBranch);
         set((state) => { state.isMerging = false; });
@@ -430,7 +461,7 @@ export const useGitStore = create<GitState & GitActions>()(
     },
 
     stash: async (message?: string) => {
-      set((state) => { state.isStashing = true; });
+      set((state) => { state.isStashing = true; state._fetchSeq += 1; });
       try {
         await gitStash(message, true);
         set((state) => { state.isStashing = false; });
@@ -443,7 +474,7 @@ export const useGitStore = create<GitState & GitActions>()(
     },
 
     stashPop: async () => {
-      set((state) => { state.isStashing = true; });
+      set((state) => { state.isStashing = true; state._fetchSeq += 1; });
       try {
         const result = await gitStashPop();
         set((state) => { state.isStashing = false; });
@@ -509,6 +540,8 @@ export const useGitStore = create<GitState & GitActions>()(
       const id = setInterval(() => {
         get().fetchRepoStatus();
         get().fetchChanges();
+        get().listBranches();
+        get().stashList();
       }, POLL_INTERVAL);
 
       set((state) => { state.pollIntervalId = id; });
