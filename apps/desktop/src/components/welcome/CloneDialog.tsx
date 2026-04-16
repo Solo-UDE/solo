@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { X, FolderOpen, GitBranch, GithubLogo, SpinnerGap, Warning, CircleNotch } from '@phosphor-icons/react';
+import { Cross2Icon, GitHubLogoIcon, ExclamationTriangleIcon } from '@radix-ui/react-icons';
+import { FolderOpen, GitBranch, Loader2 } from 'lucide-react';
 import { Button, IconButton, Input } from '@solo/ui';
 import { openFolderDialog } from '@/lib/tauri/fs';
 import { gitClone } from '@/lib/tauri/git';
@@ -126,7 +127,7 @@ export function CloneDialog({ onClose }: CloneDialogProps) {
             disabled={cloning}
             title="Close"
           >
-            <X className="w-3.5 h-3.5 text-muted-foreground" />
+            <Cross2Icon className="w-3.5 h-3.5 text-muted-foreground" />
           </IconButton>
         </div>
 
@@ -174,7 +175,7 @@ export function CloneDialog({ onClose }: CloneDialogProps) {
           {error && (
             <div className="space-y-2">
               <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-destructive/10 text-destructive text-xs">
-                <Warning className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                <ExclamationTriangleIcon className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                 <span>{error}</span>
               </div>
               {needsAuth && (
@@ -186,9 +187,9 @@ export function CloneDialog({ onClose }: CloneDialogProps) {
                   className="w-full h-8 text-xs"
                 >
                   {isConnecting ? (
-                    <CircleNotch className="w-3.5 h-3.5 animate-spin" />
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" size={14} />
                   ) : (
-                    <GithubLogo className="w-3.5 h-3.5" weight="bold" />
+                    <GitHubLogoIcon className="w-3.5 h-3.5" />
                   )}
                   {isConnecting ? 'Waiting for authorization...' : 'Sign in with GitHub to clone private repos'}
                 </Button>
@@ -206,7 +207,7 @@ export function CloneDialog({ onClose }: CloneDialogProps) {
           >
             {cloning ? (
               <>
-                <SpinnerGap className="w-3.5 h-3.5 animate-spin" />
+                <Loader2 className="w-3.5 h-3.5 animate-spin" size={14} />
                 Cloning...
               </>
             ) : (
