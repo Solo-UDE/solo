@@ -51,6 +51,19 @@ export function useVaultStream(): void {
           useVaultStore.setState({ unsortedCount: evt.payload.count });
           break;
         }
+        case 'vault:backfill_progress': {
+          // `u64` fields arrive as bigint through ts-rs — coerce for the UI.
+          const toNumber = (v: bigint | number) =>
+            typeof v === 'bigint' ? Number(v) : v;
+          store.updateBackfillProgress({
+            total: toNumber(evt.payload.total),
+            completed: toNumber(evt.payload.completed),
+            failed: toNumber(evt.payload.failed),
+            elapsedMs: toNumber(evt.payload.elapsed_ms),
+            done: evt.payload.done,
+          });
+          break;
+        }
         default:
           break;
       }
