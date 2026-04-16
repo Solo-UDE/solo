@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback, useEffect, useMemo, lazy, Suspense } from 'react';
+import React, { useRef, useState, useCallback, useEffect, useMemo, useImperativeHandle, forwardRef, lazy, Suspense } from 'react';
 import { StopIcon } from '@radix-ui/react-icons';
 import { Paintbrush } from 'lucide-react';
 
@@ -40,6 +40,16 @@ const LazySketchPopoverContent = lazy(() =>
   import('./sketch/SketchPopoverContent').then((m) => ({ default: m.SketchPopoverContent })),
 );
 
+/** Imperative API for the panel to invoke composer actions when focus is elsewhere (feed, buttons, etc.). */
+export interface ChatInputContainerHandle {
+  /** Send or enqueue whatever is in the composer right now. No-op if empty. */
+  submit: () => void;
+  /** Pull queued pills back into the composer and abort the running turn. Safe to call with empty queue. */
+  abortWithRecall: () => void;
+  /** Focus the editor. */
+  focus: () => void;
+}
+
 export interface ChatInputContainerProps {
   onSubmit: (content: string, mode: 'planning' | 'fast', model: string, attachments?: Attachment[], mentions?: FileMention[]) => void;
   /** Called instead of `onSubmit` when `isAgentRunning` is true — message should be queued, not sent. */
@@ -60,7 +70,7 @@ export interface ChatInputContainerProps {
   debugModeActive?: boolean;
 }
 
-export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
+export const ChatInputContainer = forwardRef<ChatInputContainerHandle, ChatInputContainerProps>(({
   onSubmit,
   onEnqueue,
   onRecallQueue,
@@ -76,7 +86,7 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
   planModeActive = false,
   acceptModeActive = false,
   debugModeActive = false,
-}) => {
+}, forwardedRef) => {
   const [content, setContent] = useState('');
   // Derive initial mode from bridge state so remounted components get the right mode
   const [mode, setMode] = useState<Mode>(() => {
@@ -166,6 +176,21 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
     return true;
   }, [onRecallQueue, content]);
 
+  /**
+   * Stop the running turn and lift queued messages back into the composer.
+   * Draining the queue BEFORE calling abort prevents the store's microtask
+   * auto-flush from firing on the abort's result/error event — the queue
+   * check inside the microtask sees an empty queue and no-ops.
+   */
+  const handleStopAndRecall = useCallback((): void => {
+    handleRecallQueue();
+    onAbort?.();
+    // Leave focus on the editor so the user can edit immediately.
+    // setText already calls editor.focus(); fall back to explicit focus
+    // if the queue was empty (no recall happened).
+    editorRef.current?.focus();
+  }, [handleRecallQueue, onAbort]);
+
   const handleAgentCommand = (commandText: string): void => {
     onSubmit(commandText, messageMode, selectedModel || DEFAULT_MODEL_ID);
   };
@@ -188,7 +213,27 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
       event.preventDefault();
       cycleMode();
     }
+    // Escape while streaming = stop the turn and pull queued messages back
+    // into the editor for editing. Safe to call with an empty queue (no-op
+    // recall, still aborts).
+    if (event.key === 'Escape' && isAgentRunning) {
+      event.preventDefault();
+      handleStopAndRecall();
+    }
   };
+
+  useImperativeHandle(forwardedRef, () => ({
+    submit: () => {
+      handleSubmit();
+    },
+    abortWithRecall: () => {
+      if (!isAgentRunning) return;
+      handleStopAndRecall();
+    },
+    focus: () => {
+      editorRef.current?.focus();
+    },
+  }));
 
   const handleModeChange = (newMode: Mode) => {
     setMode(newMode);
@@ -338,9 +383,10 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
               {/* Submit / Stop */}
               {isAgentRunning ? (
                 <button
-                  onClick={onAbort}
+                  onClick={handleStopAndRecall}
                   className="inline-flex items-center justify-center h-[30px] w-[30px] rounded-[8px] bg-destructive text-white shadow-[0_0_8px_-2px] shadow-destructive/40 hover:brightness-110 hover:scale-105 active:scale-95 transition-[transform,background-color,filter] duration-200"
-                  aria-label="Stop generation"
+                  aria-label="Stop and edit queued messages"
+                  title="Stop and edit queued messages (Esc)"
                 >
                   <StopIcon width={14} height={14} />
                 </button>
@@ -356,4 +402,6 @@ export const ChatInputContainer: React.FC<ChatInputContainerProps> = ({
       </div>
     </div>
   );
-};
+});
+
+ChatInputContainer.displayName = 'ChatInputContainer';
