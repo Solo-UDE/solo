@@ -1,18 +1,23 @@
-//! Local indexing pipeline — validate → extract → chunk → store → notify.
+//! Local indexing pipeline — validate → extract → chunk → store → embed → notify.
 //!
-//! V1: text-only extraction. PDF/image/OCR land in V2. Embeddings in V1.2.
+//! V1: text-only extraction. PDF/image/OCR land in V2.
+//! V1.2: best-effort embedding during ingest. Failures are logged and
+//!       recoverable via `vault_backfill_embeddings`.
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::Arc;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
+use solo_embeddings::{Embedding, EmbeddingError, EmbeddingProvider};
 use solo_protocol::{
     CloudSyncState, EntryKind, IndexStatus, MemoryType, RetrievalStats, VaultChunk, VaultEntry,
     VaultScope,
 };
+use tracing::{debug, info, warn};
 
 use crate::classifier;
-use crate::store::Store;
+use crate::store::{Store, EMBEDDING_DIM};
 use crate::{Result, VaultError};
 
 /// Max bytes the pipeline will accept for a single entry.
@@ -120,20 +125,184 @@ pub fn ingest_file(
     })
 }
 
-/// One-shot helper that ingests a path and persists it to the given Store.
-pub fn ingest_and_store(
+/// One-shot helper that ingests a path, persists it, and best-effort
+/// embeds the resulting chunks.
+///
+/// Embedding failure is non-fatal: we log a structured warning and return
+/// the entry with NULL embeddings. The user can recover via
+/// `vault_backfill_embeddings`.
+pub async fn ingest_and_store(
     src: &Path,
     blobs_dir: &Path,
     store: &Store,
     scope: VaultScope,
     memory_type: MemoryType,
+    embed_provider: Option<Arc<dyn EmbeddingProvider>>,
 ) -> Result<VaultEntry> {
     let Ingested { entry, chunks } = ingest_file(src, blobs_dir, scope, memory_type)?;
+
+    // Persist entry + chunk rows (FTS index rebuilt transactionally by insert_chunk).
     store.upsert_entry(&entry)?;
     for chunk in &chunks {
         store.insert_chunk(chunk)?;
     }
+
+    // Best-effort embed. No-op for zero chunks (e.g. binary files) or when
+    // no provider is configured (e.g. user has no OpenAI key set).
+    if chunks.is_empty() {
+        debug!(entry_id = %entry.id, "vault.embed.skip reason=no_chunks");
+    } else if let Some(provider) = embed_provider.as_deref() {
+        let total_chars: usize = chunks.iter().map(|c| c.content.len()).sum();
+        info!(
+            entry_id = %entry.id,
+            chunks_n = chunks.len(),
+            total_chars,
+            "vault.embed.start"
+        );
+        let (vectors, stats) = embed_chunks(&chunks, provider).await;
+        for (chunk_id, emb) in &vectors {
+            if emb.values.len() != EMBEDDING_DIM {
+                warn!(
+                    chunk_id,
+                    got_dim = emb.values.len(),
+                    expected_dim = EMBEDDING_DIM,
+                    "vault.embed.dim_mismatch (provider returned wrong shape)"
+                );
+                continue;
+            }
+            if let Err(e) = store.update_chunk_embedding(chunk_id, &emb.values) {
+                warn!(chunk_id, err = %e, "vault.embed.write_failed");
+            }
+        }
+        info!(
+            entry_id = %entry.id,
+            dim = stats.dim,
+            chunks_n = chunks.len(),
+            total_ms = stats.total_ms,
+            ms_per_chunk = stats.avg_ms_per_chunk,
+            succeeded = stats.succeeded,
+            failed = stats.failed,
+            retries = stats.retries,
+            "vault.embed.done"
+        );
+    } else {
+        debug!(entry_id = %entry.id, "vault.embed.skip reason=no_provider");
+    }
+
     Ok(entry)
+}
+
+/// Summary telemetry from an embedding pass. Returned from `embed_chunks`
+/// and re-logged by `ingest_and_store` / `backfill_embeddings`.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct EmbedStats {
+    /// Dimensionality reported by the provider on the first successful
+    /// batch (0 if everything failed).
+    pub dim: usize,
+    /// Chunks that embedded successfully.
+    pub succeeded: u64,
+    /// Chunks that failed (after exhausting retries).
+    pub failed: u64,
+    /// Count of retry attempts across all batches (for rate-limit
+    /// observability).
+    pub retries: u64,
+    /// Total wall-clock time spent in `embed_chunks` in milliseconds.
+    pub total_ms: u64,
+    /// `total_ms / succeeded` for quick eyeballing.
+    pub avg_ms_per_chunk: f64,
+}
+
+/// Batch-embed a slice of chunks with exponential backoff on rate limits.
+///
+/// Returns `(vectors, stats)`:
+/// - `vectors` is a `(chunk_id, Embedding)` list for successfully embedded
+///   chunks. Failed chunks are simply absent (and counted in `stats.failed`).
+/// - `stats` is observability metadata.
+///
+/// Per-batch errors are logged with enough context to triage. The function
+/// never panics and never returns Err — it embeds what it can and reports.
+///
+/// Tunables: `BATCH_SIZE` = 64 (OpenAI can handle 2048 texts but 64 keeps
+/// per-request latency low and lets backoff be useful); `MAX_RETRIES` = 3
+/// with wait = `retry_after * 2^attempt` seconds (capped at 60s).
+pub async fn embed_chunks(
+    chunks: &[VaultChunk],
+    provider: &dyn EmbeddingProvider,
+) -> (Vec<(String, Embedding)>, EmbedStats) {
+    const BATCH_SIZE: usize = 64;
+    const MAX_RETRIES: u32 = 3;
+
+    let start = Instant::now();
+    let mut stats = EmbedStats::default();
+    let mut vectors: Vec<(String, Embedding)> = Vec::with_capacity(chunks.len());
+
+    if chunks.is_empty() {
+        return (vectors, stats);
+    }
+
+    for (batch_i, batch) in chunks.chunks(BATCH_SIZE).enumerate() {
+        let texts: Vec<String> = batch.iter().map(|c| c.content.clone()).collect();
+
+        let mut attempt: u32 = 0;
+        loop {
+            let batch_start = Instant::now();
+            match provider.embed_many(&texts).await {
+                Ok(embs) => {
+                    let latency_ms = batch_start.elapsed().as_millis() as u64;
+                    if stats.dim == 0 {
+                        stats.dim = embs.first().map(|e| e.dimensions).unwrap_or(0);
+                    }
+                    let received = embs.len();
+                    for (chunk, emb) in batch.iter().zip(embs.into_iter()) {
+                        vectors.push((chunk.id.clone(), emb));
+                    }
+                    stats.succeeded += received as u64;
+                    info!(
+                        batch_i,
+                        batch_size = batch.len(),
+                        latency_ms,
+                        attempt,
+                        "vault.embed.batch"
+                    );
+                    break;
+                }
+                Err(EmbeddingError::RateLimited(retry_after_s))
+                    if attempt < MAX_RETRIES =>
+                {
+                    let base = retry_after_s.max(1).min(60) as u64;
+                    let wait_s = (base * (1u64 << attempt)).min(60);
+                    warn!(
+                        batch_i,
+                        attempt,
+                        retry_after_s = wait_s,
+                        "vault.embed.retry"
+                    );
+                    tokio::time::sleep(std::time::Duration::from_secs(wait_s)).await;
+                    attempt += 1;
+                    stats.retries += 1;
+                }
+                Err(e) => {
+                    warn!(
+                        batch_i,
+                        attempt,
+                        batch_size = batch.len(),
+                        err = %e,
+                        "vault.embed.skip"
+                    );
+                    stats.failed += batch.len() as u64;
+                    break;
+                }
+            }
+        }
+    }
+
+    stats.total_ms = start.elapsed().as_millis() as u64;
+    stats.avg_ms_per_chunk = if stats.succeeded > 0 {
+        stats.total_ms as f64 / stats.succeeded as f64
+    } else {
+        0.0
+    };
+    (vectors, stats)
 }
 
 fn extract_text(src: &Path, kind: EntryKind) -> String {
