@@ -3,7 +3,7 @@
  */
 
 import type { FC } from 'react';
-import { Vault } from '@phosphor-icons/react';
+import { Vault } from 'lucide-react';
 
 export const VaultPlaceholder: FC = () => (
   <div className="flex-1 flex flex-col items-center justify-center gap-3 px-6 py-12 text-center">
