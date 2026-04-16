@@ -7,7 +7,8 @@
 
 import { useCallback, useMemo, useState, useRef, useEffect, type FC, type MouseEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { CaretDown, GitBranch, Check } from '@phosphor-icons/react';
+import { ChevronDownIcon, CheckIcon } from '@radix-ui/react-icons';
+import { GitBranch } from 'lucide-react';
 import { getRepoIcon, getRepoColorVar, getRepoColorMutedVar } from '@/lib/repoIdentity';
 import { useRepoStore } from '@/stores/repoStore';
 import type { TabGroup as TabGroupType } from '@/stores/panelTabsStore';
@@ -127,7 +128,7 @@ export const TabGroupComponent: FC<TabGroupProps> = ({
             : `Collapse ${repo.name}`
         }
       >
-        <Icon className="w-3 h-3" weight="fill" />
+        <Icon className="w-3 h-3" />
         <span className="truncate max-w-[80px]">{repo.name}</span>
         <span className="text-[10px] opacity-60">/</span>
         <span className="truncate max-w-[60px] text-[10px] opacity-70">
@@ -147,7 +148,7 @@ export const TabGroupComponent: FC<TabGroupProps> = ({
               animate={{ rotate: dropdownOpen ? 180 : 0 }}
               transition={{ type: 'spring', stiffness: 500, damping: 30 }}
             >
-              <CaretDown className="w-2.5 h-2.5 opacity-60" />
+              <ChevronDownIcon className="w-2.5 h-2.5 opacity-60" />
             </motion.div>
           </div>
         ) : (
@@ -155,7 +156,7 @@ export const TabGroupComponent: FC<TabGroupProps> = ({
             animate={{ rotate: group.collapsed ? -90 : 0 }}
             transition={{ type: 'spring', stiffness: 500, damping: 30 }}
           >
-            <CaretDown className="w-2.5 h-2.5 opacity-60" />
+            <ChevronDownIcon className="w-2.5 h-2.5 opacity-60" />
           </motion.div>
         )}
       </button>
@@ -190,12 +191,12 @@ export const TabGroupComponent: FC<TabGroupProps> = ({
                       : 'text-muted-foreground hover:text-foreground',
                   )}
                 >
-                  <GitBranch className="w-3.5 h-3.5 shrink-0" />
+                  <GitBranch className="w-3.5 h-3.5 shrink-0" size={14} />
                   <span className="truncate">
                     {wt.is_main ? 'main' : (wt.branch ?? wt.id)}
                   </span>
                   {isSelected && (
-                    <Check className="w-3.5 h-3.5 ml-auto shrink-0 opacity-70" />
+                    <CheckIcon className="w-3.5 h-3.5 ml-auto shrink-0 opacity-70" />
                   )}
                 </button>
               );
