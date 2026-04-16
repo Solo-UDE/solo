@@ -4,7 +4,8 @@
 
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import type { FC } from 'react';
-import { CircleNotch, GitBranch, MagnifyingGlass } from '@phosphor-icons/react';
+import { MagnifyingGlassIcon } from '@radix-ui/react-icons';
+import { Loader2, GitBranch } from 'lucide-react';
 import { useWorktreeStore } from '@/stores/worktreeStore';
 import { useGitStore } from '@/stores/gitStore';
 import { cn } from '@/lib/utils';
@@ -119,7 +120,7 @@ export const CreateWorktreePopover: FC<CreateWorktreePopoverProps> = ({ onClose 
               'transition-colors duration-150',
             )}
           >
-            <GitBranch className="w-3.5 h-3.5 text-primary shrink-0" weight="bold" />
+            <GitBranch className="w-3.5 h-3.5 text-primary shrink-0" />
             <span className="truncate flex-1">{baseBranch}</span>
           </button>
 
@@ -138,7 +139,7 @@ export const CreateWorktreePopover: FC<CreateWorktreePopoverProps> = ({ onClose 
               {/* Search */}
               <div className="p-1.5 border-b border-border/20">
                 <div className="relative">
-                  <MagnifyingGlass className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground" />
+                  <MagnifyingGlassIcon className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground" />
                   <input
                     type="text"
                     value={branchFilter}
@@ -242,7 +243,7 @@ export const CreateWorktreePopover: FC<CreateWorktreePopoverProps> = ({ onClose 
             'flex items-center gap-1.5',
           )}
         >
-          {isCreating && <CircleNotch className="w-3 h-3 animate-spin" />}
+          {isCreating && <Loader2 className="w-3 h-3 animate-spin" />}
           {isCreating ? 'Creating...' : 'Create'}
         </button>
       </div>
