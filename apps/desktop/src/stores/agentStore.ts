@@ -1590,3 +1590,14 @@ export const useActiveAskUserQuestion = (sessionId: string | null): PermissionRe
 		return null;
 	});
 };
+
+/** Returns true if session has any pending permission or AskUserQuestion */
+export const useSessionNeedsAttention = (sessionId: string | null): boolean => {
+	return useAgentStore((state) => {
+		if (!sessionId) return false;
+		for (const perm of state.pendingPermissions.values()) {
+			if (perm.sessionId === sessionId) return true;
+		}
+		return false;
+	});
+};
