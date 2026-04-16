@@ -18,25 +18,22 @@ import {
 	KEY_ESCAPE_COMMAND,
 	KEY_TAB_COMMAND,
 } from 'lexical';
+import { EyeOpenIcon, FileTextIcon, MagnifyingGlassIcon, TrashIcon } from '@radix-ui/react-icons';
 import {
 	Brain,
-	CurrencyDollar,
-	Eye,
-	FileText,
+	DollarSign,
 	FolderPlus,
 	GitBranch,
 	Keyboard,
 	Lock,
-	ChatCircle,
-	ArrowsInSimple,
-	PuzzlePiece,
-	MagnifyingGlass,
-	HardDrives,
+	MessageCircle,
+	Minimize2,
+	Puzzle,
+	HardDrive,
 	ShieldCheck,
-	Trash,
 	Users,
-	Lightning,
-} from '@phosphor-icons/react';
+	Zap,
+} from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 
@@ -49,23 +46,23 @@ import type { FC } from 'react';
 
 const SLASH_COMMANDS: SlashCommand[] = [
 	// Local commands (UI actions)
-	{ id: 'clear', label: '/clear', description: 'Close tab and start fresh chat', category: 'local', icon: Trash },
+	{ id: 'clear', label: '/clear', description: 'Close tab and start fresh chat', category: 'local', icon: TrashIcon },
 	{ id: 'keybindings-help', label: '/keybindings-help', description: 'Customize keyboard shortcuts', category: 'local', icon: Keyboard },
-	{ id: 'mcp-status', label: '/mcp-status', description: 'View MCP server connection status', category: 'local', icon: HardDrives },
-	{ id: 'mcp', label: '/mcp', description: 'Manage MCP servers', category: 'local', icon: HardDrives },
+	{ id: 'mcp-status', label: '/mcp-status', description: 'View MCP server connection status', category: 'local', icon: HardDrive },
+	{ id: 'mcp', label: '/mcp', description: 'Manage MCP servers', category: 'local', icon: HardDrive },
 	{ id: 'agents', label: '/agents', description: 'Manage agents', category: 'local', icon: Users },
 	{ id: 'hooks', label: '/hooks', description: 'Manage hooks', category: 'local', icon: GitBranch },
 	{ id: 'memory', label: '/memory', description: 'Manage memory', category: 'local', icon: Brain },
 	{ id: 'permissions', label: '/permissions', description: 'Manage permissions', category: 'local', icon: Lock },
-	{ id: 'plugins', label: '/plugins', description: 'Manage plugins', category: 'local', icon: PuzzlePiece },
+	{ id: 'plugins', label: '/plugins', description: 'Manage plugins', category: 'local', icon: Puzzle },
 	// Agent commands (sent as message)
-	{ id: 'compact', label: '/compact', description: 'Clear history but keep summary in context', category: 'agent', icon: ArrowsInSimple },
-	{ id: 'context', label: '/context', description: 'Show current context usage', category: 'agent', icon: Eye },
-	{ id: 'cost', label: '/cost', description: 'Show total cost and duration of session', category: 'agent', icon: CurrencyDollar },
+	{ id: 'compact', label: '/compact', description: 'Clear history but keep summary in context', category: 'agent', icon: Minimize2 },
+	{ id: 'context', label: '/context', description: 'Show current context usage', category: 'agent', icon: EyeOpenIcon },
+	{ id: 'cost', label: '/cost', description: 'Show total cost and duration of session', category: 'agent', icon: DollarSign },
 	{ id: 'init', label: '/init', description: 'Initialize CLAUDE.md with codebase docs', category: 'agent', icon: FolderPlus },
-	{ id: 'pr-comments', label: '/pr-comments', description: 'Get comments from a GitHub PR', category: 'agent', icon: ChatCircle },
-	{ id: 'release-notes', label: '/release-notes', description: 'View release notes', category: 'agent', icon: FileText },
-	{ id: 'review', label: '/review', description: 'Review a pull request', category: 'agent', icon: MagnifyingGlass },
+	{ id: 'pr-comments', label: '/pr-comments', description: 'Get comments from a GitHub PR', category: 'agent', icon: MessageCircle },
+	{ id: 'release-notes', label: '/release-notes', description: 'View release notes', category: 'agent', icon: FileTextIcon },
+	{ id: 'review', label: '/review', description: 'Review a pull request', category: 'agent', icon: MagnifyingGlassIcon },
 	{ id: 'security-review', label: '/security-review', description: 'Security review of pending changes', category: 'agent', icon: ShieldCheck },
 	{ id: 'add-dir', label: '/add-dir', description: 'Link a workspace from another repository', category: 'agent', icon: FolderPlus },
 ];
@@ -110,7 +107,7 @@ export const SlashCommandPlugin: FC<SlashCommandPluginProps> = ({
 				label: skill.name,
 				description: skill.description || `Skill from ${skill.source}`,
 				category: 'skill' as const,
-				icon: Lightning,
+				icon: Zap,
 				attached: attachedSkills.has(skill.name),
 			}));
 		return [...SLASH_COMMANDS, ...skillItems];
