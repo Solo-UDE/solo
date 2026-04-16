@@ -4,7 +4,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { DiffEditor, type BeforeMount } from '@monaco-editor/react';
-import { WarningCircle } from '@phosphor-icons/react';
+import { ExclamationTriangleIcon } from '@radix-ui/react-icons';
 import { CodeSkeleton } from '@/components/ui/skeletons';
 import { gitGetFileDiff } from '@/lib/tauri/git';
 import { registerSoloTheme, SOLO_THEME_NAME } from '@/components/editor/theme';
@@ -105,7 +105,7 @@ export const GitDiffPanel = ({
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-2 px-6">
-        <WarningCircle className="w-6 h-6 text-destructive" />
+        <ExclamationTriangleIcon className="w-6 h-6 text-destructive" />
         <p className="text-xs text-muted-foreground text-center">{error}</p>
       </div>
     );
