@@ -145,6 +145,9 @@ pub fn run() {
             }
 
             // Pre-warm credential vault — single keychain read before frontend mounts
+            // (Solo OAuth / Claude / Anthropic credentials still live here; the
+            // vault's semantic search now runs locally via fastembed-rs so no
+            // OpenAI key forwarding is needed anymore.)
             {
                 use tauri::Manager;
                 let auth = app.state::<ProviderAuthState>();
@@ -152,33 +155,6 @@ pub fn run() {
                 tauri::async_runtime::spawn(async move {
                     if let Err(e) = creds.pre_warm().await {
                         tracing::warn!("Vault pre-warm failed: {}", e);
-                        return;
-                    }
-                    // Once pre-warmed, mirror the OpenAI key into the process
-                    // env so child processes (agent-bridge sidecar) inherit it
-                    // without us having to pipe it through our own IPC.
-                    // Vault's semantic tool reads `OPENAI_API_KEY` from
-                    // `process.env` on session start.
-                    match creds.get_credentials(solo_auth::ProviderType::OpenAI).await {
-                        Ok(Some(key)) => {
-                            // SAFETY: set_var is unsafe in edition 2024+ because
-                            // env mutation can race with threads reading env in
-                            // POSIX. We're doing this once, very early in startup,
-                            // before any spawn — safe in practice.
-                            std::env::set_var("OPENAI_API_KEY", &key);
-                            tracing::info!(
-                                "Exported OpenAI key to env for sidecar inheritance (len={})",
-                                key.len()
-                            );
-                        }
-                        Ok(None) => {
-                            tracing::info!(
-                                "No OpenAI key in credential vault — vault semantic search will fall back to FTS"
-                            );
-                        }
-                        Err(e) => {
-                            tracing::warn!("Failed to fetch OpenAI key for sidecar: {}", e);
-                        }
                     }
                 });
             }
