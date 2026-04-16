@@ -1,7 +1,8 @@
 /**
- * VaultEntryList — grouped list of vault entries (V0 skeleton).
+ * VaultEntryList — grouped list of vault entries by `kind` bucket.
  *
- * Groups entries by `kind` bucket with Unsorted pinned to the top.
+ * V1.3: the `unsorted` bucket is handled by a dedicated `VaultUnsortedTray`
+ * rendered above this list, so we exclude it here to avoid duplication.
  */
 
 import { useMemo, type FC } from 'react';
@@ -10,7 +11,6 @@ import { useVaultStore } from '@/stores/vaultStore';
 import { VaultEntryCard } from './VaultEntryCard';
 
 const BUCKET_ORDER: EntryKind[] = [
-  'unsorted',
   'document',
   'code',
   'snippet',
