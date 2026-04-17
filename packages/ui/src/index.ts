@@ -29,6 +29,8 @@ export {
   Dialog,
   DialogTrigger,
   DialogClose,
+  DialogPortal,
+  DialogOverlay,
   DialogContent,
   DialogHeader,
   DialogFooter,
@@ -38,11 +40,35 @@ export {
 } from "./components/Dialog";
 
 export {
+  AlertDialog,
+  AlertDialogTrigger,
+  AlertDialogPortal,
+  AlertDialogOverlay,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogAction,
+  AlertDialogCancel,
+  type AlertDialogContentProps,
+} from "./components/AlertDialog";
+
+export {
+  Collapsible,
+  CollapsibleTrigger,
+  CollapsibleContent,
+} from "./components/Collapsible";
+
+export { Label, type LabelProps } from "./components/Label";
+
+export {
   Menu,
   MenuTrigger,
   MenuGroup,
   MenuSub,
   MenuRadioGroup,
+  MenuPortal,
   MenuContent,
   MenuItem,
   MenuCheckboxItem,
@@ -51,17 +77,25 @@ export {
   MenuSeparator,
   MenuSubTrigger,
   MenuSubContent,
+  MenuShortcut,
 } from "./components/Menu";
 
 export {
   ContextMenu,
   ContextMenuTrigger,
   ContextMenuSub,
+  ContextMenuPortal,
+  ContextMenuGroup,
+  ContextMenuRadioGroup,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuCheckboxItem,
+  ContextMenuRadioItem,
+  ContextMenuLabel,
   ContextMenuSeparator,
   ContextMenuSubTrigger,
   ContextMenuSubContent,
+  ContextMenuShortcut,
 } from "./components/ContextMenu";
 
 export {
@@ -88,6 +122,8 @@ export {
   SelectItem,
   SelectLabel,
   SelectSeparator,
+  SelectScrollUpButton,
+  SelectScrollDownButton,
   type SelectTriggerProps,
 } from "./components/Select";
 
