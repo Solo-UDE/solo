@@ -1,0 +1,182 @@
+[
+  {
+    "family": "KaTeX_AMS",
+    "weight": "400",
+    "style": "normal",
+    "display": "block",
+    "stretch": "normal",
+    "unicodeRange": "U+0-10FFFF",
+    "status": "unloaded"
+  },
+  {
+    "family": "KaTeX_Caligraphic",
+    "weight": "700",
+    "style": "normal",
+    "display": "block",
+    "stretch": "normal",
+    "unicodeRange": "U+0-10FFFF",
+    "status": "unloaded"
+  },
+  {
+    "family": "KaTeX_Caligraphic",
+    "weight": "400",
+    "style": "normal",
+    "display": "block",
+    "stretch": "normal",
+    "unicodeRange": "U+0-10FFFF",
+    "status": "unloaded"
+  },
+  {
+    "family": "KaTeX_Fraktur",
+    "weight": "700",
+    "style": "normal",
+    "display": "block",
+    "stretch": "normal",
+    "unicodeRange": "U+0-10FFFF",
+    "status": "unloaded"
+  },
+  {
+    "family": "KaTeX_Fraktur",
+    "weight": "400",
+    "style": "normal",
+    "display": "block",
+    "stretch": "normal",
+    "unicodeRange": "U+0-10FFFF",
+    "status": "unloaded"
+  },
+  {
+    "family": "KaTeX_Main",
+    "weight": "700",
+    "style": "normal",
+    "display": "block",
+    "stretch": "normal",
+    "unicodeRange": "U+0-10FFFF",
+    "status": "unloaded"
+  },
+  {
+    "family": "KaTeX_Main",
+    "weight": "700",
+    "style": "italic",
+    "display": "block",
+    "stretch": "normal",
+    "unicodeRange": "U+0-10FFFF",
+    "status": "unloaded"
+  },
+  {
+    "family": "KaTeX_Main",
+    "weight": "400",
+    "style": "italic",
+    "display": "block",
+    "stretch": "normal",
+    "unicodeRange": "U+0-10FFFF",
+    "status": "unloaded"
+  },
+  {
+    "family": "KaTeX_Main",
+    "weight": "400",
+    "style": "normal",
+    "display": "block",
+    "stretch": "normal",
+    "unicodeRange": "U+0-10FFFF",
+    "status": "unloaded"
+  },
+  {
+    "family": "KaTeX_Math",
+    "weight": "700",
+    "style": "italic",
+    "display": "block",
+    "stretch": "normal",
+    "unicodeRange": "U+0-10FFFF",
+    "status": "unloaded"
+  },
+  {
+    "family": "KaTeX_Math",
+    "weight": "400",
+    "style": "italic",
+    "display": "block",
+    "stretch": "normal",
+    "unicodeRange": "U+0-10FFFF",
+    "status": "unloaded"
+  },
+  {
+    "family": "KaTeX_SansSerif",
+    "weight": "700",
+    "style": "normal",
+    "display": "block",
+    "stretch": "normal",
+    "unicodeRange": "U+0-10FFFF",
+    "status": "unloaded"
+  },
+  {
+    "family": "KaTeX_SansSerif",
+    "weight": "400",
+    "style": "italic",
+    "display": "block",
+    "stretch": "normal",
+    "unicodeRange": "U+0-10FFFF",
+    "status": "unloaded"
+  },
+  {
+    "family": "KaTeX_SansSerif",
+    "weight": "400",
+    "style": "normal",
+    "display": "block",
+    "stretch": "normal",
+    "unicodeRange": "U+0-10FFFF",
+    "status": "unloaded"
+  },
+  {
+    "family": "KaTeX_Script",
+    "weight": "400",
+    "style": "normal",
+    "display": "block",
+    "stretch": "normal",
+    "unicodeRange": "U+0-10FFFF",
+    "status": "unloaded"
+  },
+  {
+    "family": "KaTeX_Size1",
+    "weight": "400",
+    "style": "normal",
+    "display": "block",
+    "stretch": "normal",
+    "unicodeRange": "U+0-10FFFF",
+    "status": "unloaded"
+  },
+  {
+    "family": "KaTeX_Size2",
+    "weight": "400",
+    "style": "normal",
+    "display": "block",
+    "stretch": "normal",
+    "unicodeRange": "U+0-10FFFF",
+    "status": "unloaded"
+  },
+  {
+    "family": "KaTeX_Size3",
+    "weight": "400",
+    "style": "normal",
+    "display": "block",
+    "stretch": "normal",
+    "unicodeRange": "U+0-10FFFF",
+    "status": "unloaded"
+  },
+  {
+    "family": "KaTeX_Size4",
+    "weight": "400",
+    "style": "normal",
+    "display": "block",
+    "stretch": "normal",
+    "unicodeRange": "U+0-10FFFF",
+    "status": "unloaded"
+  },
+  {
+    "family": "KaTeX_Typewriter",
+    "weight": "400",
+    "style": "normal",
+    "display": "block",
+    "stretch": "normal",
+    "unicodeRange": "U+0-10FFFF",
+    "status": "unloaded"
+  }
+]
