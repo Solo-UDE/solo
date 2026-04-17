@@ -392,6 +392,7 @@ pub async fn git_setup(
 pub async fn git_push(
     fs_state: State<'_, crate::fs_commands::FsState>,
     app: AppHandle,
+    stats: State<'_, crate::stats_commands::StatsState>,
     access_token: String,
     github_repo_url: String,
     branch: String,
@@ -401,7 +402,7 @@ pub async fn git_push(
     let _ = commit_message;
     let workspace_path = get_workspace_path(&fs_state).await?;
 
-    tokio::task::spawn_blocking(move || {
+    let result = tokio::task::spawn_blocking(move || {
         emit_git_progress(&app, "push", "Preparing to push...");
         cleanup_git_locks(&workspace_path);
 
@@ -509,7 +510,19 @@ pub async fn git_push(
         result
     })
     .await
-    .map_err(|e| format!("Task join error: {}", e))?
+    .map_err(|e| format!("Task join error: {}", e))?;
+
+    if let Ok(ref response) = result {
+        if response.commits_count > 0 {
+            stats
+                .record(solo_stats::StatsEvent::CommitsPushed {
+                    count: response.commits_count.try_into().unwrap_or(u32::MAX),
+                })
+                .await;
+        }
+    }
+
+    result
 }
 
 /// Pull changes from GitHub
