@@ -551,6 +551,27 @@ pub async fn worktree_diff_from_base(
         .map_err(|e| e.to_string())
 }
 
+/// Rename a worktree's branch in-place. Backed by `git branch -m` on the
+/// main repo; the worktree id and filesystem path are preserved so live
+/// agent sessions, open editor tabs, and file watchers don't break.
+#[tauri::command]
+pub async fn worktree_rename(
+    worktree_id: String,
+    new_branch: String,
+    wt_state: State<'_, WorktreeState>,
+    fs_state: State<'_, FsState>,
+) -> Result<WorktreeInfo, String> {
+    info!(worktree_id = %worktree_id, new_branch = %new_branch, "Renaming worktree branch");
+
+    let repo_path = get_manager(&wt_state, &fs_state).await?;
+    let managers = wt_state.managers.read().await;
+    let manager = managers.get(&repo_path).unwrap();
+
+    manager
+        .rename(&worktree_id, &new_branch)
+        .map_err(|e| e.to_string())
+}
+
 /// Create a named branch pointing at a worktree's current HEAD.
 #[tauri::command]
 pub async fn worktree_promote(
