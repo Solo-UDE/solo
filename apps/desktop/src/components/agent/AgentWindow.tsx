@@ -1,12 +1,12 @@
 import { useEffect, useCallback, useMemo, useRef, useState } from 'react';
-import { PlusIcon, Pencil2Icon } from '@radix-ui/react-icons';
+import { Pencil2Icon, PlusIcon } from '@radix-ui/react-icons';
 import { Split } from 'lucide-react';
 
 import { MessageFeed } from './messages';
 import { ChatInputContainer, type ChatInputContainerHandle } from './input';
 import { QueuedMessagesStrip } from './input/queued-messages-strip';
-import { SoloEmptyState } from './SoloDecryptAnimation';
 import { StickyTodoOverlay } from './StickyTodoOverlay';
+import SoloDecryptAnimation from './SoloDecryptAnimation';
 import { convertToMessageGroups } from './messageAdapter';
 import { useAgentSession } from '../../hooks/useAgentSession';
 import { useProviderStore } from '../../stores/provider-store';
@@ -279,13 +279,6 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 		}
 	}, [sendMessage, handleNewSession]);
 
-	const handleSuggestedPrompt = useCallback(
-		(prompt: string) => {
-			sendMessage(prompt, 'planning' as MessageMode);
-		},
-		[sendMessage]
-	);
-
 	// Panel-scoped keyboard dispatcher.
 	//
 	// Listens at document level so shortcuts (Escape, Enter) fire no matter
@@ -353,6 +346,48 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 		requestAnimationFrame(() => rootRef.current?.focus({ preventScroll: true }));
 	}, []);
 
+	const sessionMenu = (
+		<DropdownMenu>
+			<DropdownMenuTrigger asChild>
+				<button
+					type="button"
+					className="absolute right-4 top-3 z-20 inline-flex h-8 w-8 items-center justify-center rounded-[10px] border border-border/70 bg-background/84 text-muted-foreground shadow-[0_10px_24px_-20px_rgba(0,0,0,0.35)] backdrop-blur-sm transition-[background-color,border-color,color,transform] duration-150 hover:bg-card hover:text-foreground active:scale-[0.97]"
+					title="Session actions"
+					aria-label="Session actions"
+				>
+					<PlusIcon className="h-4 w-4" />
+				</button>
+			</DropdownMenuTrigger>
+			<DropdownMenuContent align="end" side="bottom" className="w-52">
+				<DropdownMenuItem
+					onClick={handleNewSession}
+					className="flex items-center gap-2 px-2 py-1.5"
+				>
+					<div className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-primary/10">
+						<Pencil2Icon className="h-3 w-3 text-primary" />
+					</div>
+					<div className="flex flex-col">
+						<span className="text-xs font-medium">New chat</span>
+						<span className="text-[11px] leading-tight text-muted-foreground">Start a blank conversation</span>
+					</div>
+				</DropdownMenuItem>
+				<DropdownMenuItem
+					onClick={handleForkSession}
+					disabled={!sessionId}
+					className="flex items-center gap-2 px-2 py-1.5"
+				>
+					<div className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-primary/10">
+						<Split className="h-3 w-3 text-primary" />
+					</div>
+					<div className="flex flex-col">
+						<span className="text-xs font-medium">Continue as new</span>
+						<span className="text-[11px] leading-tight text-muted-foreground">New chat with this context</span>
+					</div>
+				</DropdownMenuItem>
+			</DropdownMenuContent>
+		</DropdownMenu>
+	);
+
 
 	if (messages.length === 0) {
 		return (
@@ -360,12 +395,42 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 				ref={rootRef}
 				tabIndex={-1}
 				onMouseDown={handleRootMouseDown}
-				className={`relative flex flex-col h-full bg-background rounded-2xl overflow-hidden focus:outline-none ${className}`}
+				className={`relative flex h-full flex-col overflow-hidden rounded-[26px] bg-transparent focus:outline-none ${className}`}
 				data-instance-id={instanceId}
 				style={{ fontFamily: 'var(--font-chat)' }}
 			>
-				<div className="flex-1 flex items-center justify-center px-6">
-					<SoloEmptyState onPromptClick={handleSuggestedPrompt} />
+				{sessionMenu}
+
+				<div className="flex flex-1 items-center justify-center px-6">
+					<div className="flex w-full max-w-[56rem] flex-col items-center">
+						<div className="flex flex-col items-center gap-4">
+							<SoloDecryptAnimation />
+							<p className="text-[12px] tracking-[0.08em] text-muted-foreground/65">
+								Your AI coding agent
+							</p>
+						</div>
+
+						<div className="mt-10 w-full">
+							<QueuedMessagesStrip sessionId={sessionId ?? null} />
+							<ChatInputContainer
+								ref={chatInputRef}
+								onSubmit={handleSubmit}
+								onEnqueue={handleEnqueue}
+								onRecallQueue={handleRecallQueue}
+								onLocalCommand={handleLocalCommand}
+								onAbort={handleAbort}
+								isAgentRunning={isRunning}
+								worktreeId={worktreeId}
+								onWorktreeChange={handleWorktreeChange}
+								onModeChange={handleModeChange}
+								thinkingEnabled={thinkingEnabled}
+								onThinkingChange={handleThinkingChange}
+								planModeActive={planModeActive}
+								acceptModeActive={acceptModeActive}
+								debugModeActive={debugModeActive}
+							/>
+						</div>
+					</div>
 				</div>
 
 				{error && (
@@ -378,25 +443,6 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 						</div>
 					</div>
 				)}
-
-				<QueuedMessagesStrip sessionId={sessionId ?? null} />
-				<ChatInputContainer
-					ref={chatInputRef}
-					onSubmit={handleSubmit}
-					onEnqueue={handleEnqueue}
-					onRecallQueue={handleRecallQueue}
-					onLocalCommand={handleLocalCommand}
-					onAbort={handleAbort}
-					isAgentRunning={isRunning}
-					worktreeId={worktreeId}
-					onWorktreeChange={handleWorktreeChange}
-					onModeChange={handleModeChange}
-					thinkingEnabled={thinkingEnabled}
-					onThinkingChange={handleThinkingChange}
-					planModeActive={planModeActive}
-					acceptModeActive={acceptModeActive}
-					debugModeActive={debugModeActive}
-				/>
 			</div>
 		);
 	}
@@ -406,54 +452,19 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 			ref={rootRef}
 			tabIndex={-1}
 			onMouseDown={handleRootMouseDown}
-			className={`relative flex flex-col h-full bg-background rounded-2xl overflow-hidden focus:outline-none ${className}`}
-			data-instance-id={instanceId}
-			style={{ fontFamily: 'var(--font-chat)' }}
+				className={`relative flex h-full flex-col overflow-hidden rounded-[26px] bg-transparent focus:outline-none ${className}`}
+				data-instance-id={instanceId}
+				style={{ fontFamily: 'var(--font-chat)' }}
 		>
-			<DropdownMenu>
-				<DropdownMenuTrigger asChild>
-					<button
-						className="absolute top-2 right-2 z-10 w-7 h-7 flex items-center justify-center rounded-full bg-primary text-primary-foreground hover:brightness-110 active:scale-[0.97] transition-all duration-200"
-						title="New Session"
-					>
-						<PlusIcon width={16} height={16} />
-					</button>
-				</DropdownMenuTrigger>
-				<DropdownMenuContent align="end" side="bottom" className="w-52">
-					<DropdownMenuItem
-						onClick={handleNewSession}
-						className="flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer hover:bg-primary/10 hover:scale-[1.01] active:scale-[0.99] transition-all duration-150 animate-in fade-in-0 slide-in-from-top-1"
-					>
-						<div className="w-5 h-5 flex items-center justify-center rounded bg-primary/10 shrink-0">
-							<Pencil2Icon width={12} height={12} className="text-primary" />
-						</div>
-						<div className="flex flex-col">
-							<span className="text-xs font-medium">New chat</span>
-							<span className="text-[11px] leading-tight text-muted-foreground">Start a blank conversation</span>
-						</div>
-					</DropdownMenuItem>
-					<DropdownMenuItem
-						onClick={handleForkSession}
-						className="flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer hover:bg-primary/10 hover:scale-[1.01] active:scale-[0.99] transition-all duration-150 animate-in fade-in-0 slide-in-from-top-1 [animation-delay:50ms]"
-					>
-						<div className="w-5 h-5 flex items-center justify-center rounded bg-primary/10 shrink-0">
-							<Split className="w-3 h-3 text-primary" />
-						</div>
-						<div className="flex flex-col">
-							<span className="text-xs font-medium">Continue as new</span>
-							<span className="text-[11px] leading-tight text-muted-foreground">New chat with this context</span>
-						</div>
-					</DropdownMenuItem>
-				</DropdownMenuContent>
-			</DropdownMenu>
+			{sessionMenu}
 
 			{debugModeActive && sessionGoal && (
 				<div
-					className="px-3 pt-2"
+					className="px-4 pt-3"
 					role="note"
 					aria-label="Debug mode session goal"
 				>
-					<div className="mx-auto max-w-3xl rounded-[10px] bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20 px-3 py-1.5 flex items-start gap-2">
+					<div className="mx-auto max-w-[56rem] rounded-[14px] border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-amber-700 dark:text-amber-300 flex items-start gap-2">
 						<span className="text-[10px] font-semibold uppercase tracking-wider mt-0.5 shrink-0 opacity-80">
 							Goal
 						</span>
@@ -473,20 +484,20 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 			/>
 
 			{connectionState === 'resuming' && (
-				<div className="px-4 py-2 flex items-center gap-2 text-sm text-muted-foreground bg-muted/20" role="status" aria-live="polite">
-					<span className="w-2 h-2 rounded-full bg-primary animate-pulse" aria-hidden="true" />
+				<div className="mx-auto mt-3 flex w-full max-w-[56rem] items-center gap-2 rounded-[14px] border border-border/60 bg-card/70 px-4 py-2 text-sm text-muted-foreground" role="status" aria-live="polite">
+					<span className="h-2 w-2 rounded-full bg-primary animate-pulse" aria-hidden="true" />
 					Reconnecting session...
 				</div>
 			)}
 
 			{connectionState === 'stale' && (
-				<div className="px-4 py-2 text-sm text-warning bg-warning/5" role="alert">
+				<div className="mx-auto mt-3 w-full max-w-[56rem] rounded-[14px] border border-warning/20 bg-warning/5 px-4 py-2 text-sm text-warning" role="alert">
 					Session expired. Your next message will start a fresh context.
 				</div>
 			)}
 
 			{error && (
-				<div className="px-4 py-2 bg-destructive/10 border-t border-destructive/20" role="alert">
+				<div className="mx-auto mt-3 w-full max-w-[56rem] rounded-[14px] border border-destructive/20 bg-destructive/10 px-4 py-2" role="alert">
 					<div className="flex items-center justify-between">
 						<span className="text-sm text-destructive">{error}</span>
 						<button onClick={clearError} className="text-xs text-destructive hover:underline">
@@ -498,7 +509,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 
 			{/* AskUserQuestion — flush above input, z-30 to stay above StickyTodoOverlay (z-20) */}
 			{activeQuestion && (
-				<div className="relative z-30 w-full max-w-3xl mx-auto px-3">
+				<div className="relative z-30 mx-auto w-full max-w-[56rem] px-4">
 					<AskUserQuestionCard
 						requestId={activeQuestion.requestId}
 						toolInput={activeQuestion.toolInput}
