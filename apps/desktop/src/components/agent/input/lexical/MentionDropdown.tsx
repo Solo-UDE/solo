@@ -19,8 +19,9 @@ export interface MentionDropdownProps {
 	position: { bottom: number; left: number };
 }
 
+// Concentric radii (border-radius.md): outer rounded-2xl minus p-1.5 ≈ rounded-xl inner.
 const itemBase =
-	'group flex w-full items-center gap-2 rounded-sm px-2 h-7 text-[13px] text-left ' +
+	'group flex w-full items-center gap-2 rounded-xl px-3 h-7 text-[13px] text-left ' +
 	'cursor-default select-none outline-none transition-colors';
 const itemIdle = 'text-foreground/90 hover:bg-accent hover:text-accent-foreground';
 const itemActive = 'bg-accent text-accent-foreground';
@@ -42,7 +43,7 @@ export const MentionDropdown: FC<MentionDropdownProps> = ({
 		<div
 			ref={listRef}
 			className={
-				'fixed z-50 w-[32rem] max-h-80 overflow-y-auto rounded-lg p-1 ' +
+				'fixed z-50 w-[32rem] max-h-80 overflow-y-auto rounded-2xl p-1.5 ' +
 				'bg-popover/90 backdrop-blur-md text-popover-foreground ' +
 				'ring-1 ring-black/10 dark:ring-white/10 shadow-xl ' +
 				'animate-[fade-in-scale_150ms_cubic-bezier(0.16,1,0.3,1)]'
