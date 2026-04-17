@@ -998,7 +998,14 @@ impl CredentialManager {
         let mut store = match self.vault_get(&key).await? {
             Some(s) if !s.is_empty() => {
                 crate::oauth::profiles::migrate_legacy_blob(&s, provider.as_str())
-                    .unwrap_or_else(|_| crate::oauth::profiles::ProviderOAuthStore::empty())
+                    .unwrap_or_else(|e| {
+                        tracing::warn!(
+                            "failed to parse existing OAuth store for {}: {} — starting fresh, existing profiles will be discarded",
+                            provider.as_str(),
+                            e
+                        );
+                        crate::oauth::profiles::ProviderOAuthStore::empty()
+                    })
             }
             _ => crate::oauth::profiles::ProviderOAuthStore::empty(),
         };
@@ -1014,8 +1021,8 @@ impl CredentialManager {
             access_token: token.access_token.clone(),
             refresh_token: token.refresh_token.clone().unwrap_or_default(),
             id_token: existing.as_ref().and_then(|e| e.id_token.clone()),
-            expires_at: token.expires_at as i64,
-            last_refresh: 0,
+            expires_at: i64::try_from(token.expires_at).unwrap_or(i64::MAX),
+            last_refresh: existing.as_ref().map(|e| e.last_refresh).unwrap_or(0),
             email: existing
                 .as_ref()
                 .map(|e| e.email.clone())
@@ -1029,11 +1036,27 @@ impl CredentialManager {
             .map_err(|e| ProviderError::AuthError(format!("Failed to serialize OAuth store: {}", e)))?;
         self.vault_set(&key, &json).await?;
 
-        // Update cache with the freshly-written token (matches pre-refactor behavior).
+        // Cache the same shape get_oauth_token would return on a cold miss,
+        // so warm and cold paths are indistinguishable.
+        let cached_token = match store.active() {
+            Some(p) => OAuthToken {
+                access_token: p.access_token.clone(),
+                refresh_token: if p.refresh_token.is_empty() {
+                    None
+                } else {
+                    Some(p.refresh_token.clone())
+                },
+                expires_at: u64::try_from(p.expires_at.max(0)).unwrap_or(0),
+                token_type: "Bearer".into(),
+                scope: None,
+            },
+            None => token, // shouldn't happen — we just upserted
+        };
+
         self.oauth_cache.write().await.insert(
             provider,
             OAuthCredentialInfo {
-                token,
+                token: cached_token,
                 source: CredentialSource::SoloOAuth,
             },
         );
@@ -1083,6 +1106,8 @@ impl CredentialManager {
                 Err(e) => tracing::warn!("failed to serialize migrated OAuth store: {}", e),
             }
         }
+
+        self.cache.write().await.remove(&provider);
 
         let active = match store.active() {
             Some(p) => p,
@@ -1635,6 +1660,16 @@ mod profile_tests {
         let saved_active = saved.active().expect("active profile");
         assert_eq!(saved_active.email, "work@co.com");
         assert_eq!(saved_active.access_token, "new-ak");
+
+        // Also verify cache-cold read path returns consistent data.
+        m.oauth_cache.write().await.remove(&ProviderType::Anthropic);
+        let via_get = m
+            .get_oauth_token(ProviderType::Anthropic)
+            .await
+            .unwrap()
+            .expect("oauth token");
+        assert_eq!(via_get.access_token, "new-ak");
+        assert_eq!(via_get.refresh_token.as_deref(), Some("new-rk"));
     }
 
     #[tokio::test]
