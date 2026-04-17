@@ -34,6 +34,7 @@ export interface ModelInfo {
 	is_default: boolean;
 	description: string;
 	context_window: number;
+	max_output_tokens: number;
 }
 
 // Re-export for convenience
@@ -148,7 +149,7 @@ export async function agentRespondPermission(
 }
 
 /**
- * Set model for a session (haiku | sonnet | opus)
+ * Set model for a session — full model ID (e.g. 'claude-opus-4-7[1m]') or alias.
  */
 export async function agentSetModel(sessionId: string, model: string): Promise<void> {
 	return invoke('agent_set_model', { sessionId, model });
