@@ -12,7 +12,12 @@ import { loadMergedSettings } from './permission-pipeline.js';
 import { PermissionManager } from './permissions.js';
 import { generatePlanName, getPlanFilePath, ensurePlanDirectory } from './plan-names.js';
 import { getAllowedToolsForMode } from './session-mode.js';
-import { loadSkills, formatSkillsForPrompt } from './skills.js';
+// Option D UX: skills are injected per-message as content blocks from the
+// desktop frontend (see agentStore.toContentBlocks). The session-level
+// `loadSkills` import is intentionally removed so unchipped skills don't
+// leak into the system prompt. The helper file still exists for the
+// Skills settings UI and future callers.
+import { buildIdentityAppend } from './identity-grounding.js';
 import { buildContentBlocks } from './utils/content.js';
 import { formatToolResult } from './utils/formatter.js';
 
@@ -121,6 +126,8 @@ export interface OrbitAgentConfig {
   thinkingEnabled?: boolean;
   /** Token budget for extended thinking (default: 10000) */
   maxThinkingTokens?: number;
+  /** Output-token cap per response — set via CLAUDE_CODE_MAX_OUTPUT_TOKENS env var */
+  maxTokens?: number;
   planEnabled?: boolean;
   acceptEnabled?: boolean;
   debugEnabled?: boolean;
@@ -245,6 +252,7 @@ export class OrbitAgent {
   private _critiqueMode: boolean;
   private model?: string;
   private _fallbackModel?: string;
+  private _maxTokens?: number;
   private _sessionMode: OrbitSessionMode;
 
   // Session resume/fork fields
@@ -298,6 +306,9 @@ export class OrbitAgent {
     if (config.fallbackModel !== undefined) {
       this._fallbackModel = config.fallbackModel;
     }
+    if (config.maxTokens !== undefined) {
+      this._maxTokens = config.maxTokens;
+    }
     this._mcpServers = config.mcpServers ?? {};
     this._outputFormat = config.outputFormat;
     this._agents = config.agents;
@@ -313,7 +324,6 @@ export class OrbitAgent {
     } catch {
       // Settings are optional — keep the default.
     }
-
     logger.info(
       {
         sessionMode: this._sessionMode,
@@ -397,6 +407,8 @@ export class OrbitAgent {
         type: 'preset' as const,
         preset: 'claude_code' as const,
         append: `
+${buildIdentityAppend(this.model)}
+
 ## Browser Automation
 
 You have access to browser automation tools via MCP. Use mcp__browser__open_browser to start a browser session.
@@ -486,7 +498,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
 ### When to Use DevTools vs Browser Tools
 - **Browser tools (mcp__browser__)**: Page interaction, navigation, clicking, typing
 - **DevTools tools (mcp__orbit-devtools__)**: Deep inspection, debugging, storage, performance analysis
-` + formatSkillsForPrompt(loadSkills(this.cwd)),
+`,
       },
       // Working directory
       cwd: this.cwd,
@@ -892,6 +904,18 @@ Do NOT overwhelm the user with a full checklist every time — pick the most imp
     if (this._fallbackModel) {
       options.fallbackModel = this._fallbackModel;
       logger.info({ fallbackModel: this._fallbackModel }, 'Fallback model configured');
+    }
+
+    // Output-token cap — Claude Code reads CLAUDE_CODE_MAX_OUTPUT_TOKENS from env.
+    // The runtime clamps it to the active model's upperLimit server-side, so we
+    // don't need to know per-model caps here; the model registry's max_output_tokens
+    // is the authoritative ceiling.
+    if (this._maxTokens !== undefined) {
+      options.env = {
+        ...process.env,
+        CLAUDE_CODE_MAX_OUTPUT_TOKENS: String(this._maxTokens),
+      };
+      logger.info({ maxTokens: this._maxTokens }, 'Output-token cap configured');
     }
 
     // Permission mode — always `'default'` so our `canUseTool` callback is

@@ -1,4 +1,10 @@
 #!/usr/bin/env node
+var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
+  get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
+}) : x)(function(x) {
+  if (typeof require !== "undefined") return require.apply(this, arguments);
+  throw Error('Dynamic require of "' + x + '" is not supported');
+});
 
 // src/index.ts
 import * as readline from "readline";
@@ -138,7 +144,7 @@ import { randomUUID } from "crypto";
 
 // src/agent.ts
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import * as fs4 from "fs";
+import * as fs5 from "fs";
 
 // src/credentials.ts
 import { execFileSync } from "child_process";
@@ -298,13 +304,259 @@ var ClaudeCredentials = {
   getCredentials
 };
 
+// src/permission-pipeline.ts
+import * as fs2 from "fs";
+import * as os2 from "os";
+import * as path2 from "path";
+var logger2 = createLogger("PermissionPipeline");
+var DEFAULT_TOOL_TIERS = /* @__PURE__ */ new Map([
+  // Read-only
+  ["Read", "read"],
+  ["Glob", "read"],
+  ["Grep", "read"],
+  ["WebSearch", "read"],
+  ["WebFetch", "read"],
+  ["BashOutput", "read"],
+  ["AskUserQuestion", "read"],
+  ["TodoWrite", "read"],
+  ["ExitPlanMode", "read"],
+  ["Task", "read"],
+  ["ToolSearch", "read"],
+  ["Skill", "read"],
+  ["ListMcpResourcesTool", "read"],
+  ["ReadMcpResourceTool", "read"],
+  // Mutating
+  ["Write", "mutate"],
+  ["Edit", "mutate"],
+  ["NotebookEdit", "mutate"],
+  ["Bash", "mutate"],
+  ["KillShell", "mutate"]
+]);
+function defaultTier(toolName) {
+  return DEFAULT_TOOL_TIERS.get(toolName) ?? "mutate";
+}
+function unescape(s) {
+  let out = "";
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c === "\\" && i + 1 < s.length) {
+      const next = s[i + 1];
+      if (next === "(" || next === ")" || next === "\\") {
+        out += next;
+        i++;
+        continue;
+      }
+    }
+    out += c;
+  }
+  return out;
+}
+function compileGlob(pattern) {
+  let re = "^";
+  for (const c of pattern) {
+    if (c === "*") re += ".*";
+    else if (c === "?") re += ".";
+    else re += c.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+  }
+  re += "$";
+  const compiled = new RegExp(re);
+  return (input) => compiled.test(input);
+}
+function parseRule(raw) {
+  const trimmed = raw.trim();
+  const open = trimmed.indexOf("(");
+  if (open > 0 && trimmed.endsWith(")")) {
+    const tool = trimmed.slice(0, open);
+    const content = unescape(trimmed.slice(open + 1, trimmed.length - 1));
+    let matcher = null;
+    try {
+      matcher = compileGlob(content);
+    } catch {
+      matcher = null;
+    }
+    return { tool, content, matcher };
+  }
+  return { tool: trimmed, content: null, matcher: null };
+}
+function ruleMatches(rule, toolName, content) {
+  if (rule.tool !== toolName) return false;
+  if (rule.content === null) return true;
+  if (rule.matcher) return rule.matcher(content);
+  return false;
+}
+function formatRule(rule) {
+  return rule.content === null ? rule.tool : `${rule.tool}(${rule.content})`;
+}
+function contentFor(toolName, input) {
+  const key = (() => {
+    switch (toolName) {
+      case "Bash":
+        return "command";
+      case "BashOutput":
+        return "bash_id";
+      case "Write":
+      case "Edit":
+      case "Read":
+        return "file_path";
+      case "NotebookEdit":
+        return "notebook_path";
+      case "WebFetch":
+        return "url";
+      case "WebSearch":
+        return "query";
+      case "Glob":
+      case "Grep":
+        return "pattern";
+      default:
+        return null;
+    }
+  })();
+  if (key === null) return "";
+  const value = input[key];
+  return typeof value === "string" ? value : "";
+}
+function checkPermission(toolName, toolInput, mode, config) {
+  const content = contentFor(toolName, toolInput);
+  const tier = defaultTier(toolName);
+  const denyRules = config.deny.map(parseRule);
+  const askRules = config.ask.map(parseRule);
+  const allowRules = config.allow.map(parseRule);
+  for (const r of denyRules) {
+    if (ruleMatches(r, toolName, content)) {
+      return {
+        behavior: "deny",
+        message: `Tool '${toolName}' is denied by rule '${formatRule(r)}'.`
+      };
+    }
+  }
+  for (const r of askRules) {
+    if (ruleMatches(r, toolName, content)) {
+      return {
+        behavior: "ask",
+        message: `Tool '${toolName}' requires approval (rule '${formatRule(r)}').`,
+        tier
+      };
+    }
+  }
+  if (tier === "destructive") {
+    return {
+      behavior: "ask",
+      message: `'${toolName}' is a destructive operation and requires approval.`,
+      tier
+    };
+  }
+  if (mode === "plan" && tier === "mutate") {
+    return {
+      behavior: "deny",
+      message: `Plan mode is active. '${toolName}' mutates state; write a plan and call ExitPlanMode to proceed.`
+    };
+  }
+  if (mode === "accept" && !config.disableAcceptMode) {
+    return {
+      behavior: "allow",
+      reason: "Accept mode (bypass permissions)."
+    };
+  }
+  for (const r of allowRules) {
+    if (ruleMatches(r, toolName, content)) {
+      return {
+        behavior: "allow",
+        reason: `Allowed by rule '${formatRule(r)}'.`
+      };
+    }
+  }
+  if (tier === "read") {
+    return { behavior: "allow", reason: "Read-only tool." };
+  }
+  return { behavior: "ask", message: `Approval required for '${toolName}'.`, tier };
+}
+var SETTINGS_DIR = ".solo";
+var SETTINGS_FILE = "settings.json";
+var LOCAL_SETTINGS_FILE = "settings.local.json";
+var EMPTY_SETTINGS = Object.freeze({
+  permissions: {
+    defaultMode: null,
+    allow: [],
+    deny: [],
+    ask: [],
+    additionalDirectories: [],
+    disableAcceptMode: false
+  },
+  modes: {
+    debug: { reviewInterval: 3, initialGoalCapture: "firstMessage" }
+  }
+});
+function readJsonOr(file, fallback) {
+  try {
+    if (!fs2.existsSync(file)) return fallback;
+    const raw = fs2.readFileSync(file, "utf-8").trim();
+    if (raw.length === 0) return fallback;
+    return JSON.parse(raw);
+  } catch (err) {
+    logger2.warn({ file, err }, "Failed to read settings file \u2014 falling back to defaults");
+    return fallback;
+  }
+}
+function union(a, b) {
+  const seen = /* @__PURE__ */ new Set();
+  const out = [];
+  for (const v of a) {
+    if (!seen.has(v)) {
+      seen.add(v);
+      out.push(v);
+    }
+  }
+  for (const v of b) {
+    if (!seen.has(v)) {
+      seen.add(v);
+      out.push(v);
+    }
+  }
+  return out;
+}
+function mergeInto(dst, src) {
+  if (src.permissions) {
+    if (src.permissions.defaultMode !== void 0 && src.permissions.defaultMode !== null) {
+      dst.permissions.defaultMode = src.permissions.defaultMode;
+    }
+    dst.permissions.allow = union(dst.permissions.allow, src.permissions.allow ?? []);
+    dst.permissions.deny = union(dst.permissions.deny, src.permissions.deny ?? []);
+    dst.permissions.ask = union(dst.permissions.ask, src.permissions.ask ?? []);
+    dst.permissions.additionalDirectories = union(
+      dst.permissions.additionalDirectories,
+      src.permissions.additionalDirectories ?? []
+    );
+    if (src.permissions.disableAcceptMode) {
+      dst.permissions.disableAcceptMode = true;
+    }
+  }
+  if (src.modes?.debug) {
+    if (src.modes.debug.reviewInterval && src.modes.debug.reviewInterval > 0) {
+      dst.modes.debug.reviewInterval = src.modes.debug.reviewInterval;
+    }
+    if (src.modes.debug.initialGoalCapture) {
+      dst.modes.debug.initialGoalCapture = src.modes.debug.initialGoalCapture;
+    }
+  }
+}
+function loadMergedSettings(workspace) {
+  const userPath = path2.join(os2.homedir(), SETTINGS_DIR, SETTINGS_FILE);
+  const projectPath = path2.join(workspace, SETTINGS_DIR, SETTINGS_FILE);
+  const localPath = path2.join(workspace, SETTINGS_DIR, LOCAL_SETTINGS_FILE);
+  const merged = JSON.parse(JSON.stringify(EMPTY_SETTINGS));
+  mergeInto(merged, readJsonOr(userPath, {}));
+  mergeInto(merged, readJsonOr(projectPath, {}));
+  mergeInto(merged, readJsonOr(localPath, {}));
+  return merged;
+}
+
 // src/nls.ts
 function localize(_key, message) {
   return message;
 }
 
 // src/permissions.ts
-var logger2 = createLogger("PermissionManager");
+var logger3 = createLogger("PermissionManager");
 var PermissionManager = class _PermissionManager {
   requestCallback;
   snapshotCallback;
@@ -312,6 +564,12 @@ var PermissionManager = class _PermissionManager {
   acceptModeGetter;
   planModeGetter;
   planFilePathGetter;
+  /** Resolver for the workspace path — used to locate `.solo/settings.json`. */
+  workspaceGetter;
+  /** Resolver for an optional Debug-mode flag. */
+  debugModeGetter;
+  /** Small in-memory cache of parsed settings, keyed by workspace path. */
+  settingsCache = /* @__PURE__ */ new Map();
   // Tools allowed through in plan mode (planning/reading tools that reach canUseTool)
   static PLAN_MODE_ALLOWED_TOOLS = /* @__PURE__ */ new Set([
     "ExitPlanMode",
@@ -324,7 +582,7 @@ var PermissionManager = class _PermissionManager {
     "ToolSearch",
     "Skill"
   ]);
-  constructor(requestCallback, snapshotCallback, acceptModeGetter, planModeGetter, planFilePathGetter) {
+  constructor(requestCallback, snapshotCallback, acceptModeGetter, planModeGetter, planFilePathGetter, workspaceGetter, debugModeGetter) {
     if (requestCallback !== void 0) {
       this.requestCallback = requestCallback;
     }
@@ -339,6 +597,64 @@ var PermissionManager = class _PermissionManager {
     }
     if (planFilePathGetter !== void 0) {
       this.planFilePathGetter = planFilePathGetter;
+    }
+    if (workspaceGetter !== void 0) {
+      this.workspaceGetter = workspaceGetter;
+    }
+    if (debugModeGetter !== void 0) {
+      this.debugModeGetter = debugModeGetter;
+    }
+  }
+  /**
+   * Resolve the active mode by consulting all overlay flags.
+   *
+   * Mutually exclusive — the first truthy flag wins. This matches the
+   * frontend's `useSessionMode` selector, keeping the UI and backend in sync.
+   */
+  resolveMode() {
+    if (this.acceptModeGetter?.()) return "accept";
+    if (this.planModeGetter?.()) return "plan";
+    if (this.debugModeGetter?.()) return "debug";
+    return "default";
+  }
+  /**
+   * Load (with a small on-disk mtime cache) the merged settings for the
+   * current workspace. Returns `null` when no workspace is configured.
+   *
+   * We re-check the settings file's mtime on every call so external edits
+   * (user hand-editing `.solo/settings.json`) are reflected immediately
+   * without a session restart.
+   */
+  loadSettings() {
+    const ws = this.workspaceGetter?.();
+    if (!ws) return null;
+    try {
+      const fs6 = __require("fs");
+      const path5 = __require("path");
+      const os3 = __require("os");
+      const paths = [
+        path5.join(os3.homedir(), ".solo", "settings.json"),
+        path5.join(ws, ".solo", "settings.json"),
+        path5.join(ws, ".solo", "settings.local.json")
+      ];
+      let combinedMtime = 0;
+      for (const p of paths) {
+        try {
+          const stat = fs6.statSync(p);
+          combinedMtime = Math.max(combinedMtime, stat.mtimeMs);
+        } catch {
+        }
+      }
+      const cached = this.settingsCache.get(ws);
+      if (cached && cached.mtime === combinedMtime) {
+        return cached.settings;
+      }
+      const settings = loadMergedSettings(ws);
+      this.settingsCache.set(ws, { mtime: combinedMtime, settings });
+      return settings;
+    } catch (err) {
+      logger3.warn({ err }, "Failed to load settings \u2014 falling back to mode-only gating");
+      return null;
     }
   }
   /**
@@ -360,42 +676,115 @@ var PermissionManager = class _PermissionManager {
     return this.alwaysAllowedTools.has(toolName);
   }
   /**
+   * Preview the permission decision for a tool call WITHOUT invoking any
+   * side-effects (no snapshot, no request callback, no UI event).
+   *
+   * Used by the session-manager's SDK-message consumer to pick the correct
+   * INITIAL `status` for a `tool_use` event: `'running'` for tools that will
+   * be auto-allowed, `'awaiting-permission'` only for tools that will
+   * legitimately prompt the user. This eliminates the 1-frame flash of the
+   * approval card that users previously saw on every auto-approved tool.
+   *
+   * Returns the same three outcomes as `createCallback`, reduced to the
+   * behavior axis (message detail is not needed for a preview):
+   *
+   *   - `'allow'` — the callback will allow without prompting
+   *   - `'ask'`   — the callback will emit a permission_request event
+   *   - `'deny'`  — the callback will deny and the tool_result will carry the error
+   *
+   * Mirrors `createCallback` stage-for-stage; keep the two in sync.
+   */
+  previewDecision(toolName, toolInput) {
+    const mode = this.resolveMode();
+    if (mode === "plan" && (toolName === "Write" || toolName === "Edit")) {
+      const filePath = toolInput.file_path;
+      const planPath = this.planFilePathGetter?.();
+      if (planPath && filePath === planPath) {
+        return "allow";
+      }
+    }
+    const settings = this.loadSettings();
+    if (settings !== null) {
+      const decision = checkPermission(
+        toolName,
+        toolInput,
+        mode,
+        settings.permissions
+      );
+      if (decision.behavior === "allow") return "allow";
+      if (decision.behavior === "deny") return "deny";
+    }
+    if (mode === "plan") {
+      if (toolName !== "Write" && toolName !== "Edit" && !_PermissionManager.PLAN_MODE_ALLOWED_TOOLS.has(toolName)) {
+        return "deny";
+      }
+    }
+    if (this.isAlwaysAllowed(toolName)) return "allow";
+    if (!this.requestCallback) return "allow";
+    return "ask";
+  }
+  /**
    * Create permission callback for the SDK.
-   * This uses the SDK's canUseTool API.
+   *
+   * This is now a three-stage pipeline:
+   *
+   * 1. Plan-mode special case for edits targeting the active plan file
+   *    (this is Solo-specific and not expressible as a generic rule —
+   *    the plan file path is dynamic per session).
+   * 2. The settings-driven decision pipeline (mirror of `solo-core::permissions::check`).
+   *    This is the single source of truth for allow/ask/deny rules and
+   *    the Accept/Plan/Default/Debug mode overlays.
+   * 3. Fall-through to the UI permission prompt (requestCallback).
+   *
+   * **Key property**: under Accept mode, stages 1-2 ALWAYS short-circuit
+   * with an Allow (unless a deny/ask rule or the destructive tier blocks
+   * it), so `requestCallback` is never invoked and no permission modal
+   * is emitted to the frontend. This fixes the modal-flash bug where the
+   * UI briefly rendered a permission card before being auto-resolved.
    */
   createCallback() {
     return async (toolName, toolInput, options) => {
-      logger2.debug({ toolName, toolInput }, "Permission callback invoked");
+      const mode = this.resolveMode();
+      logger3.debug({ toolName, mode }, "Permission callback invoked");
       try {
-        const acceptModeActive = this.acceptModeGetter?.() ?? false;
-        logger2.debug({ toolName, acceptModeActive }, "Permission check");
-        if (acceptModeActive) {
-          logger2.debug({ toolName }, "Accept mode active - auto-approving tool");
-          return {
-            behavior: "allow",
-            updatedInput: toolInput
-          };
+        if (mode === "plan" && (toolName === "Write" || toolName === "Edit")) {
+          const filePath = toolInput.file_path;
+          const planPath = this.planFilePathGetter?.();
+          if (planPath && filePath === planPath) {
+            logger3.info({ toolName, filePath }, "Plan mode \u2014 auto-approving write to plan file");
+            return { behavior: "allow", updatedInput: toolInput };
+          }
         }
-        const planModeActive = this.planModeGetter?.() ?? false;
-        if (planModeActive) {
-          if (toolName === "Write" || toolName === "Edit") {
-            const filePath = toolInput.file_path;
-            const planPath = this.planFilePathGetter?.();
-            if (planPath && filePath === planPath) {
-              logger2.info({ toolName, filePath }, "Plan mode \u2014 auto-approving write to plan file");
-              return {
-                behavior: "allow",
-                updatedInput: toolInput
-              };
-            } else {
-              logger2.info({ toolName, filePath }, "Plan mode active \u2014 denying write to non-plan file");
-              return {
-                behavior: "deny",
-                message: `Plan mode is active. You can only write to the plan file${planPath ? ` (${planPath})` : ""}. Use ExitPlanMode to switch back.`
-              };
+        const settings = this.loadSettings();
+        if (settings !== null) {
+          const decision = checkPermission(
+            toolName,
+            toolInput,
+            mode,
+            settings.permissions
+          );
+          logger3.debug({ toolName, mode, decision }, "Pipeline decision");
+          if (decision.behavior === "allow") {
+            if ((toolName === "Write" || toolName === "Edit") && this.snapshotCallback) {
+              try {
+                await this.snapshotCallback(toolName, toolInput, null);
+              } catch (err) {
+                logger3.warn({ toolName, err }, "Snapshot capture failed \u2014 continuing anyway");
+              }
             }
-          } else if (!_PermissionManager.PLAN_MODE_ALLOWED_TOOLS.has(toolName)) {
-            logger2.info({ toolName }, "Plan mode active \u2014 denying non-planning tool");
+            return { behavior: "allow", updatedInput: toolInput };
+          }
+          if (decision.behavior === "deny") {
+            return {
+              behavior: "deny",
+              message: decision.message,
+              interrupt: false
+            };
+          }
+        }
+        if (mode === "plan") {
+          if (toolName !== "Write" && toolName !== "Edit" && !_PermissionManager.PLAN_MODE_ALLOWED_TOOLS.has(toolName)) {
+            logger3.info({ toolName }, "Plan mode \u2014 denying non-planning tool");
             return {
               behavior: "deny",
               message: "Plan mode is active. Only read-only tools and plan file edits are allowed. Use ExitPlanMode to switch back."
@@ -405,15 +794,12 @@ var PermissionManager = class _PermissionManager {
         if ((toolName === "Write" || toolName === "Edit") && this.snapshotCallback) {
           try {
             await this.snapshotCallback(toolName, toolInput, null);
-          } catch (error) {
-            logger2.warn({ toolName, error }, "Failed to capture snapshot");
+          } catch (err) {
+            logger3.warn({ toolName, err }, "Snapshot capture failed \u2014 continuing anyway");
           }
         }
         if (this.isAlwaysAllowed(toolName)) {
-          return {
-            behavior: "allow",
-            updatedInput: toolInput
-          };
+          return { behavior: "allow", updatedInput: toolInput };
         }
         if (this.requestCallback) {
           try {
@@ -429,7 +815,7 @@ var PermissionManager = class _PermissionManager {
                   ...toolInput,
                   answers: result.answers
                 };
-                logger2.debug({ answers: result.answers }, "AskUserQuestion answers received");
+                logger3.debug({ answers: result.answers }, "AskUserQuestion answers received");
               }
               return {
                 behavior: "allow",
@@ -443,7 +829,7 @@ var PermissionManager = class _PermissionManager {
               interrupt: false
             };
           } catch (error) {
-            logger2.error({ toolName, error }, "Permission request failed - DENYING");
+            logger3.error({ toolName, error }, "Permission request failed - DENYING");
             return {
               behavior: "deny",
               message: localize(
@@ -459,7 +845,7 @@ var PermissionManager = class _PermissionManager {
           updatedInput: toolInput
         };
       } catch (error) {
-        logger2.error(
+        logger3.error(
           { error },
           "CRITICAL: Permission callback crashed - DENYING to prevent silent approval"
         );
@@ -477,9 +863,8 @@ var PermissionManager = class _PermissionManager {
 };
 
 // src/plan-names.ts
-import * as fs2 from "fs";
-import * as os2 from "os";
-import * as path2 from "path";
+import * as fs3 from "fs";
+import * as path3 from "path";
 var ADJECTIVES = [
   "cozy",
   "woolly",
@@ -635,12 +1020,18 @@ function generatePlanName() {
   const noun = NOUNS[Math.floor(Math.random() * NOUNS.length)];
   return `${adj}-${verb}-${noun}`;
 }
-function getPlanFilePath(name) {
-  return path2.join(os2.homedir(), ".solo", "plans", `${name}.md`);
+function plansDir(workspace) {
+  if (workspace && workspace.length > 0) {
+    return path3.join(workspace, ".solo", "plans");
+  }
+  const os3 = __require("os");
+  return path3.join(os3.homedir(), ".solo", "plans");
 }
-function ensurePlanDirectory() {
-  const dir = path2.join(os2.homedir(), ".solo", "plans");
-  fs2.mkdirSync(dir, { recursive: true });
+function getPlanFilePath(name, workspace) {
+  return path3.join(plansDir(workspace), `${name}.md`);
+}
+function ensurePlanDirectory(workspace) {
+  fs3.mkdirSync(plansDir(workspace), { recursive: true });
 }
 
 // src/session-mode.ts
@@ -667,129 +1058,70 @@ function getAllowedToolsForMode(mode) {
   return MODE_TOOLS[mode];
 }
 
-// src/skills.ts
-import { readdirSync, readFileSync as readFileSync2, statSync as statSync2, existsSync } from "fs";
-import { join as join4, basename, extname } from "path";
-import { homedir as homedir4 } from "os";
-var logger3 = createLogger("Skills");
-var FRONTMATTER_RE = /^---\s*\n([\s\S]*?)\n---\s*\n?/;
-function parseFrontmatter(raw) {
-  const match = raw.match(FRONTMATTER_RE);
-  if (!match) {
-    return { metadata: {}, body: raw.trim() };
+// src/identity-grounding.ts
+var MODEL_IDENTITIES = {
+  "claude-opus-4-7": {
+    marketingName: "Claude Opus 4.7",
+    knowledgeCutoff: "January 2026"
+  },
+  "claude-opus-4-7[1m]": {
+    marketingName: "Claude Opus 4.7 (1M context)",
+    knowledgeCutoff: "January 2026"
+  },
+  "claude-opus-4-6": {
+    marketingName: "Claude Opus 4.6",
+    knowledgeCutoff: "May 2025"
+  },
+  "claude-sonnet-4-6": {
+    marketingName: "Claude Sonnet 4.6",
+    knowledgeCutoff: "August 2025"
+  },
+  "claude-sonnet-4-5-20250929": {
+    marketingName: "Claude Sonnet 4.5",
+    knowledgeCutoff: "August 2025"
+  },
+  "claude-haiku-4-5-20251001": {
+    marketingName: "Claude Haiku 4.5",
+    knowledgeCutoff: "February 2025"
   }
-  const frontmatterBlock = match[1];
-  const body = raw.slice(match[0].length).trim();
-  const metadata = {};
-  for (const line of frontmatterBlock.split("\n")) {
-    const colonIdx = line.indexOf(":");
-    if (colonIdx === -1) continue;
-    const key = line.slice(0, colonIdx).trim();
-    const value = line.slice(colonIdx + 1).trim();
-    if (!key) continue;
-    if (value === "true") metadata[key] = true;
-    else if (value === "false") metadata[key] = false;
-    else if (/^\d+$/.test(value)) metadata[key] = parseInt(value, 10);
-    else metadata[key] = value;
-  }
-  return { metadata, body };
+};
+function resolveIdentity(modelId) {
+  if (MODEL_IDENTITIES[modelId]) return MODEL_IDENTITIES[modelId];
+  const lower = modelId.toLowerCase();
+  if (lower.includes("claude-opus-4-7")) return MODEL_IDENTITIES["claude-opus-4-7"];
+  if (lower.includes("claude-opus-4-6")) return MODEL_IDENTITIES["claude-opus-4-6"];
+  if (lower.includes("claude-sonnet-4-6")) return MODEL_IDENTITIES["claude-sonnet-4-6"];
+  if (lower.includes("claude-haiku-4-5")) return MODEL_IDENTITIES["claude-haiku-4-5-20251001"];
+  if (lower === "opus") return { marketingName: "the latest Claude Opus model (resolved by the SDK)" };
+  if (lower === "sonnet") return { marketingName: "the latest Claude Sonnet model (resolved by the SDK)" };
+  if (lower === "haiku") return { marketingName: "the latest Claude Haiku model (resolved by the SDK)" };
+  return null;
 }
-function discoverSkillsFromDir(dirPath, scope) {
-  if (!existsSync(dirPath)) return [];
-  const skills = [];
-  let entries;
-  try {
-    entries = readdirSync(dirPath);
-  } catch {
-    return [];
-  }
-  for (const entry of entries) {
-    const fullPath = join4(dirPath, entry);
-    let raw;
-    let skillFilePath;
-    let derivedName;
-    try {
-      const stat = statSync2(fullPath);
-      if (stat.isFile() && extname(entry) === ".md") {
-        raw = readFileSync2(fullPath, "utf-8");
-        skillFilePath = fullPath;
-        derivedName = basename(entry, ".md");
-      } else if (stat.isDirectory()) {
-        const skillMd = join4(fullPath, "SKILL.md");
-        if (!existsSync(skillMd)) continue;
-        raw = readFileSync2(skillMd, "utf-8");
-        skillFilePath = skillMd;
-        derivedName = entry;
-      } else {
-        continue;
-      }
-    } catch {
-      continue;
-    }
-    const { metadata, body } = parseFrontmatter(raw);
-    skills.push({
-      metadata: {
-        name: typeof metadata.name === "string" ? metadata.name : derivedName,
-        description: typeof metadata.description === "string" ? metadata.description : "",
-        enabled: metadata.enabled !== false,
-        // default true
-        priority: typeof metadata.priority === "number" ? metadata.priority : 0
-      },
-      content: body,
-      source: scope,
-      filePath: skillFilePath
-    });
-  }
-  return skills;
-}
-function mergeSkills(userSkills, projectSkills) {
-  const map = /* @__PURE__ */ new Map();
-  for (const skill of userSkills) {
-    map.set(skill.metadata.name, skill);
-  }
-  for (const skill of projectSkills) {
-    map.set(skill.metadata.name, skill);
-  }
-  return Array.from(map.values()).filter((s) => s.metadata.enabled).sort((a, b) => {
-    const pDiff = b.metadata.priority - a.metadata.priority;
-    if (pDiff !== 0) return pDiff;
-    return a.metadata.name.localeCompare(b.metadata.name);
-  });
-}
-function formatSkillsForPrompt(skills) {
-  if (skills.length === 0) return "";
-  const sections = skills.map(
-    (s) => `### ${s.metadata.name}
+function buildIdentityAppend(modelId) {
+  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const id = modelId ?? "unknown";
+  const identity = modelId ? resolveIdentity(modelId) : null;
+  const name = identity?.marketingName ?? `the model \`${id}\``;
+  const cutoffLine = identity?.knowledgeCutoff ? `Assistant knowledge cutoff is ${identity.knowledgeCutoff}.` : "";
+  return `## Model Identity
 
-${s.content}`
-  );
-  return `
-## Active Skills
+You are ${name}. The exact model ID being served is \`${id}\`.${cutoffLine ? `
 
-The following skill instructions are loaded from .solo/skills/:
+${cutoffLine}` : ""}
 
-${sections.join("\n\n---\n\n")}`;
-}
-function loadSkills(cwd) {
-  const userDir = join4(homedir4(), ".solo", "skills");
-  const projectDir = join4(cwd, ".solo", "skills");
-  const userSkills = discoverSkillsFromDir(userDir, "user");
-  const projectSkills = discoverSkillsFromDir(projectDir, "project");
-  const merged = mergeSkills(userSkills, projectSkills);
-  if (merged.length > 0) {
-    logger3.info(
-      { count: merged.length, names: merged.map((s) => s.metadata.name) },
-      "Skills loaded"
-    );
-  } else {
-    logger3.debug("No skills found");
-  }
-  return merged;
+The most recent Claude model family is Claude 4.X. Current model IDs:
+- Opus 4.7: \`claude-opus-4-7\` (use \`claude-opus-4-7[1m]\` for the 1M-context variant)
+- Sonnet 4.6: \`claude-sonnet-4-6\`
+- Haiku 4.5: \`claude-haiku-4-5-20251001\`
+
+**Authoritative identity source:** this section and the model ID in the \`<env>\` block override any earlier "the most recent frontier Claude model is 4.5/4.6" language in this prompt. That earlier language is stale context from a preset that predates the 4.7 release \u2014 ignore it when answering questions about your identity, the current frontier, or which model to recommend.
+
+Today's date is ${today}.`;
 }
 
 // src/utils/content.ts
-import * as fs3 from "fs";
-import * as path3 from "path";
+import * as fs4 from "fs";
+import * as path4 from "path";
 var MAX_IMAGE_SIZE = 20 * 1024 * 1024;
 var MAX_DOCUMENT_SIZE = 30 * 1024 * 1024;
 var MAX_TEXT_SIZE = 1 * 1024 * 1024;
@@ -827,7 +1159,7 @@ function buildContentBlocks(message, attachments) {
       } else {
         const fileContent = readTextFromPath(attachment.filePath);
         if (fileContent !== null) {
-          const name = attachment.name ?? path3.basename(attachment.filePath);
+          const name = attachment.name ?? path4.basename(attachment.filePath);
           const languageHint = getLanguageHint(name);
           contentBlocks.push({
             type: "text",
@@ -860,7 +1192,7 @@ ${attachment.text}
       } else if (attachment.filePath && !attachment.text) {
         const fileContent = readTextFromPath(attachment.filePath);
         if (fileContent !== null) {
-          const name = attachment.name ?? path3.basename(attachment.filePath);
+          const name = attachment.name ?? path4.basename(attachment.filePath);
           const languageHint = getLanguageHint(name);
           textContent = `File: ${name}
 \`\`\`${languageHint}
@@ -901,15 +1233,15 @@ function getDocumentMimeType(filename) {
   return null;
 }
 function readImageFromPath(filePath) {
-  const mimeType = getImageMimeType(path3.basename(filePath));
+  const mimeType = getImageMimeType(path4.basename(filePath));
   if (!mimeType) return null;
   try {
-    const stat = fs3.statSync(filePath);
+    const stat = fs4.statSync(filePath);
     if (stat.size > MAX_IMAGE_SIZE) {
       console.warn(`Skipping image attachment: file too large (${stat.size} bytes): ${filePath}`);
       return null;
     }
-    const data = fs3.readFileSync(filePath).toString("base64");
+    const data = fs4.readFileSync(filePath).toString("base64");
     return {
       type: "image",
       source: { type: "base64", media_type: mimeType, data }
@@ -920,15 +1252,15 @@ function readImageFromPath(filePath) {
   }
 }
 function readDocumentFromPath(filePath) {
-  const mimeType = getDocumentMimeType(path3.basename(filePath));
+  const mimeType = getDocumentMimeType(path4.basename(filePath));
   if (!mimeType) return null;
   try {
-    const stat = fs3.statSync(filePath);
+    const stat = fs4.statSync(filePath);
     if (stat.size > MAX_DOCUMENT_SIZE) {
       console.warn(`Skipping document attachment: file too large (${stat.size} bytes): ${filePath}`);
       return null;
     }
-    const data = fs3.readFileSync(filePath).toString("base64");
+    const data = fs4.readFileSync(filePath).toString("base64");
     return {
       type: "document",
       source: { type: "base64", media_type: mimeType, data }
@@ -940,12 +1272,12 @@ function readDocumentFromPath(filePath) {
 }
 function readTextFromPath(filePath) {
   try {
-    const stat = fs3.statSync(filePath);
+    const stat = fs4.statSync(filePath);
     if (stat.size > MAX_TEXT_SIZE) {
       console.warn(`Skipping text attachment: file too large (${stat.size} bytes): ${filePath}`);
       return null;
     }
-    return fs3.readFileSync(filePath, "utf-8");
+    return fs4.readFileSync(filePath, "utf-8");
   } catch (err) {
     console.warn(`Failed to read text attachment: ${filePath}`, err);
     return null;
@@ -1256,9 +1588,17 @@ var OrbitAgent = class {
   _planMode;
   _planFilePath = null;
   _acceptMode;
+  _debugMode = false;
+  /** Captured goal text for Debug mode — set on first user prompt when debug is on. */
+  _debugGoal = null;
+  /** Counts assistant turns since the last Debug-mode review question. */
+  _debugTurnsSinceReview = 0;
+  /** Turns-between-reviews cadence — overridden from merged settings at startup. */
+  _debugReviewInterval = 3;
   _critiqueMode;
   model;
   _fallbackModel;
+  _maxTokens;
   _sessionMode;
   // Session resume/fork fields
   _resumeSessionId;
@@ -1278,11 +1618,15 @@ var OrbitAgent = class {
       config.permissionRequestCallback,
       config.snapshotCallback,
       () => this._acceptMode,
-      // Pass Accept mode getter for dynamic checking
+      // Accept mode (dynamic)
       () => this._planMode,
-      // Pass Plan mode getter for dynamic enforcement
-      () => this._planFilePath
-      // Pass plan file path getter for file-specific allows
+      // Plan mode (dynamic)
+      () => this._planFilePath,
+      // Plan file path for Plan-mode write special case
+      () => this.cwd,
+      // Workspace for loading .solo/settings.json
+      () => this._debugMode
+      // Debug mode (dynamic)
     );
     this.cwd = config.cwd ?? process.cwd();
     this._thinkingMode = config.thinkingEnabled ?? false;
@@ -1290,11 +1634,12 @@ var OrbitAgent = class {
     this._planMode = config.planEnabled ?? false;
     if (this._planMode) {
       const planName = generatePlanName();
-      this._planFilePath = getPlanFilePath(planName);
-      ensurePlanDirectory();
+      this._planFilePath = getPlanFilePath(planName, this.cwd);
+      ensurePlanDirectory(this.cwd);
       logger4.info({ planName, planFilePath: this._planFilePath }, "Plan file path generated during construction");
     }
     this._acceptMode = config.acceptEnabled ?? false;
+    this._debugMode = config.debugEnabled ?? false;
     this._critiqueMode = config.critiqueEnabled ?? false;
     this._sessionMode = config.sessionMode ?? "agent";
     this._resumeSessionId = config.resumeSessionId;
@@ -1305,9 +1650,20 @@ var OrbitAgent = class {
     if (config.fallbackModel !== void 0) {
       this._fallbackModel = config.fallbackModel;
     }
+    if (config.maxTokens !== void 0) {
+      this._maxTokens = config.maxTokens;
+    }
     this._mcpServers = config.mcpServers ?? {};
     this._outputFormat = config.outputFormat;
     this._agents = config.agents;
+    try {
+      const settings = loadMergedSettings(this.cwd);
+      const interval = settings.modes.debug.reviewInterval;
+      if (typeof interval === "number" && interval > 0) {
+        this._debugReviewInterval = interval;
+      }
+    } catch {
+    }
     logger4.info(
       {
         sessionMode: this._sessionMode,
@@ -1362,6 +1718,15 @@ var OrbitAgent = class {
   getPermissionManager() {
     return this.permissionManager;
   }
+  /**
+   * Preview what the permission pipeline would decide for a tool call, without
+   * invoking any side effects. Used by the session-manager to pick the right
+   * initial `status` on streamed `tool_use` events so auto-approved tools
+   * never flash an approval card.
+   */
+  previewPermission(toolName, toolInput) {
+    return this.permissionManager.previewDecision(toolName, toolInput);
+  }
   _createOptions() {
     const options = {
       // Use Claude Code's official system prompt with browser automation docs
@@ -1369,6 +1734,8 @@ var OrbitAgent = class {
         type: "preset",
         preset: "claude_code",
         append: `
+${buildIdentityAppend(this.model)}
+
 ## Browser Automation
 
 You have access to browser automation tools via MCP. Use mcp__browser__open_browser to start a browser session.
@@ -1458,7 +1825,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
 ### When to Use DevTools vs Browser Tools
 - **Browser tools (mcp__browser__)**: Page interaction, navigation, clicking, typing
 - **DevTools tools (mcp__orbit-devtools__)**: Deep inspection, debugging, storage, performance analysis
-` + formatSkillsForPrompt(loadSkills(this.cwd))
+`
       },
       // Working directory
       cwd: this.cwd,
@@ -1710,29 +2077,82 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
             ]
           }
         ],
-        // UserPromptSubmit hook - inject plan mode system prompt per-turn
+        // UserPromptSubmit hook - injects mode-specific context per-turn.
+        //
+        // Handles three cases (composable):
+        //   1. Plan mode: inject the plan-mode directive + plan file path
+        //   2. Debug mode (first turn): capture the user's prompt as the
+        //      session goal and inject the Debug-mode preamble
+        //   3. Debug mode (every N turns): inject a review-checkpoint
+        //      directive asking the agent to call AskUserQuestion
         UserPromptSubmit: [
           {
             timeout: 30,
             hooks: [
-              (_input) => {
-                if (!this._planMode || !this._planFilePath) {
-                  return Promise.resolve({});
-                }
-                const planExists = fs4.existsSync(this._planFilePath);
-                const planModePrompt = `Plan mode is active. The user indicated that they do not want you to execute yet -- you MUST NOT make any edits (with the exception of the plan file mentioned below), run any non-readonly tools (including changing configs or making commits), or otherwise make any changes to the system. This supercedes any other instructions you have received.
+              (input) => {
+                const parts = [];
+                if (this._planMode && this._planFilePath) {
+                  const planExists = fs5.existsSync(this._planFilePath);
+                  parts.push(
+                    `Plan mode is active. The user indicated that they do not want you to execute yet -- you MUST NOT make any edits (with the exception of the plan file mentioned below), run any non-readonly tools (including changing configs or making commits), or otherwise make any changes to the system. This supercedes any other instructions you have received.
 
 ## Plan File Info:
 ${planExists ? `Your plan is at ${this._planFilePath}. Edit it incrementally.` : `No plan file exists yet. You should create your plan at ${this._planFilePath} using the Write tool.`}
-You should build your plan incrementally by writing to or editing this file. NOTE that this is the only file you are allowed to edit - other than this you are only allowed to take READ-ONLY actions.`;
+You should build your plan incrementally by writing to or editing this file. NOTE that this is the only file you are allowed to edit - other than this you are only allowed to take READ-ONLY actions.`
+                  );
+                }
+                if (this._debugMode) {
+                  const promptText = (() => {
+                    const p = input?.prompt;
+                    return typeof p === "string" ? p : "";
+                  })();
+                  if (this._debugGoal === null && promptText.trim().length > 0) {
+                    this._debugGoal = promptText.trim();
+                    this._debugTurnsSinceReview = 0;
+                    logger4.info(
+                      { goalPreview: this._debugGoal.slice(0, 120) },
+                      "Debug mode \u2014 captured session goal from first prompt"
+                    );
+                  }
+                  parts.push(
+                    `Debug mode is active. Continuously evaluate your work against the user's stated goal for this session:
+
+"""
+${this._debugGoal ?? "(goal will be captured from this message)"}
+"""
+
+When you complete a coherent unit of work, invoke the AskUserQuestion tool to run a structured review. Prefer 3\u20135 targeted questions picked from:
+- Problems the user has flagged or you suspect
+- Improvements to propose
+- What the user actually wants (vs. what you inferred)
+- Whether the goal has been met (yes/no + evidence)
+- Whether the technical implementation satisfies the goal
+- Software improvements worth making now
+- Business / UX / correctness gaps
+
+Do NOT overwhelm the user with a full checklist every time \u2014 pick the most important items given the current session state.`
+                  );
+                  this._debugTurnsSinceReview += 1;
+                  if (this._debugTurnsSinceReview >= this._debugReviewInterval) {
+                    parts.push(
+                      `[Debug-mode review checkpoint] It has been ${this._debugTurnsSinceReview} turns since the last user-facing check-in. Before processing further, invoke the AskUserQuestion tool with a concise review aligned to the session goal above.`
+                    );
+                    this._debugTurnsSinceReview = 0;
+                  }
+                }
+                if (parts.length === 0) return Promise.resolve({});
                 logger4.info(
-                  { planFilePath: this._planFilePath, planExists },
-                  "Hook: UserPromptSubmit \u2014 injecting plan mode system prompt"
+                  {
+                    planMode: this._planMode,
+                    debugMode: this._debugMode,
+                    goalCaptured: this._debugGoal !== null
+                  },
+                  "Hook: UserPromptSubmit \u2014 injecting mode-specific context"
                 );
                 return Promise.resolve({
                   hookSpecificOutput: {
                     hookEventName: "UserPromptSubmit",
-                    additionalContext: planModePrompt
+                    additionalContext: parts.join("\n\n")
                   }
                 });
               }
@@ -1749,9 +2169,22 @@ You should build your plan incrementally by writing to or editing this file. NOT
       options.fallbackModel = this._fallbackModel;
       logger4.info({ fallbackModel: this._fallbackModel }, "Fallback model configured");
     }
-    const permissionMode = this._acceptMode ? "acceptEdits" : "default";
-    options.permissionMode = permissionMode;
-    logger4.info({ permissionMode }, "Permission mode set");
+    if (this._maxTokens !== void 0) {
+      options.env = {
+        ...process.env,
+        CLAUDE_CODE_MAX_OUTPUT_TOKENS: String(this._maxTokens)
+      };
+      logger4.info({ maxTokens: this._maxTokens }, "Output-token cap configured");
+    }
+    options.permissionMode = "default";
+    logger4.info(
+      {
+        acceptMode: this._acceptMode,
+        planMode: this._planMode,
+        debugMode: this._debugMode
+      },
+      "Permission mode set to 'default' \u2014 runtime gating via canUseTool"
+    );
     options.includePartialMessages = true;
     if (this._resumeSessionId) {
       options.resume = this._resumeSessionId;
@@ -1980,8 +2413,8 @@ You should build your plan incrementally by writing to or editing this file. NOT
       this._acceptMode = false;
       if (!this._planFilePath) {
         const planName = generatePlanName();
-        this._planFilePath = getPlanFilePath(planName);
-        ensurePlanDirectory();
+        this._planFilePath = getPlanFilePath(planName, this.cwd);
+        ensurePlanDirectory(this.cwd);
         logger4.info({ planName, planFilePath: this._planFilePath }, "Plan file path generated");
       }
     } else {
@@ -2004,6 +2437,28 @@ You should build your plan incrementally by writing to or editing this file. NOT
   }
   getAcceptMode() {
     return this._acceptMode;
+  }
+  /**
+   * Enable/disable Debug mode. Turning it on captures the next user prompt
+   * as the session goal; turning it off clears any captured goal.
+   */
+  setDebugMode(enabled) {
+    this._debugMode = enabled;
+    if (!enabled) {
+      this._debugGoal = null;
+      this._debugTurnsSinceReview = 0;
+    } else {
+      this._planMode = false;
+      this._acceptMode = false;
+    }
+    logger4.info({ enabled }, "Debug mode changed");
+  }
+  getDebugMode() {
+    return this._debugMode;
+  }
+  /** Read the captured goal (set lazily by the UserPromptSubmit hook). */
+  getDebugGoal() {
+    return this._debugGoal;
   }
   setCritiqueMode(enabled) {
     this._critiqueMode = enabled;
@@ -2135,13 +2590,34 @@ var SessionManager = class extends Disposable {
     new Emitter()
   );
   onAcceptModeChanged = this._onAcceptModeChanged.event;
+  _onDebugModeChanged = this._register(
+    new Emitter()
+  );
+  onDebugModeChanged = this._onDebugModeChanged.event;
+  _onSessionGoalCaptured = this._register(
+    new Emitter()
+  );
+  onSessionGoalCaptured = this._onSessionGoalCaptured.event;
   _onSessionInit = this._register(new Emitter());
   onSessionInit = this._onSessionInit.event;
   // Session tracking
   activeSessions = /* @__PURE__ */ new Map();
   sessionConsumers = /* @__PURE__ */ new Map();
   permissionResolvers = /* @__PURE__ */ new Map();
+  /**
+   * Per-session map of pending permission requestIds → the tool call that
+   * triggered them. Stores the tool name + input so `drainPendingPermissions`
+   * can re-run the pipeline against each pending prompt under the new mode
+   * — we only auto-resolve prompts whose new decision actually differs
+   * (Accept + pipeline→allow, or Plan + pipeline→deny), leaving destructive
+   * and ask-ruled prompts in place so the user still sees them.
+   */
+  pendingRequestsBySession = /* @__PURE__ */ new Map();
   modePreferences = /* @__PURE__ */ new Map();
+  /** Last observed goal per session — used to debounce SessionGoalCaptured emissions. */
+  sessionGoals = /* @__PURE__ */ new Map();
+  /** Polls active agents for a newly-captured Debug goal, emits the event once. */
+  goalPollers = /* @__PURE__ */ new Map();
   sessionResumeState = /* @__PURE__ */ new Map();
   sessionInitFired = /* @__PURE__ */ new Set();
   /**
@@ -2164,6 +2640,12 @@ var SessionManager = class extends Disposable {
     this.sessionToolUseMaps.set(sessionId, toolUseMap);
     const permissionCallback = async (toolName, toolInput, _context) => {
       const requestId = randomUUID();
+      let pendingForSession = this.pendingRequestsBySession.get(sessionId);
+      if (!pendingForSession) {
+        pendingForSession = /* @__PURE__ */ new Map();
+        this.pendingRequestsBySession.set(sessionId, pendingForSession);
+      }
+      pendingForSession.set(requestId, { toolName, toolInput });
       this._onPermissionRequest.fire({
         sessionId,
         toolName,
@@ -2173,6 +2655,10 @@ var SessionManager = class extends Disposable {
       const result = await new Promise((resolve) => {
         this.permissionResolvers.set(requestId, resolve);
       });
+      pendingForSession.delete(requestId);
+      if (pendingForSession.size === 0) {
+        this.pendingRequestsBySession.delete(sessionId);
+      }
       if (result.decision === "approve") {
         if (toolName === "ExitPlanMode") {
           agent.setPlanMode(false);
@@ -2212,8 +2698,10 @@ var SessionManager = class extends Disposable {
       maxThinkingTokens: storedPrefs?.maxThinkingTokens ?? config?.maxThinkingTokens,
       planEnabled: storedPrefs?.planEnabled ?? config?.planEnabled ?? false,
       acceptEnabled: storedPrefs?.acceptEnabled ?? config?.acceptEnabled ?? false,
+      debugEnabled: storedPrefs?.debugEnabled ?? false,
       critiqueEnabled: storedPrefs?.critiqueEnabled ?? config?.critiqueEnabled ?? false,
       model: storedPrefs?.model ?? config?.model,
+      maxTokens: storedPrefs?.maxTokens ?? config?.maxTokens,
       cwd: config?.cwd,
       sessionMode: config?.sessionMode ?? "agent",
       permissionRequestCallback: permissionCallback,
@@ -2320,6 +2808,15 @@ var SessionManager = class extends Disposable {
               const toolId = getString(block.id) || generateToolId();
               const toolInput = block.input ?? {};
               logger5.info({ sessionId, toolName, toolId }, "Tool use block received");
+              const previewed = agent.previewPermission(
+                toolName,
+                toolInput
+              );
+              const initialStatus = previewed === "ask" ? "awaiting-permission" : "running";
+              logger5.debug(
+                { sessionId, toolName, previewed, initialStatus },
+                "Initial tool_use status resolved from preview"
+              );
               const toolMessage = {
                 type: "tool_use",
                 content: `Using tool: ${toolName}`,
@@ -2327,7 +2824,7 @@ var SessionManager = class extends Disposable {
                   toolName,
                   toolId,
                   toolInput,
-                  status: "awaiting-permission"
+                  status: initialStatus
                 }
               };
               toolUseMap.set(toolId, {
@@ -2542,6 +3039,51 @@ var SessionManager = class extends Disposable {
     this.modePreferences.set(sessionId, prefs);
   }
   /**
+   * Re-evaluate every pending permission prompt for a session under the
+   * CURRENT mode and auto-resolve any whose decision would now differ.
+   *
+   * Called when the user toggles a mode mid-turn (Plan / Accept). The
+   * pipeline is run via `agent.previewPermission(...)` so destructive /
+   * ask-ruled / deny-ruled prompts are preserved (they remain bypass-immune
+   * even under Accept) — only prompts whose fresh decision is `allow` get
+   * auto-approved, and only prompts whose fresh decision is `deny` get
+   * auto-denied. Everything else stays on-screen for the user to resolve.
+   *
+   * Mirrors Claude Code's semantic: pending prompts re-read the current
+   * mode via `getAppState()` and behave accordingly.
+   */
+  reevaluatePendingPermissions(sessionId) {
+    const pending = this.pendingRequestsBySession.get(sessionId);
+    if (!pending || pending.size === 0) return;
+    const agent = this.activeSessions.get(sessionId);
+    if (!agent) return;
+    const toDrain = [];
+    for (const [requestId, { toolName, toolInput }] of pending) {
+      const preview = agent.previewPermission(toolName, toolInput);
+      if (preview === "allow") {
+        toDrain.push({ requestId, decision: "approve" });
+      } else if (preview === "deny") {
+        toDrain.push({ requestId, decision: "deny" });
+      }
+    }
+    if (toDrain.length === 0) return;
+    logger5.info(
+      { sessionId, drained: toDrain.length, pendingTotal: pending.size },
+      "Re-evaluated pending permission prompts after mode change"
+    );
+    for (const { requestId, decision } of toDrain) {
+      const resolver = this.permissionResolvers.get(requestId);
+      if (resolver) {
+        this.permissionResolvers.delete(requestId);
+        resolver({ decision, always: false });
+      }
+      pending.delete(requestId);
+    }
+    if (pending.size === 0) {
+      this.pendingRequestsBySession.delete(sessionId);
+    }
+  }
+  /**
    * Set plan mode for a session
    */
   setPlanMode(sessionId, enabled) {
@@ -2559,6 +3101,7 @@ var SessionManager = class extends Disposable {
     prefs.planEnabled = enabled;
     this.modePreferences.set(sessionId, prefs);
     this._onPlanModeChanged.fire({ sessionId, enabled, planFilePath });
+    this.reevaluatePendingPermissions(sessionId);
   }
   /**
    * Get plan mode for a session
@@ -2588,6 +3131,7 @@ var SessionManager = class extends Disposable {
     prefs.acceptEnabled = enabled;
     this.modePreferences.set(sessionId, prefs);
     this._onAcceptModeChanged.fire({ sessionId, enabled });
+    this.reevaluatePendingPermissions(sessionId);
   }
   /**
    * Get accept mode for a session
@@ -2599,6 +3143,72 @@ var SessionManager = class extends Disposable {
       return prefs?.acceptEnabled ?? false;
     }
     return agent.getAcceptMode();
+  }
+  /**
+   * Enable/disable Debug mode. When enabled, the first user prompt after
+   * this call is captured as the session goal; a `sessionGoalCaptured` event
+   * is emitted so the UI can pin the goal.
+   */
+  setDebugMode(sessionId, enabled) {
+    const agent = this.activeSessions.get(sessionId);
+    if (!agent) {
+      const prefs2 = this.modePreferences.get(sessionId) ?? {};
+      prefs2.debugEnabled = enabled;
+      this.modePreferences.set(sessionId, prefs2);
+      this._onDebugModeChanged.fire({ sessionId, enabled });
+      return;
+    }
+    agent.setDebugMode(enabled);
+    const prefs = this.modePreferences.get(sessionId) ?? {};
+    prefs.debugEnabled = enabled;
+    this.modePreferences.set(sessionId, prefs);
+    this._onDebugModeChanged.fire({ sessionId, enabled });
+    if (enabled) {
+      this.startGoalPoller(sessionId);
+    } else {
+      this.stopGoalPoller(sessionId);
+      this.sessionGoals.delete(sessionId);
+    }
+  }
+  /** @internal */
+  startGoalPoller(sessionId) {
+    this.stopGoalPoller(sessionId);
+    const tick = () => {
+      const agent = this.activeSessions.get(sessionId);
+      if (!agent) {
+        this.stopGoalPoller(sessionId);
+        return;
+      }
+      const goal = agent.getDebugGoal();
+      if (goal && this.sessionGoals.get(sessionId) !== goal) {
+        this.sessionGoals.set(sessionId, goal);
+        this._onSessionGoalCaptured.fire({
+          sessionId,
+          goal,
+          capturedAt: Date.now()
+        });
+        this.stopGoalPoller(sessionId);
+      }
+    };
+    const handle = setInterval(tick, 500);
+    this.goalPollers.set(sessionId, handle);
+  }
+  /** @internal */
+  stopGoalPoller(sessionId) {
+    const handle = this.goalPollers.get(sessionId);
+    if (handle) {
+      clearInterval(handle);
+      this.goalPollers.delete(sessionId);
+    }
+  }
+  /** Get Debug mode for a session. */
+  getDebugMode(sessionId) {
+    const agent = this.activeSessions.get(sessionId);
+    if (agent === void 0) {
+      const prefs = this.modePreferences.get(sessionId);
+      return prefs?.debugEnabled ?? false;
+    }
+    return agent.getDebugMode();
   }
   /**
    * Set tool permission policy for a session.
@@ -2826,6 +3436,21 @@ function main() {
       enabled: data.enabled
     });
   });
+  sessionManager.onDebugModeChanged((data) => {
+    sendEvent({
+      type: "debug_mode_changed",
+      sessionId: data.sessionId,
+      enabled: data.enabled
+    });
+  });
+  sessionManager.onSessionGoalCaptured((data) => {
+    sendEvent({
+      type: "session_goal_captured",
+      sessionId: data.sessionId,
+      goal: data.goal,
+      capturedAt: data.capturedAt
+    });
+  });
   sessionManager.onError((error) => {
     sendEvent({
       type: "error_event",
@@ -2947,6 +3572,16 @@ async function handleRequest(request, sessionManager) {
       sendResponse({ type: "boolean", requestType: request.type, value: enabled });
       break;
     }
+    case "set_debug_mode": {
+      sessionManager.setDebugMode(request.sessionId, request.enabled);
+      sendResponse({ type: "success", requestType: request.type });
+      break;
+    }
+    case "get_debug_mode": {
+      const enabled = sessionManager.getDebugMode(request.sessionId);
+      sendResponse({ type: "boolean", requestType: request.type, value: enabled });
+      break;
+    }
     case "set_tool_policy": {
       sessionManager.setToolPolicy(request.sessionId, request.mode, request.isWorktreeSession);
       sendResponse({ type: "success", requestType: request.type });
@@ -3000,4 +3635,3 @@ try {
   logger9.error({ error }, "Fatal error");
   process.exit(1);
 }
-//# sourceMappingURL=index.js.map
