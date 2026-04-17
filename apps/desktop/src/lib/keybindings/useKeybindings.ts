@@ -4,7 +4,7 @@
 
 import { useEffect, useCallback, useMemo } from 'react';
 import { useSettingsStore } from '../../stores/settingsStore';
-import { DEFAULT_KEYBINDINGS } from './registry';
+import { getEffectiveKeybinding } from './registry';
 import { matchesKeybinding } from './utils';
 
 type KeybindingHandler = () => void;
@@ -20,13 +20,10 @@ export function useKeybinding(
   const customKeybindings = useSettingsStore((s) => s.shortcuts.keybindings);
 
   // Get the effective keybinding (custom or default)
-  const keybinding = useMemo(() => {
-    if (customKeybindings[actionId]) {
-      return customKeybindings[actionId];
-    }
-    const defaultDef = DEFAULT_KEYBINDINGS.find((d) => d.id === actionId);
-    return defaultDef?.defaultKey ?? '';
-  }, [actionId, customKeybindings]);
+  const keybinding = useMemo(
+    () => getEffectiveKeybinding(actionId, customKeybindings),
+    [actionId, customKeybindings]
+  );
 
   useEffect(() => {
     if (!enabled || !keybinding) return;
@@ -57,14 +54,9 @@ export function useKeybindings(
     const map = new Map<string, string>();
 
     for (const actionId of Object.keys(handlers)) {
-      const custom = customKeybindings[actionId];
-      if (custom) {
-        map.set(custom, actionId);
-      } else {
-        const defaultDef = DEFAULT_KEYBINDINGS.find((d) => d.id === actionId);
-        if (defaultDef) {
-          map.set(defaultDef.defaultKey, actionId);
-        }
+      const keybinding = getEffectiveKeybinding(actionId, customKeybindings);
+      if (keybinding) {
+        map.set(keybinding, actionId);
       }
     }
 
@@ -100,11 +92,8 @@ export function useKeybindings(
 export function useEffectiveKeybinding(actionId: string): string {
   const customKeybindings = useSettingsStore((s) => s.shortcuts.keybindings);
 
-  return useMemo(() => {
-    if (customKeybindings[actionId]) {
-      return customKeybindings[actionId];
-    }
-    const defaultDef = DEFAULT_KEYBINDINGS.find((d) => d.id === actionId);
-    return defaultDef?.defaultKey ?? '';
-  }, [actionId, customKeybindings]);
+  return useMemo(
+    () => getEffectiveKeybinding(actionId, customKeybindings),
+    [actionId, customKeybindings]
+  );
 }
