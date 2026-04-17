@@ -1,0 +1,40 @@
+{
+  "extractedAt": "2026-04-17T06:31:01.341Z",
+  "codexVersion": "26.415.21839",
+  "mode": "automated",
+  "url": "app://-/index.html?hostId=local",
+  "archetypes": {
+    "total": 28,
+    "matched": 9,
+    "missing": [
+      "sidebar-item",
+      "chat-area",
+      "message-user",
+      "message-assistant",
+      "message-tool",
+      "primary-button",
+      "secondary-button",
+      "text-input",
+      "textarea",
+      "select-trigger",
+      "menu-item",
+      "dialog-content",
+      "tooltip",
+      "tab",
+      "tab-active",
+      "scrollbar-thumb",
+      "code-block",
+      "inline-code",
+      "link"
+    ]
+  },
+  "counts": {
+    "stylesheets": 7,
+    "tokens": 1104,
+    "fonts": 20,
+    "keyframes": 30,
+    "assets": 1
+  },
+  "warnings": [],
+  "durationMs": 8037
+}
