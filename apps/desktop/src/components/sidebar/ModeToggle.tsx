@@ -1,5 +1,5 @@
 /**
- * ModeToggle - Segmented pill toggle for Dev/Studio sidebar modes.
+ * ModeToggle - Segmented pill toggle for Dev/Vault sidebar modes.
  */
 
 import type { FC } from 'react';
@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils';
 
 const MODES: { key: SidebarMode; label: string }[] = [
   { key: 'dev', label: 'Dev' },
-  { key: 'studio', label: 'Studio' },
+  { key: 'vault', label: 'Vault' },
 ];
 
 export const ModeToggle: FC = () => {
