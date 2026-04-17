@@ -88,3 +88,8 @@ infra/*secret*
 infra/*credential*
 **/oauth-setup*
 **/oauth_setup*
+
+# codex-extract runtime artefacts
+scripts/codex-extract/.tmp-profile/
+packages/ui/design-dump/codex/assets/
+packages/ui/design-dump/codex/manual/*.json
