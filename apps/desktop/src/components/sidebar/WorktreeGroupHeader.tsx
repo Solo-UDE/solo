@@ -97,18 +97,18 @@ export const WorktreeGroupHeader: FC<WorktreeGroupHeaderProps> = ({
           onDrillIn();
         }}
         title={`Open ${branchLabel}`}
+        aria-label={`Open ${branchLabel}`}
         className={cn(
-          'flex shrink-0 items-center gap-1 rounded-full border border-border/60 bg-background/70 px-2 py-0.5 text-[10px]',
-          'text-muted-foreground transition-[color,background-color,border-color] duration-150',
-          'hover:border-border hover:bg-card hover:text-foreground',
+          'flex size-5 shrink-0 items-center justify-center rounded-sm',
+          'text-muted-foreground transition-[color,background-color] duration-150',
+          'hover:bg-accent hover:text-foreground',
         )}
       >
         {worktree.is_locked ? (
-          <Lock className="h-2.5 w-2.5" />
+          <Lock className="h-3 w-3" />
         ) : (
-          <GitBranch className="h-2.5 w-2.5" />
+          <GitBranch className="h-3 w-3" />
         )}
-        <span className="max-w-[10rem] truncate">{branchLabel}</span>
       </button>
     </div>
   );
