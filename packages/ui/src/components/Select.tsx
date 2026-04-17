@@ -12,11 +12,43 @@ import {
   Group,
   Label,
   Separator as RadixSeparator,
-  ScrollUpButton,
-  ScrollDownButton,
+  ScrollUpButton as RadixScrollUp,
+  ScrollDownButton as RadixScrollDown,
 } from "@radix-ui/react-select";
 import { forwardRef, type ComponentPropsWithoutRef } from "react";
 import { cn } from "../utils/cn";
+
+export const SelectScrollUpButton = forwardRef<
+  HTMLDivElement,
+  ComponentPropsWithoutRef<typeof RadixScrollUp>
+>(({ className, ...props }, ref) => (
+  <RadixScrollUp
+    ref={ref}
+    className={cn("flex h-6 items-center justify-center text-muted-foreground", className)}
+    {...props}
+  >
+    <svg width="8" height="5" viewBox="0 0 8 5" className="rotate-180" fill="none">
+      <path d="M.5.5 4 4 7.5.5" stroke="currentColor" />
+    </svg>
+  </RadixScrollUp>
+));
+SelectScrollUpButton.displayName = "SelectScrollUpButton";
+
+export const SelectScrollDownButton = forwardRef<
+  HTMLDivElement,
+  ComponentPropsWithoutRef<typeof RadixScrollDown>
+>(({ className, ...props }, ref) => (
+  <RadixScrollDown
+    ref={ref}
+    className={cn("flex h-6 items-center justify-center text-muted-foreground", className)}
+    {...props}
+  >
+    <svg width="8" height="5" viewBox="0 0 8 5" fill="none">
+      <path d="M.5.5 4 4 7.5.5" stroke="currentColor" />
+    </svg>
+  </RadixScrollDown>
+));
+SelectScrollDownButton.displayName = "SelectScrollDownButton";
 
 export const Select = Root;
 export const SelectValue = Value;
@@ -79,17 +111,9 @@ export const SelectContent = forwardRef<
       )}
       {...props}
     >
-      <ScrollUpButton className="flex h-6 items-center justify-center text-muted-foreground">
-        <svg width="8" height="5" viewBox="0 0 8 5" className="rotate-180" fill="none">
-          <path d="M.5.5 4 4 7.5.5" stroke="currentColor" />
-        </svg>
-      </ScrollUpButton>
+      <SelectScrollUpButton />
       <Viewport className="p-1">{children}</Viewport>
-      <ScrollDownButton className="flex h-6 items-center justify-center text-muted-foreground">
-        <svg width="8" height="5" viewBox="0 0 8 5" fill="none">
-          <path d="M.5.5 4 4 7.5.5" stroke="currentColor" />
-        </svg>
-      </ScrollDownButton>
+      <SelectScrollDownButton />
     </Content>
   </Portal>
 ));
