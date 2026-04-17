@@ -10,3 +10,5 @@ pub mod manifest;
 pub mod path;
 pub mod store;
 pub mod toggles;
+
+pub use id::{PluginId, PluginIdError, validate_plugin_segment};
