@@ -10,7 +10,7 @@ import { SIDEBAR, TERMINAL_SECTION } from '@/lib/constants';
 export type SidebarTab = 'explorer' | 'sessions' | 'source-control';
 
 // Settings tab types
-export type SettingsTabId = 'general' | 'editor' | 'terminal' | 'files' | 'shortcuts' | 'ai' | 'voice' | 'skills';
+export type SettingsTabId = 'journey' | 'leaderboard' | 'general' | 'editor' | 'terminal' | 'files' | 'shortcuts' | 'ai' | 'voice' | 'skills';
 
 // Dev/Studio sidebar mode
 export type SidebarMode = 'dev' | 'studio';
@@ -97,7 +97,7 @@ export const useUIStore = create<UIStore>()(
     terminalPanelOpen: false,
     terminalPanelHeight: TERMINAL_SECTION.defaultHeight,
     settingsOpen: false,
-    settingsTab: 'general' as SettingsTabId,
+    settingsTab: 'journey' as SettingsTabId,
     tourActive: false,
     tourStep: 0,
     sidebarMode: 'dev' as SidebarMode,
