@@ -9,10 +9,15 @@ import { FilesTab } from './tabs/FilesTab';
 import { ShortcutsTab } from './tabs/ShortcutsTab';
 import { AITab } from './tabs/AITab';
 import { VoiceTab } from './tabs/VoiceTab';
+import { SkillsTab } from './tabs/SkillsTab';
+import { JourneyPage } from './journey/JourneyPage';
+import { LeaderboardPage } from './leaderboard/LeaderboardPage';
 
-const TAB_ORDER: SettingsTabId[] = ['general', 'editor', 'terminal', 'files', 'shortcuts', 'ai', 'voice'];
+const TAB_ORDER: SettingsTabId[] = ['journey', 'leaderboard', 'general', 'editor', 'terminal', 'files', 'shortcuts', 'ai', 'voice', 'skills'];
 
 const TAB_LABELS: Record<SettingsTabId, string> = {
+  journey: 'Your Journey',
+  leaderboard: 'Leaderboard',
   general: 'General',
   editor: 'Editor',
   terminal: 'Terminal',
@@ -20,6 +25,20 @@ const TAB_LABELS: Record<SettingsTabId, string> = {
   shortcuts: 'Shortcuts',
   ai: 'Providers',
   voice: 'Voice',
+  skills: 'Skills',
+};
+
+const TAB_DESCRIPTIONS: Record<SettingsTabId, string> = {
+  journey: 'Your tier, stats, and progress through Solo.',
+  leaderboard: 'Top climbers across Solo, filterable by tier.',
+  general: 'Global desktop behavior, appearance, and app defaults.',
+  editor: 'Code editing preferences and panel ergonomics.',
+  terminal: 'Terminal session behavior and shell integration.',
+  files: 'Project scanning, file explorer, and workspace file rules.',
+  shortcuts: 'Keyboard commands for navigation and chat workflows.',
+  ai: 'Providers, model defaults, and agent execution preferences.',
+  voice: 'Speech input behavior and audio capture settings.',
+  skills: 'Installed skills and assistant capability controls.',
 };
 
 export function SettingsView() {
@@ -30,6 +49,10 @@ export function SettingsView() {
 
   const renderTabContent = () => {
     switch (settingsTab) {
+      case 'journey':
+        return <JourneyPage />;
+      case 'leaderboard':
+        return <LeaderboardPage />;
       case 'general':
         return <GeneralTab />;
       case 'editor':
@@ -44,6 +67,8 @@ export function SettingsView() {
         return <AITab />;
       case 'voice':
         return <VoiceTab />;
+      case 'skills':
+        return <SkillsTab />;
       default:
         return null;
     }
@@ -87,27 +112,45 @@ export function SettingsView() {
   return (
     <motion.div
       ref={containerRef}
-      className="flex h-full w-full"
+      className="flex h-full w-full gap-2 p-2"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.2 }}
       tabIndex={-1}
     >
-      <SettingsSidebar />
-      <main className="flex-1 overflow-y-auto bg-background">
-        <div className="max-w-2xl mx-auto px-8 py-8">
-          <h1 className="text-2xl font-semibold mb-6">{TAB_LABELS[settingsTab]}</h1>
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={settingsTab}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -4 }}
-              transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-            >
-              {renderTabContent()}
-            </motion.div>
-          </AnimatePresence>
+      <div className="hidden w-[272px] shrink-0 overflow-hidden rounded-[14px] border border-border/70 bg-sidebar/88 backdrop-blur-xl md:block">
+        <SettingsSidebar />
+      </div>
+
+      <main className="min-w-0 flex-1 overflow-hidden rounded-[14px] border border-border/70 bg-card/90 backdrop-blur-xl">
+        <div className="h-full overflow-y-auto">
+          <div className="mx-auto max-w-3xl px-7 py-7 lg:px-9 lg:py-8">
+            <div className="mb-7">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground/65">
+                Settings
+              </p>
+              <h1 className="mt-2 text-[32px] font-semibold tracking-tight text-foreground">
+                {TAB_LABELS[settingsTab]}
+              </h1>
+              <p className="mt-2 text-sm leading-7 text-muted-foreground">
+                {TAB_DESCRIPTIONS[settingsTab]}
+              </p>
+            </div>
+
+            <div className="rounded-[10px] border border-border/60 bg-background/55 p-4 lg:p-5">
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={settingsTab}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                >
+                  {renderTabContent()}
+                </motion.div>
+              </AnimatePresence>
+            </div>
+          </div>
         </div>
       </main>
     </motion.div>

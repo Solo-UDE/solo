@@ -14,7 +14,7 @@ const SelectTrigger = React.forwardRef<
   <SelectPrimitive.Trigger
     ref={ref}
     className={cn(
-      "flex h-7 w-full items-center justify-between gap-2 rounded-md px-2.5 text-[13px] leading-tight",
+      "flex h-7 w-full items-center justify-between gap-2 rounded-[8px] px-2.5 text-[13px] leading-tight",
       "bg-muted/40 text-foreground",
       "placeholder:text-muted-foreground/50",
       "transition-[background-color,box-shadow] duration-150",
@@ -78,7 +78,7 @@ const SelectContent = React.forwardRef<
       position={position}
       className={cn(
         "relative z-50 max-h-96 min-w-[8rem] overflow-hidden",
-        "rounded-lg bg-card/95 backdrop-blur-md text-popover-foreground shadow-glass",
+        "rounded-[10px] border border-border/80 bg-card/98 text-popover-foreground shadow-glass",
         "data-[state=open]:animate-in data-[state=closed]:animate-out",
         "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
         "data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
@@ -125,7 +125,7 @@ const SelectItem = React.forwardRef<
   <SelectPrimitive.Item
     ref={ref}
     className={cn(
-      "relative flex w-full cursor-pointer select-none items-center rounded-md py-1 pl-6 pr-2 text-[13px] leading-tight outline-none",
+      "relative flex w-full cursor-pointer select-none items-center rounded-[8px] py-1 pl-6 pr-2 text-[12px] leading-tight outline-none",
       "transition-colors duration-100",
       "hover:bg-accent focus:bg-accent focus:text-accent-foreground",
       "data-[disabled]:pointer-events-none data-[disabled]:opacity-50",

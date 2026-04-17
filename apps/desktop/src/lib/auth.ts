@@ -1,6 +1,6 @@
 /**
- * Auth library for Supabase OAuth integration
- * Type-safe wrappers around Tauri auth commands
+ * Auth library for AWS Cognito OAuth integration.
+ * Type-safe wrappers around Tauri auth commands.
  */
 
 import { invoke } from "@tauri-apps/api/core";
@@ -23,7 +23,7 @@ export interface AuthState {
   is_authenticated: boolean;
 }
 
-export type OAuthProvider = "github";
+export type OAuthProvider = "github" | "google" | "email";
 
 // =============================================================================
 // Auth Functions
@@ -46,11 +46,25 @@ export async function signInWithOAuth(provider: OAuthProvider): Promise<void> {
 }
 
 /**
- * Send a magic link email for passwordless sign-in
+ * Open the Cognito Hosted UI sign-in page with the email pre-filled
+ * (via the `login_hint` OAuth parameter). The backend stashes a PKCE verifier
+ * so the subsequent `/auth/callback` code can be exchanged.
  */
-export async function signInWithMagicLink(email: string): Promise<void> {
-  await invoke<void>("auth_start_magic_link", { email });
+export async function signInWithEmail(email: string): Promise<void> {
+  const authUrl = await invoke<string>("auth_start_magic_link", { email });
+  try {
+    await open(authUrl);
+  } catch (error) {
+    console.error("Failed to open browser:", error);
+    window.open(authUrl, "_blank");
+  }
 }
+
+/**
+ * Deprecated alias kept for call-site compatibility; behaves identically to
+ * `signInWithEmail` now that Cognito's Hosted UI replaced Supabase's magic link.
+ */
+export const signInWithMagicLink = signInWithEmail;
 
 /**
  * Exchange authorization code for session tokens
@@ -76,17 +90,48 @@ export async function refreshSession(): Promise<AuthState> {
 }
 
 /**
- * Sign out and clear stored tokens
+ * Sign out, clear stored tokens, and receive the Cognito logout URL so the
+ * frontend can open it in the browser to end the hosted-UI session.
+ *
+ * The Rust side may return an empty URL when Cognito config is unavailable
+ * (e.g. env vars missing at startup); we just skip the browser hop in that
+ * case so local sign-out still succeeds.
  */
-export async function signOut(): Promise<void> {
-  await invoke<void>("auth_sign_out");
+export async function signOut(): Promise<string> {
+  console.debug("[auth.signOut] invoking auth_sign_out");
+  const logoutUrl = await invoke<string>("auth_sign_out");
+  console.debug("[auth.signOut] auth_sign_out returned", {
+    hasUrl: logoutUrl.length > 0,
+  });
+  if (logoutUrl.length === 0) {
+    console.warn(
+      "[auth.signOut] no logout URL — local state cleared, skipping Cognito browser hop",
+    );
+    return logoutUrl;
+  }
+  try {
+    await open(logoutUrl);
+    console.debug("[auth.signOut] opened logout URL in browser");
+  } catch (error) {
+    console.error("[auth.signOut] failed to open browser for logout:", error);
+  }
+  return logoutUrl;
 }
 
 /**
- * Get the current access token for API calls
+ * Get the current access token for calls to Solo's API Gateway (carries
+ * the Cognito JWT used by the `HttpJwtAuthorizer`).
  */
 export async function getAccessToken(): Promise<string | null> {
   return invoke<string | null>("auth_get_access_token");
+}
+
+/**
+ * Get the stored ID token (JWT with identity claims). Used for extracting
+ * user info without a userInfo round-trip.
+ */
+export async function getIdToken(): Promise<string | null> {
+  return invoke<string | null>("auth_get_id_token");
 }
 
 // =============================================================================

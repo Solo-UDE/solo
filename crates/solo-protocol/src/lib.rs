@@ -676,6 +676,30 @@ pub enum BackendEvent {
     /// Update error
     #[serde(rename = "update:error")]
     UpdateError { error: String },
+
+    // =========================================================================
+    // Settings events
+    // =========================================================================
+    /// Settings file changed on disk or via API.
+    ///
+    /// The payload carries the fully-merged settings after the change.
+    #[serde(rename = "settings:changed")]
+    SettingsChanged { settings: SoloSettings },
+
+    // =========================================================================
+    // Agent-session events (Debug mode)
+    // =========================================================================
+    /// Captured the initial goal for a session (fires once per session,
+    /// when the first user message lands while Debug mode is active).
+    #[serde(rename = "session:goal_captured")]
+    SessionGoalCaptured { goal: SessionGoal },
+
+    /// The permission mode for a session changed.
+    #[serde(rename = "session:mode_changed")]
+    SessionModeChanged {
+        session_id: String,
+        mode: PermissionMode,
+    },
 }
 
 // =============================================================================
@@ -844,16 +868,264 @@ pub struct ClaudeSetupStatus {
 }
 
 // =============================================================================
+// Permission / Mode / Settings Protocol
+// =============================================================================
+
+/// Active permission mode for an agent session.
+///
+/// Inspired by Claude Code's permission modes. Each mode is an *overlay*
+/// on the baseline allow/ask/deny rules from settings:
+///
+/// - `Default` — strictly honor the allow/ask/deny lists; prompt on `ask`.
+/// - `Plan`    — read-only by default; writes are redirected to the plan file.
+/// - `Accept`  — bypass prompts (like `--dangerously-skip-permissions`), but
+///               the destructive tier still prompts (bypass-immune).
+/// - `Debug`   — same gating as `Default`; adds goal-capture + periodic review.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "lowercase")]
+pub enum PermissionMode {
+    Default,
+    Plan,
+    Accept,
+    Debug,
+}
+
+impl Default for PermissionMode {
+    fn default() -> Self {
+        Self::Default
+    }
+}
+
+/// Classification of a tool for permission gating.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "lowercase")]
+pub enum ToolTier {
+    /// Read-only operations (auto-allowed in every mode).
+    Read,
+    /// Mutating operations (file writes, shell commands, package installs).
+    Mutate,
+    /// Destructive operations (always prompt, even under Accept mode).
+    Destructive,
+}
+
+/// The scope a permission rule came from.
+///
+/// Mirrors Claude Code's settings hierarchy. Higher values override lower
+/// ones on merge, but `Deny` rules from any scope are bypass-immune.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub enum SettingsScope {
+    /// `~/.solo/settings.json`
+    User,
+    /// `<workspace>/.solo/settings.json`
+    Project,
+    /// `<workspace>/.solo/settings.local.json` (git-ignored)
+    Local,
+}
+
+/// Permission rules configured by the user.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub struct PermissionsConfig {
+    /// Starting mode when a new session is created.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_mode: Option<PermissionMode>,
+    /// Rules that auto-allow. Entries are `ToolName` or `ToolName(content-pattern)`.
+    #[serde(default)]
+    pub allow: Vec<String>,
+    /// Rules that auto-deny (bypass-immune).
+    #[serde(default)]
+    pub deny: Vec<String>,
+    /// Rules that force a prompt (bypass-immune under Accept mode).
+    #[serde(default)]
+    pub ask: Vec<String>,
+    /// Directories outside the workspace that should be treated as read-allowed.
+    #[serde(default)]
+    pub additional_directories: Vec<String>,
+    /// Disable Accept mode entirely (for managed / policy settings).
+    #[serde(default)]
+    pub disable_accept_mode: bool,
+}
+
+/// Debug mode configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub struct DebugModeConfig {
+    /// Number of assistant turns between review questions.
+    pub review_interval: u32,
+    /// How the goal is captured at session start.
+    pub initial_goal_capture: GoalCaptureMode,
+}
+
+impl Default for DebugModeConfig {
+    fn default() -> Self {
+        Self {
+            review_interval: 3,
+            initial_goal_capture: GoalCaptureMode::FirstMessage,
+        }
+    }
+}
+
+/// How Debug mode captures the user's goal at session start.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub enum GoalCaptureMode {
+    /// Treat the first user message verbatim as the goal.
+    FirstMessage,
+    /// Prompt the user for an explicit goal statement before the session starts.
+    Explicit,
+}
+
+/// Per-mode configuration bundle.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub struct ModesConfig {
+    #[serde(default)]
+    pub debug: DebugModeConfig,
+}
+
+/// Which external skill sources Solo should scan alongside `.solo/skills/`.
+///
+/// Solo is polyglot by default: users arriving from Claude Code or Codex keep
+/// their existing skills without copying or reconfiguration. Each flag can be
+/// turned off independently via user settings.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub struct SkillsConfig {
+    /// Scan `~/.claude/skills/` (Claude Code user-personal skills).
+    #[serde(default = "default_true")]
+    pub import_claude_user: bool,
+    /// Scan `~/.claude/plugins/` using `installed_plugins.json` as the manifest.
+    #[serde(default = "default_true")]
+    pub import_claude_plugins: bool,
+    /// Scan `{workspace}/.claude/skills/` and ancestor `.claude/skills/` dirs.
+    #[serde(default = "default_true")]
+    pub import_claude_project: bool,
+    /// Scan `~/.codex/skills/` (forward-compat; harmless if the dir does not exist).
+    #[serde(default = "default_true")]
+    pub import_codex: bool,
+    /// Whether the first-launch onboarding dialog has been shown.
+    #[serde(default)]
+    pub onboarding_shown: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+impl Default for SkillsConfig {
+    fn default() -> Self {
+        Self {
+            import_claude_user: true,
+            import_claude_plugins: true,
+            import_claude_project: true,
+            import_codex: true,
+            onboarding_shown: false,
+        }
+    }
+}
+
+/// Full Solo settings, merged from user → project → local scopes.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub struct SoloSettings {
+    #[serde(default)]
+    pub permissions: PermissionsConfig,
+    #[serde(default)]
+    pub modes: ModesConfig,
+    #[serde(default)]
+    pub skills: SkillsConfig,
+}
+
+/// Outcome of a permission check. Mirrors Claude Code's `PermissionResult`.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(tag = "behavior", rename_all = "lowercase")]
+pub enum PermissionDecision {
+    /// Tool may proceed.
+    Allow {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reason: Option<String>,
+    },
+    /// Prompt the user.
+    Ask {
+        message: String,
+        /// Which tier triggered the prompt (for UI display).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        tier: Option<ToolTier>,
+    },
+    /// Tool is blocked.
+    Deny { message: String },
+}
+
+/// Request to check whether a tool call should be allowed.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub struct PermissionCheckRequest {
+    pub tool_name: String,
+    #[ts(type = "unknown")]
+    pub tool_input: serde_json::Value,
+    pub mode: PermissionMode,
+}
+
+/// Captured goal for a session in Debug mode.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub struct SessionGoal {
+    pub session_id: String,
+    pub goal: String,
+    pub captured_at: u64,
+}
+
+// =============================================================================
 // Skills Protocol
 // =============================================================================
 
-/// Origin scope of a discovered skill
+/// Origin of a discovered skill. First two are Solo's native scopes; the rest
+/// are compatibility adapters so users keep the skills they already have.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../apps/desktop/src/bindings/")]
 #[serde(rename_all = "snake_case")]
 pub enum SkillSource {
+    /// `~/.solo/skills/`
     User,
+    /// `{workspace}/.solo/skills/`
     Project,
+    /// `~/.claude/skills/`
+    ClaudeUser,
+    /// `~/.claude/plugins/cache/<mkt>/<plugin>/<ver>/skills/`
+    ClaudePlugin,
+    /// `{workspace-or-ancestor}/.claude/skills/`
+    ClaudeProject,
+    /// `~/.codex/skills/`
+    Codex,
+}
+
+impl SkillSource {
+    /// Dedup priority — higher wins when two sources declare the same skill name.
+    /// Rationale: project-local wins over user; Solo-native wins over imports.
+    #[must_use]
+    pub fn priority(self) -> u8 {
+        match self {
+            Self::Project => 60,
+            Self::User => 50,
+            Self::ClaudeProject => 40,
+            Self::ClaudeUser => 30,
+            Self::ClaudePlugin => 20,
+            Self::Codex => 10,
+        }
+    }
 }
 
 /// Skill information returned to the frontend
@@ -867,6 +1139,140 @@ pub struct SkillInfo {
     pub file_path: String,
     pub enabled: bool,
     pub priority: i32,
+}
+
+/// Request to create or overwrite a user/project skill on disk.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub struct SkillWriteRequest {
+    /// Filesystem-safe skill name (becomes directory under `.solo/skills/`).
+    pub name: String,
+    /// Only `User` or `Project` are valid write destinations.
+    pub scope: SkillSource,
+    /// Frontmatter `description` field.
+    pub description: String,
+    /// Markdown body (without frontmatter — Solo injects it).
+    pub body: String,
+    /// Project-scope writes need the workspace cwd.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cwd: Option<String>,
+}
+
+/// Result of first-launch onboarding probe.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub struct SkillsOnboardingStatus {
+    /// Whether the onboarding dialog should be shown.
+    pub should_prompt: bool,
+    /// Count of importable skills found outside `.solo/`.
+    pub importable_count: u32,
+    /// Whether `~/.solo/skills/` already has at least one skill.
+    pub has_solo_skills: bool,
+}
+
+/// How to bring external skills into Solo during onboarding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "snake_case")]
+pub enum OnboardingImportMode {
+    /// Leave external files in place, just keep the adapters enabled.
+    ReadOnly,
+    /// Copy every external skill into `~/.solo/skills/` (snapshot).
+    Copy,
+    /// Symlink every external skill into `~/.solo/skills/` (live sync).
+    Symlink,
+}
+
+// =============================================================================
+// Stats & Tier Protocol
+// =============================================================================
+
+/// Pending counters buffered on-device before the next cloud sync.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub struct StatsDelta {
+    #[serde(default)]
+    pub commits: u64,
+    #[serde(default)]
+    pub tokens: u64,
+    #[serde(default)]
+    pub worktrees: u64,
+    #[serde(default)]
+    pub sessions: u64,
+    #[serde(default)]
+    pub messages: u64,
+}
+
+/// Cumulative stats pulled from the cloud. Drives the Journey page UI.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub struct CumulativeStats {
+    #[serde(default)]
+    pub commits: u64,
+    #[serde(default)]
+    pub tokens: u64,
+    #[serde(default)]
+    pub worktrees: u64,
+    #[serde(default)]
+    pub sessions: u64,
+    #[serde(default)]
+    pub messages: u64,
+    #[serde(default)]
+    pub tier: u8,
+    #[serde(default)]
+    pub tier_progress: f64,
+    #[serde(default)]
+    pub score: f64,
+    #[serde(default)]
+    pub streak_current: u32,
+    #[serde(default)]
+    pub streak_longest: u32,
+    #[serde(default)]
+    pub last_active: Option<String>,
+}
+
+/// Full on-disk + in-memory snapshot of the local stats state.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub struct StatsSnapshot {
+    #[serde(default)]
+    pub pending: StatsDelta,
+    #[serde(default)]
+    pub cumulative: CumulativeStats,
+    #[serde(default)]
+    pub last_sync_at: Option<String>,
+}
+
+/// Single entry in the cloud leaderboard response.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub struct LeaderboardEntry {
+    pub user_id: String,
+    #[serde(default)]
+    pub github_username: Option<String>,
+    pub tier: u8,
+    pub score: f64,
+    pub commits: u64,
+    pub tokens: u64,
+    pub worktrees: u64,
+}
+
+/// Tier metadata returned by `/v1/tier/me` plus the unlocked name pool.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub struct TierInfo {
+    pub tier: u8,
+    pub tier_progress: f64,
+    pub score: f64,
+    pub tier_name: String,
+    pub names: Vec<String>,
 }
 
 #[cfg(test)]

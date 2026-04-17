@@ -76,3 +76,6 @@ docs/MIGRATION.md
 
 # claude worktrees
 .claude/worktrees/*
+
+# .envrc
+.envrc

@@ -53,8 +53,8 @@ export function NumberInput({
         onClick={handleDecrement}
         disabled={disabled || value <= min}
         className={cn(
-          "p-2 border border-r-0 border-border rounded-l-lg",
-          "bg-muted hover:bg-muted/80",
+          "rounded-l-[8px] border border-r-0 border-border bg-muted px-2.5 py-1.5",
+          "hover:bg-muted/80",
           "disabled:cursor-not-allowed disabled:opacity-50",
           "transition-colors cursor-pointer"
         )}
@@ -83,8 +83,8 @@ export function NumberInput({
         onClick={handleIncrement}
         disabled={disabled || value >= max}
         className={cn(
-          "p-2 border border-l-0 border-border rounded-r-lg",
-          "bg-muted hover:bg-muted/80",
+          "rounded-r-[8px] border border-l-0 border-border bg-muted px-2.5 py-1.5",
+          "hover:bg-muted/80",
           "disabled:cursor-not-allowed disabled:opacity-50",
           "transition-colors cursor-pointer"
         )}

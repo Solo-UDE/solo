@@ -1,11 +1,12 @@
 /**
- * Review Session — launches an Opus 4.6 agent session pre-loaded with
+ * Review Session — launches an Opus 4.7 agent session pre-loaded with
  * uncommitted diffs and aggregated intent from worktree sessions.
  */
 
 import { gitGetBranchDiff } from '@/lib/tauri/git';
 import { useAgentStore } from '@/stores/agentStore';
 import { useGitStore } from '@/stores/gitStore';
+import { CLAUDE_OPUS_4_7 } from '@/lib/constants';
 import type { FileDiff } from '@/bindings/FileDiff';
 
 const KIND_PREFIX: Record<string, string> = {
@@ -102,7 +103,7 @@ export async function launchReviewSession(worktreeId?: string): Promise<string> 
 
   // Create Opus session and send
   const agentStore = useAgentStore.getState();
-  const sessionId = await agentStore.createSession('opus');
+  const sessionId = await agentStore.createSession(CLAUDE_OPUS_4_7);
   await agentStore.sendMessage(sessionId, reviewPrompt);
 
   return sessionId;

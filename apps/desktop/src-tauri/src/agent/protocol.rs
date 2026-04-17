@@ -71,21 +71,16 @@ pub struct SessionConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub critique_enabled: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub model: Option<Model>,
+    pub model: Option<String>,
+    /// Output-token cap forwarded to the SDK as CLAUDE_CODE_MAX_OUTPUT_TOKENS.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session_mode: Option<SessionMode>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resume_session_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fork_session: Option<bool>,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Model {
-    Haiku,
-    Sonnet,
-    Opus,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -266,7 +261,7 @@ pub enum BridgeRequest {
     SetModel {
         #[serde(rename = "sessionId")]
         session_id: String,
-        model: Model,
+        model: String,
     },
     SetPlanMode {
         #[serde(rename = "sessionId")]
@@ -283,6 +278,15 @@ pub enum BridgeRequest {
         enabled: bool,
     },
     GetAcceptMode {
+        #[serde(rename = "sessionId")]
+        session_id: String,
+    },
+    SetDebugMode {
+        #[serde(rename = "sessionId")]
+        session_id: String,
+        enabled: bool,
+    },
+    GetDebugMode {
         #[serde(rename = "sessionId")]
         session_id: String,
     },
@@ -378,6 +382,18 @@ pub enum BridgeEvent {
         #[serde(rename = "sessionId")]
         session_id: String,
         enabled: bool,
+    },
+    DebugModeChanged {
+        #[serde(rename = "sessionId")]
+        session_id: String,
+        enabled: bool,
+    },
+    SessionGoalCaptured {
+        #[serde(rename = "sessionId")]
+        session_id: String,
+        goal: String,
+        #[serde(rename = "capturedAt")]
+        captured_at: i64,
     },
     TurnStart {
         #[serde(rename = "sessionId")]

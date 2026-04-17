@@ -18,6 +18,7 @@ import {
 	createDebouncedSessionSave,
 } from '../lib/sessionPersistence';
 import { DEFAULT_MODEL_ID } from '../lib/constants';
+import { useSettingsStore } from './settingsStore';
 import { useSkillStore } from './skillStore';
 
 // Enable Map and Set support in Immer
@@ -30,6 +31,7 @@ enableMapSet();
 const EMPTY_MESSAGES: Message[] = [];
 const EMPTY_SESSIONS: AgentSession[] = [];
 const EMPTY_PERMISSIONS: PermissionRequest[] = [];
+const EMPTY_QUEUE: QueuedMessage[] = [];
 
 // =============================================================================
 // Types
@@ -91,6 +93,18 @@ export interface FileMention {
 	relativePath: string;
 }
 
+/**
+ * Ordered rendering unit for a user message built with inline skill chips.
+ *
+ * A typed message like `"hello /per-file-commit world"` becomes
+ * `[{text: "hello "}, {skill: "per-file-commit"}, {text: " world"}]`,
+ * letting the user bubble preserve the exact order the author typed.
+ * Optional — older messages just use `content` + `skills[]` fallback.
+ */
+export type UserContentPart =
+	| { type: 'text'; text: string }
+	| { type: 'skill'; name: string };
+
 export interface Message {
 	id: string;
 	role: 'user' | 'assistant';
@@ -107,6 +121,10 @@ export interface Message {
 	attachedImages?: ImageAttachment[];
 	attachments?: Attachment[];
 	mentions?: FileMention[];
+	/** Skill names chipped into this user message. Flat list used for prompt injection. */
+	skills?: string[];
+	/** Ordered text+chip sequence. When present, the user bubble renders this instead of `content`. */
+	parts?: UserContentPart[];
 	turnNumber?: number;
 	usage?: TokenUsage;
 	costUsd?: number;
@@ -149,6 +167,19 @@ export interface SessionStreamState {
 	error: string | null;
 }
 
+/** A message the user submitted while the session was already streaming — flushed as a single concatenated turn once the current turn settles. */
+export interface QueuedMessage {
+	id: string;
+	content: string;
+	mode: MessageMode;
+	model: string;
+	attachments?: Attachment[];
+	mentions?: FileMention[];
+	skills?: string[];
+	parts?: UserContentPart[];
+	createdAt: number;
+}
+
 // =============================================================================
 // Helpers
 // =============================================================================
@@ -157,32 +188,30 @@ function generateSessionId(): string {
 	return `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-/** Map full model ID to bridge AgentModel alias */
-function toAgentModel(modelId: string): 'haiku' | 'sonnet' | 'opus' {
-	if (modelId.includes('haiku')) return 'haiku';
-	if (modelId.includes('sonnet')) return 'sonnet';
-	return 'opus';
-}
-
 /** Convert unified Attachment + FileMention arrays into AttachmentContentBlock[] for the bridge */
 function toContentBlocks(
 	attachments?: Attachment[],
 	mentions?: FileMention[],
+	skillNames?: string[],
 ): AttachmentContentBlock[] | undefined {
 	const blocks: AttachmentContentBlock[] = [];
 
 	// Inject attached skill content as text blocks (before other attachments).
 	// Omit `name` so buildContentBlocks treats it as plain text, not a code-fenced file.
-	const { available, attached } = useSkillStore.getState();
-	const activeSkills = available.filter((s) => attached.has(s.name));
-	if (activeSkills.length > 0) {
-		const skillText = activeSkills
-			.map((s) => `<skill name="${s.name}">\n${s.content}\n</skill>`)
-			.join('\n\n');
-		blocks.push({
-			type: 'text',
-			text: `The user has attached the following skills as instructions for this message. Follow these skill instructions:\n\n${skillText}`,
-		});
+	if (skillNames && skillNames.length > 0) {
+		const { available } = useSkillStore.getState();
+		const resolved = skillNames
+			.map((name) => available.find((s) => s.name === name))
+			.filter((s): s is NonNullable<typeof s> => Boolean(s));
+		if (resolved.length > 0) {
+			const skillText = resolved
+				.map((s) => `<skill name="${s.name}">\n${s.content}\n</skill>`)
+				.join('\n\n');
+			blocks.push({
+				type: 'text',
+				text: `The user has attached the following skills as instructions for this message. Follow these skill instructions:\n\n${skillText}`,
+			});
+		}
 	}
 
 	if (attachments) {
@@ -264,6 +293,9 @@ interface AgentState {
 	// Per-session streaming state
 	sessionStreaming: Map<string, SessionStreamState>;
 
+	// Per-session user-message queue (populated while a turn is streaming, flushed on settle)
+	sessionQueues: Map<string, QueuedMessage[]>;
+
 	// Model selection
 	selectedModel: string;
 
@@ -276,6 +308,14 @@ interface AgentState {
 
 	// Accept mode per session (sessionId -> boolean), synced from backend events
 	acceptModeActive: Map<string, boolean>;
+
+	// Debug mode per session (sessionId -> boolean). Local-only for now —
+	// backend goal-capture + periodic review wires in Phase 4 (Debug backend).
+	debugModeActive: Map<string, boolean>;
+
+	// Captured goal per session (sessionId -> goal text), set by the bridge
+	// when Debug mode is active and the user sends their first message.
+	sessionGoals: Map<string, string>;
 }
 
 interface AgentActions {
@@ -292,13 +332,24 @@ interface AgentActions {
 	setSelectedModel: (model: string) => void;
 
 	// Message handling
-	sendMessage: (sessionId: string, content: string, mode?: MessageMode, attachments?: Attachment[], mentions?: FileMention[]) => Promise<void>;
-	addUserMessage: (sessionId: string, content: string, mode?: MessageMode, attachments?: Attachment[], mentions?: FileMention[]) => string;
+	sendMessage: (sessionId: string, content: string, mode?: MessageMode, attachments?: Attachment[], mentions?: FileMention[], skills?: string[], parts?: UserContentPart[]) => Promise<void>;
+	addUserMessage: (sessionId: string, content: string, mode?: MessageMode, attachments?: Attachment[], mentions?: FileMention[], skills?: string[], parts?: UserContentPart[]) => string;
+
+	// Queued messages (while a turn is streaming)
+	enqueueMessage: (sessionId: string, draft: Omit<QueuedMessage, 'id' | 'createdAt'>) => void;
+	removeQueuedMessage: (sessionId: string, messageId: string) => void;
+	clearQueue: (sessionId: string) => void;
+	popQueueForRecall: (sessionId: string) => QueuedMessage[];
+	flushQueueForSession: (sessionId: string) => Promise<void>;
 
 	// Mode management
 	setPlanMode: (sessionId: string, enabled: boolean) => Promise<void>;
 	setThinkingMode: (sessionId: string, enabled: boolean, maxTokens?: number) => Promise<void>;
 	setAcceptMode: (sessionId: string, enabled: boolean) => Promise<void>;
+	/** Calls the bridge to enable/disable Debug mode + updates local state optimistically. */
+	setDebugMode: (sessionId: string, enabled: boolean) => Promise<void>;
+	/** Set captured goal (called by bridge-event handler, not usually from UI). */
+	setSessionGoal: (sessionId: string, goal: string) => void;
 
 	// Bridge event handlers
 	handleAgentMessage: (sessionId: string, message: BridgeAgentMessage) => void;
@@ -307,6 +358,8 @@ interface AgentActions {
 	handleTurnStart: (sessionId: string, turnNumber: number) => void;
 	handlePlanModeChanged: (sessionId: string, enabled: boolean) => void;
 	handleAcceptModeChanged: (sessionId: string, enabled: boolean) => void;
+	handleDebugModeChanged: (sessionId: string, enabled: boolean) => void;
+	handleSessionGoalCaptured: (sessionId: string, goal: string, capturedAt?: number) => void;
 	handleError: (message: string, stack?: string) => void;
 	respondPermission: (requestId: string, decision: 'approve' | 'deny', always?: boolean, answers?: Record<string, string>) => Promise<void>;
 
@@ -342,11 +395,14 @@ const initialState: AgentState = {
 	messages: new Map(),
 	pendingPermissions: new Map(),
 	sessionStreaming: new Map(),
+	sessionQueues: new Map(),
 	selectedModel: DEFAULT_MODEL_ID,
 	isAgentRunning: false,
 	error: null,
 	planModeActive: new Map(),
 	acceptModeActive: new Map(),
+	debugModeActive: new Map(),
+	sessionGoals: new Map(),
 };
 
 // Create per-session debounced save function (saves 1 second after last change)
@@ -471,7 +527,8 @@ export const useAgentStore = create<AgentStore>()(
 				});
 			}
 
-			const agentModel = toAgentModel(session.model || 'opus');
+			const agentModel = session.model || DEFAULT_MODEL_ID;
+			const maxTokens = useSettingsStore.getState().ai.maxTokens;
 
 			try {
 				try {
@@ -479,12 +536,13 @@ export const useAgentStore = create<AgentStore>()(
 					if (session.sdkSessionId && session.resumable) {
 						await backend.agentCreateSession(sessionId, {
 							model: agentModel,
+							maxTokens,
 							resumeSessionId: session.sdkSessionId,
 							cwd: session.workspacePath,
 						});
 					} else {
 						// No SDK session to resume — create fresh bridge session
-						await backend.agentCreateSession(sessionId, { model: agentModel, cwd: session.workspacePath });
+						await backend.agentCreateSession(sessionId, { model: agentModel, maxTokens, cwd: session.workspacePath });
 					}
 
 					set((s) => {
@@ -500,7 +558,7 @@ export const useAgentStore = create<AgentStore>()(
 
 					// Auto-fork: create fresh bridge session, preserving message history
 					try {
-						await backend.agentCreateSession(sessionId, { model: agentModel, cwd: session.workspacePath });
+						await backend.agentCreateSession(sessionId, { model: agentModel, maxTokens, cwd: session.workspacePath });
 						set((s) => {
 							const sess = s.sessions.get(sessionId);
 							if (sess) {
@@ -601,7 +659,8 @@ export const useAgentStore = create<AgentStore>()(
 
 		createSession: async (model?: string) => {
 			const sessionId = generateSessionId();
-			const agentModel = toAgentModel(model || 'opus');
+			const agentModel = model || DEFAULT_MODEL_ID;
+			const maxTokens = useSettingsStore.getState().ai.maxTokens;
 
 			try {
 				// If a worktree is active, use its path as the session cwd
@@ -615,13 +674,13 @@ export const useAgentStore = create<AgentStore>()(
 				const workspacePath = useFileExplorerStore.getState().rootPath ?? undefined;
 				const cwd = activeWt?.path ?? workspacePath;
 
-				await backend.agentCreateSession(sessionId, { model: agentModel, cwd });
+				await backend.agentCreateSession(sessionId, { model: agentModel, maxTokens, cwd });
 
 				set((state) => {
 					state.sessions.set(sessionId, {
 						id: sessionId,
 						createdAt: new Date(),
-						model: model || 'opus',
+						model: agentModel,
 						workspacePath: cwd,
 						worktreeId: activeWt?.id,
 						worktreeBranch: activeWt?.branch ?? undefined,
@@ -640,14 +699,15 @@ export const useAgentStore = create<AgentStore>()(
 					});
 				}
 
-				// Apply tool permission policy from settings (fire-and-forget)
-				import('@/stores/settingsStore').then(({ useSettingsStore }) => {
-					const policy = useSettingsStore.getState().ai.toolPermissionPolicy ?? 'smart';
-					const isWorktree = !!activeWt;
-					backend.agentSetToolPolicy(sessionId, policy, isWorktree).catch((e) =>
-						console.warn('[Agent] set_tool_policy:', e)
-					);
-				});
+				// Mode overlay (Plan/Accept/Debug) for new sessions comes from the
+				// project's `.solo/settings.json` via `permissions.defaultMode` —
+				// NOT from the legacy `toolPermissionPolicy` setting. Leaving this
+				// wired as-is would flip Accept mode on for users with a stale
+				// 'approve-all' policy, causing the badge to jump from Default to
+				// Accept moments after creating a new chat.
+				//
+				// No backend call here: the bridge leaves new sessions in `default`
+				// unless something explicitly flips a mode.
 
 				get().persistSessions(sessionId);
 				return sessionId;
@@ -664,7 +724,8 @@ export const useAgentStore = create<AgentStore>()(
 			if (!sourceSession.sdkSessionId) throw new Error('Source session has no SDK session ID to fork from');
 
 			const sessionId = generateSessionId();
-			const agentModel = toAgentModel(model || sourceSession.model || 'opus');
+			const agentModel = model || sourceSession.model || DEFAULT_MODEL_ID;
+			const maxTokens = useSettingsStore.getState().ai.maxTokens;
 
 			try {
 				const { useFileExplorerStore } = await import('@/stores/fileExplorerStore');
@@ -679,6 +740,7 @@ export const useAgentStore = create<AgentStore>()(
 
 				await backend.agentCreateSession(sessionId, {
 					model: agentModel,
+					maxTokens,
 					resumeSessionId: sourceSession.sdkSessionId,
 					forkSession: true,
 					cwd,
@@ -691,7 +753,7 @@ export const useAgentStore = create<AgentStore>()(
 					state.sessions.set(sessionId, {
 						id: sessionId,
 						createdAt: new Date(),
-						model: model || sourceSession.model || 'opus',
+						model: agentModel,
 						workspacePath: sourceSession.workspacePath,
 						worktreeId: activeWt?.id ?? sourceSession.worktreeId,
 						worktreeBranch: (activeWt?.branch ?? sourceSession.worktreeBranch) ?? undefined,
@@ -710,11 +772,9 @@ export const useAgentStore = create<AgentStore>()(
 					});
 				}
 
-				// Apply tool permission policy from settings
-				import('@/stores/settingsStore').then(({ useSettingsStore }) => {
-					const policy = useSettingsStore.getState().ai.toolPermissionPolicy;
-					backend.agentSetToolPolicy(sessionId, policy, !!activeWt).catch(console.error);
-				});
+				// Fork deliberately does NOT apply the legacy tool policy — forks
+				// start in `default` and inherit their mode overlay from the
+				// user's explicit choice (or `.solo/settings.json` defaultMode).
 
 				get().persistSessions(sessionId);
 				return sessionId;
@@ -727,7 +787,7 @@ export const useAgentStore = create<AgentStore>()(
 
 		setModel: async (sessionId: string, model: string) => {
 			try {
-				await backend.agentSetModel(sessionId, toAgentModel(model));
+				await backend.agentSetModel(sessionId, model);
 				set((state) => {
 					const session = state.sessions.get(sessionId);
 					if (session) {
@@ -831,7 +891,7 @@ export const useAgentStore = create<AgentStore>()(
 		// Message Handling
 		// =================================================================
 
-		sendMessage: async (sessionId: string, content: string, mode?: MessageMode, attachments?: Attachment[], mentions?: FileMention[]) => {
+		sendMessage: async (sessionId: string, content: string, mode?: MessageMode, attachments?: Attachment[], mentions?: FileMention[], skills?: string[], parts?: UserContentPart[]) => {
 			if (!sessionId) return;
 
 			// Lazy resume: ensure bridge connection before sending
@@ -844,7 +904,7 @@ export const useAgentStore = create<AgentStore>()(
 			}
 
 			// Add user message
-			get().addUserMessage(sessionId, content, mode, attachments, mentions);
+			get().addUserMessage(sessionId, content, mode, attachments, mentions, skills, parts);
 
 			// Create placeholder for assistant response
 			const assistantMessageId = `msg-${Date.now()}-assistant`;
@@ -871,7 +931,7 @@ export const useAgentStore = create<AgentStore>()(
 			});
 
 			try {
-				await backend.agentSendMessage(sessionId, content, toContentBlocks(attachments, mentions));
+				await backend.agentSendMessage(sessionId, content, toContentBlocks(attachments, mentions, skills));
 			} catch (error) {
 				const errorMsg = error instanceof Error ? error.message : String(error);
 				console.error('[Agent] sendMessage failed:', errorMsg);
@@ -884,7 +944,7 @@ export const useAgentStore = create<AgentStore>()(
 			}
 		},
 
-		addUserMessage: (sessionId: string, content: string, mode?: MessageMode, attachments?: Attachment[], mentions?: FileMention[]) => {
+		addUserMessage: (sessionId: string, content: string, mode?: MessageMode, attachments?: Attachment[], mentions?: FileMention[], skills?: string[], parts?: UserContentPart[]) => {
 			const messageId = `msg-${Date.now()}-user`;
 
 			set((state) => {
@@ -896,14 +956,104 @@ export const useAgentStore = create<AgentStore>()(
 					blocks: [],
 					timestamp: new Date(),
 					mode,
+					parts: parts?.length ? parts : undefined,
 					attachments: attachments?.length ? attachments : undefined,
 					mentions: mentions?.length ? mentions : undefined,
+					skills: skills?.length ? skills : undefined,
 				});
 				state.messages.set(sessionId, sessionMessages);
 			});
 
 			get().persistSessions(sessionId);
 			return messageId;
+		},
+
+		// =================================================================
+		// Message Queue (while streaming)
+		// =================================================================
+
+		enqueueMessage: (sessionId, draft) => {
+			if (!sessionId) return;
+			const entry: QueuedMessage = {
+				id: `q-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+				createdAt: Date.now(),
+				...draft,
+			};
+			set((state) => {
+				const list = state.sessionQueues.get(sessionId) ?? [];
+				list.push(entry);
+				state.sessionQueues.set(sessionId, list);
+			});
+		},
+
+		removeQueuedMessage: (sessionId, messageId) => {
+			set((state) => {
+				const list = state.sessionQueues.get(sessionId);
+				if (!list) return;
+				const next = list.filter((m) => m.id !== messageId);
+				if (next.length === 0) state.sessionQueues.delete(sessionId);
+				else state.sessionQueues.set(sessionId, next);
+			});
+		},
+
+		clearQueue: (sessionId) => {
+			set((state) => {
+				state.sessionQueues.delete(sessionId);
+			});
+		},
+
+		popQueueForRecall: (sessionId) => {
+			const current = get().sessionQueues.get(sessionId);
+			if (!current || current.length === 0) return [];
+			const popped = [...current];
+			set((state) => {
+				state.sessionQueues.delete(sessionId);
+			});
+			return popped;
+		},
+
+		flushQueueForSession: async (sessionId) => {
+			const queue = get().sessionQueues.get(sessionId);
+			if (!queue || queue.length === 0) return;
+			// Drain first to prevent re-entry from another 'result' event firing twice.
+			set((state) => {
+				state.sessionQueues.delete(sessionId);
+			});
+
+			const combinedContent = queue.map((q) => q.content).join('\n\n');
+			const last = queue[queue.length - 1];
+			const combinedAttachments = queue.flatMap((q) => q.attachments ?? []);
+			// De-dupe mentions by absolute path
+			const mentionMap = new Map<string, FileMention>();
+			for (const q of queue) {
+				for (const m of q.mentions ?? []) mentionMap.set(m.path, m);
+			}
+			const combinedMentions = Array.from(mentionMap.values());
+			// De-dupe skills by name
+			const skillSet = new Set<string>();
+			for (const q of queue) {
+				for (const n of q.skills ?? []) skillSet.add(n);
+			}
+			const combinedSkills = Array.from(skillSet);
+			// Stitch queued parts together with paragraph separators so bubble
+			// ordering is preserved across recall-and-send.
+			const combinedParts: UserContentPart[] = [];
+			queue.forEach((q, i) => {
+				if (i > 0 && (q.parts?.length ?? 0) > 0) {
+					combinedParts.push({ type: 'text', text: '\n\n' });
+				}
+				if (q.parts) combinedParts.push(...q.parts);
+			});
+
+			await get().sendMessage(
+				sessionId,
+				combinedContent,
+				last.mode,
+				combinedAttachments.length ? combinedAttachments : undefined,
+				combinedMentions.length ? combinedMentions : undefined,
+				combinedSkills.length ? combinedSkills : undefined,
+				combinedParts.length ? combinedParts : undefined,
+			);
 		},
 
 		// =================================================================
@@ -932,6 +1082,25 @@ export const useAgentStore = create<AgentStore>()(
 			} catch (error) {
 				console.error('Failed to set accept mode:', error);
 			}
+		},
+
+		setDebugMode: async (sessionId: string, enabled: boolean) => {
+			// Optimistic local update so the UI reflects immediately.
+			set((state) => {
+				state.debugModeActive.set(sessionId, enabled);
+				if (!enabled) state.sessionGoals.delete(sessionId);
+			});
+			try {
+				await backend.agentSetDebugMode(sessionId, enabled);
+			} catch (error) {
+				console.error('Failed to set debug mode:', error);
+			}
+		},
+
+		setSessionGoal: (sessionId: string, goal: string) => {
+			set((state) => {
+				state.sessionGoals.set(sessionId, goal);
+			});
 		},
 
 		// =================================================================
@@ -1154,6 +1323,15 @@ export const useAgentStore = create<AgentStore>()(
 			// Persist on result/error
 			if (message.type === 'result' || message.type === 'error') {
 				get().persistSessions(sessionId);
+				// Auto-flush any queued messages once the current turn settles.
+				// Deferred via microtask so the current Immer set() finalizes
+				// before flushQueueForSession re-enters sendMessage (which calls set()).
+				queueMicrotask(() => {
+					const queue = get().sessionQueues.get(sessionId);
+					if (queue && queue.length > 0) {
+						void get().flushQueueForSession(sessionId);
+					}
+				});
 			}
 
 			// Auto-generate title after first assistant turn completes
@@ -1294,6 +1472,21 @@ export const useAgentStore = create<AgentStore>()(
 		handleAcceptModeChanged: (sessionId: string, enabled: boolean) => {
 			set((state) => {
 				state.acceptModeActive.set(sessionId, enabled);
+			});
+		},
+
+		handleDebugModeChanged: (sessionId: string, enabled: boolean) => {
+			set((state) => {
+				state.debugModeActive.set(sessionId, enabled);
+				// Clear the captured goal when Debug turns off so re-enabling
+				// re-captures cleanly from the next first message.
+				if (!enabled) state.sessionGoals.delete(sessionId);
+			});
+		},
+
+		handleSessionGoalCaptured: (sessionId: string, goal: string, _capturedAt?: number) => {
+			set((state) => {
+				state.sessionGoals.set(sessionId, goal);
 			});
 		},
 
@@ -1489,6 +1682,13 @@ export const useIsSessionStreaming = (sessionId: string | null): boolean => {
 	});
 };
 
+export const useSessionQueue = (sessionId: string | null): QueuedMessage[] => {
+	return useAgentStore((state) => {
+		if (!sessionId) return EMPTY_QUEUE;
+		return state.sessionQueues.get(sessionId) ?? EMPTY_QUEUE;
+	});
+};
+
 export const useSessionError = (sessionId: string | null): string | null => {
 	return useAgentStore((state) => {
 		if (!sessionId) return null;
@@ -1575,6 +1775,40 @@ export const useAcceptModeActive = (sessionId: string | null): boolean => {
 	return useAgentStore((state) => {
 		if (!sessionId) return false;
 		return state.acceptModeActive.get(sessionId) ?? false;
+	});
+};
+
+export const useDebugModeActive = (sessionId: string | null): boolean => {
+	return useAgentStore((state) => {
+		if (!sessionId) return false;
+		return state.debugModeActive.get(sessionId) ?? false;
+	});
+};
+
+/**
+ * Effective session mode derived from Plan/Accept/Debug overlays (mutually exclusive).
+ * When none are active, returns 'default'.
+ *
+ * Matches the `PermissionMode` enum from the Rust protocol so the UI mode-selector
+ * and backend permission pipeline speak the same language.
+ */
+export const useSessionMode = (
+	sessionId: string | null
+): 'default' | 'plan' | 'accept' | 'debug' => {
+	return useAgentStore((state) => {
+		if (!sessionId) return 'default';
+		if (state.acceptModeActive.get(sessionId)) return 'accept';
+		if (state.planModeActive.get(sessionId)) return 'plan';
+		if (state.debugModeActive.get(sessionId)) return 'debug';
+		return 'default';
+	});
+};
+
+/** Captured goal for a Debug-mode session (first user message or explicit prompt). */
+export const useSessionGoal = (sessionId: string | null): string | null => {
+	return useAgentStore((state) => {
+		if (!sessionId) return null;
+		return state.sessionGoals.get(sessionId) ?? null;
 	});
 };
 

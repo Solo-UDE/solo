@@ -5,41 +5,107 @@ import { LexicalErrorBoundary } from '@lexical/react/LexicalErrorBoundary';
 import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin';
 import { OnChangePlugin } from '@lexical/react/LexicalOnChangePlugin';
 import { PlainTextPlugin } from '@lexical/react/LexicalPlainTextPlugin';
-import { $createParagraphNode, $getRoot, $nodesOfType } from 'lexical';
+import { $createParagraphNode, $createTextNode, $getRoot, $isElementNode, $isTextNode, $nodesOfType, KEY_ARROW_UP_COMMAND, COMMAND_PRIORITY_LOW } from 'lexical';
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
 
 import { ClipboardImagePlugin } from './lexical/ClipboardImagePlugin';
 import { MentionNode } from './lexical/MentionNode';
 import { MentionPlugin } from './lexical/MentionPlugin';
+import { SkillChipNode, $createSkillChipNode } from './lexical/SkillChipNode';
 import { SlashCommandPlugin } from './lexical/SlashCommandPlugin';
 
-import type { EditorState, LexicalEditor as LexicalEditorType } from 'lexical';
-import type { FileMention } from '../../../stores/agentStore';
+import type { EditorState, LexicalEditor as LexicalEditorType, LexicalNode } from 'lexical';
+import type { FileMention, UserContentPart } from '../../../stores/agentStore';
+import { $isSkillChipNode } from './lexical/SkillChipNode';
+import { cn } from '@/lib/utils';
 
 export interface LexicalEditorHandle {
   clear: () => void;
   focus: () => void;
   insertText: (text: string) => void;
+  /** Replace the entire editor contents with plain text and place caret at the end. */
+  setText: (text: string) => void;
+  /** Insert a skill chip at the end of the current paragraph. */
+  insertSkill: (skillName: string, description?: string) => void;
+  /**
+   * Walk the editor in document order and return an interleaved text/skill
+   * sequence. Used at send-time so the rendered message bubble preserves the
+   * exact order of chips relative to typed text.
+   */
+  getOrderedParts: () => UserContentPart[];
+}
+
+/** Depth-first walker that flattens the editor tree into ordered parts. */
+function extractPartsFromEditor(editor: LexicalEditorType): UserContentPart[] {
+  const parts: UserContentPart[] = [];
+
+  const visit = (node: LexicalNode): void => {
+    if ($isSkillChipNode(node)) {
+      parts.push({ type: 'skill', name: node.getSkillName() });
+      return;
+    }
+    if ($isTextNode(node)) {
+      const text = node.getTextContent();
+      if (text.length > 0) parts.push({ type: 'text', text });
+      return;
+    }
+    if ($isElementNode(node)) {
+      const children = node.getChildren();
+      for (const child of children) visit(child);
+    }
+  };
+
+  editor.getEditorState().read(() => {
+    const root = $getRoot();
+    const paragraphs = root.getChildren();
+    paragraphs.forEach((p, i) => {
+      // Separate paragraphs with newlines to preserve line breaks.
+      if (i > 0) parts.push({ type: 'text', text: '\n' });
+      visit(p);
+    });
+  });
+
+  // Coalesce consecutive text parts to keep the output tidy.
+  const merged: UserContentPart[] = [];
+  for (const p of parts) {
+    const last = merged[merged.length - 1];
+    if (p.type === 'text' && last && last.type === 'text') {
+      last.text += p.text;
+    } else {
+      merged.push(p);
+    }
+  }
+  return merged;
 }
 
 export interface LexicalEditorProps {
   onChange: (value: string) => void;
   onKeyDown?: (event: React.KeyboardEvent) => void;
   onMentionsChange?: (mentions: FileMention[]) => void;
+  /** Fires with the list of skill names currently chipped into the editor. */
+  onSkillsChange?: (skillNames: string[]) => void;
   onLocalCommand?: (commandId: string) => void;
   onAgentCommand?: (commandText: string) => void;
   placeholder?: string;
   disabled?: boolean;
   className?: string;
   mode?: 'planning' | 'fast';
+  /**
+   * Fires when the user presses UP with an empty editor. Return `true` to signal
+   * the caller consumed the event (UP will be swallowed); any falsy value lets
+   * default caret-movement behavior run.
+   */
+  onEmptyUpArrow?: () => boolean;
 }
 
 function OnChangePluginWrapper({
   onChange,
   onMentionsChange,
+  onSkillsChange,
 }: {
   onChange: (value: string) => void;
   onMentionsChange?: (mentions: FileMention[]) => void;
+  onSkillsChange?: (skillNames: string[]) => void;
 }): React.JSX.Element {
   const handleChange = (editorState: EditorState): void => {
     editorState.read(() => {
@@ -56,6 +122,12 @@ function OnChangePluginWrapper({
           relativePath: node.getRelativePath(),
         }));
         onMentionsChange(mentions);
+      }
+
+      // Extract skill chips from editor state
+      if (onSkillsChange) {
+        const skillNodes = $nodesOfType(SkillChipNode);
+        onSkillsChange(skillNodes.map((n) => n.getSkillName()));
       }
     });
   };
@@ -104,16 +176,46 @@ function EditorDisabledPlugin({ disabled }: { disabled: boolean }): null {
   return null;
 }
 
+/** Fires `onEmptyUpArrow` when the user presses UP while the editor is empty. */
+function EmptyUpArrowPlugin({ onEmptyUpArrow }: { onEmptyUpArrow?: () => boolean }): null {
+  const [editor] = useLexicalComposerContext();
+
+  useEffect(() => {
+    if (!onEmptyUpArrow) return;
+    return editor.registerCommand(
+      KEY_ARROW_UP_COMMAND,
+      (event) => {
+        let isEmpty = false;
+        editor.getEditorState().read(() => {
+          isEmpty = $getRoot().getTextContent().length === 0;
+        });
+        if (!isEmpty) return false;
+        const consumed = onEmptyUpArrow();
+        if (consumed) {
+          event?.preventDefault?.();
+          return true;
+        }
+        return false;
+      },
+      COMMAND_PRIORITY_LOW,
+    );
+  }, [editor, onEmptyUpArrow]);
+
+  return null;
+}
+
 export const LexicalEditor = forwardRef<LexicalEditorHandle, LexicalEditorProps>(({
   onChange,
   onKeyDown,
   onMentionsChange,
+  onSkillsChange,
   onLocalCommand,
   onAgentCommand,
   placeholder = 'Type something...',
   disabled = false,
   className = '',
   mode: _mode,
+  onEmptyUpArrow,
 }, ref) => {
   const editorRef = useRef<LexicalEditorType | null>(null);
 
@@ -147,6 +249,52 @@ export const LexicalEditor = forwardRef<LexicalEditorHandle, LexicalEditorProps>
         });
       }
     },
+    setText: (text: string) => {
+      const editor = editorRef.current;
+      if (!editor) return;
+      editor.focus();
+      editor.update(() => {
+        const root = $getRoot();
+        root.clear();
+        const paragraph = $createParagraphNode();
+        if (text.length > 0) paragraph.append($createTextNode(text));
+        root.append(paragraph);
+        paragraph.selectEnd();
+      });
+    },
+    insertSkill: (skillName: string, description?: string) => {
+      const editor = editorRef.current;
+      if (!editor) return;
+      editor.focus();
+      editor.update(() => {
+        // De-dupe: if the same skill is already chipped, do nothing.
+        const existing = $nodesOfType(SkillChipNode).find(
+          (n) => n.getSkillName() === skillName,
+        );
+        if (existing) return;
+
+        const root = $getRoot();
+        const last = root.getLastChild();
+        const target = last && $isElementNode(last) ? last : (() => {
+          const p = $createParagraphNode();
+          root.append(p);
+          return p;
+        })();
+        const chip = $createSkillChipNode(skillName, description ?? '');
+        // Insert chip followed by a space so the user can immediately keep typing.
+        if (target.getChildrenSize() === 0) {
+          target.append(chip, $createTextNode(' '));
+        } else {
+          target.append($createTextNode(' '), chip, $createTextNode(' '));
+        }
+        target.selectEnd();
+      });
+    },
+    getOrderedParts: () => {
+      const editor = editorRef.current;
+      if (!editor) return [];
+      return extractPartsFromEditor(editor);
+    },
   }));
 
   const initialConfig = useMemo(() => ({
@@ -159,12 +307,14 @@ export const LexicalEditor = forwardRef<LexicalEditorHandle, LexicalEditorProps>
         underline: 'underline',
       },
     },
-    nodes: [MentionNode],
+    nodes: [MentionNode, SkillChipNode],
     onError: (error: Error) => {
       console.error('Lexical error:', error);
     },
     editable: !disabled,
   }), [disabled]);
+
+  const editorTextMetricsClass = 'px-4 py-2.5 text-[14px] leading-7';
 
   return (
     <div className={`relative ${className}`}>
@@ -173,25 +323,34 @@ export const LexicalEditor = forwardRef<LexicalEditorHandle, LexicalEditorProps>
           <PlainTextPlugin
             contentEditable={
               <ContentEditable
-                className={`
-                  min-h-[80px] max-h-[200px] overflow-y-auto
-                  px-4 py-3 bg-transparent
-                  focus:outline-none
-                  ${disabled ? 'opacity-50 cursor-not-allowed' : ''}
-                `}
+                className={cn(
+                  'min-h-[56px] max-h-[148px] overflow-y-auto bg-transparent focus:outline-none',
+                  editorTextMetricsClass,
+                  disabled && 'cursor-not-allowed opacity-50',
+                )}
               />
             }
             placeholder={
-              <div className="absolute top-3 left-4 text-muted-foreground/50 pointer-events-none">
+              <div
+                className={cn(
+                  'pointer-events-none absolute inset-x-0 top-0 truncate overflow-hidden text-muted-foreground/55',
+                  editorTextMetricsClass,
+                )}
+              >
                 {placeholder}
               </div>
             }
             ErrorBoundary={LexicalErrorBoundary}
           />
           <HistoryPlugin />
-          <OnChangePluginWrapper onChange={onChange} onMentionsChange={onMentionsChange} />
+          <OnChangePluginWrapper
+            onChange={onChange}
+            onMentionsChange={onMentionsChange}
+            onSkillsChange={onSkillsChange}
+          />
           <EditorRefPlugin editorRef={editorRef} />
           <EditorDisabledPlugin disabled={disabled} />
+          <EmptyUpArrowPlugin onEmptyUpArrow={onEmptyUpArrow} />
           {onKeyDown ? <KeyDownPlugin onKeyDown={onKeyDown} /> : null}
           <ClipboardImagePlugin />
           <MentionPlugin />

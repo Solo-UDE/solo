@@ -37,7 +37,7 @@ export interface UseAgentSessionReturn {
 	/** Create a new session */
 	createSession: (model?: string) => Promise<string>;
 	/** Send a message */
-	sendMessage: (content: string, mode?: MessageMode, attachments?: import('../stores/agentStore').Attachment[], mentions?: import('../stores/agentStore').FileMention[]) => Promise<void>;
+	sendMessage: (content: string, mode?: MessageMode, attachments?: import('../stores/agentStore').Attachment[], mentions?: import('../stores/agentStore').FileMention[], skills?: string[], parts?: import('../stores/agentStore').UserContentPart[]) => Promise<void>;
 	/** Interrupt the running agent */
 	interrupt: () => Promise<void>;
 	/** Change the model */
@@ -142,9 +142,10 @@ export function useAgentSession(
 	);
 
 	const sendMessage = useCallback(
-		async (content: string, mode?: MessageMode, attachments?: import('../stores/agentStore').Attachment[], mentions?: import('../stores/agentStore').FileMention[]) => {
-			if ((!content.trim() && (!attachments || attachments.length === 0)) || !effectiveSessionId) return;
-			await storeSendMessage(effectiveSessionId, content, mode, attachments, mentions);
+		async (content: string, mode?: MessageMode, attachments?: import('../stores/agentStore').Attachment[], mentions?: import('../stores/agentStore').FileMention[], skills?: string[], parts?: import('../stores/agentStore').UserContentPart[]) => {
+			const hasPayload = content.trim() || (attachments && attachments.length > 0) || (skills && skills.length > 0);
+			if (!hasPayload || !effectiveSessionId) return;
+			await storeSendMessage(effectiveSessionId, content, mode, attachments, mentions, skills, parts);
 		},
 		[storeSendMessage, effectiveSessionId]
 	);

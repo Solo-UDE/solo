@@ -1,6 +1,6 @@
 /**
  * PrimarySidebar - Thin routing shell for the content sidebar.
- * Renders ModeToggle + DevSidebar or StudioSidebar based on sidebar mode.
+ * Renders ModeToggle + DevSidebar or VaultSidebar based on sidebar mode.
  * The active repo context is determined by the RepoRail selection.
  */
 
@@ -9,11 +9,12 @@ import { motion } from 'motion/react';
 import { FolderPlus as FolderPlusIcon } from 'lucide-react';
 import { ModeToggle } from './ModeToggle';
 import { DevSidebar } from './DevSidebar';
-import { StudioSidebar } from './StudioSidebar';
+import { VaultSidebar } from './VaultSidebar';
 import { SidebarHeader } from './SidebarHeader';
 import { useUIStore, useIsLeftSidebarCollapsed } from '@/stores/uiStore';
 import { useRepoStore, useRepoList } from '@/stores/repoStore';
 import { openFolderDialog } from '@/lib/tauri/fs';
+import { HEIGHTS } from '@/lib/constants';
 import { toast } from 'sonner';
 
 interface PrimarySidebarProps {
@@ -44,10 +45,10 @@ export const PrimarySidebar = forwardRef<HTMLElement, PrimarySidebarProps>(({ wi
   return (
     <motion.aside
       ref={ref}
-      className={`h-full flex flex-col relative bg-sidebar overflow-hidden pt-[38px] ${
+      className={`relative flex h-full flex-col overflow-hidden bg-sidebar ${
         isResizing ? '' : 'transition-[width] duration-200 ease-[var(--ease-smooth)]'
       }`}
-      style={{ width }}
+      style={{ width, paddingTop: HEIGHTS.titlebar }}
     >
       {/* Loading overlay during repo switch */}
       {isSwitching && (
@@ -56,34 +57,38 @@ export const PrimarySidebar = forwardRef<HTMLElement, PrimarySidebarProps>(({ wi
 
       {!isCollapsed && (
         <>
-          {/* Header showing active repo + branch */}
-          {activeRepoPath ? (
-            <SidebarHeader />
-          ) : (
-            <div className="h-9 flex items-center px-2.5 shrink-0 border-b border-border/10">
-              <span className="text-xs font-semibold text-muted-foreground/70">Solo</span>
-            </div>
-          )}
+          <div className="shrink-0 px-3 pb-2 pt-2.5">
+            {activeRepoPath ? (
+              <SidebarHeader />
+            ) : (
+              <div className="rounded-[10px] border border-border/70 bg-background/55 px-3.5 py-3.5">
+                <p className="text-sm font-medium text-foreground">No repository selected</p>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                  Add a repository to open files, create worktrees, and start agent sessions.
+                </p>
+              </div>
+            )}
+          </div>
 
-          {/* Content area */}
           {repos.length === 0 ? (
-            /* Empty state - no repos */
             <motion.div
-              className="flex-1 flex flex-col items-center justify-center gap-3 px-4 text-center"
+              className="flex flex-1 flex-col items-center justify-center gap-4 px-6 pb-8 text-center"
               initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.3 }}
             >
-              <div className="w-12 h-12 rounded-2xl bg-muted/40 flex items-center justify-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-[10px] border border-border/70 bg-background/75">
                 <FolderPlusIcon className="w-5 h-5 text-muted-foreground/50" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground/70 mb-1">No repositories</p>
-                <p className="text-xs text-muted-foreground/40">Add a repository to get started</p>
+                <p className="mb-1 text-sm font-medium text-foreground">No repositories yet</p>
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  Bring a project into Solo to unlock the Codex-style workspace.
+                </p>
               </div>
               <button
                 onClick={handleAddRepo}
-                className="h-8 px-3.5 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 active:scale-[0.97] transition-all duration-200"
+                className="inline-flex h-8 items-center rounded-[8px] border border-primary/20 bg-primary/10 px-3.5 text-xs font-medium text-primary hover:bg-primary/15 active:scale-[0.97] transition-[background-color,transform] duration-150"
               >
                 Add Repository
               </button>
@@ -91,11 +96,15 @@ export const PrimarySidebar = forwardRef<HTMLElement, PrimarySidebarProps>(({ wi
           ) : (
             <>
               <ModeToggle />
-              {sidebarMode === 'dev' ? (
-                <DevSidebar onFileOpen={onFileOpen} />
-              ) : (
-                <StudioSidebar />
-              )}
+              <div className="min-h-0 flex-1 px-1.5 pb-1.5">
+                <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[10px] border border-border/70 bg-background/45">
+                  {sidebarMode === 'dev' ? (
+                    <DevSidebar onFileOpen={onFileOpen} />
+                  ) : (
+                    <VaultSidebar />
+                  )}
+                </div>
+              </div>
             </>
           )}
         </>

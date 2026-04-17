@@ -16,11 +16,12 @@ export function TitlebarButton({
 }: TitlebarButtonProps) {
   return (
     <button
+      data-tauri-drag-region={false}
       className={cn(
-        'group flex items-center p-1 rounded-lg',
-        'hover:bg-foreground/[0.06]',
-        'transition-[background-color,color] duration-150',
-        active && 'glow-active',
+        'group inline-flex h-8 items-center rounded-[9px] border border-transparent px-2',
+        'bg-transparent text-muted-foreground hover:border-border/55 hover:bg-background/60 hover:text-foreground',
+        'transition-[background-color,border-color,color,transform] duration-150 active:scale-[0.97]',
+        active && 'glow-active border-border/40',
         className,
       )}
       {...props}
@@ -32,10 +33,10 @@ export function TitlebarButton({
         className={cn(
           'overflow-hidden whitespace-nowrap',
           'max-w-0 opacity-0 ml-0',
-          'group-hover:max-w-[5rem] group-hover:opacity-100 group-hover:ml-1.5',
+          'group-hover:max-w-[6rem] group-hover:opacity-100 group-hover:ml-1.5',
           'transition-[max-width,opacity,margin] duration-400',
           'ease-[cubic-bezier(0.16,1,0.3,1)]',
-          'text-xs font-medium',
+          'text-[11px] font-medium tracking-[0.01em]',
           active ? 'text-primary' : 'text-muted-foreground',
         )}
       >

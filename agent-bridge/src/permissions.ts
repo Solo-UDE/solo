@@ -1,10 +1,12 @@
 /**
- * Permission system for Orbit Editor.
+ * Permission system for Solo IDE.
  */
 
 import { createLogger } from './logger.js';
 import { localize } from './nls.js';
+import { checkPermission, loadMergedSettings } from './permission-pipeline.js';
 
+import type { PermissionDecision, PermissionMode } from './permission-pipeline.js';
 import type { PermissionResult, PermissionUpdate } from '@anthropic-ai/claude-agent-sdk';
 
 const logger = createLogger('PermissionManager');
@@ -49,6 +51,15 @@ export class PermissionManager {
   private acceptModeGetter?: () => boolean;
   private planModeGetter?: () => boolean;
   private planFilePathGetter?: () => string | null;
+  /** Resolver for the workspace path — used to locate `.solo/settings.json`. */
+  private workspaceGetter?: () => string;
+  /** Resolver for an optional Debug-mode flag. */
+  private debugModeGetter?: () => boolean;
+  /** Small in-memory cache of parsed settings, keyed by workspace path. */
+  private settingsCache = new Map<
+    string,
+    { mtime: number; settings: ReturnType<typeof loadMergedSettings> }
+  >();
 
   // Tools allowed through in plan mode (planning/reading tools that reach canUseTool)
   private static readonly PLAN_MODE_ALLOWED_TOOLS = new Set([
@@ -68,7 +79,9 @@ export class PermissionManager {
     snapshotCallback?: SnapshotCallback,
     acceptModeGetter?: () => boolean,
     planModeGetter?: () => boolean,
-    planFilePathGetter?: () => string | null
+    planFilePathGetter?: () => string | null,
+    workspaceGetter?: () => string,
+    debugModeGetter?: () => boolean
   ) {
     if (requestCallback !== undefined) {
       this.requestCallback = requestCallback;
@@ -84,6 +97,72 @@ export class PermissionManager {
     }
     if (planFilePathGetter !== undefined) {
       this.planFilePathGetter = planFilePathGetter;
+    }
+    if (workspaceGetter !== undefined) {
+      this.workspaceGetter = workspaceGetter;
+    }
+    if (debugModeGetter !== undefined) {
+      this.debugModeGetter = debugModeGetter;
+    }
+  }
+
+  /**
+   * Resolve the active mode by consulting all overlay flags.
+   *
+   * Mutually exclusive — the first truthy flag wins. This matches the
+   * frontend's `useSessionMode` selector, keeping the UI and backend in sync.
+   */
+  private resolveMode(): PermissionMode {
+    if (this.acceptModeGetter?.()) return 'accept';
+    if (this.planModeGetter?.()) return 'plan';
+    if (this.debugModeGetter?.()) return 'debug';
+    return 'default';
+  }
+
+  /**
+   * Load (with a small on-disk mtime cache) the merged settings for the
+   * current workspace. Returns `null` when no workspace is configured.
+   *
+   * We re-check the settings file's mtime on every call so external edits
+   * (user hand-editing `.solo/settings.json`) are reflected immediately
+   * without a session restart.
+   */
+  private loadSettings() {
+    const ws = this.workspaceGetter?.();
+    if (!ws) return null;
+    try {
+      // The rough freshness signal: combine mtimes of the three scope files.
+      // We don't need to be exact — any change to any scope invalidates.
+      // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
+      const fs = require('node:fs');
+      // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
+      const path = require('node:path');
+      // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
+      const os = require('node:os');
+      const paths = [
+        path.join(os.homedir(), '.solo', 'settings.json'),
+        path.join(ws, '.solo', 'settings.json'),
+        path.join(ws, '.solo', 'settings.local.json'),
+      ] as string[];
+      let combinedMtime = 0;
+      for (const p of paths) {
+        try {
+          const stat = fs.statSync(p);
+          combinedMtime = Math.max(combinedMtime, stat.mtimeMs);
+        } catch {
+          // Missing file contributes 0 — that's fine.
+        }
+      }
+      const cached = this.settingsCache.get(ws);
+      if (cached && cached.mtime === combinedMtime) {
+        return cached.settings;
+      }
+      const settings = loadMergedSettings(ws);
+      this.settingsCache.set(ws, { mtime: combinedMtime, settings });
+      return settings;
+    } catch (err) {
+      logger.warn({ err }, 'Failed to load settings — falling back to mode-only gating');
+      return null;
     }
   }
 
@@ -109,8 +188,94 @@ export class PermissionManager {
   }
 
   /**
+   * Preview the permission decision for a tool call WITHOUT invoking any
+   * side-effects (no snapshot, no request callback, no UI event).
+   *
+   * Used by the session-manager's SDK-message consumer to pick the correct
+   * INITIAL `status` for a `tool_use` event: `'running'` for tools that will
+   * be auto-allowed, `'awaiting-permission'` only for tools that will
+   * legitimately prompt the user. This eliminates the 1-frame flash of the
+   * approval card that users previously saw on every auto-approved tool.
+   *
+   * Returns the same three outcomes as `createCallback`, reduced to the
+   * behavior axis (message detail is not needed for a preview):
+   *
+   *   - `'allow'` — the callback will allow without prompting
+   *   - `'ask'`   — the callback will emit a permission_request event
+   *   - `'deny'`  — the callback will deny and the tool_result will carry the error
+   *
+   * Mirrors `createCallback` stage-for-stage; keep the two in sync.
+   */
+  previewDecision(
+    toolName: string,
+    toolInput: Record<string, unknown>
+  ): 'allow' | 'ask' | 'deny' {
+    const mode = this.resolveMode();
+
+    // Stage 1: Plan-mode plan-file write exemption.
+    if (mode === 'plan' && (toolName === 'Write' || toolName === 'Edit')) {
+      const filePath = toolInput.file_path as string | undefined;
+      const planPath = this.planFilePathGetter?.();
+      if (planPath && filePath === planPath) {
+        return 'allow';
+      }
+    }
+
+    // Stage 2: Settings-driven pipeline.
+    const settings = this.loadSettings();
+    if (settings !== null) {
+      const decision = checkPermission(
+        toolName,
+        toolInput,
+        mode,
+        settings.permissions
+      );
+      if (decision.behavior === 'allow') return 'allow';
+      if (decision.behavior === 'deny') return 'deny';
+      // decision.behavior === 'ask' — fall through to legacy checks below.
+    }
+
+    // Stage 3a: Legacy Plan-mode deny for non-write, non-planning tools.
+    if (mode === 'plan') {
+      if (
+        toolName !== 'Write' &&
+        toolName !== 'Edit' &&
+        !PermissionManager.PLAN_MODE_ALLOWED_TOOLS.has(toolName)
+      ) {
+        return 'deny';
+      }
+    }
+
+    // Stage 3b: Session-scoped always-allowed list (set by prior "Always allow" clicks).
+    if (this.isAlwaysAllowed(toolName)) return 'allow';
+
+    // Stage 3c: If there's no requestCallback registered, the real callback
+    // would auto-allow as a development-mode fallback. Mirror that here so
+    // the preview matches runtime behavior.
+    if (!this.requestCallback) return 'allow';
+
+    // Fall-through: the real callback would prompt.
+    return 'ask';
+  }
+
+  /**
    * Create permission callback for the SDK.
-   * This uses the SDK's canUseTool API.
+   *
+   * This is now a three-stage pipeline:
+   *
+   * 1. Plan-mode special case for edits targeting the active plan file
+   *    (this is Solo-specific and not expressible as a generic rule —
+   *    the plan file path is dynamic per session).
+   * 2. The settings-driven decision pipeline (mirror of `solo-core::permissions::check`).
+   *    This is the single source of truth for allow/ask/deny rules and
+   *    the Accept/Plan/Default/Debug mode overlays.
+   * 3. Fall-through to the UI permission prompt (requestCallback).
+   *
+   * **Key property**: under Accept mode, stages 1-2 ALWAYS short-circuit
+   * with an Allow (unless a deny/ask rule or the destructive tier blocks
+   * it), so `requestCallback` is never invoked and no permission modal
+   * is emitted to the frontend. This fixes the modal-flash bug where the
+   * UI briefly rendered a permission card before being auto-resolved.
    */
   createCallback() {
     return async (
@@ -121,75 +286,94 @@ export class PermissionManager {
         suggestions?: unknown[];
       }
     ): Promise<PermissionResult> => {
-      logger.debug({ toolName, toolInput }, 'Permission callback invoked');
+      const mode = this.resolveMode();
+      logger.debug({ toolName, mode }, 'Permission callback invoked');
 
       try {
-        // Check Accept mode FIRST - auto-approve ALL tools when active
-        // This allows dynamic mode switching without session restart
-        const acceptModeActive = this.acceptModeGetter?.() ?? false;
-        logger.debug({ toolName, acceptModeActive }, 'Permission check');
-
-        if (acceptModeActive) {
-          logger.debug({ toolName }, 'Accept mode active - auto-approving tool');
-          return {
-            behavior: 'allow',
-            updatedInput: toolInput,
-          };
+        // Stage 1: Plan-mode plan-file write is a special case that must
+        // bypass the generic pipeline (the generic pipeline would either
+        // prompt or deny Write/Edit under Plan mode, but we *do* want the
+        // agent to write to its own plan file).
+        if (mode === 'plan' && (toolName === 'Write' || toolName === 'Edit')) {
+          const filePath = toolInput.file_path as string | undefined;
+          const planPath = this.planFilePathGetter?.();
+          if (planPath && filePath === planPath) {
+            logger.info({ toolName, filePath }, 'Plan mode — auto-approving write to plan file');
+            return { behavior: 'allow', updatedInput: toolInput };
+          }
         }
 
-        // Check Plan mode - allow Write/Edit ONLY for the plan file, deny other writes
-        // Read-only tools (Read, Glob, Grep, etc.) are auto-approved in PreToolUse hook
-        // and never reach this callback. Tools that reach here are write tools — deny them
-        // unless they target the plan file or are planning-specific tools.
-        const planModeActive = this.planModeGetter?.() ?? false;
-        if (planModeActive) {
-          // Allow Write/Edit ONLY for the plan file
-          if (toolName === 'Write' || toolName === 'Edit') {
-            const filePath = toolInput.file_path as string;
-            const planPath = this.planFilePathGetter?.();
-            if (planPath && filePath === planPath) {
-              logger.info({ toolName, filePath }, 'Plan mode — auto-approving write to plan file');
-              return {
-                behavior: 'allow',
-                updatedInput: toolInput,
-              };
-            } else {
-              logger.info({ toolName, filePath }, 'Plan mode active — denying write to non-plan file');
-              return {
-                behavior: 'deny',
-                message: `Plan mode is active. You can only write to the plan file${planPath ? ` (${planPath})` : ''}. Use ExitPlanMode to switch back.`,
-              };
+        // Stage 2: Run the settings-driven pipeline. The settings are loaded
+        // with an mtime-cached load so external edits to `.solo/settings.json`
+        // are picked up without a session restart.
+        const settings = this.loadSettings();
+        if (settings !== null) {
+          const decision: PermissionDecision = checkPermission(
+            toolName,
+            toolInput,
+            mode,
+            settings.permissions
+          );
+          logger.debug({ toolName, mode, decision }, 'Pipeline decision');
+
+          if (decision.behavior === 'allow') {
+            // Capture snapshot for Write/Edit even when auto-allowed — this
+            // preserves checkpointing semantics so "undo" still works under
+            // Accept mode.
+            if ((toolName === 'Write' || toolName === 'Edit') && this.snapshotCallback) {
+              try {
+                await this.snapshotCallback(toolName, toolInput, null);
+              } catch (err) {
+                logger.warn({ toolName, err }, 'Snapshot capture failed — continuing anyway');
+              }
             }
-          } else if (!PermissionManager.PLAN_MODE_ALLOWED_TOOLS.has(toolName)) {
-            // Deny all other non-planning tools (Bash, etc.)
-            logger.info({ toolName }, 'Plan mode active — denying non-planning tool');
+            return { behavior: 'allow', updatedInput: toolInput };
+          }
+
+          if (decision.behavior === 'deny') {
             return {
               behavior: 'deny',
-              message: 'Plan mode is active. Only read-only tools and plan file edits are allowed. Use ExitPlanMode to switch back.',
+              message: decision.message,
+              interrupt: false,
             };
           }
-          // Planning tools (ExitPlanMode, AskUserQuestion, etc.) fall through to normal flow
+
+          // decision.behavior === 'ask' — fall through to the UI prompt.
         }
 
-        // Capture file snapshot BEFORE Write/Edit tools execute (for checkpointing)
+        // Also keep the legacy Plan-mode deny for non-write tools that aren't
+        // in the plan-allowed set. This was the previous behavior and is
+        // stricter than the generic pipeline (which would just prompt).
+        if (mode === 'plan') {
+          if (
+            toolName !== 'Write' &&
+            toolName !== 'Edit' &&
+            !PermissionManager.PLAN_MODE_ALLOWED_TOOLS.has(toolName)
+          ) {
+            logger.info({ toolName }, 'Plan mode — denying non-planning tool');
+            return {
+              behavior: 'deny',
+              message:
+                'Plan mode is active. Only read-only tools and plan file edits are allowed. Use ExitPlanMode to switch back.',
+            };
+          }
+        }
+
+        // Snapshot capture for Write/Edit before prompting.
         if ((toolName === 'Write' || toolName === 'Edit') && this.snapshotCallback) {
           try {
             await this.snapshotCallback(toolName, toolInput, null);
-          } catch (error) {
-            // Don't block tool execution if snapshot fails
-            logger.warn({ toolName, error }, 'Failed to capture snapshot');
+          } catch (err) {
+            logger.warn({ toolName, err }, 'Snapshot capture failed — continuing anyway');
           }
         }
 
-        // Check if this tool is in the always-allowed list
+        // Legacy always-allowed list (session-scoped, from prior "Allow always" clicks).
         if (this.isAlwaysAllowed(toolName)) {
-          return {
-            behavior: 'allow',
-            updatedInput: toolInput,
-          };
+          return { behavior: 'allow', updatedInput: toolInput };
         }
 
-        // Request permission
+        // Stage 3: Prompt the user via the UI.
         if (this.requestCallback) {
           try {
             const result = await this.requestCallback(toolName, toolInput, options);

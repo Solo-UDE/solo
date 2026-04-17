@@ -125,7 +125,7 @@ const openrouter = createOpenRouter({
 
 export const modelMapping: Record<string, () => LanguageModel> = {
   // Anthropic
-  'claude-opus-4-6': () => openrouter.chat('anthropic/claude-opus-4.6'),
+  'claude-opus-4-7[1m]': () => openrouter.chat('anthropic/claude-opus-4.7'),
   'claude-sonnet-4-6': () => openrouter.chat('anthropic/claude-sonnet-4.6'),
   'claude-sonnet-4-5-20250929': () => openrouter.chat('anthropic/claude-sonnet-4.5'),
   'claude-haiku-4-5-20251001': () => openrouter.chat('anthropic/claude-haiku-4.5'),

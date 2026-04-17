@@ -4,14 +4,14 @@
 
 export const SIDEBAR = {
   collapsed: 0,
-  expanded: 256,
-  min: 220,
+  expanded: 304,
+  min: 272,
   max: 400,
   iconColumnWidth: 40,
   /** Width of the repo icon rail (always visible) */
-  railWidth: 48,
+  railWidth: 64,
   /** Width of the repo rail when expanded to show details */
-  railExpandedWidth: 200,
+  railExpandedWidth: 224,
 } as const;
 
 export const HEIGHTS = {
@@ -36,7 +36,8 @@ export const TRANSITIONS = {
  */
 
 // Anthropic
-export const CLAUDE_OPUS_4_6 = 'claude-opus-4-6';
+// [1m] suffix selects the 1M-context variant of Opus 4.7 (Claude CLI syntax).
+export const CLAUDE_OPUS_4_7 = 'claude-opus-4-7[1m]';
 export const CLAUDE_SONNET_4_6 = 'claude-sonnet-4-6';
 export const CLAUDE_HAIKU_4_5 = 'claude-haiku-4-5-20251001';
 
@@ -50,7 +51,7 @@ export const GEMINI_3_PRO = 'gemini-3-pro';
 export const GEMINI_3_FLASH = 'gemini-3-flash';
 
 // Default model used across the application
-export const DEFAULT_MODEL_ID = CLAUDE_OPUS_4_6;
+export const DEFAULT_MODEL_ID = CLAUDE_OPUS_4_7;
 
 /**
  * Model option for simple model selectors (e.g. Claude-only dropdown)
@@ -62,7 +63,7 @@ export interface ModelOption {
 }
 
 export const CLAUDE_MODELS: ModelOption[] = [
-  { id: CLAUDE_OPUS_4_6, name: 'Opus 4.6', description: 'Most capable model' },
+  { id: CLAUDE_OPUS_4_7, name: 'Opus 4.7 (1M)', description: 'Most capable model, 1M context' },
   { id: CLAUDE_SONNET_4_6, name: 'Sonnet 4.6', description: 'Balanced performance' },
   { id: CLAUDE_HAIKU_4_5, name: 'Haiku 4.5', description: 'Fastest responses' },
 ];
@@ -88,9 +89,9 @@ export interface ModelOptionConfig {
 export const MODEL_OPTIONS: ModelOptionConfig[] = [
   // Anthropic Claude models
   {
-    value: CLAUDE_OPUS_4_6,
-    label: 'Opus 4.6',
-    description: 'Most capable model',
+    value: CLAUDE_OPUS_4_7,
+    label: 'Opus 4.7 (1M)',
+    description: 'Most capable model, 1M context',
     provider: 'anthropic',
     iconType: 'claude',
   },

@@ -744,6 +744,58 @@ impl WorktreeManager {
 
     /// Create a named branch pointing at a worktree's current HEAD.
     /// Useful for detached-HEAD worktrees that need a branch before merging.
+    /// Rename the branch that a worktree is checked out on.
+    ///
+    /// Runs `git branch -m <old> <new>` against the main repo (branches live
+    /// there, not in the worktree's attached `.git` pointer), then updates
+    /// the stored metadata. The worktree ID and filesystem path stay put —
+    /// only the branch label changes.
+    pub fn rename(&self, id: &str, new_branch: &str) -> Result<WorktreeInfo, GitError> {
+        if id == "main" {
+            return Err(GitError::Config(
+                "Cannot rename the main worktree".to_string(),
+            ));
+        }
+        let trimmed = new_branch.trim();
+        if trimmed.is_empty() {
+            return Err(GitError::Config(
+                "New branch name cannot be empty".to_string(),
+            ));
+        }
+
+        let mut config = WorktreeConfig::load(&self.config_path)?;
+        let old_branch = config
+            .get(id)
+            .ok_or_else(|| GitError::WorktreeNotFound(id.to_string()))?
+            .branch
+            .clone();
+
+        if old_branch == trimmed {
+            // No-op rename; return the current info so the caller doesn't
+            // have to special-case it.
+            return self.get(id);
+        }
+
+        let main_repo = git2::Repository::open(&self.repo_path)?;
+        if main_repo
+            .find_branch(trimmed, git2::BranchType::Local)
+            .is_ok()
+        {
+            return Err(GitError::BranchAlreadyExists(trimmed.to_string()));
+        }
+
+        let mut branch = main_repo.find_branch(&old_branch, git2::BranchType::Local)?;
+        branch.rename(trimmed, false)?;
+
+        if let Some(meta) = config.get_mut(id) {
+            meta.branch = trimmed.to_string();
+        }
+        config.save(&self.config_path)?;
+
+        info!(id = %id, from = %old_branch, to = %trimmed, "Renamed worktree branch");
+        self.get(id)
+    }
+
     pub fn promote_to_branch(&self, id: &str, branch_name: &str) -> Result<(), GitError> {
         if id == "main" {
             return Err(GitError::Config("Cannot promote main worktree".to_string()));
