@@ -135,7 +135,158 @@ pub fn find_plugin_manifest_path(plugin_root: &Path) -> Option<PathBuf> {
         .find(|p| p.is_file())
 }
 
-// load_plugin_manifest is stubbed here; implemented in Task 5.
-pub fn load_plugin_manifest(_plugin_root: &Path) -> Option<PluginManifest> {
+pub fn load_plugin_manifest(plugin_root: &Path) -> Option<PluginManifest> {
+    let manifest_path = find_plugin_manifest_path(plugin_root)?;
+    let contents = std::fs::read_to_string(&manifest_path).ok()?;
+    let raw: RawPluginManifest = match serde_json::from_str(&contents) {
+        Ok(r) => r,
+        Err(err) => {
+            tracing::warn!(
+                path = %manifest_path.display(),
+                "failed to parse plugin manifest: {err}"
+            );
+            return None;
+        }
+    };
+
+    let RawPluginManifest {
+        name: raw_name,
+        version,
+        description,
+        skills,
+        mcp_servers,
+        apps,
+        interface,
+    } = raw;
+
+    let name = if raw_name.trim().is_empty() {
+        plugin_root
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or_default()
+            .to_string()
+    } else {
+        raw_name
+    };
+
+    let version = version.and_then(|v| {
+        let trimmed = v.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    });
+
+    Some(PluginManifest {
+        name,
+        version,
+        description,
+        paths: PluginManifestPaths {
+            skills: resolve_manifest_path(plugin_root, "skills", skills.as_deref()),
+            mcp_servers: resolve_manifest_path(plugin_root, "mcpServers", mcp_servers.as_deref()),
+            apps: resolve_manifest_path(plugin_root, "apps", apps.as_deref()),
+        },
+        interface: process_interface(plugin_root, interface),
+    })
+}
+
+fn resolve_manifest_path(
+    plugin_root: &Path,
+    field: &'static str,
+    raw: Option<&str>,
+) -> Option<AbsolutePathBuf> {
+    let raw = raw?;
+    match crate::path::resolve_relative_inside(plugin_root, raw) {
+        Ok(p) => Some(p),
+        Err(err) => {
+            tracing::warn!("ignoring {field}: {err}");
+            None
+        }
+    }
+}
+
+// Stub — implemented in Task 6.
+fn process_interface(
+    _plugin_root: &Path,
+    _raw: Option<RawPluginManifestInterface>,
+) -> Option<PluginManifestInterface> {
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::tempdir;
+
+    fn write_manifest(root: &Path, relative: &str, body: &str) {
+        let path = root.join(relative);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, body).unwrap();
+    }
+
+    #[test]
+    fn missing_manifest_returns_none() {
+        let tmp = tempdir().unwrap();
+        assert!(load_plugin_manifest(&tmp.path().join("missing")).is_none());
+    }
+
+    #[test]
+    fn solo_plugin_path_takes_priority() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path().join("sample");
+        write_manifest(&root, ".solo-plugin/plugin.json", r#"{"name":"from-solo"}"#);
+        write_manifest(&root, ".claude-plugin/plugin.json", r#"{"name":"from-claude"}"#);
+        let manifest = load_plugin_manifest(&root).unwrap();
+        assert_eq!(manifest.name, "from-solo");
+    }
+
+    #[test]
+    fn claude_plugin_path_accepted_as_fallback() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path().join("sample");
+        write_manifest(&root, ".claude-plugin/plugin.json", r#"{"name":"from-claude"}"#);
+        let manifest = load_plugin_manifest(&root).unwrap();
+        assert_eq!(manifest.name, "from-claude");
+    }
+
+    #[test]
+    fn name_falls_back_to_dir_when_empty() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path().join("sample-dir");
+        write_manifest(&root, ".solo-plugin/plugin.json", r#"{"name":""}"#);
+        let manifest = load_plugin_manifest(&root).unwrap();
+        assert_eq!(manifest.name, "sample-dir");
+    }
+
+    #[test]
+    fn version_trimmed() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path().join("sample");
+        write_manifest(
+            &root,
+            ".solo-plugin/plugin.json",
+            r#"{"name":"x","version":"  1.2.3-beta+7  "}"#,
+        );
+        let manifest = load_plugin_manifest(&root).unwrap();
+        assert_eq!(manifest.version.as_deref(), Some("1.2.3-beta+7"));
+    }
+
+    #[test]
+    fn empty_version_becomes_none() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path().join("sample");
+        write_manifest(&root, ".solo-plugin/plugin.json", r#"{"name":"x","version":"  "}"#);
+        let manifest = load_plugin_manifest(&root).unwrap();
+        assert_eq!(manifest.version, None);
+    }
+
+    #[test]
+    fn malformed_json_returns_none() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path().join("sample");
+        write_manifest(&root, ".solo-plugin/plugin.json", r#"{not json"#);
+        assert!(load_plugin_manifest(&root).is_none());
+    }
 }
