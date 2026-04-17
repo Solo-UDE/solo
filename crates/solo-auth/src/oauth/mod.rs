@@ -9,6 +9,7 @@
 pub mod types;
 pub mod pkce;
 pub mod callback_server;
+pub mod profiles;
 pub mod providers;
 
 // Re-export commonly used types
