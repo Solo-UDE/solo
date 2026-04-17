@@ -278,11 +278,77 @@ fn process_interface(
     has_any.then_some(interface)
 }
 
-// Stub — implemented in Task 7.
 fn resolve_default_prompts(
-    _raw: Option<RawPluginManifestDefaultPrompt>,
+    raw: Option<RawPluginManifestDefaultPrompt>,
 ) -> Option<Vec<String>> {
-    None
+    let raw = raw?;
+    let mut prompts = Vec::new();
+
+    match raw {
+        RawPluginManifestDefaultPrompt::String(s) => {
+            if let Some(p) = normalize_prompt(&s) {
+                prompts.push(p);
+            }
+        }
+        RawPluginManifestDefaultPrompt::List(entries) => {
+            for entry in entries {
+                if prompts.len() >= MAX_DEFAULT_PROMPT_COUNT {
+                    tracing::warn!(
+                        "ignoring additional defaultPrompt entries: max {MAX_DEFAULT_PROMPT_COUNT}"
+                    );
+                    break;
+                }
+                match entry {
+                    RawPluginManifestDefaultPromptEntry::String(s) => {
+                        if let Some(p) = normalize_prompt(&s) {
+                            prompts.push(p);
+                        }
+                    }
+                    RawPluginManifestDefaultPromptEntry::Invalid(value) => {
+                        tracing::warn!(
+                            "ignoring defaultPrompt entry: expected string, got {}",
+                            value_type(&value)
+                        );
+                    }
+                }
+            }
+        }
+        RawPluginManifestDefaultPrompt::Invalid(value) => {
+            tracing::warn!(
+                "ignoring defaultPrompt: expected string or array, got {}",
+                value_type(&value)
+            );
+        }
+    }
+
+    if prompts.is_empty() {
+        None
+    } else {
+        Some(prompts)
+    }
+}
+
+fn normalize_prompt(raw: &str) -> Option<String> {
+    let collapsed = raw.split_whitespace().collect::<Vec<_>>().join(" ");
+    if collapsed.is_empty() {
+        return None;
+    }
+    if collapsed.chars().count() > MAX_DEFAULT_PROMPT_LEN {
+        tracing::warn!("ignoring defaultPrompt: max {MAX_DEFAULT_PROMPT_LEN} characters");
+        return None;
+    }
+    Some(collapsed)
+}
+
+fn value_type(v: &JsonValue) -> &'static str {
+    match v {
+        JsonValue::Null => "null",
+        JsonValue::Bool(_) => "boolean",
+        JsonValue::Number(_) => "number",
+        JsonValue::String(_) => "string",
+        JsonValue::Array(_) => "array",
+        JsonValue::Object(_) => "object",
+    }
 }
 
 #[cfg(test)]
@@ -421,6 +487,78 @@ mod tests {
         let root = tmp.path().join("sample");
         write_manifest(&root, ".solo-plugin/plugin.json", r#"{"name":"x"}"#);
         let manifest = load_plugin_manifest(&root).unwrap();
+        assert!(manifest.interface.is_none());
+    }
+
+    #[test]
+    fn default_prompt_legacy_string() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path().join("sample");
+        write_manifest(
+            &root,
+            ".solo-plugin/plugin.json",
+            r#"{"name":"x","interface":{"defaultPrompt":"  Summarize   my inbox  "}}"#,
+        );
+        let manifest = load_plugin_manifest(&root).unwrap();
+        let interface = manifest.interface.unwrap();
+        assert_eq!(interface.default_prompts, vec!["Summarize my inbox".to_string()]);
+    }
+
+    #[test]
+    fn default_prompt_array_caps_at_three() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path().join("sample");
+        write_manifest(
+            &root,
+            ".solo-plugin/plugin.json",
+            r#"{"name":"x","interface":{"defaultPrompt":["one","two","three","four","five"]}}"#,
+        );
+        let manifest = load_plugin_manifest(&root).unwrap();
+        let interface = manifest.interface.unwrap();
+        assert_eq!(interface.default_prompts, vec!["one", "two", "three"]);
+    }
+
+    #[test]
+    fn default_prompt_drops_entries_over_128_chars() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path().join("sample");
+        let too_long = "x".repeat(129);
+        write_manifest(
+            &root,
+            ".solo-plugin/plugin.json",
+            &format!(r#"{{"name":"x","interface":{{"defaultPrompt":["short","{too_long}"]}}}}"#),
+        );
+        let manifest = load_plugin_manifest(&root).unwrap();
+        let interface = manifest.interface.unwrap();
+        assert_eq!(interface.default_prompts, vec!["short".to_string()]);
+    }
+
+    #[test]
+    fn default_prompt_drops_empty_entries() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path().join("sample");
+        write_manifest(
+            &root,
+            ".solo-plugin/plugin.json",
+            r#"{"name":"x","interface":{"defaultPrompt":["one","   ","two"]}}"#,
+        );
+        let manifest = load_plugin_manifest(&root).unwrap();
+        let interface = manifest.interface.unwrap();
+        assert_eq!(interface.default_prompts, vec!["one", "two"]);
+    }
+
+    #[test]
+    fn default_prompt_invalid_shape_returns_empty() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path().join("sample");
+        write_manifest(
+            &root,
+            ".solo-plugin/plugin.json",
+            r#"{"name":"x","interface":{"defaultPrompt":{"text":"nope"}}}"#,
+        );
+        let manifest = load_plugin_manifest(&root).unwrap();
+        // With only a mistyped defaultPrompt, the interface should be None
+        // (has_any is false because default_prompts is empty).
         assert!(manifest.interface.is_none());
     }
 }
