@@ -30,6 +30,13 @@ impl EmbeddingState {
             provider: Arc::new(RwLock::new(None)),
         }
     }
+
+    /// Borrow the current embedding provider, if any. Used by other
+    /// subsystems (e.g. solo-vault) that want to share the same provider
+    /// instance instead of constructing a second one.
+    pub async fn current_provider(&self) -> Option<Arc<dyn EmbeddingProvider>> {
+        self.provider.read().await.clone()
+    }
 }
 
 impl Default for EmbeddingState {

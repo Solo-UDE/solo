@@ -571,6 +571,212 @@ pub struct WorktreeDiffEntry {
 }
 
 // =============================================================================
+// Vault Protocol
+// =============================================================================
+
+/// Kind of vault entry. Drives extraction, chunking, and UI bucketing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "snake_case")]
+pub enum EntryKind {
+    Document,
+    Code,
+    Snippet,
+    Image,
+    Design,
+    Data,
+    Config,
+    Web,
+    Note,
+    Keyvalue,
+    Audio,
+    Archive,
+    Unsorted,
+}
+
+/// Memory-type classification of an entry. Drives retrieval boosting.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "snake_case")]
+pub enum MemoryType {
+    /// Project-scoped knowledge
+    Project,
+    /// User-scoped knowledge (cross-project)
+    User,
+    /// User-flagged source of truth, always eligible for RAG
+    PinnedSourceOfTruth,
+}
+
+/// Scope determines which workspace the entry is visible to.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum VaultScope {
+    /// Visible in every project (cross-project user memory)
+    Global,
+    /// Visible only in the specific project
+    Project { project_id: String },
+}
+
+/// Local indexing status for an entry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "snake_case")]
+pub enum IndexStatus {
+    Pending,
+    Extracting,
+    Chunking,
+    Embedding,
+    Storing,
+    Indexed,
+    Failed,
+}
+
+/// Cloud sync state for an entry (set by the sync worker).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "snake_case")]
+pub enum CloudSyncState {
+    /// Feature disabled or user not signed in
+    Offline,
+    /// Queued for sync
+    Pending,
+    /// Uploading blob to S3
+    Uploading,
+    /// Remote indexing pipeline running
+    IndexingRemote,
+    /// Successfully synced and indexed remotely
+    Synced,
+    /// Sync or remote indexing failed
+    Failed,
+}
+
+/// Per-entry retrieval telemetry (informs decay / pin suggestions).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct RetrievalStats {
+    /// Number of times this entry has been retrieved (any chunk)
+    pub hit_count: u32,
+    /// Last retrieval timestamp (Unix epoch seconds)
+    pub last_retrieved_at: Option<u64>,
+}
+
+/// A vault entry — the canonical unit of memory.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct VaultEntry {
+    pub id: String,
+    pub kind: EntryKind,
+    /// Finer-grained label inside kind (e.g. "pdf", "rust", "svg"). Optional.
+    pub subkind: Option<String>,
+    pub title: String,
+    /// Plain-text content for note/keyvalue entries without a file
+    pub content: Option<String>,
+    /// Original filesystem path of the dropped file (if any)
+    pub source_path: Option<String>,
+    /// Content-addressable path inside the vault blob store
+    pub vault_blob_path: Option<String>,
+    pub scope: VaultScope,
+    pub memory_type: MemoryType,
+    /// When true, always eligible for RAG regardless of similarity
+    pub pinned: bool,
+    pub tags: Vec<String>,
+    pub mime: Option<String>,
+    pub size_bytes: Option<u64>,
+    pub index_status: IndexStatus,
+    pub cloud_sync_state: CloudSyncState,
+    /// Classifier confidence in [0.0, 1.0]. Below 0.6 → Unsorted tray.
+    pub classifier_confidence: f32,
+    pub retrieval_stats: RetrievalStats,
+    /// Unix epoch seconds
+    pub created_at: u64,
+    /// Unix epoch seconds
+    pub updated_at: u64,
+}
+
+/// An indexed chunk extracted from an entry.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct VaultChunk {
+    pub id: String,
+    pub entry_id: String,
+    pub chunk_index: u32,
+    pub content: String,
+    pub token_count: Option<u32>,
+}
+
+/// Filters passed to vault_list.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct VaultListFilters {
+    /// Restrict to a specific kind
+    pub kind: Option<EntryKind>,
+    /// Only pinned entries
+    pub pinned: Option<bool>,
+    /// Only entries in the Unsorted review tray
+    pub unsorted: Option<bool>,
+    /// Free-text filter (title/tags)
+    pub query: Option<String>,
+}
+
+/// Search mode for vault_search.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "snake_case")]
+pub enum VaultSearchMode {
+    /// Lexical full-text search (FTS5)
+    Fts,
+    /// Vector similarity (embedding)
+    Semantic,
+}
+
+/// A single result from vault_search.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct VaultSearchResult {
+    pub chunk: VaultChunk,
+    pub entry: VaultEntry,
+    /// Similarity score (semantic) or BM25 rank (fts), higher = more relevant
+    pub score: f32,
+}
+
+/// Suggested mode when accepting a placement toast.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "snake_case")]
+pub enum PlacementMode {
+    /// Only keep in vault
+    VaultOnly,
+    /// Copy file to workspace, remove vault blob
+    PlaceInProject,
+    /// Keep vault copy and copy into workspace; entry retains workspace_path
+    Both,
+}
+
+/// Workspace-placement suggestion returned by the placement scorer.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct PlacementSuggestion {
+    pub entry_id: String,
+    /// Suggested relative path inside the active workspace
+    pub target_path: String,
+    /// [0.0, 1.0]; suppressed in UI below 0.5
+    pub score: f32,
+    /// Human-readable explanation ("matches sibling PNGs in src/assets")
+    pub reason: String,
+}
+
+/// Result of accepting a placement suggestion.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct PlacementResult {
+    pub entry_id: String,
+    /// Absolute path written to the workspace (if any)
+    pub workspace_path: Option<String>,
+    pub mode: PlacementMode,
+}
+
+// =============================================================================
 // Backend Events (sent from Rust to TypeScript)
 // =============================================================================
 
@@ -676,6 +882,61 @@ pub enum BackendEvent {
     /// Update error
     #[serde(rename = "update:error")]
     UpdateError { error: String },
+
+    // =========================================================================
+    // Vault events
+    // =========================================================================
+    /// A new entry was added to the vault (local)
+    #[serde(rename = "vault:entry_added")]
+    VaultEntryAdded { entry_id: String },
+
+    /// An existing entry was updated (tags, scope, pin, status)
+    #[serde(rename = "vault:entry_updated")]
+    VaultEntryUpdated { entry_id: String },
+
+    /// An entry was deleted
+    #[serde(rename = "vault:entry_deleted")]
+    VaultEntryDeleted { entry_id: String },
+
+    /// Progress on the local indexing pipeline for an entry
+    #[serde(rename = "vault:index_progress")]
+    VaultIndexProgress {
+        entry_id: String,
+        /// One of: validate, extract, chunk, embed, store, notify
+        stage: String,
+        /// [0, 100]
+        pct: u8,
+    },
+
+    /// Cloud sync state changed for an entry
+    #[serde(rename = "vault:cloud_sync_updated")]
+    VaultCloudSyncUpdated {
+        entry_id: String,
+        state: CloudSyncState,
+    },
+
+    /// Count of entries in the Unsorted review tray changed
+    #[serde(rename = "vault:unsorted_count_changed")]
+    VaultUnsortedCountChanged { count: u32 },
+
+    /// Progress for the semantic embeddings backfill job.
+    ///
+    /// Emitted once per batch while `vault_backfill_embeddings` runs, plus a
+    /// final event with `done = true` that carries the terminal totals. The
+    /// frontend subscribes to this to animate a "Rebuilding index…" toast.
+    #[serde(rename = "vault:backfill_progress")]
+    VaultBackfillProgress {
+        /// Total chunks pending embedding at start of this backfill run.
+        total: u64,
+        /// Chunks successfully embedded so far (cumulative across batches).
+        completed: u64,
+        /// Chunks that failed (dim mismatch, corrupt BLOB, provider error).
+        failed: u64,
+        /// Wall-clock milliseconds elapsed since backfill started.
+        elapsed_ms: u64,
+        /// `true` on the last event for this run; `false` for ticks.
+        done: bool,
+    },
 
     // =========================================================================
     // Settings events

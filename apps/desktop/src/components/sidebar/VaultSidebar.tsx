@@ -18,6 +18,7 @@ import {
   PlugZap,
 } from 'lucide-react';
 import { VaultPlaceholder } from './vault/VaultPlaceholder';
+import { VaultPanel } from '@/components/vault/VaultPanel';
 import { useUIStore } from '@/stores/uiStore';
 import type { VaultNav } from '@/stores/uiStore';
 import { cn } from '@/lib/utils';
@@ -33,7 +34,7 @@ const NAV_ITEMS: NavItem[] = [
   { key: 'skills', label: 'Skills', icon: Sparkles, badge: 'Soon' },
   { key: 'memory', label: 'Memory', icon: Brain },
   { key: 'tasks', label: 'Tasks', icon: ListChecks, badge: 'Soon' },
-  { key: 'current-vault', label: 'Current Vault', icon: VaultIcon, badge: 'Soon' },
+  { key: 'current-vault', label: 'Current Vault', icon: VaultIcon },
   { key: 'plugins', label: 'Plugins', icon: Puzzle, badge: 'Soon' },
   { key: 'connectors', label: 'Connectors', icon: PlugZap, badge: 'Soon' },
 ];
@@ -117,7 +118,11 @@ export const VaultSidebar: FC = () => {
       <div className="mx-4 h-px shrink-0 bg-border/60" />
 
       <div className="flex-1 min-h-0 overflow-hidden">
-        <VaultPlaceholder title={copy.title} description={copy.description} />
+        {vaultActiveNav === 'current-vault' ? (
+          <VaultPanel />
+        ) : (
+          <VaultPlaceholder title={copy.title} description={copy.description} />
+        )}
       </div>
     </div>
   );

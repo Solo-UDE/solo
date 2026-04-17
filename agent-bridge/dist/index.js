@@ -143,15 +143,490 @@ function shutdownFileLogging() {
 import { randomUUID } from "crypto";
 
 // src/agent.ts
-import { query } from "@anthropic-ai/claude-agent-sdk";
+import { query, createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
+
+// src/vault.ts
+import { Database } from "bun:sqlite";
+import { homedir as homedir2 } from "os";
+import { join as join2 } from "path";
+import { existsSync } from "fs";
+import { tool } from "@anthropic-ai/claude-agent-sdk";
+import { z } from "zod";
+var logger = createLogger("vault");
+var VAULT_DB = join2(homedir2(), ".solo", "vault", "index.sqlite");
+var EMBEDDING_DIM = 384;
+var VAULT_DEBUG = process.env.VAULT_DEBUG === "1" || process.env.VAULT_DEBUG === "true";
+function openDb() {
+  if (!existsSync(VAULT_DB)) {
+    return null;
+  }
+  try {
+    return new Database(VAULT_DB, { readonly: true });
+  } catch (err) {
+    logger.warn({ err: String(err), path: VAULT_DB }, "vault: open failed");
+    return null;
+  }
+}
+function searchVault(query2, opts = {}) {
+  const { projectId, topK = 6 } = opts;
+  const db = openDb();
+  if (!db) return [];
+  try {
+    const ftsQuery = sanitizeFts(query2);
+    if (!ftsQuery) {
+      db.close();
+      return [];
+    }
+    const stmt = db.query(`
+      SELECT
+        c.id AS chunk_id,
+        c.entry_id AS entry_id,
+        c.chunk_index AS chunk_index,
+        c.content AS content,
+        e.title AS title,
+        e.kind AS kind,
+        e.pinned AS pinned,
+        e.scope_type AS scope_type,
+        e.scope_project_id AS scope_project_id,
+        bm25(chunks_fts) AS rank
+      FROM chunks_fts
+      JOIN chunks  c ON c.id = chunks_fts.chunk_id
+      JOIN entries e ON e.id = c.entry_id
+      WHERE chunks_fts MATCH ?
+        AND (e.scope_type = 'global'
+             OR (e.scope_type = 'project' AND e.scope_project_id = ?))
+      ORDER BY rank
+      LIMIT ?
+    `);
+    const rows = stmt.all(ftsQuery, projectId ?? null, topK);
+    db.close();
+    return rows.map((r) => ({
+      entryId: r.entry_id,
+      entryTitle: r.title,
+      kind: r.kind,
+      pinned: r.pinned !== 0,
+      chunkIndex: r.chunk_index,
+      content: r.content,
+      score: 1 / (1 + Math.abs(r.rank))
+    }));
+  } catch (err) {
+    logger.warn({ err: String(err), query: query2 }, "vault: search failed");
+    try {
+      db.close();
+    } catch {
+    }
+    return [];
+  }
+}
+function pinnedEntries(opts = {}) {
+  const { projectId, limit = 3 } = opts;
+  const db = openDb();
+  if (!db) return [];
+  try {
+    const stmt = db.query(`
+      SELECT
+        c.id AS chunk_id,
+        c.entry_id AS entry_id,
+        c.chunk_index AS chunk_index,
+        c.content AS content,
+        e.title AS title,
+        e.kind AS kind,
+        e.pinned AS pinned,
+        e.scope_type AS scope_type,
+        e.scope_project_id AS scope_project_id,
+        0 AS rank
+      FROM entries e
+      JOIN chunks  c ON c.entry_id = e.id AND c.chunk_index = 0
+      WHERE e.pinned = 1
+        AND (e.scope_type = 'global'
+             OR (e.scope_type = 'project' AND e.scope_project_id = ?))
+      ORDER BY e.updated_at DESC
+      LIMIT ?
+    `);
+    const rows = stmt.all(projectId ?? null, limit);
+    db.close();
+    return rows.map((r) => ({
+      entryId: r.entry_id,
+      entryTitle: r.title,
+      kind: r.kind,
+      pinned: true,
+      chunkIndex: r.chunk_index,
+      content: r.content,
+      score: 1
+    }));
+  } catch (err) {
+    logger.warn({ err: String(err) }, "vault: pinned fetch failed");
+    try {
+      db.close();
+    } catch {
+    }
+    return [];
+  }
+}
+function fetchVaultContext(userMessage, opts = {}) {
+  const { projectId, maxChunks = 5 } = opts;
+  const pinned = pinnedEntries({ projectId, limit: 3 });
+  const hits = searchVault(userMessage, { projectId, topK: maxChunks });
+  const seen = /* @__PURE__ */ new Set();
+  const merged = [];
+  for (const h of [...pinned, ...hits]) {
+    const key = `${h.entryId}:${h.chunkIndex}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(h);
+    if (merged.length >= maxChunks + pinned.length) break;
+  }
+  if (merged.length === 0) return "";
+  const sections = merged.map((h) => {
+    const badge = h.pinned ? " [pinned]" : "";
+    return `### ${h.entryTitle}${badge} (${h.kind}, chunk ${h.chunkIndex})
+${h.content.trim()}`;
+  });
+  return [
+    "<vault-memory>",
+    "The following context was auto-retrieved from the user's vault. Treat it",
+    "as authoritative when answering. If none of it is relevant to the user's",
+    "current question, ignore it silently rather than mentioning that you",
+    "received it.",
+    "",
+    sections.join("\n\n"),
+    "</vault-memory>"
+  ].join("\n");
+}
+function sanitizeFts(raw) {
+  const cleaned = raw.replace(/["']/g, " ").replace(/\s+/g, " ").trim();
+  if (!cleaned) return "";
+  const terms = cleaned.split(" ").filter((t) => t.length >= 2).map((t) => t.replace(/[^\p{L}\p{N}_-]/gu, "")).filter(Boolean);
+  if (terms.length === 0) return "";
+  return terms.join(" OR ");
+}
+var semanticCache = null;
+var semanticCacheScope = null;
+var semanticCacheLoading = null;
+async function loadEmbeddingsCache(projectId) {
+  const scopeKey = projectId ? `project:${projectId}` : "global";
+  if (semanticCache !== null && semanticCacheScope === scopeKey) {
+    return;
+  }
+  if (semanticCacheLoading) {
+    return semanticCacheLoading;
+  }
+  const p = (async () => {
+    const start = Date.now();
+    logger.info({ scope: scopeKey }, "vault.cache.load.start");
+    const db = openDb();
+    if (!db) {
+      semanticCache = [];
+      semanticCacheScope = scopeKey;
+      logger.warn({ path: VAULT_DB }, "vault.cache.load.no_db");
+      return;
+    }
+    try {
+      const stmt = db.query(`
+        SELECT
+          c.id          AS chunk_id,
+          c.entry_id    AS entry_id,
+          c.chunk_index AS chunk_index,
+          c.content     AS content,
+          c.embedding   AS embedding,
+          e.title       AS title,
+          e.kind        AS kind,
+          e.pinned      AS pinned
+        FROM chunks c
+        JOIN entries e ON e.id = c.entry_id
+        WHERE c.embedding IS NOT NULL
+          AND (e.scope_type = 'global'
+               OR (e.scope_type = 'project' AND e.scope_project_id = ?))
+      `);
+      const rows = stmt.all(projectId ?? null);
+      const out = [];
+      let totalBytes = 0;
+      let skipped = 0;
+      for (const r of rows) {
+        const vec = decodeEmbedding(r.embedding, EMBEDDING_DIM);
+        if (!vec) {
+          skipped++;
+          continue;
+        }
+        totalBytes += r.embedding.byteLength;
+        out.push({
+          chunkId: r.chunk_id,
+          entryId: r.entry_id,
+          entryTitle: r.title,
+          kind: r.kind,
+          pinned: r.pinned !== 0,
+          chunkIndex: r.chunk_index,
+          content: r.content,
+          embedding: vec
+        });
+      }
+      semanticCache = out;
+      semanticCacheScope = scopeKey;
+      logger.info(
+        {
+          chunks: out.length,
+          bytes: totalBytes,
+          ms: Date.now() - start,
+          dim: EMBEDDING_DIM,
+          skipped_corrupt: skipped,
+          scope: scopeKey
+        },
+        "vault.cache.loaded"
+      );
+    } catch (err) {
+      logger.error({ err: String(err) }, "vault.cache.load_failed");
+      semanticCache = [];
+      semanticCacheScope = scopeKey;
+    } finally {
+      try {
+        db.close();
+      } catch {
+      }
+    }
+  })();
+  semanticCacheLoading = p;
+  try {
+    await p;
+  } finally {
+    semanticCacheLoading = null;
+  }
+}
+function decodeEmbedding(bytes, expectedDim) {
+  if (bytes.byteLength % 4 !== 0) return null;
+  const gotDim = bytes.byteLength / 4;
+  if (gotDim !== expectedDim) return null;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const out = new Float32Array(gotDim);
+  for (let i = 0; i < gotDim; i++) {
+    out[i] = view.getFloat32(
+      i * 4,
+      /* littleEndian */
+      true
+    );
+  }
+  return out;
+}
+function cosine(a, b) {
+  if (a.length !== b.length) return 0;
+  let dot = 0;
+  let ma = 0;
+  let mb = 0;
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i];
+    const y = b[i];
+    dot += x * y;
+    ma += x * x;
+    mb += y * y;
+  }
+  const denom = Math.sqrt(ma) * Math.sqrt(mb);
+  if (!Number.isFinite(denom) || denom === 0) return 0;
+  const c = dot / denom;
+  return Number.isFinite(c) ? c : 0;
+}
+var QUERY_CACHE_MAX = 128;
+var queryEmbedCache = /* @__PURE__ */ new Map();
+var embedderPromise = null;
+async function getEmbedder() {
+  if (embedderPromise) return embedderPromise;
+  embedderPromise = (async () => {
+    const start = Date.now();
+    logger.info({ model: "Xenova/all-MiniLM-L6-v2" }, "vault.embedder.init.start");
+    try {
+      const { pipeline, env } = await import("@xenova/transformers");
+      env.allowRemoteModels = true;
+      const extractor = await pipeline(
+        "feature-extraction",
+        "Xenova/all-MiniLM-L6-v2"
+      );
+      logger.info(
+        { ms: Date.now() - start },
+        "vault.embedder.init.done"
+      );
+      return extractor;
+    } catch (err) {
+      logger.error({ err: String(err) }, "vault.embedder.init.failed");
+      embedderPromise = null;
+      throw err;
+    }
+  })();
+  return embedderPromise;
+}
+async function embedQuery(text) {
+  const start = Date.now();
+  const trimmed = text.trim();
+  if (trimmed.length === 0) return null;
+  const cached = queryEmbedCache.get(trimmed);
+  if (cached) {
+    queryEmbedCache.delete(trimmed);
+    queryEmbedCache.set(trimmed, cached);
+    logger.info(
+      {
+        cached: true,
+        ms: Date.now() - start,
+        tokens_est: Math.ceil(trimmed.length / 4)
+      },
+      "vault.query.embed"
+    );
+    return cached;
+  }
+  let extractor;
+  try {
+    extractor = await getEmbedder();
+  } catch {
+    return null;
+  }
+  const inferenceStart = Date.now();
+  let vec;
+  try {
+    const output = await extractor(trimmed, { pooling: "mean", normalize: true });
+    vec = new Float32Array(output.data);
+  } catch (err) {
+    logger.error({ err: String(err) }, "vault.query.embed.failed");
+    return null;
+  }
+  if (queryEmbedCache.size >= QUERY_CACHE_MAX) {
+    const firstKey = queryEmbedCache.keys().next().value;
+    if (firstKey !== void 0) queryEmbedCache.delete(firstKey);
+  }
+  queryEmbedCache.set(trimmed, vec);
+  logger.info(
+    {
+      cached: false,
+      ms: Date.now() - start,
+      inference_ms: Date.now() - inferenceStart,
+      tokens_est: Math.ceil(trimmed.length / 4),
+      dim: vec.length
+    },
+    "vault.query.embed"
+  );
+  return vec;
+}
+async function searchVaultSemantic(query2, opts = {}) {
+  const start = Date.now();
+  const { projectId, topK = 6 } = opts;
+  await loadEmbeddingsCache(projectId);
+  if (!semanticCache || semanticCache.length === 0) {
+    logger.warn(
+      { reason: "cache_empty", candidates: 0 },
+      "vault.tool.semantic_unavailable"
+    );
+    return [];
+  }
+  const queryVec = await embedQuery(query2);
+  if (!queryVec) {
+    logger.warn(
+      { reason: "query_embed_failed" },
+      "vault.tool.semantic_unavailable"
+    );
+    return [];
+  }
+  const rankStart = Date.now();
+  const scored = semanticCache.map((c) => ({
+    c,
+    score: cosine(queryVec, c.embedding)
+  }));
+  scored.sort((a, b) => b.score - a.score);
+  const top = scored.slice(0, topK);
+  const rankMs = Date.now() - rankStart;
+  const hits = top.map(({ c, score }) => ({
+    entryId: c.entryId,
+    entryTitle: c.entryTitle,
+    kind: c.kind,
+    pinned: c.pinned,
+    chunkIndex: c.chunkIndex,
+    content: c.content,
+    score
+  }));
+  logger.info(
+    {
+      mode: "semantic",
+      query_len: query2.length,
+      top_k: topK,
+      candidates: semanticCache.length,
+      rank_ms: rankMs,
+      total_ms: Date.now() - start,
+      top_scores: hits.slice(0, 5).map((h) => ({
+        title: h.entryTitle,
+        score: Math.round(h.score * 1e3) / 1e3
+      }))
+    },
+    "vault.tool.search"
+  );
+  return hits;
+}
+var vaultSearchTool = tool(
+  "vault_search",
+  `Search the user's personal vault (agent memory) for indexed content. The vault holds documents, code, screenshots, and data the user has chosen to remember across sessions. ALWAYS use this tool before asking the user to re-explain something they've indexed \u2014 especially when they refer to "that spec", "the schema I shared", "my notes on X", or ask "did I put X in the vault?". Pick mode="fts" for exact keyword recall and mode="semantic" for conceptual / paraphrased queries. When unsure, start with fts; if it returns nothing, retry with semantic.`,
+  {
+    query: z.string().min(2).describe(
+      "Free-text search query. Keywords from the user's message work well for fts mode; natural-language phrases work better for semantic mode."
+    ),
+    mode: z.enum(["fts", "semantic"]).default("fts").describe(
+      'Retrieval strategy. "fts" = BM25 keyword match (fast, precise). "semantic" = OpenAI embedding + cosine (recalls paraphrased matches).'
+    ),
+    top_k: z.number().int().min(1).max(20).default(6).describe("Maximum chunks to return (default 6).")
+  },
+  async (args) => {
+    const start = Date.now();
+    const mode = args.mode ?? "fts";
+    const topK = args.top_k ?? 6;
+    let hits;
+    if (mode === "semantic") {
+      hits = await searchVaultSemantic(args.query, { topK });
+    } else {
+      hits = searchVault(args.query, { topK });
+      logger.info(
+        {
+          mode: "fts",
+          query_len: args.query.length,
+          top_k: topK,
+          ms: Date.now() - start,
+          returned: hits.length,
+          top_scores: hits.slice(0, 5).map((h) => ({
+            title: h.entryTitle,
+            score: Math.round(h.score * 1e3) / 1e3
+          }))
+        },
+        "vault.tool.search"
+      );
+    }
+    if (hits.length === 0) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `No vault entries matched "${args.query}" (mode: ${mode}).`
+          }
+        ]
+      };
+    }
+    const body = hits.map(
+      (h) => `### ${h.entryTitle}${h.pinned ? " [pinned]" : ""} (${h.kind})
+score: ${(h.score * 100).toFixed(0)}%
+${h.content.trim()}`
+    ).join("\n\n---\n\n");
+    const debugFooter = VAULT_DEBUG ? `
+
+---
+<vault-debug>
+mode=${mode} top_k=${topK} returned=${hits.length} ms=${Date.now() - start}
+${hits.map((h) => `  ${h.entryTitle} \u2192 ${h.score.toFixed(4)}`).join("\n")}
+</vault-debug>` : "";
+    return {
+      content: [{ type: "text", text: body + debugFooter }]
+    };
+  }
+);
+
+// src/agent.ts
 import * as fs5 from "fs";
 
 // src/credentials.ts
 import { execFileSync } from "child_process";
 import { readFileSync } from "fs";
-import { join as join2 } from "path";
-import { homedir as homedir2 } from "os";
-var logger = createLogger("ClaudeCredentials");
+import { join as join3 } from "path";
+import { homedir as homedir3 } from "os";
+var logger2 = createLogger("ClaudeCredentials");
 var CLAUDE_CODE_OAUTH_CLIENT_ID = "claude-desktop";
 var CLAUDE_CODE_TOKEN_ENDPOINT = "https://api.anthropic.com/v1/oauth/token";
 var EXPIRY_BUFFER_MS = 3e5;
@@ -182,19 +657,19 @@ async function refreshOAuthToken(refreshToken) {
       signal: AbortSignal.timeout(15e3)
     });
     if (!resp.ok) {
-      logger.warn({ status: resp.status }, "Claude Code token refresh failed");
+      logger2.warn({ status: resp.status }, "Claude Code token refresh failed");
       return null;
     }
     const data = await resp.json();
     const accessToken = data.access_token;
     if (typeof accessToken === "string" && accessToken !== "") {
-      logger.info("Successfully refreshed Claude Code OAuth token");
+      logger2.info("Successfully refreshed Claude Code OAuth token");
       return accessToken;
     }
-    logger.warn("Token refresh response missing access_token");
+    logger2.warn("Token refresh response missing access_token");
     return null;
   } catch (error) {
-    logger.error({ error }, "Error refreshing OAuth token");
+    logger2.error({ error }, "Error refreshing OAuth token");
     return null;
   }
 }
@@ -204,53 +679,53 @@ function isTokenExpired(expiryMs) {
 async function resolveOAuthFromParsed(parsed, source) {
   const claudeAuth = parsed.claudeAiOauth;
   if (claudeAuth === void 0) {
-    logger.debug(`No Claude OAuth credentials in ${source}`);
+    logger2.debug(`No Claude OAuth credentials in ${source}`);
     return null;
   }
   const accessToken = claudeAuth.accessToken;
   const expiresAt = claudeAuth.expiresAt;
   if (accessToken === void 0 || accessToken === "") {
-    logger.debug(`OAuth token missing in ${source} credentials`);
+    logger2.debug(`OAuth token missing in ${source} credentials`);
     return null;
   }
   if (expiresAt !== void 0 && expiresAt !== "") {
     const expiryMs = typeof expiresAt === "number" ? expiresAt : parseInt(expiresAt, 10);
     if (isTokenExpired(expiryMs)) {
-      logger.warn({ expiryDate: new Date(expiryMs).toISOString() }, `OAuth token expired in ${source}, attempting refresh`);
+      logger2.warn({ expiryDate: new Date(expiryMs).toISOString() }, `OAuth token expired in ${source}, attempting refresh`);
       const refreshToken = claudeAuth.refreshToken;
       if (refreshToken !== void 0 && refreshToken !== "") {
         const newToken = await refreshOAuthToken(refreshToken);
         if (newToken !== null) {
           return newToken;
         }
-        logger.warn(`Failed to refresh OAuth token from ${source}`);
+        logger2.warn(`Failed to refresh OAuth token from ${source}`);
       } else {
-        logger.debug(`No refreshToken in ${source} credentials`);
+        logger2.debug(`No refreshToken in ${source} credentials`);
       }
       return null;
     }
-    logger.debug({ expiryDate: new Date(expiryMs).toISOString() }, `OAuth token valid from ${source}`);
+    logger2.debug({ expiryDate: new Date(expiryMs).toISOString() }, `OAuth token valid from ${source}`);
   }
   return accessToken;
 }
 async function getOAuthTokenFromFile() {
   try {
-    const credPath = join2(homedir2(), ".claude", ".credentials.json");
+    const credPath = join3(homedir3(), ".claude", ".credentials.json");
     const content = readFileSync(credPath, "utf-8");
     const parsed = JSON.parse(content);
     if (!isClaudeCredentialsFile(parsed)) {
-      logger.debug("Invalid credentials structure in ~/.claude/.credentials.json");
+      logger2.debug("Invalid credentials structure in ~/.claude/.credentials.json");
       return null;
     }
     return resolveOAuthFromParsed(parsed, "~/.claude/.credentials.json");
   } catch {
-    logger.debug("Could not read ~/.claude/.credentials.json");
+    logger2.debug("Could not read ~/.claude/.credentials.json");
     return null;
   }
 }
 async function getOAuthTokenFromKeychain() {
   if (process.platform !== "darwin") {
-    logger.debug("Keychain lookup skipped \u2014 not macOS");
+    logger2.debug("Keychain lookup skipped \u2014 not macOS");
     return null;
   }
   try {
@@ -261,19 +736,19 @@ async function getOAuthTokenFromKeychain() {
     ).trim();
     const parsed = JSON.parse(raw);
     if (!isClaudeCredentialsFile(parsed)) {
-      logger.debug("Invalid credentials structure in macOS Keychain");
+      logger2.debug("Invalid credentials structure in macOS Keychain");
       return null;
     }
     return resolveOAuthFromParsed(parsed, "macOS Keychain");
   } catch {
-    logger.debug("Could not read credentials from macOS Keychain");
+    logger2.debug("Could not read credentials from macOS Keychain");
     return null;
   }
 }
 function getApiKeyFromEnv() {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (apiKey === void 0 || apiKey === "") {
-    logger.debug("ANTHROPIC_API_KEY not found in environment");
+    logger2.debug("ANTHROPIC_API_KEY not found in environment");
     return null;
   }
   return apiKey;
@@ -281,20 +756,20 @@ function getApiKeyFromEnv() {
 async function getCredentials() {
   const fileToken = await getOAuthTokenFromFile();
   if (fileToken !== null) {
-    logger.info("OAuth token available from ~/.claude/.credentials.json");
+    logger2.info("OAuth token available from ~/.claude/.credentials.json");
     return { type: "oauth", hasCredentials: true };
   }
   const keychainToken = await getOAuthTokenFromKeychain();
   if (keychainToken !== null) {
-    logger.info("OAuth token available from macOS Keychain");
+    logger2.info("OAuth token available from macOS Keychain");
     return { type: "oauth", hasCredentials: true };
   }
   const apiKey = getApiKeyFromEnv();
   if (apiKey !== null) {
-    logger.info("API key available from environment");
+    logger2.info("API key available from environment");
     return { type: "apikey", hasCredentials: true };
   }
-  logger.error("No credentials found (checked ~/.claude/.credentials.json, macOS Keychain, and env)");
+  logger2.error("No credentials found (checked ~/.claude/.credentials.json, macOS Keychain, and env)");
   return { type: "apikey", hasCredentials: false };
 }
 var ClaudeCredentials = {
@@ -308,7 +783,7 @@ var ClaudeCredentials = {
 import * as fs2 from "fs";
 import * as os2 from "os";
 import * as path2 from "path";
-var logger2 = createLogger("PermissionPipeline");
+var logger3 = createLogger("PermissionPipeline");
 var DEFAULT_TOOL_TIERS = /* @__PURE__ */ new Map([
   // Read-only
   ["Read", "read"],
@@ -366,7 +841,7 @@ function parseRule(raw) {
   const trimmed = raw.trim();
   const open = trimmed.indexOf("(");
   if (open > 0 && trimmed.endsWith(")")) {
-    const tool = trimmed.slice(0, open);
+    const tool2 = trimmed.slice(0, open);
     const content = unescape(trimmed.slice(open + 1, trimmed.length - 1));
     let matcher = null;
     try {
@@ -374,7 +849,7 @@ function parseRule(raw) {
     } catch {
       matcher = null;
     }
-    return { tool, content, matcher };
+    return { tool: tool2, content, matcher };
   }
   return { tool: trimmed, content: null, matcher: null };
 }
@@ -493,7 +968,7 @@ function readJsonOr(file, fallback) {
     if (raw.length === 0) return fallback;
     return JSON.parse(raw);
   } catch (err) {
-    logger2.warn({ file, err }, "Failed to read settings file \u2014 falling back to defaults");
+    logger3.warn({ file, err }, "Failed to read settings file \u2014 falling back to defaults");
     return fallback;
   }
 }
@@ -556,7 +1031,7 @@ function localize(_key, message) {
 }
 
 // src/permissions.ts
-var logger3 = createLogger("PermissionManager");
+var logger4 = createLogger("PermissionManager");
 var PermissionManager = class _PermissionManager {
   requestCallback;
   snapshotCallback;
@@ -653,7 +1128,7 @@ var PermissionManager = class _PermissionManager {
       this.settingsCache.set(ws, { mtime: combinedMtime, settings });
       return settings;
     } catch (err) {
-      logger3.warn({ err }, "Failed to load settings \u2014 falling back to mode-only gating");
+      logger4.warn({ err }, "Failed to load settings \u2014 falling back to mode-only gating");
       return null;
     }
   }
@@ -745,13 +1220,13 @@ var PermissionManager = class _PermissionManager {
   createCallback() {
     return async (toolName, toolInput, options) => {
       const mode = this.resolveMode();
-      logger3.debug({ toolName, mode }, "Permission callback invoked");
+      logger4.debug({ toolName, mode }, "Permission callback invoked");
       try {
         if (mode === "plan" && (toolName === "Write" || toolName === "Edit")) {
           const filePath = toolInput.file_path;
           const planPath = this.planFilePathGetter?.();
           if (planPath && filePath === planPath) {
-            logger3.info({ toolName, filePath }, "Plan mode \u2014 auto-approving write to plan file");
+            logger4.info({ toolName, filePath }, "Plan mode \u2014 auto-approving write to plan file");
             return { behavior: "allow", updatedInput: toolInput };
           }
         }
@@ -763,13 +1238,13 @@ var PermissionManager = class _PermissionManager {
             mode,
             settings.permissions
           );
-          logger3.debug({ toolName, mode, decision }, "Pipeline decision");
+          logger4.debug({ toolName, mode, decision }, "Pipeline decision");
           if (decision.behavior === "allow") {
             if ((toolName === "Write" || toolName === "Edit") && this.snapshotCallback) {
               try {
                 await this.snapshotCallback(toolName, toolInput, null);
               } catch (err) {
-                logger3.warn({ toolName, err }, "Snapshot capture failed \u2014 continuing anyway");
+                logger4.warn({ toolName, err }, "Snapshot capture failed \u2014 continuing anyway");
               }
             }
             return { behavior: "allow", updatedInput: toolInput };
@@ -784,7 +1259,7 @@ var PermissionManager = class _PermissionManager {
         }
         if (mode === "plan") {
           if (toolName !== "Write" && toolName !== "Edit" && !_PermissionManager.PLAN_MODE_ALLOWED_TOOLS.has(toolName)) {
-            logger3.info({ toolName }, "Plan mode \u2014 denying non-planning tool");
+            logger4.info({ toolName }, "Plan mode \u2014 denying non-planning tool");
             return {
               behavior: "deny",
               message: "Plan mode is active. Only read-only tools and plan file edits are allowed. Use ExitPlanMode to switch back."
@@ -795,7 +1270,7 @@ var PermissionManager = class _PermissionManager {
           try {
             await this.snapshotCallback(toolName, toolInput, null);
           } catch (err) {
-            logger3.warn({ toolName, err }, "Snapshot capture failed \u2014 continuing anyway");
+            logger4.warn({ toolName, err }, "Snapshot capture failed \u2014 continuing anyway");
           }
         }
         if (this.isAlwaysAllowed(toolName)) {
@@ -815,7 +1290,7 @@ var PermissionManager = class _PermissionManager {
                   ...toolInput,
                   answers: result.answers
                 };
-                logger3.debug({ answers: result.answers }, "AskUserQuestion answers received");
+                logger4.debug({ answers: result.answers }, "AskUserQuestion answers received");
               }
               return {
                 behavior: "allow",
@@ -829,7 +1304,7 @@ var PermissionManager = class _PermissionManager {
               interrupt: false
             };
           } catch (error) {
-            logger3.error({ toolName, error }, "Permission request failed - DENYING");
+            logger4.error({ toolName, error }, "Permission request failed - DENYING");
             return {
               behavior: "deny",
               message: localize(
@@ -845,7 +1320,7 @@ var PermissionManager = class _PermissionManager {
           updatedInput: toolInput
         };
       } catch (error) {
-        logger3.error(
+        logger4.error(
           { error },
           "CRITICAL: Permission callback crashed - DENYING to prevent silent approval"
         );
@@ -1484,7 +1959,7 @@ function formatGeneric(resultContent) {
 }
 
 // src/agent.ts
-var logger4 = createLogger("OrbitAgent");
+var logger5 = createLogger("OrbitAgent");
 function isToolResultBlock(block) {
   if (typeof block !== "object" || block === null) {
     return false;
@@ -1636,7 +2111,7 @@ var OrbitAgent = class {
       const planName = generatePlanName();
       this._planFilePath = getPlanFilePath(planName, this.cwd);
       ensurePlanDirectory(this.cwd);
-      logger4.info({ planName, planFilePath: this._planFilePath }, "Plan file path generated during construction");
+      logger5.info({ planName, planFilePath: this._planFilePath }, "Plan file path generated during construction");
     }
     this._acceptMode = config.acceptEnabled ?? false;
     this._debugMode = config.debugEnabled ?? false;
@@ -1664,7 +2139,7 @@ var OrbitAgent = class {
       }
     } catch {
     }
-    logger4.info(
+    logger5.info(
       {
         sessionMode: this._sessionMode,
         mcpServerCount: Object.keys(this._mcpServers).length,
@@ -1679,11 +2154,11 @@ var OrbitAgent = class {
    */
   registerMcpServer(name, server) {
     if (this.sessionActive) {
-      logger4.warn("Cannot register MCP server after session has started");
+      logger5.warn("Cannot register MCP server after session has started");
       return;
     }
     this._mcpServers[name] = server;
-    logger4.info({ name }, "MCP server registered");
+    logger5.info({ name }, "MCP server registered");
   }
   /**
    * Unregister an MCP server
@@ -1692,7 +2167,7 @@ var OrbitAgent = class {
     const { [name]: _removed, ...rest } = this._mcpServers;
     void _removed;
     this._mcpServers = rest;
-    logger4.info({ name }, "MCP server unregistered");
+    logger5.info({ name }, "MCP server unregistered");
   }
   /**
    * Set or remove the browser MCP server.
@@ -1825,6 +2300,25 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
 ### When to Use DevTools vs Browser Tools
 - **Browser tools (mcp__browser__)**: Page interaction, navigation, clicking, typing
 - **DevTools tools (mcp__orbit-devtools__)**: Deep inspection, debugging, storage, performance analysis
+
+## Vault \u2014 Agent Memory
+
+The user maintains a personal **vault** of indexed knowledge (documents, code,
+data, screenshots, notes). It functions as your durable memory across sessions.
+
+- **Auto-injected context**: if relevant vault chunks are found for the
+  current turn, they are prepended to the user message inside a
+  \`<vault-memory>\` block. Treat those chunks as authoritative. If none are
+  relevant to the user's question, ignore them silently \u2014 do NOT tell the
+  user "I received vault context but it wasn't relevant".
+- **On-demand lookup**: when the user refers to something they previously
+  indexed ("the schema I added", "my notes on X", "did I put Y in the
+  vault?"), call the \`mcp__vault__vault_search\` tool with keywords from
+  their message. Prefer this over re-asking the user or grepping the
+  filesystem for vault content.
+- **Pinned entries** appear with a \`[pinned]\` badge. They are
+  user-designated sources of truth \u2014 treat them as higher priority than
+  other retrieved chunks.
 `
       },
       // Working directory
@@ -1835,22 +2329,22 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
     if (this._thinkingMode && this._thinkingBudget > 0) {
       options.maxThinkingTokens = this._thinkingBudget;
       const modeName = this._thinkingBudget <= 4096 ? "think" : this._thinkingBudget <= 10240 ? "hard" : "ultra";
-      logger4.info(
+      logger5.info(
         { thinkingMode: modeName, thinkingBudget: this._thinkingBudget },
         "Extended thinking ENABLED"
       );
     } else {
-      logger4.info({ thinkingMode: "off" }, "Extended thinking DISABLED");
+      logger5.info({ thinkingMode: "off" }, "Extended thinking DISABLED");
     }
     if (this._sessionMode === "chat") {
       const chatTools = getAllowedToolsForMode("chat");
       options.allowedTools = chatTools;
-      logger4.info({ mode: "chat", tools: chatTools }, "Chat mode - read-only tools auto-approved");
+      logger5.info({ mode: "chat", tools: chatTools }, "Chat mode - read-only tools auto-approved");
     } else {
       const permissionCallback = this.permissionManager.createCallback();
-      logger4.debug("Using SDK permission flow with canUseTool callback");
+      logger5.debug("Using SDK permission flow with canUseTool callback");
       options.canUseTool = async (toolName, toolInput, canUseToolOptions) => {
-        logger4.debug({ toolName }, "canUseTool callback invoked");
+        logger5.debug({ toolName }, "canUseTool callback invoked");
         try {
           const result = await permissionCallback(toolName, toolInput, {
             signal: canUseToolOptions.signal,
@@ -1858,7 +2352,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
           });
           return result;
         } catch (error) {
-          logger4.error({ toolName, error }, "canUseTool callback error");
+          logger5.error({ toolName, error }, "canUseTool callback error");
           return {
             behavior: "deny",
             message: "Permission request failed"
@@ -1875,7 +2369,9 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
         "Task",
         "TodoWrite",
         "ListMcpResourcesTool",
-        "ReadMcpResourceTool"
+        "ReadMcpResourceTool",
+        // Vault memory tool — read-only, safe to auto-approve
+        "mcp__vault__vault_search"
       ]);
       options.hooks = {
         // PreToolUse hook - auto-approve safe tools, let SDK handle others
@@ -1889,7 +2385,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
                 const preToolInput = input;
                 const toolName = preToolInput.tool_name;
                 const toolInput = preToolInput.tool_input;
-                logger4.info(
+                logger5.info(
                   {
                     toolName,
                     inputKeys: Object.keys(toolInput)
@@ -1897,7 +2393,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
                   "Hook: PreToolUse \u2014 tool requested"
                 );
                 if (SAFE_TOOLS.has(toolName)) {
-                  logger4.debug({ toolName }, "Hook: PreToolUse \u2014 auto-approved (safe tool)");
+                  logger5.debug({ toolName }, "Hook: PreToolUse \u2014 auto-approved (safe tool)");
                   return Promise.resolve({
                     hookSpecificOutput: {
                       hookEventName: "PreToolUse",
@@ -1906,7 +2402,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
                     }
                   });
                 }
-                logger4.debug({ toolName }, "Hook: PreToolUse \u2014 delegating to SDK permission flow");
+                logger5.debug({ toolName }, "Hook: PreToolUse \u2014 delegating to SDK permission flow");
                 return Promise.resolve({});
               }
             ]
@@ -1921,7 +2417,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
                 const postInput = input;
                 const response = postInput.tool_response;
                 const responseStr = typeof response === "string" ? response : JSON.stringify(response);
-                logger4.info(
+                logger5.info(
                   {
                     toolName: postInput.tool_name,
                     toolUseId,
@@ -1942,7 +2438,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
             hooks: [
               (input, toolUseId) => {
                 const failureInput = input;
-                logger4.warn(
+                logger5.warn(
                   {
                     toolName: failureInput.tool_name,
                     toolUseId,
@@ -1964,7 +2460,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
             hooks: [
               (input) => {
                 const notifInput = input;
-                logger4.info(
+                logger5.info(
                   {
                     message: notifInput.message,
                     title: notifInput.title
@@ -1983,7 +2479,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
             hooks: [
               (input) => {
                 const compactInput = input;
-                logger4.info(
+                logger5.info(
                   {
                     trigger: compactInput.trigger,
                     customInstructions: compactInput.custom_instructions ? `${compactInput.custom_instructions.slice(0, 100)}...` : void 0
@@ -2004,7 +2500,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
                 const startInput = input;
                 const agentId = startInput.agent_id;
                 subagentStartTimes.set(agentId, Date.now());
-                logger4.info(
+                logger5.info(
                   {
                     agentId,
                     agentType: startInput.agent_type
@@ -2023,7 +2519,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
             hooks: [
               (input) => {
                 const stopInput = input;
-                logger4.info(
+                logger5.info(
                   {
                     stopHookActive: stopInput.stop_hook_active
                   },
@@ -2041,7 +2537,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
             hooks: [
               (input) => {
                 const sessionInput = input;
-                logger4.info(
+                logger5.info(
                   {
                     source: sessionInput.source,
                     model: this.model ?? "sonnet",
@@ -2066,7 +2562,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
             hooks: [
               (input) => {
                 const sessionInput = input;
-                logger4.info(
+                logger5.info(
                   {
                     reason: sessionInput.reason
                   },
@@ -2109,7 +2605,7 @@ You should build your plan incrementally by writing to or editing this file. NOT
                   if (this._debugGoal === null && promptText.trim().length > 0) {
                     this._debugGoal = promptText.trim();
                     this._debugTurnsSinceReview = 0;
-                    logger4.info(
+                    logger5.info(
                       { goalPreview: this._debugGoal.slice(0, 120) },
                       "Debug mode \u2014 captured session goal from first prompt"
                     );
@@ -2141,7 +2637,7 @@ Do NOT overwhelm the user with a full checklist every time \u2014 pick the most 
                   }
                 }
                 if (parts.length === 0) return Promise.resolve({});
-                logger4.info(
+                logger5.info(
                   {
                     planMode: this._planMode,
                     debugMode: this._debugMode,
@@ -2163,21 +2659,21 @@ Do NOT overwhelm the user with a full checklist every time \u2014 pick the most 
     }
     if (this.model) {
       options.model = this.model;
-      logger4.info({ model: this.model }, "Using model");
+      logger5.info({ model: this.model }, "Using model");
     }
     if (this._fallbackModel) {
       options.fallbackModel = this._fallbackModel;
-      logger4.info({ fallbackModel: this._fallbackModel }, "Fallback model configured");
+      logger5.info({ fallbackModel: this._fallbackModel }, "Fallback model configured");
     }
     if (this._maxTokens !== void 0) {
       options.env = {
         ...process.env,
         CLAUDE_CODE_MAX_OUTPUT_TOKENS: String(this._maxTokens)
       };
-      logger4.info({ maxTokens: this._maxTokens }, "Output-token cap configured");
+      logger5.info({ maxTokens: this._maxTokens }, "Output-token cap configured");
     }
     options.permissionMode = "default";
-    logger4.info(
+    logger5.info(
       {
         acceptMode: this._acceptMode,
         planMode: this._planMode,
@@ -2191,30 +2687,37 @@ Do NOT overwhelm the user with a full checklist every time \u2014 pick the most 
       if (this._forkSession) {
         options.forkSession = true;
       }
-      logger4.info(
+      logger5.info(
         { resumeFrom: this._resumeSessionId, fork: this._forkSession },
         "Session resume/fork configured"
       );
     }
-    if (Object.keys(this._mcpServers).length > 0) {
-      options.mcpServers = this._mcpServers;
-      logger4.info({ servers: Object.keys(this._mcpServers) }, "MCP servers configured");
-    }
+    const vaultMcp = createSdkMcpServer({
+      name: "vault",
+      version: "0.1.0",
+      tools: [vaultSearchTool]
+    });
+    const mergedMcp = { ...this._mcpServers, vault: vaultMcp };
+    options.mcpServers = mergedMcp;
+    logger5.info({ servers: Object.keys(mergedMcp) }, "MCP servers configured");
     if (this._outputFormat) {
       options.outputFormat = this._outputFormat;
-      logger4.info({ type: this._outputFormat.type }, "Structured output format configured");
+      logger5.info({ type: this._outputFormat.type }, "Structured output format configured");
     }
     if (this._agents && Object.keys(this._agents).length > 0) {
       options.agents = this._agents;
-      logger4.info({ agents: Object.keys(this._agents) }, "Custom subagents configured");
+      logger5.info({ agents: Object.keys(this._agents) }, "Custom subagents configured");
     }
     return options;
   }
   async startSession() {
     if (this.sessionActive) {
-      logger4.warn("Session already active");
+      logger5.warn("Session already active");
       return;
     }
+    loadEmbeddingsCache(this.cwd).catch((err) => {
+      logger5.warn({ err: String(err) }, "vault.cache.preload_failed");
+    });
     const currentPath = process.env.PATH ?? "";
     const homeDir = process.env.HOME ?? "";
     const additionalPaths = [
@@ -2233,7 +2736,7 @@ Do NOT overwhelm the user with a full checklist every time \u2014 pick the most 
     ].filter((p) => !currentPath.includes(p));
     if (additionalPaths.length > 0) {
       process.env.PATH = [...additionalPaths, currentPath].join(":");
-      logger4.debug({ addedPaths: additionalPaths }, "Fixed PATH for Electron app");
+      logger5.debug({ addedPaths: additionalPaths }, "Fixed PATH for Electron app");
     }
     const credentials = await ClaudeCredentials.getCredentials();
     if (!credentials.hasCredentials) {
@@ -2244,17 +2747,17 @@ Do NOT overwhelm the user with a full checklist every time \u2014 pick the most 
     if (credentials.type === "oauth") {
       delete process.env.ANTHROPIC_API_KEY;
       delete process.env.ANTHROPIC_AUTH_TOKEN;
-      logger4.info("Using Claude Code OAuth (CLI reads from ~/.claude/.credentials.json)");
-      logger4.info("Note: Using your Claude subscription quota, not API credits");
+      logger5.info("Using Claude Code OAuth (CLI reads from ~/.claude/.credentials.json)");
+      logger5.info("Note: Using your Claude subscription quota, not API credits");
     } else {
       const apiKey = process.env.ANTHROPIC_API_KEY;
       if (!apiKey) {
         throw new Error("API key was detected but is no longer available");
       }
-      logger4.info("Using API key from .env (will consume API credits)");
+      logger5.info("Using API key from .env (will consume API credits)");
     }
     process.env.CLAUDE_CODE_STREAM_CLOSE_TIMEOUT = "86400000";
-    logger4.debug(
+    logger5.debug(
       { thinkingMode: this._thinkingMode, thinkingBudget: this._thinkingBudget },
       "Starting session"
     );
@@ -2264,7 +2767,7 @@ Do NOT overwhelm the user with a full checklist every time \u2014 pick the most 
       prompt: this.messageQueue[Symbol.asyncIterator](),
       options: this._createOptions()
     });
-    logger4.info("Session started successfully");
+    logger5.info("Session started successfully");
   }
   /**
    * Check if the session is ready to receive messages
@@ -2277,7 +2780,7 @@ Do NOT overwhelm the user with a full checklist every time \u2014 pick the most 
       throw new Error("Session not started. Call startSession() first.");
     }
     const thinkingModeName = this._thinkingMode && this._thinkingBudget > 0 ? this._thinkingBudget <= 4096 ? "think" : this._thinkingBudget <= 10240 ? "hard" : "ultra" : "off";
-    logger4.info(
+    logger5.info(
       {
         model: this.model ?? "sonnet",
         thinkingMode: thinkingModeName,
@@ -2293,7 +2796,22 @@ Do NOT overwhelm the user with a full checklist every time \u2014 pick the most 
       // allow-any-unicode-next-line
       "\u{1F4E4} Sending message to Claude"
     );
-    this.messageQueue.add(message, attachments);
+    let finalMessage = message;
+    try {
+      const ctx = fetchVaultContext(message, { projectId: this.cwd, maxChunks: 5 });
+      if (ctx) {
+        finalMessage = `${ctx}
+
+${message}`;
+        logger5.info(
+          { ctxLen: ctx.length, msgPreview: message.substring(0, 60) },
+          "\u{1F9E0} vault: context prepended"
+        );
+      }
+    } catch (err) {
+      logger5.warn({ err: String(err) }, "vault: pre-flight injection skipped");
+    }
+    this.messageQueue.add(finalMessage, attachments);
   }
   async *receiveResponse() {
     if (!this.currentQuery) {
@@ -2351,16 +2869,16 @@ Do NOT overwhelm the user with a full checklist every time \u2014 pick the most 
         yield message;
       }
     }
-    logger4.debug("Query session completed");
+    logger5.debug("Query session completed");
     this.sessionActive = false;
     this.currentQuery = null;
   }
   async stopSession() {
     if (!this.sessionActive) {
-      logger4.debug("Session not active");
+      logger5.debug("Session not active");
       return;
     }
-    logger4.debug("Stopping session");
+    logger5.debug("Stopping session");
     if (this.messageQueue) {
       this.messageQueue.stop();
       this.messageQueue = null;
@@ -2369,18 +2887,18 @@ Do NOT overwhelm the user with a full checklist every time \u2014 pick the most 
       try {
         await this.currentQuery.interrupt();
       } catch (error) {
-        logger4.error({ error }, "Error interrupting query");
+        logger5.error({ error }, "Error interrupting query");
       }
       this.currentQuery = null;
     }
     this.sessionActive = false;
-    logger4.info("Session stopped");
+    logger5.info("Session stopped");
   }
   async interrupt() {
     if (!this.currentQuery) {
       throw new Error("No active query to interrupt.");
     }
-    logger4.info("Interrupting current query");
+    logger5.info("Interrupting current query");
     await this.currentQuery.interrupt();
   }
   async setPermissionMode(mode) {
@@ -2401,7 +2919,7 @@ Do NOT overwhelm the user with a full checklist every time \u2014 pick the most 
       const budget = enabled && this._thinkingBudget > 0 ? this._thinkingBudget : null;
       await this.currentQuery.setMaxThinkingTokens(budget);
       const modeName = budget === null ? "off" : budget <= 4096 ? "think" : budget <= 10240 ? "hard" : "ultra";
-      logger4.info({ thinkingMode: modeName, budget }, "Thinking mode updated mid-session");
+      logger5.info({ thinkingMode: modeName, budget }, "Thinking mode updated mid-session");
     }
   }
   getThinkingMode() {
@@ -2415,12 +2933,12 @@ Do NOT overwhelm the user with a full checklist every time \u2014 pick the most 
         const planName = generatePlanName();
         this._planFilePath = getPlanFilePath(planName, this.cwd);
         ensurePlanDirectory(this.cwd);
-        logger4.info({ planName, planFilePath: this._planFilePath }, "Plan file path generated");
+        logger5.info({ planName, planFilePath: this._planFilePath }, "Plan file path generated");
       }
     } else {
       this._planFilePath = null;
     }
-    logger4.info({ enabled, planFilePath: this._planFilePath }, "Plan mode changed - will take effect on next tool use");
+    logger5.info({ enabled, planFilePath: this._planFilePath }, "Plan mode changed - will take effect on next tool use");
   }
   getPlanMode() {
     return this._planMode;
@@ -2433,7 +2951,7 @@ Do NOT overwhelm the user with a full checklist every time \u2014 pick the most 
     if (enabled) {
       this._planMode = false;
     }
-    logger4.info({ enabled }, "Accept mode changed - will take effect on next tool use");
+    logger5.info({ enabled }, "Accept mode changed - will take effect on next tool use");
   }
   getAcceptMode() {
     return this._acceptMode;
@@ -2451,7 +2969,7 @@ Do NOT overwhelm the user with a full checklist every time \u2014 pick the most 
       this._planMode = false;
       this._acceptMode = false;
     }
-    logger4.info({ enabled }, "Debug mode changed");
+    logger5.info({ enabled }, "Debug mode changed");
   }
   getDebugMode() {
     return this._debugMode;
@@ -2470,7 +2988,7 @@ Do NOT overwhelm the user with a full checklist every time \u2014 pick the most 
     this.model = model;
     if (this.currentQuery) {
       await this.currentQuery.setModel(model);
-      logger4.info({ model }, "Model updated mid-session via Query.setModel()");
+      logger5.info({ model }, "Model updated mid-session via Query.setModel()");
     }
   }
   getModel() {
@@ -2558,7 +3076,7 @@ var Emitter = class {
 };
 
 // src/session-manager.ts
-var logger5 = createLogger("SessionManager");
+var logger6 = createLogger("SessionManager");
 function isToolResultBlock2(block) {
   if (typeof block !== "object" || block === null) {
     return false;
@@ -2708,7 +3226,7 @@ var SessionManager = class extends Disposable {
       resumeSessionId: config?.resumeSessionId,
       forkSession: config?.forkSession
     };
-    logger5.info({ sessionId, sessionMode: finalConfig.sessionMode }, "Creating session");
+    logger6.info({ sessionId, sessionMode: finalConfig.sessionMode }, "Creating session");
     const agent = new OrbitAgent(finalConfig);
     this.sessionResumeState.set(sessionId, {
       isResumed: !!config?.resumeSessionId,
@@ -2717,10 +3235,10 @@ var SessionManager = class extends Disposable {
     this.activeSessions.set(sessionId, agent);
     try {
       await agent.startSession();
-      logger5.info({ sessionId }, "Session started successfully");
+      logger6.info({ sessionId }, "Session started successfully");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      logger5.error({ sessionId, error: errorMessage }, "Failed to start session");
+      logger6.error({ sessionId, error: errorMessage }, "Failed to start session");
       throw error;
     }
     this._startBackgroundConsumer(sessionId, agent);
@@ -2743,7 +3261,7 @@ var SessionManager = class extends Disposable {
           }
           const sdkMessage = rawMessage;
           if (sdkMessage.type === "system") {
-            logger5.debug({ sessionId, subtype: sdkMessage.subtype }, "SDK system message");
+            logger6.debug({ sessionId, subtype: sdkMessage.subtype }, "SDK system message");
             if (sdkMessage.subtype === "init" && sdkMessage.session_id !== void 0) {
               if (this.sessionInitFired.has(sessionId)) {
                 continue;
@@ -2807,13 +3325,13 @@ var SessionManager = class extends Disposable {
               const toolName = getString(block.name, "unknown");
               const toolId = getString(block.id) || generateToolId();
               const toolInput = block.input ?? {};
-              logger5.info({ sessionId, toolName, toolId }, "Tool use block received");
+              logger6.info({ sessionId, toolName, toolId }, "Tool use block received");
               const previewed = agent.previewPermission(
                 toolName,
                 toolInput
               );
               const initialStatus = previewed === "ask" ? "awaiting-permission" : "running";
-              logger5.debug(
+              logger6.debug(
                 { sessionId, toolName, previewed, initialStatus },
                 "Initial tool_use status resolved from preview"
               );
@@ -2844,7 +3362,7 @@ var SessionManager = class extends Disposable {
                 if (toolInfo !== void 0) {
                   const toolOutput = typeof block.content === "string" ? block.content : JSON.stringify(block.content);
                   const isError = block.is_error === true;
-                  logger5.info(
+                  logger6.info(
                     {
                       sessionId,
                       toolName: toolInfo.name,
@@ -2875,7 +3393,7 @@ var SessionManager = class extends Disposable {
           } else {
             const resultMsg = sdkMessage;
             if (resultMsg.usage !== void 0) {
-              logger5.info(
+              logger6.info(
                 {
                   sessionId,
                   inputTokens: resultMsg.usage.input_tokens,
@@ -2908,7 +3426,7 @@ var SessionManager = class extends Disposable {
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         const errorStack = error instanceof Error ? error.stack : "no stack";
-        logger5.error({ sessionId, error: errorMessage }, "Background consumer error");
+        logger6.error({ sessionId, error: errorMessage }, "Background consumer error");
         this._onError.fire({ message: `[SDK Error] ${errorMessage}`, stack: errorStack });
       }
     })();
@@ -2968,7 +3486,7 @@ var SessionManager = class extends Disposable {
     }
     const correlationId = randomUUID();
     setCorrelationId(correlationId);
-    logger5.info(
+    logger6.info(
       {
         sessionId,
         correlationId: correlationId.slice(0, 8),
@@ -3067,7 +3585,7 @@ var SessionManager = class extends Disposable {
       }
     }
     if (toDrain.length === 0) return;
-    logger5.info(
+    logger6.info(
       { sessionId, drained: toDrain.length, pendingTotal: pending.size },
       "Re-evaluated pending permission prompts after mode change"
     );
@@ -3237,8 +3755,8 @@ var SessionManager = class extends Disposable {
         "TodoWrite"
       ];
       const pm = agent.getPermissionManager();
-      for (const tool of readOnlyTools) {
-        pm.addAlwaysAllowed(tool);
+      for (const tool2 of readOnlyTools) {
+        pm.addAlwaysAllowed(tool2);
       }
     }
   }
@@ -3256,7 +3774,7 @@ var SessionManager = class extends Disposable {
     this.sessionConsumers.clear();
     for (const [sessionId, agent] of this.activeSessions.entries()) {
       void agent.stopSession().catch((err) => {
-        logger5.error({ sessionId, error: err }, "Error stopping session");
+        logger6.error({ sessionId, error: err }, "Error stopping session");
       });
     }
     this.activeSessions.clear();
@@ -3267,7 +3785,7 @@ var SessionManager = class extends Disposable {
 
 // src/commit-message.ts
 import Anthropic from "@anthropic-ai/sdk";
-var logger6 = createLogger("CommitMessage");
+var logger7 = createLogger("CommitMessage");
 var SYSTEM_PROMPT = `You are a git commit message generator. Given a diff summary, generate a concise commit message following conventional commits format (type: description). Be specific about what changed. Output ONLY the commit message, no explanation.
 
 Rules:
@@ -3276,7 +3794,7 @@ Rules:
 - If changes span multiple areas, use the most significant type
 - Be specific: "fix: resolve null pointer in user auth flow" not "fix: bug fix"`;
 async function generateCommitMessage(diff, apiKey) {
-  logger6.info("Generating commit message...");
+  logger7.info("Generating commit message...");
   let resolvedKey = apiKey;
   if (!resolvedKey) {
     resolvedKey = ClaudeCredentials.getApiKeyFromEnv() ?? void 0;
@@ -3297,13 +3815,13 @@ ${diff}`
     }]
   });
   const text = response.content[0]?.type === "text" ? response.content[0].text.trim() : "";
-  logger6.info({ messageLength: text.length }, "Commit message generated");
+  logger7.info({ messageLength: text.length }, "Commit message generated");
   return text;
 }
 
 // src/refine-transcript.ts
 import Anthropic2 from "@anthropic-ai/sdk";
-var logger7 = createLogger("RefineTranscript");
+var logger8 = createLogger("RefineTranscript");
 var SYSTEM_PROMPT2 = `You are a speech-to-text transcript refiner for a coding IDE. Given a raw voice transcript, clean it up by:
 - Fixing obvious transcription errors (homophones, technical terms)
 - Correcting casing for proper nouns, programming terms, and file names
@@ -3315,7 +3833,7 @@ If context from recent chat messages is provided, use it to understand technical
 
 Output ONLY the refined transcript, nothing else. If the transcript is already clean, return it unchanged.`;
 async function refineTranscript(transcript, context, apiKey) {
-  logger7.info("Refining transcript...");
+  logger8.info("Refining transcript...");
   let resolvedKey = apiKey;
   if (!resolvedKey) {
     resolvedKey = ClaudeCredentials.getApiKeyFromEnv() ?? void 0;
@@ -3340,13 +3858,13 @@ ${context}`;
     messages: [{ role: "user", content: userContent }]
   });
   const text = response.content[0]?.type === "text" ? response.content[0].text.trim() : "";
-  logger7.info({ originalLength: transcript.length, refinedLength: text.length }, "Transcript refined");
+  logger8.info({ originalLength: transcript.length, refinedLength: text.length }, "Transcript refined");
   return text || transcript;
 }
 
 // src/session-title.ts
 import Anthropic3 from "@anthropic-ai/sdk";
-var logger8 = createLogger("SessionTitle");
+var logger9 = createLogger("SessionTitle");
 var SYSTEM_PROMPT3 = `You are a session title generator. Given a user message and an AI assistant response, generate a concise title that captures the essence of the conversation topic.
 
 Rules:
@@ -3357,7 +3875,7 @@ Rules:
 - Do not start with "Help with" or "Question about"
 - Output ONLY the title, nothing else`;
 async function generateSessionTitle(userMessage, assistantMessage, apiKey) {
-  logger8.info("Generating session title...");
+  logger9.info("Generating session title...");
   let resolvedKey = apiKey;
   if (!resolvedKey) {
     resolvedKey = ClaudeCredentials.getApiKeyFromEnv() ?? void 0;
@@ -3382,12 +3900,12 @@ ${truncatedAssistant}`
     }]
   });
   const text = response.content[0]?.type === "text" ? response.content[0].text.trim() : "";
-  logger8.info({ titleLength: text.length }, "Session title generated");
+  logger9.info({ titleLength: text.length }, "Session title generated");
   return text;
 }
 
 // src/index.ts
-var logger9 = createLogger("AgentBridge");
+var logger10 = createLogger("AgentBridge");
 function sendMessage(message) {
   const json = JSON.stringify(message);
   process.stdout.write(json + "\n");
@@ -3400,7 +3918,7 @@ function sendEvent(event) {
 }
 function main() {
   configureFileLogging();
-  logger9.info("Agent Bridge starting...");
+  logger10.info("Agent Bridge starting...");
   const sessionManager = new SessionManager();
   sessionManager.onAgentMessage((data) => {
     sendEvent({
@@ -3470,7 +3988,7 @@ function main() {
     try {
       request = JSON.parse(line);
     } catch (error) {
-      logger9.error({ error, line }, "Failed to parse request");
+      logger10.error({ error, line }, "Failed to parse request");
       sendResponse({
         type: "error",
         requestType: "unknown",
@@ -3478,10 +3996,10 @@ function main() {
       });
       return;
     }
-    logger9.info({ requestType: request.type }, "Received request");
+    logger10.info({ requestType: request.type }, "Received request");
     handleRequest(request, sessionManager).catch((error) => {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      logger9.error({ requestType: request.type, error: errorMessage }, "Error handling request");
+      logger10.error({ requestType: request.type, error: errorMessage }, "Error handling request");
       sendResponse({
         type: "error",
         requestType: request.type,
@@ -3490,25 +4008,25 @@ function main() {
     });
   });
   rl.on("close", () => {
-    logger9.info("stdin closed, shutting down...");
+    logger10.info("stdin closed, shutting down...");
     sessionManager.dispose();
     shutdownFileLogging();
     process.exit(0);
   });
   process.on("SIGTERM", () => {
-    logger9.info("SIGTERM received, shutting down...");
+    logger10.info("SIGTERM received, shutting down...");
     sessionManager.dispose();
     shutdownFileLogging();
     process.exit(0);
   });
   process.on("SIGINT", () => {
-    logger9.info("SIGINT received, shutting down...");
+    logger10.info("SIGINT received, shutting down...");
     sessionManager.dispose();
     shutdownFileLogging();
     process.exit(0);
   });
   sendEvent({ type: "ready" });
-  logger9.info("Agent Bridge ready");
+  logger10.info("Agent Bridge ready");
 }
 async function handleRequest(request, sessionManager) {
   switch (request.type) {
@@ -3613,7 +4131,7 @@ async function handleRequest(request, sessionManager) {
       break;
     }
     case "shutdown": {
-      logger9.info("Shutdown requested");
+      logger10.info("Shutdown requested");
       sendResponse({ type: "success", requestType: request.type });
       sessionManager.dispose();
       process.exit(0);
@@ -3632,6 +4150,7 @@ async function handleRequest(request, sessionManager) {
 try {
   main();
 } catch (error) {
-  logger9.error({ error }, "Fatal error");
+  logger10.error({ error }, "Fatal error");
   process.exit(1);
 }
+//# sourceMappingURL=index.js.map
