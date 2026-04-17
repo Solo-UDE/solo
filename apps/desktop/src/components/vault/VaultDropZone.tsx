@@ -6,7 +6,7 @@
  */
 
 import { useState, type DragEvent, type FC } from 'react';
-import { UploadSimple, Plus } from '@phosphor-icons/react';
+import { Upload, Plus } from 'lucide-react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { vaultDropPaths } from '@/lib/tauri/vault';
 import { useVaultStore } from '@/stores/vaultStore';
@@ -57,17 +57,16 @@ export const VaultDropZone: FC = () => {
       onDragLeave={onDragLeave}
       onDrop={onDrop}
       className={cn(
-        'flex flex-col items-center justify-center gap-3 px-4 py-8 rounded-[14px] transition-all duration-200',
+        'flex flex-col items-center justify-center gap-3 px-4 py-8 rounded-xl transition-all duration-200',
         'bg-muted/20 border-2 border-dashed border-border/40',
         isOver && 'bg-primary/10 border-primary/50 scale-[1.01]',
       )}
     >
-      <UploadSimple
+      <Upload
         className={cn(
           'w-7 h-7 transition-colors duration-150',
           isOver ? 'text-primary' : 'text-muted-foreground/50',
         )}
-        weight={isOver ? 'fill' : 'regular'}
       />
       <p className="text-xs font-medium text-muted-foreground">
         {isBusy ? 'Indexing…' : 'Add files to the vault'}
@@ -82,7 +81,7 @@ export const VaultDropZone: FC = () => {
           isBusy && 'opacity-60 cursor-not-allowed',
         )}
       >
-        <Plus className="w-3.5 h-3.5" weight="bold" />
+        <Plus className="w-3.5 h-3.5" strokeWidth={2.5} />
         Pick files…
       </button>
       <p className="text-[10px] text-muted-foreground/60 text-center leading-relaxed max-w-[220px]">
