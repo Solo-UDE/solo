@@ -229,6 +229,13 @@ function AppContent() {
         return;
       }
 
+      // Cmd+B — toggle left sidebar
+      if (e.key === 'b' && e.metaKey && !e.shiftKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        useUIStore.getState().toggleLeftSidebar();
+        return;
+      }
+
       // Ctrl+Shift+` — new terminal session
       // Use e.code because Shift+` produces '~' as e.key
       if (e.code === 'Backquote' && e.ctrlKey && e.shiftKey) {
