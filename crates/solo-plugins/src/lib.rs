@@ -19,3 +19,4 @@ pub use manifest::{
 pub use path::AbsolutePathBuf;
 pub use store::{PluginInstallResult, PluginStore, PluginStoreError};
 pub use toggles::{PluginToggleEntry, PluginToggles};
+pub use adapters::{AdapterPlugin, AdapterSource, discover_claude_adapter, discover_codex_adapter};
