@@ -110,6 +110,7 @@ fn keychain_read(service: &str, account: Option<&str>) -> Result<Option<String>,
 }
 
 #[cfg(target_os = "macos")]
+#[cfg_attr(test, allow(dead_code))]
 fn keychain_write(service: &str, account: &str, value: &str) -> Result<(), String> {
     use std::process::Command;
     let output = Command::new("/usr/bin/security")
@@ -310,6 +311,7 @@ impl CredentialManager {
     }
 
     /// Persist the vault HashMap to the single keychain entry
+    #[cfg_attr(test, allow(dead_code))]
     fn persist_vault(data: &HashMap<String, String>) -> ProviderResult<()> {
         let json = serde_json::to_string(data)
             .map_err(|e| ProviderError::KeychainError(format!("Failed to serialize vault: {}", e)))?;
@@ -432,6 +434,7 @@ impl CredentialManager {
         let mut guard = self.vault.write().await;
         let vault = guard.get_or_insert_with(HashMap::new);
         let old_value = vault.insert(key.to_string(), value.to_string());
+        #[cfg(not(test))]
         if let Err(e) = Self::persist_vault(vault) {
             // Rollback in-memory state
             match old_value {
@@ -440,6 +443,8 @@ impl CredentialManager {
             }
             return Err(e);
         }
+        #[cfg(test)]
+        let _ = old_value; // suppress unused warning; keychain writes skipped in tests
         Ok(())
     }
 
@@ -451,6 +456,7 @@ impl CredentialManager {
         let mut guard = self.vault.write().await;
         if let Some(vault) = guard.as_mut() {
             let old_value = vault.remove(key);
+            #[cfg(not(test))]
             if let Err(e) = Self::persist_vault(vault) {
                 // Rollback: re-insert the removed value
                 if let Some(v) = old_value {
@@ -458,6 +464,8 @@ impl CredentialManager {
                 }
                 return Err(e);
             }
+            #[cfg(test)]
+            let _ = old_value; // suppress unused warning; keychain writes skipped in tests
         }
         Ok(())
     }
@@ -986,12 +994,42 @@ impl CredentialManager {
     ) -> ProviderResult<()> {
         let key = Self::oauth_vault_key(provider);
 
-        let token_json = serde_json::to_string(&token)
-            .map_err(|e| ProviderError::AuthError(format!("Failed to serialize token: {}", e)))?;
+        // Load-or-create the store, migrating from legacy shape if present.
+        let mut store = match self.vault_get(&key).await? {
+            Some(s) if !s.is_empty() => {
+                crate::oauth::profiles::migrate_legacy_blob(&s, provider.as_str())
+                    .unwrap_or_else(|_| crate::oauth::profiles::ProviderOAuthStore::empty())
+            }
+            _ => crate::oauth::profiles::ProviderOAuthStore::empty(),
+        };
 
-        self.vault_set(&key, &token_json).await?;
+        // Pick active profile name — "default" if the store is empty.
+        let active_name = store
+            .active_profile
+            .clone()
+            .unwrap_or_else(|| "default".to_string());
+        let existing = store.get(&active_name).cloned();
 
-        // Update cache
+        let profile = crate::oauth::profiles::OAuthProfile {
+            access_token: token.access_token.clone(),
+            refresh_token: token.refresh_token.clone().unwrap_or_default(),
+            id_token: existing.as_ref().and_then(|e| e.id_token.clone()),
+            expires_at: token.expires_at as i64,
+            last_refresh: 0,
+            email: existing
+                .as_ref()
+                .map(|e| e.email.clone())
+                .unwrap_or_default(),
+            account_id: existing.as_ref().and_then(|e| e.account_id.clone()),
+            plan_type: existing.as_ref().and_then(|e| e.plan_type.clone()),
+        };
+        store.upsert_profile(active_name, profile);
+
+        let json = serde_json::to_string(&store)
+            .map_err(|e| ProviderError::AuthError(format!("Failed to serialize OAuth store: {}", e)))?;
+        self.vault_set(&key, &json).await?;
+
+        // Update cache with the freshly-written token (matches pre-refactor behavior).
         self.oauth_cache.write().await.insert(
             provider,
             OAuthCredentialInfo {
@@ -1000,46 +1038,82 @@ impl CredentialManager {
             },
         );
 
-        // Clear API key cache for this provider to ensure OAuth takes priority
+        // Clear API-key cache so OAuth takes priority (preserved behavior).
         self.cache.write().await.remove(&provider);
 
         tracing::info!("Stored OAuth token for {}", provider.as_str());
-
         Ok(())
     }
 
     /// Get OAuth token for a provider
     pub async fn get_oauth_token(&self, provider: ProviderType) -> ProviderResult<Option<OAuthToken>> {
-        // Check cache first
+        // Cache hit fast path — unchanged behavior.
         if let Some(info) = self.oauth_cache.read().await.get(&provider) {
             return Ok(Some(info.token.clone()));
         }
 
-        // Try to load from vault
         let key = Self::oauth_vault_key(provider);
-        match self.vault_get(&key).await? {
-            Some(token_json) if token_json.is_empty() => Ok(None),
-            Some(token_json) => {
-                match serde_json::from_str::<OAuthToken>(&token_json) {
-                    Ok(token) => {
-                        // Cache the token
-                        self.oauth_cache.write().await.insert(
-                            provider,
-                            OAuthCredentialInfo {
-                                token: token.clone(),
-                                source: CredentialSource::SoloOAuth,
-                            },
-                        );
-                        Ok(Some(token))
-                    }
-                    Err(e) => {
-                        tracing::warn!("Failed to parse OAuth token from vault: {}", e);
-                        Ok(None)
+        let raw = match self.vault_get(&key).await? {
+            Some(s) if !s.is_empty() => s,
+            _ => return Ok(None),
+        };
+
+        // Parse — migrating from legacy shape if needed.
+        let needs_migration = !crate::oauth::profiles::is_already_migrated(&raw);
+        let store = match crate::oauth::profiles::migrate_legacy_blob(&raw, provider.as_str()) {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::warn!(
+                    "failed to parse OAuth store for {}: {} — treating as absent",
+                    provider.as_str(),
+                    e
+                );
+                return Ok(None);
+            }
+        };
+
+        // If we just migrated, persist the new shape so subsequent reads are fast.
+        if needs_migration {
+            match serde_json::to_string(&store) {
+                Ok(new_json) => {
+                    if let Err(e) = self.vault_set(&key, &new_json).await {
+                        tracing::warn!("failed to persist migrated OAuth store: {}", e);
                     }
                 }
+                Err(e) => tracing::warn!("failed to serialize migrated OAuth store: {}", e),
             }
-            None => Ok(None),
         }
+
+        let active = match store.active() {
+            Some(p) => p,
+            None => return Ok(None),
+        };
+
+        // Project the active profile into the legacy OAuthToken shape that
+        // existing callers expect. Refresh-token empty-string → None.
+        let expires_at = u64::try_from(active.expires_at.max(0)).unwrap_or(0);
+        let token = OAuthToken {
+            access_token: active.access_token.clone(),
+            refresh_token: if active.refresh_token.is_empty() {
+                None
+            } else {
+                Some(active.refresh_token.clone())
+            },
+            expires_at,
+            token_type: "Bearer".into(),
+            scope: None,
+        };
+
+        // Populate cache.
+        self.oauth_cache.write().await.insert(
+            provider,
+            OAuthCredentialInfo {
+                token: token.clone(),
+                source: CredentialSource::SoloOAuth,
+            },
+        );
+
+        Ok(Some(token))
     }
 
     /// Check if we have an OAuth token for a provider
@@ -1435,5 +1509,152 @@ mod tests {
         CredentialManager::migrate_legacy_entries(&mut vault);
 
         assert_eq!(vault.get("anthropic.apiKey").unwrap(), "existing-key");
+    }
+}
+
+#[cfg(test)]
+mod profile_tests {
+    use super::*;
+    use crate::oauth::profiles::{OAuthProfile, ProviderOAuthStore};
+    use crate::provider::ProviderType;
+
+    /// Helper: build a CredentialManager whose vault is pre-populated with
+    /// the given in-memory map, bypassing keychain I/O.
+    /// Must be awaited from inside a tokio test — does not spawn its own runtime.
+    async fn manager_with_vault(data: HashMap<String, String>) -> CredentialManager {
+        let m = CredentialManager::new();
+        *m.vault.write().await = Some(data);
+        m
+    }
+
+    fn profile(access: &str, refresh: &str, expires_at: i64, email: &str) -> OAuthProfile {
+        OAuthProfile {
+            access_token: access.into(),
+            refresh_token: refresh.into(),
+            id_token: None,
+            expires_at,
+            last_refresh: 0,
+            email: email.into(),
+            account_id: None,
+            plan_type: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn get_oauth_token_returns_active_profile_as_oauth_token() {
+        let mut store = ProviderOAuthStore::empty();
+        store.upsert_profile(
+            "default",
+            profile("ak-abc", "rk-abc", 9_999_999_999, "me@x"),
+        );
+        let json = serde_json::to_string(&store).unwrap();
+        let mut vault = HashMap::new();
+        vault.insert("anthropic.oauth".into(), json);
+
+        let m = manager_with_vault(vault).await;
+        let token = m
+            .get_oauth_token(ProviderType::Anthropic)
+            .await
+            .unwrap()
+            .expect("oauth token");
+        assert_eq!(token.access_token, "ak-abc");
+        assert_eq!(token.refresh_token.as_deref(), Some("rk-abc"));
+    }
+
+    #[tokio::test]
+    async fn get_oauth_token_migrates_legacy_blob_transparently() {
+        let legacy = r#"{"access_token":"legacy-ak","refresh_token":"legacy-rk","expires_at":9999999999,"token_type":"Bearer","scope":null}"#;
+        let mut vault = HashMap::new();
+        vault.insert("anthropic.oauth".into(), legacy.into());
+
+        let m = manager_with_vault(vault).await;
+        let token = m
+            .get_oauth_token(ProviderType::Anthropic)
+            .await
+            .unwrap()
+            .expect("oauth token");
+        assert_eq!(token.access_token, "legacy-ak");
+        assert_eq!(token.refresh_token.as_deref(), Some("legacy-rk"));
+    }
+
+    #[tokio::test]
+    async fn set_oauth_token_creates_default_profile() {
+        let m = manager_with_vault(HashMap::new()).await;
+        let token = crate::oauth::OAuthToken::new(
+            "new-ak".into(),
+            Some("new-rk".into()),
+            3600,
+            "Bearer".into(),
+            None,
+        );
+        m.set_oauth_token(ProviderType::Anthropic, token)
+            .await
+            .unwrap();
+
+        let got = m
+            .get_oauth_token(ProviderType::Anthropic)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(got.access_token, "new-ak");
+        assert_eq!(got.refresh_token.as_deref(), Some("new-rk"));
+    }
+
+    #[tokio::test]
+    async fn set_oauth_token_preserves_existing_email_on_active_profile() {
+        // Seed the vault with an existing profile that has a known email.
+        let mut store = ProviderOAuthStore::empty();
+        store.upsert_profile(
+            "default",
+            profile("old-ak", "old-rk", 1_000_000, "work@co.com"),
+        );
+        let json = serde_json::to_string(&store).unwrap();
+        let mut vault = HashMap::new();
+        vault.insert("anthropic.oauth".into(), json);
+
+        let m = manager_with_vault(vault).await;
+        // Overwrite with a new token (no identity info).
+        let new_token = crate::oauth::OAuthToken::new(
+            "new-ak".into(),
+            Some("new-rk".into()),
+            3600,
+            "Bearer".into(),
+            None,
+        );
+        m.set_oauth_token(ProviderType::Anthropic, new_token)
+            .await
+            .unwrap();
+
+        // Read the raw vault entry and verify the email survived.
+        let raw = m
+            .vault_get_raw("anthropic.oauth")
+            .await
+            .unwrap()
+            .unwrap();
+        let saved: ProviderOAuthStore = serde_json::from_str(&raw).unwrap();
+        let saved_active = saved.active().expect("active profile");
+        assert_eq!(saved_active.email, "work@co.com");
+        assert_eq!(saved_active.access_token, "new-ak");
+    }
+
+    #[tokio::test]
+    async fn disconnect_oauth_clears_all_profiles() {
+        let m = manager_with_vault(HashMap::new()).await;
+        let token = crate::oauth::OAuthToken::new(
+            "ak".into(),
+            None,
+            3600,
+            "Bearer".into(),
+            None,
+        );
+        m.set_oauth_token(ProviderType::Anthropic, token)
+            .await
+            .unwrap();
+        m.disconnect_oauth(ProviderType::Anthropic).await.unwrap();
+        assert!(m
+            .get_oauth_token(ProviderType::Anthropic)
+            .await
+            .unwrap()
+            .is_none());
     }
 }
