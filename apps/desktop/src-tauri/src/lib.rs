@@ -342,6 +342,7 @@ pub fn run() {
             worktree_commands::worktree_find_by_agent,
             worktree_commands::worktree_diff_from_base,
             worktree_commands::worktree_promote,
+            worktree_commands::worktree_rename,
             worktree_commands::worktree_set_setup_commands,
             worktree_commands::worktree_get_setup_commands,
             // Skills commands
