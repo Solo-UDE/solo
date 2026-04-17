@@ -166,9 +166,6 @@ export const DevSidebar: FC<DevSidebarProps> = ({ onFileOpen }) => {
                 <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/60">
                   Sessions
                 </p>
-                <p className="mt-1 text-sm font-medium text-foreground">
-                  Grouped by worktree
-                </p>
               </div>
               <div className="flex items-center gap-1">
                 <button
