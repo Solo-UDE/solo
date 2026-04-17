@@ -99,6 +99,7 @@ pub async fn worktree_create(
     app: AppHandle,
     wt_state: State<'_, WorktreeState>,
     fs_state: State<'_, FsState>,
+    stats: State<'_, crate::stats_commands::StatsState>,
 ) -> Result<WorktreeInfo, String> {
     info!(branch = %request.branch, create_branch = request.create_branch, "Creating worktree");
 
@@ -118,6 +119,8 @@ pub async fn worktree_create(
 
     match manager.create(&request) {
         Ok(info) => {
+            stats.record(solo_stats::StatsEvent::WorktreeCreated).await;
+
             let _ = app.emit(
                 "backend-event",
                 &BackendEvent::WorktreeReady {
