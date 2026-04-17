@@ -1,0 +1,18 @@
+{
+  "app": "bun run bin/solo.ts",
+  "watch": {
+    "include": ["bin/**", "lib/**", "lambda/**"],
+    "exclude": ["cdk.out", "node_modules", "dist"]
+  },
+  "context": {
+    "@aws-cdk/aws-iam:minimizePolicies": true,
+    "@aws-cdk/core:checkSecretUsage": true,
+    "@aws-cdk/core:target-partitions": ["aws"],
+    "@aws-cdk/aws-lambda:recognizeLayerVersion": true,
+    "@aws-cdk/aws-cloudfront:defaultSecurityPolicyTLSv1.2_2021": true,
+    "@aws-cdk/aws-apigateway:usagePlanKeyOrderInsensitiveId": true,
+    "@aws-cdk/aws-dynamodb:pitrPointInTimeRecoveryEnabled": true,
+    "@aws-cdk/aws-s3:serverAccessLogsUseBucketPolicy": true,
+    "projectName": "solo"
+  }
+}
