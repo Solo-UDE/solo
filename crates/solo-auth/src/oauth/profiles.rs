@@ -36,14 +36,15 @@ pub struct OAuthProfile {
 /// Vault value for `{provider}.oauth`.
 ///
 /// Replaces the legacy single-token blob. Migration from the legacy shape
-/// is handled in [`migrate_legacy_blob`] and wired in from `CredentialManager`.
+/// is handled by `migrate_legacy_blob` (added in a follow-up task) and
+/// wired in from `CredentialManager`.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct ProviderOAuthStore {
-    /// Name of the currently-active profile. Empty string if no profiles.
+    /// Name of the currently-active profile. `None` if no profiles.
     #[serde(default)]
-    pub active_profile: String,
+    pub(crate) active_profile: Option<String>,
     #[serde(default)]
-    pub profiles: HashMap<String, OAuthProfile>,
+    pub(crate) profiles: HashMap<String, OAuthProfile>,
 }
 
 impl ProviderOAuthStore {
@@ -55,10 +56,13 @@ impl ProviderOAuthStore {
     /// becomes active automatically.
     pub fn upsert_profile(&mut self, name: impl Into<String>, profile: OAuthProfile) {
         let name = name.into();
-        let was_empty = self.profiles.is_empty();
+        let should_activate = match self.active_profile.as_deref() {
+            None => true,
+            Some(current) => !self.profiles.contains_key(current),
+        };
         self.profiles.insert(name.clone(), profile);
-        if was_empty {
-            self.active_profile = name;
+        if should_activate {
+            self.active_profile = Some(name);
         }
     }
 
@@ -67,7 +71,7 @@ impl ProviderOAuthStore {
         if !self.profiles.contains_key(name) {
             return Err(format!("profile {:?} not found", name));
         }
-        self.active_profile = name.to_string();
+        self.active_profile = Some(name.to_string());
         Ok(())
     }
 
@@ -75,31 +79,22 @@ impl ProviderOAuthStore {
     /// alphabetically (stable), or clears active if none remain.
     pub fn remove_profile(&mut self, name: &str) -> Option<OAuthProfile> {
         let removed = self.profiles.remove(name);
-        if removed.is_some() && self.active_profile == name {
-            self.active_profile = self
-                .profiles
-                .keys()
-                .min()
-                .cloned()
-                .unwrap_or_default();
+        if removed.is_some() && self.active_profile.as_deref() == Some(name) {
+            self.active_profile = self.profiles.keys().min().cloned();
         }
         removed
     }
 
     /// Currently-active profile, if any.
     pub fn active(&self) -> Option<&OAuthProfile> {
-        if self.active_profile.is_empty() {
-            return None;
-        }
-        self.profiles.get(&self.active_profile)
+        let name = self.active_profile.as_deref()?;
+        self.profiles.get(name)
     }
 
     /// Mutable access to the active profile, if any.
     pub fn active_mut(&mut self) -> Option<&mut OAuthProfile> {
-        if self.active_profile.is_empty() {
-            return None;
-        }
-        self.profiles.get_mut(&self.active_profile)
+        let name = self.active_profile.clone()?;
+        self.profiles.get_mut(&name)
     }
 
     /// Look up a profile by name.
@@ -134,14 +129,14 @@ mod tests {
     fn empty_store_has_no_active_profile() {
         let store = ProviderOAuthStore::empty();
         assert!(store.profiles.is_empty());
-        assert_eq!(store.active_profile, "");
+        assert!(store.active_profile.is_none());
     }
 
     #[test]
     fn add_first_profile_sets_active() {
         let mut store = ProviderOAuthStore::empty();
         store.upsert_profile("default", sample_profile("a@b.com"));
-        assert_eq!(store.active_profile, "default");
+        assert_eq!(store.active_profile.as_deref(), Some("default"));
         assert_eq!(store.profiles.len(), 1);
     }
 
@@ -150,7 +145,7 @@ mod tests {
         let mut store = ProviderOAuthStore::empty();
         store.upsert_profile("work", sample_profile("work@co.com"));
         store.upsert_profile("home", sample_profile("home@me.com"));
-        assert_eq!(store.active_profile, "work");
+        assert_eq!(store.active_profile.as_deref(), Some("work"));
         assert_eq!(store.profiles.len(), 2);
     }
 
@@ -160,7 +155,7 @@ mod tests {
         store.upsert_profile("a", sample_profile("a@x"));
         store.upsert_profile("b", sample_profile("b@x"));
         assert!(store.set_active("b").is_ok());
-        assert_eq!(store.active_profile, "b");
+        assert_eq!(store.active_profile.as_deref(), Some("b"));
     }
 
     #[test]
@@ -175,9 +170,9 @@ mod tests {
         let mut store = ProviderOAuthStore::empty();
         store.upsert_profile("a", sample_profile("a@x"));
         store.upsert_profile("b", sample_profile("b@x"));
-        assert_eq!(store.active_profile, "a");
+        assert_eq!(store.active_profile.as_deref(), Some("a"));
         store.remove_profile("a");
-        assert_eq!(store.active_profile, "b");
+        assert_eq!(store.active_profile.as_deref(), Some("b"));
         assert_eq!(store.profiles.len(), 1);
     }
 
@@ -186,7 +181,7 @@ mod tests {
         let mut store = ProviderOAuthStore::empty();
         store.upsert_profile("a", sample_profile("a@x"));
         store.remove_profile("a");
-        assert_eq!(store.active_profile, "");
+        assert!(store.active_profile.is_none());
         assert!(store.profiles.is_empty());
     }
 
@@ -211,7 +206,41 @@ mod tests {
         store.upsert_profile("default", sample_profile("me@x"));
         let json = serde_json::to_string(&store).unwrap();
         let parsed: ProviderOAuthStore = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed.active_profile, "default");
+        assert_eq!(parsed.active_profile.as_deref(), Some("default"));
         assert_eq!(parsed.profiles["default"].email, "me@x");
+    }
+
+    #[test]
+    fn active_returns_none_for_stale_cursor() {
+        // Simulates a vault blob where active_profile names a profile that
+        // no longer exists (partial-write or manual edit scenario).
+        let json = r#"{"active_profile":"ghost","profiles":{}}"#;
+        let store: ProviderOAuthStore = serde_json::from_str(json).unwrap();
+        assert!(store.active().is_none());
+    }
+
+    #[test]
+    fn upsert_repairs_stale_cursor() {
+        // If the store is deserialized with a stale cursor, the next upsert
+        // should promote the newly-inserted profile to active.
+        let json = r#"{"active_profile":"ghost","profiles":{}}"#;
+        let mut store: ProviderOAuthStore = serde_json::from_str(json).unwrap();
+        store.upsert_profile("new", sample_profile("new@x"));
+        assert_eq!(store.active_profile.as_deref(), Some("new"));
+        assert!(store.active().is_some());
+    }
+
+    #[test]
+    fn remove_active_picks_alphabetical_min_from_three() {
+        // Verifies the "alphabetically (stable)" claim in the doc comment.
+        let mut store = ProviderOAuthStore::empty();
+        store.upsert_profile("charlie", sample_profile("c@x"));
+        store.upsert_profile("alpha", sample_profile("a@x"));
+        store.upsert_profile("bravo", sample_profile("b@x"));
+        // charlie became active first (first profile), so make it active explicitly
+        store.set_active("charlie").unwrap();
+        store.remove_profile("charlie");
+        // Remaining: alpha, bravo. Min = alpha.
+        assert_eq!(store.active_profile.as_deref(), Some("alpha"));
     }
 }
