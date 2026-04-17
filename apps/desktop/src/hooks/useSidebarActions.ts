@@ -1,6 +1,6 @@
 /**
  * useSidebarActions - Shared sidebar actions for session and file operations.
- * Extracted from PrimarySidebar so both DevSidebar and StudioSidebar can reuse.
+ * Extracted from PrimarySidebar so both DevSidebar and VaultSidebar can reuse.
  */
 
 import { useCallback, useMemo } from 'react';
