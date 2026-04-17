@@ -15,7 +15,7 @@ import {
   SubContent,
   ItemIndicator,
 } from "@radix-ui/react-dropdown-menu";
-import { forwardRef, type ComponentPropsWithoutRef } from "react";
+import { forwardRef, type ComponentPropsWithoutRef, type HTMLAttributes } from "react";
 import { cn } from "../utils/cn";
 
 export const Menu = Root;
@@ -23,6 +23,23 @@ export const MenuTrigger = Trigger;
 export const MenuGroup = Group;
 export const MenuSub = Sub;
 export const MenuRadioGroup = RadioGroup;
+export const MenuPortal = Portal;
+
+/**
+ * Keyboard-shortcut affordance inside a menu item — pushes to the far right
+ * of its row with muted colour and condensed tracking.
+ */
+export function MenuShortcut({ className, ...props }: HTMLAttributes<HTMLSpanElement>) {
+  return (
+    <span
+      className={cn(
+        "ml-auto text-[11px] tracking-wide text-muted-foreground/80 font-mono",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
 
 const menuItemBase = cn(
   "relative flex items-center gap-2 rounded-sm px-2 py-1 text-[13px] cursor-default select-none",
