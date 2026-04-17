@@ -17,7 +17,7 @@
  *     with main pinned first.
  */
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import type { FC } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Inbox } from 'lucide-react';
@@ -40,6 +40,36 @@ import { SessionThreadRow } from './SessionThreadRow';
 import { WorktreeGroupHeader } from './WorktreeGroupHeader';
 
 const MAIN_GROUP_KEY = '__main__';
+const EMPTY_OPEN_IDS: ReadonlySet<string> = new Set();
+
+/**
+ * Zustand selector helper: subscribe to panelTabsStore and return a stable
+ * `Set<string>` of session IDs that have open agent tabs. We cache by a
+ * joined string key so repeated renders see the same Set reference (which
+ * React's useSyncExternalStore requires — otherwise every render produces a
+ * new snapshot and we get "Maximum update depth exceeded").
+ */
+function useOpenAgentSessionIds(): ReadonlySet<string> {
+  const prevRef = useRef<{ key: string; result: ReadonlySet<string> }>({
+    key: '',
+    result: EMPTY_OPEN_IDS,
+  });
+  return usePanelTabsStore((state) => {
+    const ids: string[] = [];
+    for (const instance of state.instances.values()) {
+      if (instance.panelType === BUILTIN_PANEL_TYPES.AGENT) {
+        const sid = (instance.data as Record<string, unknown>)?.sessionId;
+        if (typeof sid === 'string') ids.push(sid);
+      }
+    }
+    ids.sort();
+    const key = ids.join(',');
+    if (key === prevRef.current.key) return prevRef.current.result;
+    const result: ReadonlySet<string> = new Set(ids);
+    prevRef.current = { key, result };
+    return result;
+  });
+}
 
 export interface SessionThreadListProps {
   readonly onSessionSelect: (sessionId: string) => void;
@@ -70,7 +100,15 @@ export const SessionThreadList: FC<SessionThreadListProps> = ({ onSessionSelect 
   const deleteSession = useAgentStore((s) => s.deleteSession);
   const sessionStreaming = useAgentStore((s) => s.sessionStreaming);
 
-  const worktrees = useWorktreeStore((s) => Array.from(s.worktrees.values()));
+  // Select the raw Map (referentially stable between Immer mutations) and
+  // derive the array with useMemo. A selector that returned `Array.from(...)`
+  // directly would produce a fresh array every render and trip the
+  // useSyncExternalStore infinite-loop guard.
+  const worktreesMap = useWorktreeStore((s) => s.worktrees);
+  const worktrees = useMemo(
+    () => Array.from(worktreesMap.values()),
+    [worktreesMap],
+  );
   const activeWorktreeId = useWorktreeStore((s) => s.activeWorktreeId);
   const activeRepoPath = useRepoStore((s) => s.activeRepoPath);
   const currentRootPath = useFileExplorerStore((s) => s.rootPath);
@@ -89,18 +127,8 @@ export const SessionThreadList: FC<SessionThreadListProps> = ({ onSessionSelect 
 
   const rename = useInlineRename((id, value) => renameSession(id, value));
 
-  // Open-panel + streaming membership tests, derived from the raw maps.
-  // Panels open across the whole app; we only need a membership check.
-  const openSessionIds = usePanelTabsStore((s) => {
-    const ids = new Set<string>();
-    for (const instance of s.instances.values()) {
-      if (instance.panelType === BUILTIN_PANEL_TYPES.AGENT) {
-        const sid = (instance.data as Record<string, unknown>)?.sessionId;
-        if (typeof sid === 'string') ids.add(sid);
-      }
-    }
-    return ids;
-  });
+  // Stable Set of session IDs with open agent tabs (see helper above).
+  const openSessionIds = useOpenAgentSessionIds();
 
   const grouped = useMemo<Grouped[]>(() => {
     // Repo scoping — filter out sessions from other projects.
