@@ -12,3 +12,4 @@ pub mod store;
 pub mod toggles;
 
 pub use id::{PluginId, PluginIdError, validate_plugin_segment};
+pub use path::AbsolutePathBuf;
