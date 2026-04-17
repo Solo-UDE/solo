@@ -1,6 +1,6 @@
 /**
  * PrimarySidebar - Thin routing shell for the content sidebar.
- * Renders ModeToggle + DevSidebar or StudioSidebar based on sidebar mode.
+ * Renders ModeToggle + DevSidebar or VaultSidebar based on sidebar mode.
  * The active repo context is determined by the RepoRail selection.
  */
 
@@ -9,7 +9,7 @@ import { motion } from 'motion/react';
 import { FolderPlus as FolderPlusIcon } from 'lucide-react';
 import { ModeToggle } from './ModeToggle';
 import { DevSidebar } from './DevSidebar';
-import { StudioSidebar } from './StudioSidebar';
+import { VaultSidebar } from './VaultSidebar';
 import { SidebarHeader } from './SidebarHeader';
 import { useUIStore, useIsLeftSidebarCollapsed } from '@/stores/uiStore';
 import { useRepoStore, useRepoList } from '@/stores/repoStore';
@@ -101,7 +101,7 @@ export const PrimarySidebar = forwardRef<HTMLElement, PrimarySidebarProps>(({ wi
                   {sidebarMode === 'dev' ? (
                     <DevSidebar onFileOpen={onFileOpen} />
                   ) : (
-                    <StudioSidebar />
+                    <VaultSidebar />
                   )}
                 </div>
               </div>
