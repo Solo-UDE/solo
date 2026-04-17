@@ -4,12 +4,12 @@
 
 import type { FC } from 'react';
 import {
-  PushPin,
+  Pin,
   CloudCheck,
-  CloudArrowUp,
-  CloudSlash,
-  WarningCircle,
-} from '@phosphor-icons/react';
+  CloudUpload,
+  CloudOff,
+  AlertCircle,
+} from 'lucide-react';
 import type { VaultEntry, CloudSyncState } from '@/lib/tauri/vault';
 import { useVaultStore } from '@/stores/vaultStore';
 import { cn } from '@/lib/utils';
@@ -19,12 +19,12 @@ interface Props {
 }
 
 const SYNC_ICON: Record<CloudSyncState, FC<{ className?: string }>> = {
-  offline: CloudSlash,
-  pending: CloudArrowUp,
-  uploading: CloudArrowUp,
-  indexing_remote: CloudArrowUp,
+  offline: CloudOff,
+  pending: CloudUpload,
+  uploading: CloudUpload,
+  indexing_remote: CloudUpload,
   synced: CloudCheck,
-  failed: WarningCircle,
+  failed: AlertCircle,
 };
 
 const SYNC_TONE: Record<CloudSyncState, string> = {
@@ -68,7 +68,7 @@ export const VaultEntryCard: FC<Props> = ({ entry }) => {
         )}
         title={entry.pinned ? 'Unpin' : 'Pin as source of truth'}
       >
-        <PushPin className="w-3 h-3" weight={entry.pinned ? 'fill' : 'regular'} />
+        <Pin className={cn('w-3 h-3', entry.pinned && 'fill-current')} />
       </span>
 
       <div className="flex-1 min-w-0">
