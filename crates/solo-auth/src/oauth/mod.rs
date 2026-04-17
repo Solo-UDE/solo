@@ -23,4 +23,4 @@ pub use providers::AnthropicOAuthConfig;
 pub use providers::{GitHubOAuthConfig, DeviceCodeResponse, DevicePollResult};
 pub use providers::OpenAIOAuthConfig;
 pub use providers::{ClaudeCodeOAuthConfig, ClaudeCodeOAuthFlow, ClaudeAiOAuth, ClaudeCodeCredentials};
-pub use profiles::{OAuthProfile, ProviderOAuthStore};
+pub use profiles::{OAuthProfile, ProviderOAuthStore, migrate_legacy_blob, is_already_migrated};

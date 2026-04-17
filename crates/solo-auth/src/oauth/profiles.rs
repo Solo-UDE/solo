@@ -108,6 +108,96 @@ impl ProviderOAuthStore {
     }
 }
 
+/// Returns true if `json` is already in the new `ProviderOAuthStore` shape.
+///
+/// Uses a structural peek: presence of a top-level `profiles` field is the
+/// discriminant. Not definitive for malformed JSON — callers should treat a
+/// `false` result as "try to migrate" rather than "definitely legacy."
+pub fn is_already_migrated(json: &str) -> bool {
+    match serde_json::from_str::<serde_json::Value>(json) {
+        Ok(serde_json::Value::Object(map)) => map.contains_key("profiles"),
+        _ => false,
+    }
+}
+
+/// Convert a legacy single-token OAuth JSON blob into a `ProviderOAuthStore`.
+///
+/// If the input is already in the new shape, returns the parsed store as-is
+/// (idempotent).
+///
+/// The legacy shape is `OAuthToken` for Anthropic and `OpenAIOAuthToken` for
+/// OpenAI — both share all the fields we care about via the tolerant parser
+/// below, so we don't need to branch by provider at the field level. The
+/// `provider` argument is accepted for logging/future use only.
+pub fn migrate_legacy_blob(json: &str, provider: &str) -> Result<ProviderOAuthStore, String> {
+    // Fast path: already migrated.
+    if is_already_migrated(json) {
+        return serde_json::from_str::<ProviderOAuthStore>(json)
+            .map_err(|e| format!("failed to parse already-migrated store: {}", e));
+    }
+
+    let v: serde_json::Value = serde_json::from_str(json)
+        .map_err(|e| format!("legacy OAuth blob is not valid JSON: {}", e))?;
+
+    let obj = v.as_object().ok_or_else(|| {
+        format!("legacy OAuth blob is not a JSON object (provider={})", provider)
+    })?;
+
+    let access_token = obj
+        .get("access_token")
+        .and_then(|x| x.as_str())
+        .ok_or_else(|| "legacy blob missing access_token".to_string())?
+        .to_string();
+
+    // Legacy `OAuthToken` may or may not have refresh_token.
+    let refresh_token = obj
+        .get("refresh_token")
+        .and_then(|x| x.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    let expires_at = obj
+        .get("expires_at")
+        .and_then(|x| x.as_i64())
+        .or_else(|| obj.get("expires_at").and_then(|x| x.as_u64()).map(|n| n as i64))
+        .unwrap_or(0);
+
+    let id_token = obj
+        .get("id_token")
+        .and_then(|x| x.as_str())
+        .map(|s| s.to_string());
+
+    let account_id = obj
+        .get("account_id")
+        .and_then(|x| x.as_str())
+        .map(|s| s.to_string());
+
+    let plan_type = obj
+        .get("plan_type")
+        .and_then(|x| x.as_str())
+        .map(|s| s.to_string());
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+
+    let profile = OAuthProfile {
+        access_token,
+        refresh_token,
+        id_token,
+        expires_at,
+        last_refresh: now,
+        email: "default".to_string(),
+        account_id,
+        plan_type,
+    };
+
+    let mut store = ProviderOAuthStore::empty();
+    store.upsert_profile("default", profile);
+    Ok(store)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -242,5 +332,74 @@ mod tests {
         store.remove_profile("charlie");
         // Remaining: alpha, bravo. Min = alpha.
         assert_eq!(store.active_profile.as_deref(), Some("alpha"));
+    }
+
+    #[test]
+    fn migrate_legacy_anthropic_blob() {
+        // Legacy shape: the JSON of an `OAuthToken`.
+        let legacy = r#"{
+            "access_token": "sk-ant-oat-abc",
+            "refresh_token": "sk-ant-ort-abc",
+            "expires_at": 1700000000,
+            "token_type": "Bearer",
+            "scope": null
+        }"#;
+
+        let store = migrate_legacy_blob(legacy, "anthropic")
+            .expect("should migrate legacy blob");
+
+        assert_eq!(store.active_profile.as_deref(), Some("default"));
+        assert_eq!(store.profiles.len(), 1);
+        let p = store.profiles.get("default").unwrap();
+        assert_eq!(p.access_token, "sk-ant-oat-abc");
+        assert_eq!(p.refresh_token, "sk-ant-ort-abc");
+        assert_eq!(p.expires_at, 1_700_000_000);
+        assert_eq!(p.email, "default");
+        assert!(p.id_token.is_none());
+        assert!(p.account_id.is_none());
+    }
+
+    #[test]
+    fn migrate_legacy_openai_blob_with_account_id() {
+        // OpenAI legacy shape includes id_token and account_id.
+        let legacy = r#"{
+            "access_token": "sk-openai-abc",
+            "refresh_token": "ref-abc",
+            "expires_at": 1700000000,
+            "token_type": "Bearer",
+            "scope": null,
+            "id_token": "eyJheyJ.payload.sig",
+            "account_id": "acct-123"
+        }"#;
+
+        let store = migrate_legacy_blob(legacy, "openai")
+            .expect("should migrate legacy blob");
+        let p = store.profiles.get("default").unwrap();
+        assert_eq!(p.account_id.as_deref(), Some("acct-123"));
+        assert_eq!(p.id_token.as_deref(), Some("eyJheyJ.payload.sig"));
+    }
+
+    #[test]
+    fn migrate_detects_already_migrated() {
+        let mut store = ProviderOAuthStore::empty();
+        store.upsert_profile("default", sample_profile("a@b"));
+        let json = serde_json::to_string(&store).unwrap();
+        // Round-trips: migrating an already-migrated blob returns Ok(it_as_is).
+        let migrated = migrate_legacy_blob(&json, "anthropic").unwrap();
+        assert_eq!(migrated, store);
+    }
+
+    #[test]
+    fn migrate_garbage_json_errors() {
+        assert!(migrate_legacy_blob("not json", "anthropic").is_err());
+        assert!(migrate_legacy_blob("{}", "anthropic").is_err());
+    }
+
+    #[test]
+    fn is_already_migrated_detects_profiles_key() {
+        assert!(is_already_migrated(r#"{"profiles":{},"active_profile":null}"#));
+        assert!(is_already_migrated(r#"{"profiles":{}}"#));
+        assert!(!is_already_migrated(r#"{"access_token":"x","expires_at":1}"#));
+        assert!(!is_already_migrated("not even json"));
     }
 }
