@@ -7,8 +7,9 @@ import { MagnifyingGlassIcon, CounterClockwiseClockIcon } from '@radix-ui/react-
 import { useSettingsStore } from '../../../stores/settingsStore';
 import { KeybindingInput } from '../controls';
 import {
-  DEFAULT_KEYBINDINGS,
   KEYBINDING_CATEGORIES,
+  DEFAULT_KEYBINDINGS,
+  buildEffectiveKeybindings,
   getKeybindingConflicts,
   type KeybindingDefinition,
 } from '../../../lib/keybindings/registry';
@@ -21,13 +22,10 @@ export function ShortcutsTab() {
   const resetAllKeybindings = useSettingsStore((s) => s.resetAllKeybindings);
 
   // Build effective keybindings (custom + defaults)
-  const effectiveKeybindings = useMemo(() => {
-    const result: Record<string, string> = {};
-    for (const def of DEFAULT_KEYBINDINGS) {
-      result[def.id] = customKeybindings[def.id] ?? def.defaultKey;
-    }
-    return result;
-  }, [customKeybindings]);
+  const effectiveKeybindings = useMemo(
+    () => buildEffectiveKeybindings(customKeybindings),
+    [customKeybindings]
+  );
 
   // Find conflicts
   const conflicts = useMemo(
