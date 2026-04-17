@@ -5,6 +5,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { Cross2Icon, CounterClockwiseClockIcon } from '@radix-ui/react-icons';
 import { Keyboard } from 'lucide-react';
+import { parseKeyboardEvent } from '../../../lib/keybindings';
 
 interface KeybindingInputProps {
   value: string;
@@ -13,29 +14,6 @@ interface KeybindingInputProps {
   onReset?: () => void;
   hasConflict?: boolean;
   conflictMessage?: string;
-}
-
-function formatKeyEvent(e: KeyboardEvent): string {
-  const parts: string[] = [];
-
-  if (e.metaKey) parts.push('Cmd');
-  if (e.ctrlKey) parts.push('Ctrl');
-  if (e.altKey) parts.push('Alt');
-  if (e.shiftKey) parts.push('Shift');
-
-  // Add the key if it's not a modifier
-  const key = e.key;
-  if (!['Meta', 'Control', 'Alt', 'Shift'].includes(key)) {
-    if (key === ' ') {
-      parts.push('Space');
-    } else if (key.length === 1) {
-      parts.push(key.toUpperCase());
-    } else {
-      parts.push(key);
-    }
-  }
-
-  return parts.join('+');
 }
 
 export function KeybindingInput({
@@ -84,14 +62,14 @@ export function KeybindingInput({
       const isModifierOnly = ['Meta', 'Control', 'Alt', 'Shift'].includes(e.key);
 
       if (hasModifier && !isModifierOnly) {
-        const formatted = formatKeyEvent(e);
+        const formatted = parseKeyboardEvent(e);
         onChange(formatted);
         setIsRecording(false);
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown, { capture: true });
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, [isRecording, onChange]);
 
   // Click outside to cancel
@@ -117,6 +95,7 @@ export function KeybindingInput({
           ref={inputRef}
           type="button"
           onClick={handleStartRecording}
+          data-keybinding-recording={isRecording ? 'true' : undefined}
           className={`
             inline-flex items-center gap-2 px-3 py-2 min-w-[140px]
             border rounded-lg text-sm font-mono cursor-pointer
