@@ -43,6 +43,7 @@ mod provider_commands;
 mod session_commands;
 mod settings_commands;
 mod skills_commands;
+mod stats_commands;
 mod terminal_commands;
 mod update_commands;
 mod worktree_commands;
@@ -53,6 +54,7 @@ use embedding_commands::EmbeddingState;
 use fs_commands::FsState;
 use git_commands::GitState;
 use provider_commands::ProviderAuthState;
+use stats_commands::StatsState;
 use tauri::Emitter;
 #[cfg(target_os = "macos")]
 use tauri_plugin_decorum::WebviewWindowExt;
@@ -186,6 +188,7 @@ pub fn run() {
         .manage(GitState::new())
         .manage(WorktreeState::new())
         .manage(ElevenLabsState::new())
+        .manage(StatsState::new())
         .invoke_handler(tauri::generate_handler![
             // Core commands
             commands::ping,
@@ -262,6 +265,7 @@ pub fn run() {
             auth_commands::auth_refresh_session,
             auth_commands::auth_sign_out,
             auth_commands::auth_get_access_token,
+            auth_commands::auth_get_id_token,
             // Terminal commands
             terminal_commands::spawn_pty,
             terminal_commands::write_pty,
@@ -348,6 +352,13 @@ pub fn run() {
             skills_commands::skills_onboarding_dismiss,
             skills_commands::skills_onboarding_reset,
             skills_commands::skills_set_imports,
+            // Stats & tier commands
+            stats_commands::stats_initialize,
+            stats_commands::stats_current,
+            stats_commands::stats_sync_now,
+            stats_commands::stats_get_tier,
+            stats_commands::stats_get_leaderboard,
+            stats_commands::stats_generate_card,
             // ElevenLabs voice commands
             elevenlabs_commands::elevenlabs_set_api_key,
             elevenlabs_commands::elevenlabs_has_api_key,
