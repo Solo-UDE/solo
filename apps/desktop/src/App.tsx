@@ -35,7 +35,7 @@ import { HEIGHTS, SIDEBAR } from "./lib/constants";
 import { cn } from "./lib/utils";
 import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
-import { Toaster } from "sonner";
+import { Toaster } from "@solo/ui";
 import { TitlebarButton } from "./components/titlebar/TitlebarButton";
 import { WelcomeScreen } from "./components/welcome";
 import { KeyboardShortcutsOverlay } from "./components/KeyboardShortcutsOverlay";
