@@ -79,3 +79,12 @@ docs/MIGRATION.md
 
 # .envrc
 .envrc
+
+# Local OAuth / credential scratchpads — never commit these. Broad pattern so
+# ad-hoc files (Oauth_app_setup.md, oauth.md, secrets.env, etc.) can't slip in.
+infra/Oauth_app_setup.md
+infra/oauth*
+infra/*secret*
+infra/*credential*
+**/oauth-setup*
+**/oauth_setup*

@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type { FC, KeyboardEvent } from 'react';
 import { Pencil2Icon, TrashIcon } from '@radix-ui/react-icons';
-import { MessageCircle } from 'lucide-react';
+import { GitBranch, MessageCircle } from 'lucide-react';
 import type { AgentSession, Message } from '@/stores/agentStore';
 import {
   ContextMenu,
@@ -18,6 +18,7 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu';
+import { isGitAgentSession } from '@/lib/git-agent';
 import { cn } from '@/lib/utils';
 
 export interface SessionThreadRowProps {
@@ -86,6 +87,8 @@ export const SessionThreadRow: FC<SessionThreadRowProps> = ({
     [onCommitRename, onCancelRename],
   );
 
+  const isGitAgent = isGitAgentSession(session);
+
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild disabled={isRenaming}>
@@ -100,12 +103,20 @@ export const SessionThreadRow: FC<SessionThreadRowProps> = ({
             isActive
               ? 'bg-background/80 text-foreground'
               : 'text-muted-foreground hover:bg-background/55 hover:text-foreground',
+            isGitAgent && 'ring-1 ring-primary/15',
           )}
         >
           {isStreaming ? (
             <span
               className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary animate-pulse"
               aria-hidden="true"
+            />
+          ) : isGitAgent ? (
+            <GitBranch
+              className={cn(
+                'h-3 w-3 shrink-0',
+                hasOpenTab ? 'text-primary' : 'text-primary/60',
+              )}
             />
           ) : (
             <MessageCircle
