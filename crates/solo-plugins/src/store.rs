@@ -87,7 +87,79 @@ impl PluginStore {
         self.active_plugin_version(id).is_some()
     }
 
-    // install and uninstall land in Task 10.
+    /// Copy `source_path` into `~/.solo/plugins/cache/<marketplace>/<name>/<version>/`.
+    /// Fails if the destination already exists or `source_path` is not a directory.
+    pub fn install_local(
+        &self,
+        source_path: &Path,
+        id: PluginId,
+        version: &str,
+    ) -> Result<PluginInstallResult, PluginStoreError> {
+        if !source_path.is_dir() {
+            return Err(PluginStoreError::Invalid(format!(
+                "source path is not a directory: {}",
+                source_path.display()
+            )));
+        }
+        validate_plugin_segment(version, "version")
+            .map_err(PluginStoreError::Invalid)?;
+
+        let destination = self.plugin_root(&id, version);
+        if destination.exists() {
+            return Err(PluginStoreError::Invalid(format!(
+                "plugin already installed: {}",
+                destination.display()
+            )));
+        }
+        fs::create_dir_all(destination.parent().unwrap())?;
+        copy_dir_recursive(source_path, &destination)?;
+
+        let installed_path = AbsolutePathBuf::try_from_absolute(&destination)?;
+        Ok(PluginInstallResult {
+            id,
+            version: version.to_string(),
+            installed_path,
+        })
+    }
+
+    /// Remove every version directory for this plugin, and the plugin's own
+    /// directory when empty. No-op if the plugin is not installed — well,
+    /// returns Invalid; callers generally want to check is_installed first.
+    pub fn uninstall(&self, id: &PluginId) -> Result<(), PluginStoreError> {
+        let base = self.plugin_base_root(id);
+        if !base.exists() {
+            return Err(PluginStoreError::Invalid(format!(
+                "plugin not installed: {}/{}",
+                id.marketplace, id.name
+            )));
+        }
+        fs::remove_dir_all(&base)?;
+        // Remove the marketplace dir if it's now empty.
+        if let Some(mk_dir) = base.parent() {
+            if mk_dir.exists() && fs::read_dir(mk_dir).map(|mut i| i.next().is_none()).unwrap_or(false) {
+                let _ = fs::remove_dir(mk_dir);
+            }
+        }
+        Ok(())
+    }
+}
+
+fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
+    fs::create_dir_all(dst)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let from = entry.path();
+        let to = dst.join(entry.file_name());
+        let ty = entry.file_type()?;
+        if ty.is_dir() {
+            copy_dir_recursive(&from, &to)?;
+        } else if ty.is_file() {
+            fs::copy(&from, &to)?;
+        }
+        // Silently skip symlinks and other file types. Plugin directories are
+        // expected to be plain files + dirs; symlinks would introduce escape risks.
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -152,5 +224,80 @@ mod tests {
             store.active_plugin_version(&plugin),
             Some("1-0-0".to_string())
         );
+    }
+
+    fn write_plugin(root: &Path, manifest_name: &str) {
+        fs::create_dir_all(root.join(".solo-plugin")).unwrap();
+        fs::write(
+            root.join(".solo-plugin/plugin.json"),
+            format!(r#"{{"name":"{manifest_name}"}}"#),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn install_copies_directory_into_cache() {
+        let tmp_cache = tempdir().unwrap();
+        let tmp_src = tempdir().unwrap();
+        let store = PluginStore::new(tmp_cache.path().to_path_buf());
+        let src = tmp_src.path().join("plugin-src");
+        write_plugin(&src, "sample");
+
+        let result = store
+            .install_local(&src, id("local", "sample"), "local")
+            .unwrap();
+
+        assert_eq!(result.version, "local");
+        assert!(result.installed_path.as_path().join(".solo-plugin/plugin.json").is_file());
+    }
+
+    #[test]
+    fn install_rejects_duplicate() {
+        let tmp_cache = tempdir().unwrap();
+        let tmp_src = tempdir().unwrap();
+        let store = PluginStore::new(tmp_cache.path().to_path_buf());
+        let src = tmp_src.path().join("plugin-src");
+        write_plugin(&src, "sample");
+
+        store.install_local(&src, id("local", "sample"), "local").unwrap();
+        let err = store
+            .install_local(&src, id("local", "sample"), "local")
+            .unwrap_err();
+        assert!(matches!(err, PluginStoreError::Invalid(_)), "got: {err:?}");
+    }
+
+    #[test]
+    fn install_rejects_non_directory_source() {
+        let tmp_cache = tempdir().unwrap();
+        let tmp_src = tempdir().unwrap();
+        let store = PluginStore::new(tmp_cache.path().to_path_buf());
+        let file = tmp_src.path().join("not-a-dir");
+        fs::write(&file, "").unwrap();
+        let err = store
+            .install_local(&file, id("local", "x"), "local")
+            .unwrap_err();
+        assert!(matches!(err, PluginStoreError::Invalid(_)));
+    }
+
+    #[test]
+    fn uninstall_removes_version_directory() {
+        let tmp_cache = tempdir().unwrap();
+        let tmp_src = tempdir().unwrap();
+        let store = PluginStore::new(tmp_cache.path().to_path_buf());
+        let src = tmp_src.path().join("plugin-src");
+        write_plugin(&src, "sample");
+        store.install_local(&src, id("local", "sample"), "local").unwrap();
+
+        assert!(store.is_installed(&id("local", "sample")));
+        store.uninstall(&id("local", "sample")).unwrap();
+        assert!(!store.is_installed(&id("local", "sample")));
+    }
+
+    #[test]
+    fn uninstall_missing_plugin_errors() {
+        let tmp_cache = tempdir().unwrap();
+        let store = PluginStore::new(tmp_cache.path().to_path_buf());
+        let err = store.uninstall(&id("local", "missing")).unwrap_err();
+        assert!(matches!(err, PluginStoreError::Invalid(_)));
     }
 }
