@@ -1,6 +1,12 @@
 /**
- * NumberInput - Numeric value input with min/max bounds
- * Updated with sharp corners and improved styling
+ * NumberInput — segmented numeric stepper. Shares the Button size ladder so
+ * it lines up with form controls at the same row height.
+ *
+ * Layout: single rounded-md container with a subtle ring, three columns
+ * (decrement, value, increment). The input sits flat in the middle with no
+ * inner border — the outer ring owns the frame. This prevents the "box in a
+ * box" visual overflow the earlier border-y + border-l-0/r-0 pattern caused
+ * once the global radius scale shifted.
  */
 
 import { useCallback } from 'react';
@@ -25,41 +31,48 @@ export function NumberInput({
   disabled = false,
 }: NumberInputProps) {
   const handleIncrement = useCallback(() => {
-    const newValue = Math.min(max, value + step);
-    onChange(newValue);
+    onChange(Math.min(max, value + step));
   }, [value, max, step, onChange]);
 
   const handleDecrement = useCallback(() => {
-    const newValue = Math.max(min, value - step);
-    onChange(newValue);
+    onChange(Math.max(min, value - step));
   }, [value, min, step, onChange]);
 
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      const raw = e.target.value;
-      const parsed = parseInt(raw, 10);
+      const parsed = parseInt(e.target.value, 10);
       if (!isNaN(parsed)) {
-        const clamped = Math.max(min, Math.min(max, parsed));
-        onChange(clamped);
+        onChange(Math.max(min, Math.min(max, parsed)));
       }
     },
     [min, max, onChange]
   );
 
+  const widthCh = Math.max(3, String(max).length + 1);
+
   return (
-    <div className="inline-flex items-center">
+    <div
+      className={cn(
+        'inline-flex h-8 items-stretch overflow-hidden rounded-md',
+        'bg-input ring-1 ring-black/5 dark:ring-white/10',
+        'focus-within:ring-2 focus-within:ring-ring/40',
+        'transition-[box-shadow] duration-100',
+        disabled && 'opacity-50 pointer-events-none'
+      )}
+    >
       <button
         type="button"
         onClick={handleDecrement}
         disabled={disabled || value <= min}
+        aria-label="Decrement"
         className={cn(
-          "rounded-l-[8px] border border-r-0 border-border bg-muted px-2.5 py-1.5",
-          "hover:bg-muted/80",
-          "disabled:cursor-not-allowed disabled:opacity-50",
-          "transition-colors cursor-pointer"
+          'flex w-7 items-center justify-center text-muted-foreground',
+          'hover:bg-accent hover:text-foreground',
+          'disabled:cursor-not-allowed disabled:opacity-40',
+          'transition-colors cursor-pointer'
         )}
       >
-        <MinusIcon className="w-3 h-3" />
+        <MinusIcon className="h-3 w-3" />
       </button>
       <input
         type="number"
@@ -69,27 +82,28 @@ export function NumberInput({
         max={max}
         step={step}
         disabled={disabled}
-        style={{ width: `${Math.max(4, String(max).length + 2)}ch` }}
+        style={{ width: `${widthCh}ch` }}
         className={cn(
-          "px-2 py-1.5 text-center text-sm tabular-nums",
-          "border-y border-border bg-background text-foreground",
-          "focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-inset",
-          "disabled:cursor-not-allowed disabled:opacity-50",
-          "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+          'min-w-0 flex-none px-1 text-center text-[13px] tabular-nums',
+          'bg-transparent text-foreground',
+          'focus:outline-none',
+          'disabled:cursor-not-allowed',
+          '[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none'
         )}
       />
       <button
         type="button"
         onClick={handleIncrement}
         disabled={disabled || value >= max}
+        aria-label="Increment"
         className={cn(
-          "rounded-r-[8px] border border-l-0 border-border bg-muted px-2.5 py-1.5",
-          "hover:bg-muted/80",
-          "disabled:cursor-not-allowed disabled:opacity-50",
-          "transition-colors cursor-pointer"
+          'flex w-7 items-center justify-center text-muted-foreground',
+          'hover:bg-accent hover:text-foreground',
+          'disabled:cursor-not-allowed disabled:opacity-40',
+          'transition-colors cursor-pointer'
         )}
       >
-        <PlusIcon className="w-3 h-3" />
+        <PlusIcon className="h-3 w-3" />
       </button>
     </div>
   );

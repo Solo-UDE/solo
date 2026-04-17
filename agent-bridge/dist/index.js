@@ -1599,6 +1599,7 @@ var OrbitAgent = class {
   model;
   _fallbackModel;
   _maxTokens;
+  _allowedTools;
   _sessionMode;
   // Session resume/fork fields
   _resumeSessionId;
@@ -1652,6 +1653,9 @@ var OrbitAgent = class {
     }
     if (config.maxTokens !== void 0) {
       this._maxTokens = config.maxTokens;
+    }
+    if (config.allowedTools !== void 0) {
+      this._allowedTools = [...config.allowedTools];
     }
     this._mcpServers = config.mcpServers ?? {};
     this._outputFormat = config.outputFormat;
@@ -1842,7 +1846,13 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
     } else {
       logger4.info({ thinkingMode: "off" }, "Extended thinking DISABLED");
     }
-    if (this._sessionMode === "chat") {
+    if (this._allowedTools !== void 0) {
+      options.allowedTools = [...this._allowedTools];
+      logger4.info(
+        { tools: this._allowedTools, sessionMode: this._sessionMode },
+        "Explicit tool allow-list installed"
+      );
+    } else if (this._sessionMode === "chat") {
       const chatTools = getAllowedToolsForMode("chat");
       options.allowedTools = chatTools;
       logger4.info({ mode: "chat", tools: chatTools }, "Chat mode - read-only tools auto-approved");
@@ -2702,6 +2712,7 @@ var SessionManager = class extends Disposable {
       critiqueEnabled: storedPrefs?.critiqueEnabled ?? config?.critiqueEnabled ?? false,
       model: storedPrefs?.model ?? config?.model,
       maxTokens: storedPrefs?.maxTokens ?? config?.maxTokens,
+      allowedTools: config?.allowedTools,
       cwd: config?.cwd,
       sessionMode: config?.sessionMode ?? "agent",
       permissionRequestCallback: permissionCallback,

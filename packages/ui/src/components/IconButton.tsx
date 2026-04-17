@@ -1,52 +1,72 @@
 import { forwardRef, type ButtonHTMLAttributes } from "react";
 import { cn } from "../utils/cn";
 
+/**
+ * IconButton — square, icon-only button. Shares the Button size ladder
+ * so the two can sit next to each other without height mismatch.
+ *
+ * Variants:
+ *   ghost   — transparent bg, hover tint (toolbar default).
+ *   muted   — always-visible muted surface (used when an icon needs persistent presence).
+ *   outline — ring border, transparent fill.
+ *   solid   — primary-colored filled button for emphasis.
+ */
 export interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  /** Size of the button */
   size?: "xs" | "sm" | "md" | "lg";
-  /** Variant style */
-  variant?: "ghost" | "muted" | "outline";
+  variant?: "ghost" | "muted" | "outline" | "solid";
+  /** Accessible label. Accepts `label` or standard `aria-label`. */
+  label?: string;
 }
 
-/**
- * Compact square icon button — Orbit dev-tool density.
- *
- * No hover scale. Uses --radius tokens so global radius tuning applies.
- */
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
-  ({ className, size = "md", variant = "ghost", children, ...props }, ref) => {
+  (
+    {
+      className,
+      size = "md",
+      variant = "ghost",
+      label,
+      "aria-label": ariaLabel,
+      children,
+      type = "button",
+      ...props
+    },
+    ref,
+  ) => {
     const sizes = {
-      xs: "w-5 h-5 rounded-sm",
-      sm: "w-6 h-6 rounded-sm",
-      md: "w-7 h-7 rounded-md",
-      lg: "w-8 h-8 rounded-md",
+      xs: "size-5 rounded-sm [&_svg]:size-3",
+      sm: "size-6 rounded-sm [&_svg]:size-3.5",
+      md: "size-7 rounded-md [&_svg]:size-3.5",
+      lg: "size-8 rounded-md [&_svg]:size-4",
     };
 
     const variants = {
-      ghost: "bg-transparent hover:bg-accent",
-      muted: "bg-muted/40 hover:bg-muted/60",
+      ghost: "bg-transparent text-foreground/80 hover:bg-accent hover:text-foreground",
+      muted: "bg-muted/40 text-foreground/90 hover:bg-muted/60",
       outline: "border border-input bg-transparent hover:bg-accent",
+      solid: "bg-primary text-primary-foreground hover:bg-primary/90",
     };
 
     return (
       <button
         ref={ref}
+        type={type}
+        aria-label={label ?? ariaLabel}
         className={cn(
           "inline-flex items-center justify-center",
-          "transition-[background-color,color,border-color] duration-150",
-          "active:scale-95",
-          "disabled:opacity-50 disabled:pointer-events-none",
-          "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+          "transition-[background-color,color,border-color,transform] duration-100 ease-[cubic-bezier(0.4,0,0.2,1)]",
+          "active:scale-95 disabled:opacity-50 disabled:pointer-events-none",
+          "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
+          "[&_svg]:shrink-0 [&_svg]:pointer-events-none",
           sizes[size],
           variants[variant],
-          className
+          className,
         )}
         {...props}
       >
         {children}
       </button>
     );
-  }
+  },
 );
 
 IconButton.displayName = "IconButton";

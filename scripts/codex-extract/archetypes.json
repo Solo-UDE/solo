@@ -1,0 +1,192 @@
+{
+  "$schema": "./archetypes.schema.json",
+  "description": "Hand-curated DOM archetype catalog. Each entry is tried in selector order; first match wins. States beyond 'default' are forced via CSS.forcePseudoState before style capture.",
+  "archetypes": [
+    {
+      "name": "document-root",
+      "description": "html / body — root typography and background",
+      "selectors": ["html", "body"],
+      "states": ["default"]
+    },
+    {
+      "name": "main-background",
+      "description": "Primary app canvas beneath sidebar/chat/editor",
+      "selectors": ["main", "#root > div", "[role='main']", "body > div:first-child"],
+      "states": ["default"]
+    },
+    {
+      "name": "sidebar",
+      "description": "Left navigation rail",
+      "selectors": ["aside", "nav[aria-label*='sidebar' i]", "[class*='sidebar' i]", "[data-testid*='sidebar' i]"],
+      "states": ["default"]
+    },
+    {
+      "name": "sidebar-item",
+      "description": "A single navigable entry in the sidebar",
+      "selectors": ["aside li", "aside a[role='button']", "[class*='SidebarItem']", "[class*='sidebar-item']"],
+      "states": ["default", "hover", "active"]
+    },
+    {
+      "name": "chat-area",
+      "description": "Scrollable message container",
+      "selectors": ["[class*='ChatArea' i]", "[class*='chat-area' i]", "[data-testid*='chat']", "[role='log']"],
+      "states": ["default"]
+    },
+    {
+      "name": "message-user",
+      "description": "User message bubble",
+      "selectors": ["[class*='UserMessage']", "[data-role='user']", "[data-author='user']"],
+      "states": ["default"]
+    },
+    {
+      "name": "message-assistant",
+      "description": "Assistant message surface",
+      "selectors": ["[class*='AssistantMessage']", "[data-role='assistant']", "[data-author='assistant']"],
+      "states": ["default"]
+    },
+    {
+      "name": "message-tool",
+      "description": "Tool-call result surface",
+      "selectors": ["[class*='ToolMessage']", "[class*='ToolCall']", "[data-role='tool']"],
+      "states": ["default"]
+    },
+    {
+      "name": "primary-button",
+      "description": "Main call-to-action button",
+      "selectors": [
+        "button[data-variant='primary']",
+        "button.btn-primary",
+        "button[class*='Primary' i][class*='Button' i]",
+        "button[type='submit']:not([class*='secondary' i])",
+        "[role='button'][data-primary='true']"
+      ],
+      "states": ["default", "hover", "active", "focus", "disabled"]
+    },
+    {
+      "name": "secondary-button",
+      "description": "Supporting button",
+      "selectors": [
+        "button[data-variant='secondary']",
+        "button.btn-secondary",
+        "button[class*='Secondary' i][class*='Button' i]"
+      ],
+      "states": ["default", "hover", "active", "focus", "disabled"]
+    },
+    {
+      "name": "ghost-button",
+      "description": "Icon-only or transparent button",
+      "selectors": [
+        "button[data-variant='ghost']",
+        "button[class*='Ghost' i][class*='Button' i]",
+        "button:has(> svg):not([class*='Primary' i]):not([class*='Secondary' i])"
+      ],
+      "states": ["default", "hover", "active", "focus", "disabled"]
+    },
+    {
+      "name": "icon-button",
+      "description": "Square icon-only control",
+      "selectors": [
+        "button[aria-label]:has(> svg):not(:has(> span))",
+        "[role='button']:has(> svg):not(:has(> span))",
+        "[class*='IconButton']"
+      ],
+      "states": ["default", "hover", "active", "focus", "disabled"]
+    },
+    {
+      "name": "text-input",
+      "description": "Single-line text input",
+      "selectors": ["input[type='text']", "input[type='search']", "input:not([type])", "input[type='email']"],
+      "states": ["default", "hover", "focus", "disabled"]
+    },
+    {
+      "name": "textarea",
+      "description": "Multi-line text input",
+      "selectors": ["textarea", "[role='textbox'][contenteditable='true']"],
+      "states": ["default", "hover", "focus", "disabled"]
+    },
+    {
+      "name": "select-trigger",
+      "description": "Dropdown trigger",
+      "selectors": ["select", "[role='combobox']", "button[aria-haspopup='listbox']"],
+      "states": ["default", "hover", "focus"]
+    },
+    {
+      "name": "menu-item",
+      "description": "Entry inside a dropdown or context menu",
+      "selectors": ["[role='menuitem']", "[role='menuitemradio']", "[role='menuitemcheckbox']"],
+      "states": ["default", "hover", "focus"]
+    },
+    {
+      "name": "menu-separator",
+      "description": "Divider inside a menu",
+      "selectors": ["[role='separator']", "hr[class*='menu' i]"],
+      "states": ["default"]
+    },
+    {
+      "name": "dialog-overlay",
+      "description": "Modal dialog backdrop",
+      "selectors": ["[role='dialog'] ~ [aria-hidden='true']", "[data-radix-dialog-overlay]", "[class*='Overlay' i]", "[class*='Backdrop' i]"],
+      "states": ["default"]
+    },
+    {
+      "name": "dialog-content",
+      "description": "Modal dialog content frame",
+      "selectors": ["[role='dialog']", "[role='alertdialog']", "[data-radix-dialog-content]"],
+      "states": ["default"]
+    },
+    {
+      "name": "tooltip",
+      "description": "Hover/focus tooltip",
+      "selectors": ["[role='tooltip']", "[data-radix-tooltip-content]", "[class*='Tooltip' i]"],
+      "states": ["default"]
+    },
+    {
+      "name": "tab",
+      "description": "Tab trigger",
+      "selectors": ["[role='tab']", "[data-radix-tabs-trigger]"],
+      "states": ["default", "hover", "focus", "active"]
+    },
+    {
+      "name": "tab-active",
+      "description": "Selected tab",
+      "selectors": ["[role='tab'][aria-selected='true']", "[role='tab'][data-state='active']"],
+      "states": ["default"]
+    },
+    {
+      "name": "scrollbar-thumb",
+      "description": "Custom scrollbar thumb (if Codex skins it)",
+      "selectors": ["[class*='ScrollbarThumb']", "[data-radix-scroll-area-thumb]"],
+      "states": ["default", "hover"]
+    },
+    {
+      "name": "code-block",
+      "description": "Multi-line code container",
+      "selectors": ["pre code", "[data-language]", "[class*='CodeBlock' i]"],
+      "states": ["default"]
+    },
+    {
+      "name": "inline-code",
+      "description": "Inline code span",
+      "selectors": ["code:not(pre code)", "[class*='InlineCode' i]"],
+      "states": ["default"]
+    },
+    {
+      "name": "badge",
+      "description": "Label/tag component",
+      "selectors": ["[class*='Badge' i]", "[class*='Tag' i]:not([class*='textarea' i])", "[role='status']"],
+      "states": ["default"]
+    },
+    {
+      "name": "kbd",
+      "description": "Keyboard shortcut chip",
+      "selectors": ["kbd", "[class*='Kbd' i]", "[class*='Shortcut' i]"],
+      "states": ["default"]
+    },
+    {
+      "name": "link",
+      "description": "Inline anchor",
+      "selectors": ["a[href]:not([role='button'])"],
+      "states": ["default", "hover", "focus"]
+    }
+  ]
+}

@@ -60,14 +60,14 @@ export function buildDirtySwitchSeed(args: DirtySwitchSeedArgs): string {
 }
 
 /**
- * Tool allow-list for Git Agent sessions. The agent runtime reads this to
- * filter its normal tool set down to git + read-only inspection.
+ * Tool allow-list for Git Agent sessions.
  *
- * NOTE: this is a client-side hint today. When the backend gains first-class
- * per-session tool gating (tracked alongside Debug mode), the allow-list
- * moves server-side and this array becomes an IPC payload. Until then the
- * system prompt does the enforcement via instruction, which works reliably
- * for Claude-class models but is not a security boundary.
+ * This list is now a real security boundary: it ships through the Tauri
+ * SessionConfig → bridge → SDK pipeline as `options.allowedTools`, so the
+ * Claude Agent SDK refuses off-list tools before the permission callback
+ * ever runs. Keep the list tight — every entry widens the agent's surface.
+ * Bash is still subject to the project's permission rules so destructive
+ * commands (`rm -rf`, `reset --hard`) still trigger an ask/deny.
  */
 export const GIT_AGENT_TOOL_ALLOWLIST = [
   // Inspection (read-only)

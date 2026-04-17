@@ -1,0 +1,7 @@
+/*
+ * source: app://-/assets/dialog-layout-CyrLYBi9.css
+ * origin: regular
+ * index:  0
+ * extracted: 2026-04-17T06:31:01.248Z
+ */
+.codex-dialog{animation:codex-dialog-enter var(--transition-duration-relaxed) var(--cubic-enter);transform-origin:top;will-change:transform, opacity}@media (prefers-reduced-motion:reduce){.codex-dialog{animation:none}}@keyframes codex-dialog-enter{0%{opacity:0;transform:translateY(calc(var(--spacing,4px) * 2)) scale(.98)}to{opacity:1;transform:translateY(0)scale(1)}}.codex-dialog-overlay{animation:codex-dialog-overlay var(--transition-duration-relaxed) var(--cubic-enter);will-change:opacity}@media (prefers-reduced-motion:reduce){.codex-dialog-overlay{animation:none}}@keyframes codex-dialog-overlay{0%{opacity:0}to{opacity:1}}

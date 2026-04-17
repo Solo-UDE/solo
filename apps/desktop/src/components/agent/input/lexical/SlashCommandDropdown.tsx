@@ -1,5 +1,12 @@
 /**
- * SlashCommandDropdown - Floating command palette for / slash commands and skills
+ * SlashCommandDropdown — Codex-style single-line command palette.
+ *
+ * Visual reference: OpenAI Codex app's / menu. Each row is one line:
+ *   [icon] Name   description text that fills and truncates
+ *
+ * Source (SOLO / plugin / Claude / Codex) is conveyed by icon tint rather
+ * than a text badge, so the layout stays dense. The container uses a
+ * blurred, translucent surface matching other overlay popovers.
  */
 
 import { useEffect, useRef } from 'react';
@@ -14,19 +21,17 @@ export interface SlashCommand {
 	description: string;
 	category: 'local' | 'agent' | 'skill';
 	icon: ComponentType<{ className?: string; size?: number }>;
-	/** For skills: whether the skill is currently attached */
 	attached?: boolean;
-	/** For skills: where the skill was discovered (drives the source badge) */
 	source?: SkillSource;
 }
 
-const SOURCE_BADGES: Record<SkillSource, { label: string; className: string }> = {
-	user: { label: 'Solo', className: 'text-primary bg-primary/10' },
-	project: { label: 'Project', className: 'text-primary bg-primary/10' },
-	claude_user: { label: 'Claude', className: 'text-orange-500 bg-orange-500/10' },
-	claude_plugin: { label: 'Plugin', className: 'text-orange-500 bg-orange-500/10' },
-	claude_project: { label: 'Claude·Proj', className: 'text-orange-500 bg-orange-500/10' },
-	codex: { label: 'Codex', className: 'text-sky-500 bg-sky-500/10' },
+const SOURCE_ICON_TINT: Record<SkillSource, string> = {
+	user: 'text-primary',
+	project: 'text-primary',
+	claude_user: 'text-orange-500',
+	claude_plugin: 'text-orange-500',
+	claude_project: 'text-orange-500',
+	codex: 'text-sky-500',
 };
 
 export interface SlashCommandDropdownProps {
@@ -35,6 +40,15 @@ export interface SlashCommandDropdownProps {
 	onSelect: (command: SlashCommand) => void;
 	position: { bottom: number; left: number };
 }
+
+// Concentric radii per Inspirations UI skill (border-radius.md):
+// outer rounded-2xl (1.25rem) minus the container's p-1.5 (0.375rem) ≈ 0.875rem,
+// which matches rounded-xl on the inner item.
+const itemBase =
+	'group flex w-full items-center gap-2 rounded-xl px-3 h-7 text-[13px] text-left ' +
+	'cursor-default select-none outline-none transition-colors';
+const itemIdle = 'text-foreground/90 hover:bg-accent hover:text-accent-foreground';
+const itemActive = 'bg-accent text-accent-foreground';
 
 export const SlashCommandDropdown: FC<SlashCommandDropdownProps> = ({
 	commands,
@@ -48,88 +62,78 @@ export const SlashCommandDropdown: FC<SlashCommandDropdownProps> = ({
 		selectedRef.current?.scrollIntoView({ block: 'nearest' });
 	}, [selectedIndex]);
 
-	// Split commands and skills for grouped display
 	const regularCommands = commands.filter((c) => c.category !== 'skill');
 	const skills = commands.filter((c) => c.category === 'skill');
 
 	return (
 		<div
-			className="fixed z-50 max-h-72 w-[22rem] overflow-y-auto rounded-[10px] border border-border/80 bg-popover shadow-glass animate-in fade-in slide-in-from-bottom-2 duration-150"
+			className={
+				'fixed z-50 max-h-80 w-[32rem] overflow-y-auto rounded-2xl p-1.5 ' +
+				'bg-popover/90 backdrop-blur-md text-popover-foreground ' +
+				'ring-1 ring-black/10 dark:ring-white/10 shadow-xl ' +
+				'animate-[fade-in-scale_150ms_cubic-bezier(0.16,1,0.3,1)]'
+			}
 			style={{ bottom: position.bottom, left: position.left }}
 		>
 			{commands.length === 0 ? (
-				<div className="p-2.5 text-sm text-muted-foreground text-center">
+				<div className="h-7 flex items-center justify-center text-[13px] text-muted-foreground">
 					No commands found
 				</div>
 			) : (
 				<>
 					{regularCommands.map((cmd) => {
 						const globalIdx = commands.indexOf(cmd);
+						const isActive = globalIdx === selectedIndex;
 						const Icon = cmd.icon;
 						return (
 							<button
 								key={cmd.id}
-								ref={globalIdx === selectedIndex ? selectedRef : undefined}
+								ref={isActive ? selectedRef : undefined}
 								onClick={() => onSelect(cmd)}
-								className={`
-									w-full flex items-center gap-2.5 px-3 py-1.5 text-sm text-left
-									hover:bg-muted transition-colors
-									${globalIdx === selectedIndex ? 'bg-muted' : ''}
-								`}
+								className={`${itemBase} ${isActive ? itemActive : itemIdle}`}
 								type="button"
 							>
-								<Icon className="w-4 h-4 shrink-0 text-muted-foreground" />
-								<div className="min-w-0 flex-1">
-									<div className="flex items-center gap-2">
-										<span className="font-mono text-foreground">/{cmd.id}</span>
-									</div>
-									<div className="truncate text-[11px] text-muted-foreground">
-										{cmd.description}
-									</div>
-								</div>
+								<Icon className="size-4 shrink-0 text-muted-foreground/90 group-hover:text-accent-foreground" />
+								<span className="shrink-0 font-medium">{cmd.label || `/${cmd.id}`}</span>
+								<span className="min-w-0 flex-1 truncate text-muted-foreground/90 group-hover:text-accent-foreground/80">
+									{cmd.description}
+								</span>
 							</button>
 						);
 					})}
-					{skills.length > 0 && regularCommands.length > 0 && (
-						<div className="border-t border-border/40 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+
+					{skills.length > 0 && (
+						<div className="mt-1 px-2 pb-0.5 pt-1.5 text-[11px] font-medium text-muted-foreground/80">
 							Skills
 						</div>
 					)}
+
 					{skills.map((cmd) => {
 						const globalIdx = commands.indexOf(cmd);
+						const isActive = globalIdx === selectedIndex;
+						const tint = cmd.source ? SOURCE_ICON_TINT[cmd.source] : 'text-muted-foreground/90';
 						return (
 							<button
 								key={cmd.id}
-								ref={globalIdx === selectedIndex ? selectedRef : undefined}
+								ref={isActive ? selectedRef : undefined}
 								onClick={() => onSelect(cmd)}
-								className={`
-									w-full flex items-center gap-2.5 px-3 py-1.5 text-sm text-left
-									hover:bg-muted transition-colors
-									${globalIdx === selectedIndex ? 'bg-muted' : ''}
-								`}
+								className={`${itemBase} ${isActive ? itemActive : itemIdle}`}
 								type="button"
 							>
-								<Zap className={`w-4 h-4 shrink-0 ${cmd.attached ? 'text-primary' : 'text-muted-foreground'}`} />
-								<div className="min-w-0 flex-1">
-									<div className="flex items-center gap-2">
-										<span className="font-mono text-foreground">{cmd.label}</span>
-										{cmd.source && (
-											<span
-												className={`text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded-full ${SOURCE_BADGES[cmd.source].className}`}
-											>
-												{SOURCE_BADGES[cmd.source].label}
-											</span>
-										)}
-										{cmd.attached && (
-											<span className="text-[9px] font-semibold uppercase tracking-wider text-primary bg-primary/10 px-1.5 py-0.5 rounded-full">
-												Active
-											</span>
-										)}
-									</div>
-									<div className="truncate text-[11px] text-muted-foreground">
-										{cmd.description}
-									</div>
-								</div>
+								<Zap
+									className={`size-4 shrink-0 ${
+										cmd.attached ? 'text-primary' : tint
+									} group-hover:text-accent-foreground`}
+								/>
+								<span className="shrink-0 font-medium">{cmd.label}</span>
+								<span className="min-w-0 flex-1 truncate text-muted-foreground/90 group-hover:text-accent-foreground/80">
+									{cmd.description}
+								</span>
+								{cmd.attached && (
+									<span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-primary">
+										Active
+									</span>
+								)}
 							</button>
 						);
 					})}

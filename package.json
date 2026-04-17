@@ -17,6 +17,9 @@
     "check": "cargo check && bun run --filter '*' typecheck",
     "test": "cargo test && node scripts/run-workspace-tests.mjs",
     "premerge:master": "bash scripts/premerge-master.sh",
+    "extract:codex": "bun scripts/codex-extract/launch.ts",
+    "extract:codex:dry": "bun scripts/codex-extract/launch.ts --dry-run",
+    "extract:codex:post": "bun scripts/codex-extract/post-process.ts",
     "clean": "cargo clean && rm -rf node_modules apps/*/node_modules packages/*/node_modules agent-bridge/node_modules agent-bridge/dist",
     "gen:bindings": "cargo test -p solo-protocol -p solo-auth && mkdir -p apps/desktop/src/bindings && cp -r crates/solo-protocol/apps/desktop/src/bindings/* apps/desktop/src/bindings/ && cp -r crates/solo-auth/apps/desktop/src/bindings/* apps/desktop/src/bindings/ && rm -rf crates/solo-protocol/apps crates/solo-auth/apps && node scripts/gen-barrel.mjs",
     "version:bump": "node scripts/bump-version.mjs"

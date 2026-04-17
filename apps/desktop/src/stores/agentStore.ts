@@ -320,7 +320,10 @@ interface AgentState {
 
 interface AgentActions {
 	// Session management
-	createSession: (model?: string) => Promise<string>;
+	createSession: (
+		model?: string,
+		options?: { readonly allowedTools?: readonly string[] },
+	) => Promise<string>;
 	forkSession: (sourceSessionId: string, model?: string) => Promise<string>;
 	setActiveSession: (sessionId: string) => void;
 	deleteSession: (sessionId: string) => void;
@@ -657,10 +660,16 @@ export const useAgentStore = create<AgentStore>()(
 		// Session Management
 		// =================================================================
 
-		createSession: async (model?: string) => {
+		createSession: async (
+			model?: string,
+			options?: { readonly allowedTools?: readonly string[] },
+		) => {
 			const sessionId = generateSessionId();
 			const agentModel = model || DEFAULT_MODEL_ID;
 			const maxTokens = useSettingsStore.getState().ai.maxTokens;
+			const allowedTools = options?.allowedTools
+				? [...options.allowedTools]
+				: undefined;
 
 			try {
 				// If a worktree is active, use its path as the session cwd
@@ -674,7 +683,12 @@ export const useAgentStore = create<AgentStore>()(
 				const workspacePath = useFileExplorerStore.getState().rootPath ?? undefined;
 				const cwd = activeWt?.path ?? workspacePath;
 
-				await backend.agentCreateSession(sessionId, { model: agentModel, maxTokens, cwd });
+				await backend.agentCreateSession(sessionId, {
+					model: agentModel,
+					maxTokens,
+					cwd,
+					allowedTools,
+				});
 
 				set((state) => {
 					state.sessions.set(sessionId, {

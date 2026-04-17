@@ -17,7 +17,11 @@
 import { useAgentStore } from '@/stores/agentStore';
 import { usePanelTabsStore } from '@/stores/panelTabsStore';
 import { BUILTIN_PANEL_TYPES } from '@/lib/panels/constants';
-import { GIT_AGENT_SYSTEM_PROMPT, buildDirtySwitchSeed } from './systemPrompt';
+import {
+  GIT_AGENT_SYSTEM_PROMPT,
+  GIT_AGENT_TOOL_ALLOWLIST,
+  buildDirtySwitchSeed,
+} from './systemPrompt';
 
 export interface DirtySwitchArgs {
   readonly worktreeId: string;
@@ -38,10 +42,14 @@ export async function openGitAgentSessionForDirtySwitch(
 ): Promise<string | null> {
   const store = useAgentStore.getState();
 
-  // Create the session. The store picks up the current worktree + workspace
-  // paths automatically; we tag the session via its name so the sidebar can
-  // show a "Git Agent" badge.
-  const sessionId = await store.createSession();
+  // Create the session with the Git Agent tool allow-list installed up-front.
+  // The bridge uses the allow-list to set `options.allowedTools` on the SDK,
+  // which means off-list tools are rejected before `canUseTool` is ever
+  // invoked — a prompt-escape can't coax the model into running arbitrary
+  // file edits or shell commands outside git.
+  const sessionId = await store.createSession(undefined, {
+    allowedTools: GIT_AGENT_TOOL_ALLOWLIST,
+  });
   if (!sessionId) return null;
 
   // Mark the session name so the sidebar / session list can visually
