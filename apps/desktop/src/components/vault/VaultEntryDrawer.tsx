@@ -18,15 +18,15 @@
 import { useEffect, useMemo, useRef, useState, type FC, type KeyboardEvent } from 'react';
 import {
   X,
-  PushPin,
-  Trash,
+  Pin,
+  Trash2,
   Tag,
   Plus,
   Folders,
   Globe,
   Database,
-  CopySimple,
-} from '@phosphor-icons/react';
+  Copy,
+} from 'lucide-react';
 import type { VaultEntry, VaultScope } from '@/lib/tauri/vault';
 import { vaultDelete, vaultSetPinned, vaultUpdateTags, vaultMoveScope } from '@/lib/tauri/vault';
 import { useVaultStore } from '@/stores/vaultStore';
@@ -198,7 +198,7 @@ export const VaultEntryDrawer: FC<Props> = ({ entry, onClose }) => {
           )}
           title={entry.pinned ? 'Unpin' : 'Pin as source of truth'}
         >
-          <PushPin className="w-3 h-3" weight={entry.pinned ? 'fill' : 'regular'} />
+          <Pin className={cn('w-3 h-3', entry.pinned && 'fill-current')} />
           {entry.pinned ? 'Pinned' : 'Pin'}
         </button>
       </div>
@@ -263,7 +263,7 @@ export const VaultEntryDrawer: FC<Props> = ({ entry, onClose }) => {
                 type="button"
                 onClick={() => void removeTag(t)}
                 disabled={busy}
-                className="group flex items-center gap-1 h-5 px-1.5 rounded-md bg-background text-[10px] font-medium shadow-[0_1px_2px_rgba(0,0,0,0.06)] hover:bg-destructive/10 hover:text-destructive transition-colors duration-150"
+                className="group flex items-center gap-1 h-5 px-1.5 rounded-md bg-background text-[10px] font-medium shadow-xs hover:bg-destructive/10 hover:text-destructive transition-colors duration-150"
                 title="Remove tag"
               >
                 {t}
@@ -324,7 +324,7 @@ export const VaultEntryDrawer: FC<Props> = ({ entry, onClose }) => {
             busy && 'opacity-50 cursor-not-allowed',
           )}
         >
-          <Trash className="w-3.5 h-3.5" weight={confirmDelete ? 'fill' : 'regular'} />
+          <Trash2 className={cn('w-3.5 h-3.5', confirmDelete && 'fill-current')} />
           {confirmDelete ? 'Click again to confirm delete' : 'Delete entry'}
         </button>
         {confirmDelete && (
@@ -365,7 +365,7 @@ const MetaRow: FC<{
           className="shrink-0 w-4 h-4 rounded-sm flex items-center justify-center text-muted-foreground/60 hover:text-foreground hover:bg-muted/60 transition-colors duration-150"
           title="Copy"
         >
-          <CopySimple className="w-2.5 h-2.5" />
+          <Copy className="w-2.5 h-2.5" />
         </button>
       )}
     </div>
