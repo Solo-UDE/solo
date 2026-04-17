@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Solo",
-  "version": "0.1.0",
+  "version": "0.2.0-beta.1",
   "identifier": "com.solo.ide",
   "build": {
     "beforeDevCommand": "bun run dev:vite",
@@ -63,7 +63,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDI0NjIyNTEyQjJGRDk1RDkKUldUWmxmMnlFaVZpSk1VK3ZtRVhPbnd2UVR6MGpRUWdUcC8xZ1MxU013ZVdzeFowVzdUTmQ2MUMK",
       "endpoints": [
-        "https://github.com/Solo-UDE/solo/releases/latest/download/latest.json"
+        "https://github.com/Solo-UDE/solo-releases/releases/latest/download/latest.json"
       ]
     }
   }
