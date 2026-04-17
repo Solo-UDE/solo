@@ -3,7 +3,7 @@
  */
 
 import type { FC } from 'react';
-import { FolderPlus } from '@phosphor-icons/react';
+import { FolderPlus } from 'lucide-react';
 import { useRepoList } from '@/stores/repoStore';
 import { RepoItem } from './RepoItem';
 

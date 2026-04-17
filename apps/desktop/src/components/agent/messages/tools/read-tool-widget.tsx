@@ -1,4 +1,5 @@
-import { FileText, CircleNotch } from '@phosphor-icons/react';
+import { FileTextIcon } from '@radix-ui/react-icons';
+import { Loader2 } from 'lucide-react';
 
 import type { FC } from 'react';
 
@@ -17,11 +18,11 @@ export const ReadToolWidget: FC<ReadToolWidgetProps> = ({
   const lineCount = content ? content.split('\n').length : undefined;
 
   return (
-    <div className="my-1 inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-muted/50 border border-border/50">
+    <div className="my-1 inline-flex items-center gap-1.5 px-2 py-1 rounded-md tool-widget-inline-chip">
       {isRunning ? (
-        <CircleNotch className="h-3.5 w-3.5 text-muted-foreground animate-spin shrink-0" />
+        <Loader2 className="h-3.5 w-3.5 text-muted-foreground animate-spin shrink-0" />
       ) : (
-        <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+        <FileTextIcon width={14} height={14} className="text-muted-foreground shrink-0" />
       )}
       <span className="text-xs font-medium text-foreground">{isRunning ? 'Reading' : 'Read'}</span>
       <span className="text-xs font-mono text-foreground/80 truncate max-w-[200px]" title={filePath}>

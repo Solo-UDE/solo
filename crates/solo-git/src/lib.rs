@@ -158,6 +158,7 @@ impl WorktreeManager {
                 is_dirty,
                 agent_session_id: None,
                 created_at: 0,
+                exists_on_disk: true,
             });
         }
 
@@ -209,6 +210,7 @@ impl WorktreeManager {
                     let lock_reason = meta.and_then(|m| m.lock_reason.clone());
                     let agent_session_id = meta.and_then(|m| m.agent_session_id.clone());
                     let created_at = meta.map(|m| m.created_at).unwrap_or(0);
+                    let exists_on_disk = wt_path.exists();
 
                     result.push(WorktreeInfo {
                         id,
@@ -221,6 +223,7 @@ impl WorktreeManager {
                         is_dirty,
                         agent_session_id,
                         created_at,
+                        exists_on_disk,
                     });
                 }
             }
@@ -349,6 +352,7 @@ impl WorktreeManager {
             is_dirty,
             agent_session_id: None,
             created_at: now,
+            exists_on_disk: true,
         })
     }
 
@@ -740,6 +744,58 @@ impl WorktreeManager {
 
     /// Create a named branch pointing at a worktree's current HEAD.
     /// Useful for detached-HEAD worktrees that need a branch before merging.
+    /// Rename the branch that a worktree is checked out on.
+    ///
+    /// Runs `git branch -m <old> <new>` against the main repo (branches live
+    /// there, not in the worktree's attached `.git` pointer), then updates
+    /// the stored metadata. The worktree ID and filesystem path stay put —
+    /// only the branch label changes.
+    pub fn rename(&self, id: &str, new_branch: &str) -> Result<WorktreeInfo, GitError> {
+        if id == "main" {
+            return Err(GitError::Config(
+                "Cannot rename the main worktree".to_string(),
+            ));
+        }
+        let trimmed = new_branch.trim();
+        if trimmed.is_empty() {
+            return Err(GitError::Config(
+                "New branch name cannot be empty".to_string(),
+            ));
+        }
+
+        let mut config = WorktreeConfig::load(&self.config_path)?;
+        let old_branch = config
+            .get(id)
+            .ok_or_else(|| GitError::WorktreeNotFound(id.to_string()))?
+            .branch
+            .clone();
+
+        if old_branch == trimmed {
+            // No-op rename; return the current info so the caller doesn't
+            // have to special-case it.
+            return self.get(id);
+        }
+
+        let main_repo = git2::Repository::open(&self.repo_path)?;
+        if main_repo
+            .find_branch(trimmed, git2::BranchType::Local)
+            .is_ok()
+        {
+            return Err(GitError::BranchAlreadyExists(trimmed.to_string()));
+        }
+
+        let mut branch = main_repo.find_branch(&old_branch, git2::BranchType::Local)?;
+        branch.rename(trimmed, false)?;
+
+        if let Some(meta) = config.get_mut(id) {
+            meta.branch = trimmed.to_string();
+        }
+        config.save(&self.config_path)?;
+
+        info!(id = %id, from = %old_branch, to = %trimmed, "Renamed worktree branch");
+        self.get(id)
+    }
+
     pub fn promote_to_branch(&self, id: &str, branch_name: &str) -> Result<(), GitError> {
         if id == "main" {
             return Err(GitError::Config("Cannot promote main worktree".to_string()));
@@ -962,6 +1018,26 @@ mod tests {
     }
 
     #[test]
+    fn test_list_marks_missing_worktree_as_not_on_disk() {
+        let (_dir, repo_path) = setup_test_repo();
+        let mgr = WorktreeManager::new(&repo_path).unwrap();
+        let info = create_test_worktree(&mgr, "feature-stale");
+
+        // Sanity check: fresh worktree exists on disk.
+        let initial = mgr.list().unwrap();
+        let initial_entry = initial.iter().find(|wt| wt.id == info.id).unwrap();
+        assert!(initial_entry.exists_on_disk);
+        assert!(initial.iter().find(|wt| wt.is_main).unwrap().exists_on_disk);
+
+        // Simulate external deletion of the worktree directory only — admin metadata stays.
+        std::fs::remove_dir_all(&info.path).unwrap();
+
+        let after = mgr.list().unwrap();
+        let stale_entry = after.iter().find(|wt| wt.id == info.id).unwrap();
+        assert!(!stale_entry.exists_on_disk);
+    }
+
+    #[test]
     fn test_worktree_path_returns_correct_paths() {
         let (_dir, repo_path) = setup_test_repo();
         let mgr = WorktreeManager::new(&repo_path).unwrap();
@@ -1037,12 +1113,14 @@ mod tests {
     }
 
     #[test]
-    fn test_setup_commands_default_empty() {
+    fn test_setup_commands_default_includes_bun_install() {
         let (_dir, repo_path) = setup_test_repo();
         let mgr = WorktreeManager::new(&repo_path).unwrap();
 
+        // The default is `["bun install"]` so new worktrees auto-install deps
+        // (which triggers the root `postinstall` building the agent-bridge sidecar).
         let cmds = mgr.get_setup_commands().unwrap();
-        assert!(cmds.is_empty());
+        assert_eq!(cmds, vec!["bun install".to_string()]);
     }
 
     // -- E. Prune tests --

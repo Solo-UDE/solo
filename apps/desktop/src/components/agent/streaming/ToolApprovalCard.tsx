@@ -10,15 +10,8 @@
  */
 
 import { type FC, useCallback, useEffect, useMemo } from 'react';
-import {
-	ShieldWarning,
-	Terminal,
-	FileText,
-	MagnifyingGlass,
-	Globe,
-	Check,
-	X,
-} from '@phosphor-icons/react';
+import { Cross2Icon, CheckIcon, FileTextIcon, MagnifyingGlassIcon, GlobeIcon } from '@radix-ui/react-icons';
+import { Terminal, ShieldAlert } from 'lucide-react';
 import { Button } from '@solo/ui';
 
 export interface ToolApprovalCardProps {
@@ -35,9 +28,9 @@ const getToolIcon = (toolName: string) => {
 	const cls = 'h-4 w-4 text-muted-foreground shrink-0';
 	const name = toolName.toLowerCase();
 	if (name === 'bash') return <Terminal className={cls} />;
-	if (['read', 'write', 'edit'].includes(name)) return <FileText className={cls} />;
-	if (['glob', 'grep'].includes(name)) return <MagnifyingGlass className={cls} />;
-	if (['websearch', 'webfetch'].includes(name)) return <Globe className={cls} />;
+	if (['read', 'write', 'edit'].includes(name)) return <FileTextIcon width={16} height={16} className="text-muted-foreground shrink-0" />;
+	if (['glob', 'grep'].includes(name)) return <MagnifyingGlassIcon width={16} height={16} className="text-muted-foreground shrink-0" />;
+	if (['websearch', 'webfetch'].includes(name)) return <GlobeIcon width={16} height={16} className="text-muted-foreground shrink-0" />;
 	return null;
 };
 
@@ -105,7 +98,7 @@ export const ToolApprovalCard: FC<ToolApprovalCardProps> = ({
 		>
 			{/* Header */}
 			<div className="flex items-center gap-2 px-3 py-2.5">
-				<ShieldWarning className="h-4 w-4 text-warning shrink-0" weight="fill" aria-hidden="true" />
+				<ShieldAlert className="h-4 w-4 text-warning shrink-0" aria-hidden="true" />
 				<span className="text-xs font-semibold text-warning">Permission Required</span>
 
 				{/* Tool context */}
@@ -128,7 +121,7 @@ export const ToolApprovalCard: FC<ToolApprovalCardProps> = ({
 					onClick={handleDeny}
 					className="h-7 px-2.5 text-xs bg-muted/60 hover:bg-muted"
 				>
-					<X className="h-3 w-3" />
+					<Cross2Icon width={12} height={12} />
 					Deny
 					<kbd className="text-[9px] opacity-40 ml-0.5">⇧⌘⌫</kbd>
 				</Button>
@@ -138,7 +131,7 @@ export const ToolApprovalCard: FC<ToolApprovalCardProps> = ({
 					onClick={handleApprove}
 					className="h-7 px-3 text-xs"
 				>
-					<Check className="h-3 w-3" weight="bold" />
+					<CheckIcon width={12} height={12} />
 					Allow
 					<kbd className="text-[9px] opacity-50 ml-0.5">⌘⏎</kbd>
 				</Button>

@@ -26,6 +26,7 @@ solo-embeddings = { path = "../../../crates/solo-embeddings" }
 solo-git = { path = "../../../crates/solo-git" }
 solo-vault = { path = "../../../crates/solo-vault" }
 solo-elevenlabs = { path = "../../../crates/solo-elevenlabs" }
+solo-stats = { path = "../../../crates/solo-stats" }
 
 tauri = { workspace = true, features = ["macos-private-api"] }
 uuid = { version = "1.11", features = ["v4"] }
@@ -65,6 +66,7 @@ crossbeam-channel = "0.5"
 parking_lot = "0.12"
 hashbrown = { version = "0.15", features = ["serde"] }
 thiserror.workspace = true
+async-trait.workspace = true
 
 [features]
 default = ["custom-protocol"]

@@ -1,25 +1,50 @@
-import { Lightning, Brain, ShieldCheck } from '@phosphor-icons/react';
+import { Brain, Bug, CircleDot, ShieldCheck } from 'lucide-react';
 import React from 'react';
 
+import type { PermissionMode } from '../../../bindings';
 import { cn } from '../../../lib/utils';
 import { toolbarButtonBase } from './toolbar-button-class';
 
-export type Mode = 'fast' | 'planning' | 'accept';
+/**
+ * Session mode. Mirrors `PermissionMode` from the Rust protocol.
+ *
+ *   - `default` — no overlay; strictly honors allow/ask/deny rules.
+ *   - `plan`    — read-only; plan markdown is written to `.solo/plans/`.
+ *   - `accept`  — bypass prompts (like Claude Code's `--dangerously-skip-permissions`);
+ *                 destructive tier still prompts.
+ *   - `debug`   — captures the goal at session start; periodic review questions.
+ */
+export type Mode = PermissionMode;
 
-const MODE_ORDER: Mode[] = ['fast', 'planning', 'accept'];
+const MODE_ORDER: Mode[] = ['default', 'plan', 'accept', 'debug'];
 
-const MODE_CONFIG: Record<Mode, { label: string; icon: typeof Lightning }> = {
-  fast: {
-    label: 'Fast',
-    icon: Lightning,
+const MODE_CONFIG: Record<
+  Mode,
+  {
+    label: string;
+    icon: typeof Brain;
+    tone: string | null;
+  }
+> = {
+  default: {
+    label: 'Default',
+    icon: CircleDot,
+    tone: null,
   },
-  planning: {
-    label: 'Planning',
+  plan: {
+    label: 'Plan',
     icon: Brain,
+    tone: 'text-primary bg-primary/10',
   },
   accept: {
     label: 'Accept',
     icon: ShieldCheck,
+    tone: 'text-green-600 dark:text-green-400 bg-green-500/10',
+  },
+  debug: {
+    label: 'Debug',
+    icon: Bug,
+    tone: 'text-amber-600 dark:text-amber-400 bg-amber-500/10',
   },
 };
 
@@ -51,12 +76,11 @@ export const ModeSelector: React.FC<ModeSelectorProps> = ({
       title={`${config.label} — click to cycle (⇧⇥)`}
       className={cn(
         toolbarButtonBase,
-        value === 'planning' && 'text-primary bg-primary/10',
-        value === 'accept' && 'text-green-600 dark:text-green-400 bg-green-500/10',
+        config.tone,
         disabled && 'opacity-50 cursor-not-allowed',
       )}
     >
-      <Icon className="h-3.5 w-3.5" weight={value !== 'fast' ? 'fill' : 'regular'} />
+      <Icon className="h-3.5 w-3.5" />
       <span className="text-xs font-medium">{config.label}</span>
     </button>
   );

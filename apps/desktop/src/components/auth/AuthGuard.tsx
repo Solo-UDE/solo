@@ -18,11 +18,16 @@ interface AuthGuardProps {
 }
 
 /**
- * In dev mode, bypass auth entirely so we can test without deep link OAuth.
- * In production, delegate to the real auth guard.
+ * By default in dev mode we bypass auth so unrelated feature work doesn't
+ * require a full sign-in. Set `VITE_AUTH_ENABLED=1` in the environment (or
+ * `.env.local`) while testing auth flows to actually mount the guard — this
+ * is the ONLY way to see `LoginScreen`, sign-in, and sign-out in dev.
+ *
+ * Production always enforces the guard.
  */
 export function AuthGuard({ children }: AuthGuardProps) {
-  if (import.meta.env.DEV) {
+  const authEnabled = import.meta.env.VITE_AUTH_ENABLED === '1';
+  if (import.meta.env.DEV && !authEnabled) {
     return <>{children}</>;
   }
 

@@ -1,18 +1,21 @@
 import * as Collapsible from '@radix-ui/react-collapsible';
-import { Brain, CaretRight } from '@phosphor-icons/react';
+import { ChevronRightIcon } from '@radix-ui/react-icons';
+import { Brain } from 'lucide-react';
 import { useState } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+
+import { StreamdownNarrative } from './StreamdownNarrative';
 
 import type { FC } from 'react';
 
 export interface ChainOfThoughtBlockProps {
   content: string;
+  isStreaming?: boolean;
   className?: string;
 }
 
 export const ChainOfThoughtBlock: FC<ChainOfThoughtBlockProps> = ({
   content,
+  isStreaming = false,
   className = '',
 }) => {
   const [open, setOpen] = useState(false);
@@ -21,36 +24,26 @@ export const ChainOfThoughtBlock: FC<ChainOfThoughtBlockProps> = ({
     <Collapsible.Root open={open} onOpenChange={setOpen}>
       <Collapsible.Trigger asChild>
         <button
-          className={`w-full flex items-center gap-2 px-3 py-2 rounded-[10px] bg-muted/30 hover:bg-muted/50 transition-colors duration-150 group ${className}`}
+          className={`w-full flex items-center gap-2 px-3 py-2 rounded-md bg-muted/30 hover:bg-muted/50 transition-colors duration-150 group ${className}`}
         >
           <Brain className="w-3.5 h-3.5 text-muted-foreground/70 flex-shrink-0" />
           <span className="text-xs font-medium text-muted-foreground/70">Thinking</span>
-          <CaretRight
-            className={`w-3 h-3 text-muted-foreground/50 ml-auto transition-transform duration-150 ${open ? 'rotate-90' : ''}`}
+          <ChevronRightIcon
+            width={12} height={12}
+            className={`text-muted-foreground/50 ml-auto transition-transform duration-150 ${open ? 'rotate-90' : ''}`}
           />
         </button>
       </Collapsible.Trigger>
       <Collapsible.Content className="overflow-hidden data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:slide-up-1 data-[state=open]:slide-down-1">
-        <div className="px-3 py-2 mt-1 rounded-[10px] bg-muted/20 border-l-2 border-muted-foreground/20">
-          <div className="prose prose-sm dark:prose-invert max-w-none">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={{
-                p: ({ children }) => (
-                  <p className="text-xs text-muted-foreground leading-relaxed mb-1.5 last:mb-0">
-                    {children}
-                  </p>
-                ),
-                code: ({ children }) => (
-                  <code className="px-1 py-0.5 rounded bg-muted text-[10px] font-mono text-muted-foreground">
-                    {children}
-                  </code>
-                ),
-              }}
-            >
-              {content}
-            </ReactMarkdown>
-          </div>
+        <div
+          className="px-3 py-2 mt-1 rounded-md bg-muted/20 border-l-2 border-muted-foreground/20"
+          style={{ borderColor: 'var(--border-tool)' }}
+        >
+          <StreamdownNarrative
+            content={content}
+            isStreaming={isStreaming}
+            className="text-muted-foreground/80 text-xs leading-relaxed"
+          />
         </div>
       </Collapsible.Content>
     </Collapsible.Root>

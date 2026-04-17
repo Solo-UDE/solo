@@ -72,6 +72,7 @@ pub struct ModelInfoResponse {
     pub is_default: bool,
     pub description: String,
     pub context_window: u32,
+    pub max_output_tokens: u32,
 }
 
 // =============================================================================
@@ -216,6 +217,7 @@ pub async fn get_models() -> Result<Vec<ModelInfoResponse>, String> {
             is_default: m.is_default,
             description: m.description.clone(),
             context_window: m.capabilities.context_window,
+            max_output_tokens: m.capabilities.max_output_tokens,
         })
         .collect())
 }
@@ -242,6 +244,7 @@ pub async fn get_models_for_provider_cmd(
             is_default: m.is_default,
             description: m.description.clone(),
             context_window: m.capabilities.context_window,
+            max_output_tokens: m.capabilities.max_output_tokens,
         })
         .collect())
 }

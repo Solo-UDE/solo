@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { CaretDown, CaretUp } from '@phosphor-icons/react';
+import { ChevronDownIcon, ChevronUpIcon } from '@radix-ui/react-icons';
 import { ClaudeLogo } from '../../icons/ClaudeLogo';
 import { GeminiLogo } from '../../icons/GeminiLogo';
 import { OpenAILogo } from '../../icons/OpenAILogo';
@@ -26,6 +26,8 @@ export interface ModelPickerProps {
   onModelSelect?: () => void;
   /** Whether the picker is disabled */
   disabled?: boolean;
+  /** Optional className for the trigger button */
+  className?: string;
 }
 
 /**
@@ -73,6 +75,7 @@ export const ModelPicker: FC<ModelPickerProps> = ({
   chevronIcon = 'down',
   onModelSelect,
   disabled = false,
+  className,
 }) => {
   const selectedModel = useProviderStore((state) => state.selectedModel);
   const setSelectedModel = useProviderStore((state) => state.setSelectedModel);
@@ -85,7 +88,7 @@ export const ModelPicker: FC<ModelPickerProps> = ({
     [selectedModel]
   );
 
-  const ChevronIcon = chevronIcon === 'up' ? CaretUp : CaretDown;
+  const ChevronIcon = chevronIcon === 'up' ? ChevronUpIcon : ChevronDownIcon;
 
   const handleModelSelect = async (modelValue: string) => {
     const model = MODEL_OPTIONS.find((m) => m.value === modelValue);
@@ -120,12 +123,18 @@ export const ModelPicker: FC<ModelPickerProps> = ({
                 disabled={disabled}
                 className={cn(
                   toolbarButtonBase,
+                  'min-w-0 max-w-[11rem] shrink',
                   disabled && 'opacity-50 cursor-not-allowed',
+                  className,
                 )}
               >
-                {renderModelIcon(currentModel.iconType, 13)}
-                <span className="text-xs font-medium">{currentModel.label}</span>
-                <ChevronIcon size={12} className="opacity-50" />
+                <span className="shrink-0">
+                  {renderModelIcon(currentModel.iconType, 13)}
+                </span>
+                <span className="min-w-0 truncate text-xs font-medium">
+                  {currentModel.label}
+                </span>
+                <ChevronIcon width={12} height={12} className="shrink-0 opacity-50" />
               </button>
             </DropdownMenuTrigger>
           </TooltipTrigger>

@@ -3,24 +3,19 @@
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import type { FC } from 'react';
-import {
-  Plus,
-  CircleNotch,
-  GitBranch,
-  Trash,
-  ArrowUp,
-  ArrowDown,
-} from '@phosphor-icons/react';
+import type { FC, RefObject } from 'react';
+import { PlusIcon, TrashIcon } from '@radix-ui/react-icons';
+import { Loader2, GitBranch, ArrowUp, ArrowDown } from 'lucide-react';
 import { useGitStore } from '@/stores/gitStore';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 interface WorktreeSwitcherProps {
   onClose: () => void;
+  triggerRef?: RefObject<HTMLButtonElement | null>;
 }
 
-export const WorktreeSwitcher: FC<WorktreeSwitcherProps> = ({ onClose }) => {
+export const WorktreeSwitcher: FC<WorktreeSwitcherProps> = ({ onClose, triggerRef }) => {
   const popoverRef = useRef<HTMLDivElement>(null);
 
   // Branch state
@@ -37,16 +32,19 @@ export const WorktreeSwitcher: FC<WorktreeSwitcherProps> = ({ onClose }) => {
   const [branchCreateError, setBranchCreateError] = useState('');
   const branchInputRef = useRef<HTMLInputElement>(null);
 
-  // Close on outside click
+  // Close on outside click. Skip when the click lands on the trigger button so
+  // the trigger's own onClick can toggle the popover closed cleanly (otherwise
+  // mousedown closes it, then click reopens it).
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
+      if (triggerRef?.current?.contains(e.target as Node)) return;
       if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
         onClose();
       }
     };
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
-  }, [onClose]);
+  }, [onClose, triggerRef]);
 
   // Focus input when form opens
   useEffect(() => {
@@ -131,7 +129,7 @@ export const WorktreeSwitcher: FC<WorktreeSwitcherProps> = ({ onClose }) => {
           )}
           title="Create branch"
         >
-          <Plus className="w-3 h-3" weight="bold" />
+          <PlusIcon className="w-3 h-3" />
         </button>
       </div>
 
@@ -160,7 +158,7 @@ export const WorktreeSwitcher: FC<WorktreeSwitcherProps> = ({ onClose }) => {
               )}
             />
             {isCreatingBranch && (
-              <CircleNotch className="w-3.5 h-3.5 text-muted-foreground animate-spin shrink-0" />
+              <Loader2 className="w-3.5 h-3.5 text-muted-foreground animate-spin shrink-0" />
             )}
           </div>
           {branchCreateError && (
@@ -191,7 +189,6 @@ export const WorktreeSwitcher: FC<WorktreeSwitcherProps> = ({ onClose }) => {
             >
               <GitBranch
                 className={cn('w-3.5 h-3.5 shrink-0', isCurrent ? 'text-primary' : '')}
-                weight="bold"
               />
               <span className="truncate flex-1 text-left">{branch.name}</span>
 
@@ -219,9 +216,8 @@ export const WorktreeSwitcher: FC<WorktreeSwitcherProps> = ({ onClose }) => {
                   onClick={(e) => handleDeleteBranch(e, branch.name)}
                   className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
                 >
-                  <Trash
+                  <TrashIcon
                     className="w-3 h-3 text-muted-foreground hover:text-destructive transition-colors"
-                    weight="bold"
                   />
                 </span>
               )}
@@ -232,7 +228,7 @@ export const WorktreeSwitcher: FC<WorktreeSwitcherProps> = ({ onClose }) => {
         {/* Fallback when no branches loaded yet */}
         {branches.length === 0 && (
           <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs bg-primary/10 text-foreground">
-            <GitBranch className="w-3.5 h-3.5 text-primary" weight="bold" />
+            <GitBranch className="w-3.5 h-3.5 text-primary" />
             <span>{useGitStore.getState().currentBranch || 'main'}</span>
           </div>
         )}

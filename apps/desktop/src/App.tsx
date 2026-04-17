@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { AnimatePresence, motion } from "motion/react";
-import { Bug, GearSix, SidebarSimple, SignOut, Terminal } from "@phosphor-icons/react";
+import { GearIcon, ExitIcon } from "@radix-ui/react-icons";
+import { Bug, Terminal, PanelLeft } from "lucide-react";
 import { PrimarySidebar } from "./components/sidebar";
 import { RepoRail } from "./components/sidebar/RepoRail";
 import { SidebarTerminal } from "./components/sidebar";
@@ -16,6 +17,7 @@ import { useAuthStore, useUser } from "./stores/authStore";
 import { registerBuiltinPanels, BUILTIN_PANEL_TYPES, DEFAULT_TILES } from "./lib/panels";
 import { SettingsView } from "./components/settings";
 import { useAutosave } from "./hooks/useAutosave";
+import { useAppZoom } from "./hooks/useAppZoom";
 import { useColorScheme } from "./hooks/useColorScheme";
 import { useTitlebarStyle } from "./hooks/usePlatform";
 import { useAgentStream } from "./hooks/useAgentStream";
@@ -30,17 +32,17 @@ import { useFileExplorerStore } from "./stores/fileExplorerStore";
 import { useGitHubAccountsStore } from "./stores/githubAccountsStore";
 import { useRepoStore } from "./stores/repoStore";
 import { createTerminal, killTerminal } from "./lib/tauri/terminal";
-import { SIDEBAR } from "./lib/constants";
+import { HEIGHTS, SIDEBAR } from "./lib/constants";
 import { cn } from "./lib/utils";
 import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
 import { Toaster } from "sonner";
-import { WorkspaceSwitcher } from "./components/titlebar/WorkspaceSwitcher";
 import { TitlebarButton } from "./components/titlebar/TitlebarButton";
 import { WelcomeScreen } from "./components/welcome";
 import { KeyboardShortcutsOverlay } from "./components/KeyboardShortcutsOverlay";
 import { BugReportDialog } from "./components/bug-report/BugReportDialog";
 import { TabSwitcher } from "./components/panels/TabSwitcher";
+import { SkillsOnboardingDialog } from "./components/agent/SkillsOnboardingDialog";
 
 // Shared easing curve matching --ease-smooth
 const EASE_SMOOTH: [number, number, number, number] = [0.16, 1, 0.3, 1];
@@ -68,13 +70,14 @@ function AppContent() {
 
   // Terminal panel drag state
   const [isDraggingTerminal, setIsDraggingTerminal] = useState(false);
+  const [isDraggingSidebar, setIsDraggingSidebar] = useState(false);
   const dragStartY = useRef<number>(0);
   const dragStartHeight = useRef<number>(0);
 
   const leftSidebarWidth = useUIStore((state) => state.leftSidebarWidth);
   const setLeftSidebarWidth = useUIStore((state) => state.setLeftSidebarWidth);
+  const toggleLeftSidebar = useUIStore((state) => state.toggleLeftSidebar);
   const isCollapsed = useIsLeftSidebarCollapsed();
-  const toggleSidebar = useUIStore((s) => s.toggleLeftSidebar);
   const terminalPanelOpen = useUIStore((s) => s.terminalPanelOpen);
   const settingsOpen = useUIStore((s) => s.settingsOpen);
   const openSettings = useUIStore((s) => s.openSettings);
@@ -94,6 +97,9 @@ function AppContent() {
 
   // Enable autosave on blur and tab switch
   useAutosave();
+
+  // Apply persisted zoom level to the webview, react to Cmd+=/Cmd+-/Cmd+0 changes
+  useAppZoom();
 
   // A2: beforeunload warning for unsaved changes
   useEffect(() => {
@@ -199,6 +205,25 @@ function AppContent() {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Cmd+= / Cmd++ — zoom in (accept both the unshifted '=' and shifted '+')
+      if ((e.key === '=' || e.key === '+') && e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        useUIStore.getState().zoomIn();
+        return;
+      }
+      // Cmd+- — zoom out
+      if (e.key === '-' && e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        useUIStore.getState().zoomOut();
+        return;
+      }
+      // Cmd+0 — reset zoom
+      if (e.key === '0' && e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        e.preventDefault();
+        useUIStore.getState().resetZoom();
+        return;
+      }
+
       // Cmd+J — toggle terminal
       if (e.key === 'j' && e.metaKey && !e.shiftKey && !e.ctrlKey) {
         e.preventDefault();
@@ -349,13 +374,18 @@ function AppContent() {
     openSettings('shortcuts');
   }, [openSettings]);
 
-  // Sidebar resize handlers — direct DOM manipulation for zero-lag dragging
+  // Sidebar resize handlers — direct DOM manipulation for zero-lag dragging.
+  // The reactive `isDraggingSidebar` flag is what PrimarySidebar reads to suppress
+  // its CSS width transition during the drag (and across the commit on pointerup),
+  // preventing the post-release shake caused by transitioning from the React-tracked
+  // width to the DOM-tracked width.
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
     dragStartX.current = e.clientX;
     dragStartWidth.current = useUIStore.getState().leftSidebarWidth;
     document.body.classList.add('is-resizing');
+    setIsDraggingSidebar(true);
   }, []);
 
   const handlePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
@@ -370,10 +400,19 @@ function AppContent() {
   const handlePointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
     document.body.classList.remove('is-resizing');
-    // Commit final width to store
+    // Commit final width to store FIRST so the React tree's `width` prop matches
+    // the DOM-tracked width before we re-enable transitions on the next frame.
     const delta = e.clientX - dragStartX.current;
     const newWidth = Math.max(SIDEBAR.min, Math.min(SIDEBAR.max, dragStartWidth.current + delta));
     setLeftSidebarWidth(newWidth);
+    // Defer clearing the flag until after React has committed the new width, so
+    // PrimarySidebar's transition class is still suppressed during the commit
+    // that aligns React state with the DOM.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setIsDraggingSidebar(false);
+      });
+    });
   }, [setLeftSidebarWidth]);
 
   const handleDoubleClick = useCallback(() => {
@@ -406,161 +445,173 @@ function AppContent() {
   }, [setTerminalPanelHeight]);
 
   return (
-    <div className="h-screen w-screen bg-background text-foreground overflow-hidden relative">
-      {/* Titlebar overlay — glass on vibrancy platforms, solid fallback */}
-      <div
+    <div className="relative h-screen w-screen overflow-hidden bg-background text-foreground">
+      <header
         data-tauri-drag-region
-        style={titlebarStyle}
-        className="absolute top-0 inset-x-0 h-[38px] flex items-center z-50 bg-background titlebar-glass border-b border-border/20"
+        style={{ ...titlebarStyle, height: HEIGHTS.titlebar }}
+        className="absolute inset-x-0 top-0 z-50 flex items-center"
       >
-        <div className="flex-1 flex items-center gap-1.5 ml-1.5" data-tauri-drag-region>
+        <div className="flex items-center gap-1.5" data-tauri-drag-region="false">
           {splashComplete && (rootPath !== null || hasRepos) && (
             <button
-              onClick={toggleSidebar}
+              onClick={toggleLeftSidebar}
+              data-tauri-drag-region="false"
               className={cn(
-                'p-1 rounded-lg hover:bg-foreground/[0.06] transition-[background-color,color] duration-150',
+                'inline-flex h-8 w-8 items-center justify-center rounded-[9px]',
+                'text-sidebar-foreground transition-[background-color,color,transform] duration-150',
+                'hover:bg-background/65 hover:text-foreground active:scale-[0.96]',
                 !isCollapsed && 'glow-active',
               )}
-              title={isCollapsed ? 'Expand Sidebar (⌘B)' : 'Collapse Sidebar (⌘B)'}
+              title={isCollapsed ? 'Open Sidebar (⌘B)' : 'Collapse Sidebar (⌘B)'}
+              aria-label={isCollapsed ? 'Open Sidebar' : 'Collapse Sidebar'}
             >
-              <SidebarSimple
-                weight={isCollapsed ? 'regular' : 'fill'}
-                className={cn('w-5 h-5 -translate-y-px', isCollapsed ? 'text-muted-foreground' : 'text-primary')}
-              />
+              <PanelLeft className="h-4 w-4" />
             </button>
           )}
         </div>
 
-        <WorkspaceSwitcher />
+        <div className="flex-1" data-tauri-drag-region />
 
-        <div className="flex-1 flex items-center justify-end gap-2">
-          <div
-            className={`w-2 h-2 rounded-full ${
-              backendStatus.includes("connected")
-                ? "bg-status-success"
-                : backendStatus.includes("error")
-                  ? "bg-status-error"
-                  : "bg-status-warning animate-pulse"
-            }`}
-          />
-          {user?.email && (
-            <span className="text-xs text-muted-foreground/70 truncate max-w-28">
-              {user.email}
-            </span>
-          )}
-          {splashComplete && (rootPath !== null || hasRepos) && (
+        <div className="flex min-w-0 items-center justify-end gap-1.5" data-tauri-drag-region="false">
+            <div className="hidden items-center gap-2 px-1 text-[11px] text-muted-foreground md:flex">
+              <div
+                className={`h-2 w-2 rounded-full ${
+                  backendStatus.includes('connected')
+                    ? 'bg-status-success'
+                    : backendStatus.includes('error')
+                      ? 'bg-status-error'
+                      : 'bg-status-warning animate-pulse'
+                }`}
+              />
+              <span>{backendStatus.includes('connected') ? 'Ready' : backendStatus}</span>
+            </div>
+            {user?.email && (
+              <span className="max-w-32 truncate px-1 text-xs text-muted-foreground/70">
+                {user.email}
+              </span>
+            )}
+            {splashComplete && (rootPath !== null || hasRepos) && (
+              <TitlebarButton
+                onClick={handleToggleTerminal}
+                icon={<Terminal className={cn('w-4 h-4', terminalPanelOpen ? 'text-primary' : 'text-muted-foreground')} size={16} />}
+                label="Terminal"
+                active={terminalPanelOpen}
+                title="Toggle Terminal (⌘J)"
+              />
+            )}
             <TitlebarButton
-              onClick={handleToggleTerminal}
-              icon={<Terminal className={cn('w-4 h-4', terminalPanelOpen ? 'text-primary' : 'text-muted-foreground')} />}
-              label="Terminal"
-              active={terminalPanelOpen}
-              title="Toggle Terminal (⌘J)"
+              onClick={() => setBugReportOpen(true)}
+              icon={<Bug className="w-4 h-4 text-muted-foreground" size={16} />}
+              label="Report Bug"
+              title="Report a Bug"
             />
-          )}
-          <TitlebarButton
-            onClick={() => setBugReportOpen(true)}
-            icon={<Bug className="w-4 h-4 text-muted-foreground" />}
-            label="Report Bug"
-            title="Report a Bug"
-          />
-          <TitlebarButton
-            onClick={() => openSettings()}
-            icon={<GearSix className="w-4 h-4 text-muted-foreground" />}
-            label="Settings"
-            title="Settings (⌘,)"
-          />
-          <TitlebarButton
-            onClick={signOut}
-            icon={<SignOut className="w-4 h-4 text-muted-foreground" />}
-            label="Sign Out"
-            title="Sign out"
-          />
+            <TitlebarButton
+              onClick={() => openSettings()}
+              icon={<GearIcon className="w-4 h-4 text-muted-foreground" />}
+              label="Settings"
+              title="Settings (⌘,)"
+            />
+            <TitlebarButton
+              onClick={signOut}
+              icon={<ExitIcon className="w-4 h-4 text-muted-foreground" />}
+              label="Sign Out"
+              title="Sign out"
+            />
         </div>
-      </div>
+      </header>
 
-      {/* Full-height content — animated view transitions */}
-      <AnimatePresence mode="popLayout">
-        {settingsOpen ? (
-          <motion.div
-            key="settings"
-            initial={{ opacity: 0, x: 24 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 24 }}
-            transition={{ duration: 0.25, ease: EASE_SMOOTH }}
-            className="flex h-full pt-[38px]"
-          >
-            <SettingsView />
-          </motion.div>
-        ) : (
-          <motion.div
-            key="workspace"
-            initial={{ opacity: 0, x: -24 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -24 }}
-            transition={{ duration: 0.25, ease: EASE_SMOOTH }}
-            className="flex h-full"
-          >
-            <DndProvider backend={HTML5Backend}>
-              {/* Repo icon rail - always visible when repos exist (hidden during splash) */}
-              {splashComplete && hasRepos && <RepoRail />}
+      <div className="flex h-full min-h-0 flex-col">
+        <AnimatePresence mode="popLayout">
+          {settingsOpen ? (
+            <motion.div
+              key="settings"
+              initial={{ opacity: 0, x: 24 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 24 }}
+              transition={{ duration: 0.25, ease: EASE_SMOOTH }}
+              className="flex min-h-0 flex-1"
+              style={{ paddingTop: HEIGHTS.titlebar }}
+            >
+              <SettingsView />
+            </motion.div>
+          ) : (
+            <motion.div
+              key="workspace"
+              initial={{ opacity: 0, x: -24 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -24 }}
+              transition={{ duration: 0.25, ease: EASE_SMOOTH }}
+              className="flex min-h-0 flex-1"
+            >
+              <DndProvider backend={HTML5Backend}>
+                {splashComplete && hasRepos ? <RepoRail /> : null}
 
-              {/* Content sidebar - collapsible (hidden during splash) */}
-              {splashComplete && (
-                <>
-                  <PrimarySidebar ref={sidebarRef} width={leftSidebarWidth} onFileOpen={handleFileOpen} />
-
-                  <div
-                    className="split-divider"
-                    onPointerDown={handlePointerDown}
-                    onPointerMove={handlePointerMove}
-                    onPointerUp={handlePointerUp}
-                    onDoubleClick={handleDoubleClick}
-                  />
-                </>
-              )}
-
-              {/* Right column: editor area or welcome */}
-              <div className="flex-1 flex flex-col overflow-hidden min-h-0 pt-[38px] bg-background">
-                {splashComplete && (rootPath !== null || sidebarMode === 'studio') ? (
+                {splashComplete && (
                   <>
-                    <div className="flex-1 overflow-hidden min-h-0">
-                      <MosaicLayout />
-                    </div>
+                    <PrimarySidebar
+                      ref={sidebarRef}
+                      width={leftSidebarWidth}
+                      isResizing={isDraggingSidebar}
+                      onFileOpen={handleFileOpen}
+                    />
 
-                    <div className={cn(
-                      'grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]',
-                      terminalPanelOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]',
-                    )}>
-                      <div className="overflow-hidden min-h-0">
-                        <div
-                          className={cn(
-                            'h-1.5 shrink-0 cursor-row-resize flex items-center justify-center hover:bg-foreground/[0.06] transition-colors',
-                            isDraggingTerminal && 'bg-foreground/[0.08]',
-                          )}
-                          onPointerDown={handleTerminalPointerDown}
-                          onPointerMove={handleTerminalPointerMove}
-                          onPointerUp={handleTerminalPointerUp}
-                        >
-                          <div className="w-8 h-px bg-border/60 rounded-full" />
-                        </div>
+                    {!isCollapsed ? (
+                      <div
+                        className="split-divider"
+                        onPointerDown={handlePointerDown}
+                        onPointerMove={handlePointerMove}
+                        onPointerUp={handlePointerUp}
+                        onDoubleClick={handleDoubleClick}
+                      />
+                    ) : null}
+                  </>
+                )}
 
-                        <div
-                          className="overflow-hidden"
-                          style={{ height: terminalPanelHeight }}
-                        >
-                          <SidebarTerminal />
+                <div
+                  className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background"
+                  style={{ paddingTop: HEIGHTS.titlebar }}
+                >
+                  {splashComplete && (rootPath !== null || sidebarMode === 'vault') ? (
+                    <>
+                      <div className="min-h-0 flex-1 overflow-hidden">
+                        <MosaicLayout />
+                      </div>
+
+                      <div className={cn(
+                        'grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]',
+                        terminalPanelOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]',
+                      )}>
+                        <div className="min-h-0 overflow-hidden">
+                          <div
+                            className={cn(
+                              'h-1.5 shrink-0 cursor-row-resize flex items-center justify-center hover:bg-foreground/[0.06] transition-colors',
+                              isDraggingTerminal && 'bg-foreground/[0.08]',
+                            )}
+                            onPointerDown={handleTerminalPointerDown}
+                            onPointerMove={handleTerminalPointerMove}
+                            onPointerUp={handleTerminalPointerUp}
+                          >
+                            <div className="h-[2px] w-10 rounded-full bg-border/70" />
+                          </div>
+
+                          <div
+                            className="overflow-hidden"
+                            style={{ height: terminalPanelHeight }}
+                          >
+                            <SidebarTerminal />
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </>
-                ) : (
-                  <WelcomeScreen onProjectOpen={() => setSplashComplete(true)} />
-                )}
-              </div>
-            </DndProvider>
-          </motion.div>
-        )}
-      </AnimatePresence>
+                    </>
+                  ) : (
+                    <WelcomeScreen onProjectOpen={() => setSplashComplete(true)} />
+                  )}
+                </div>
+              </DndProvider>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
 
       <KeyboardShortcutsOverlay
         open={shortcutsOverlayOpen}
@@ -569,6 +620,7 @@ function AppContent() {
       />
       {bugReportOpen && <BugReportDialog onClose={() => setBugReportOpen(false)} />}
       <TabSwitcher open={tabSwitcherOpen} onClose={() => setTabSwitcherOpen(false)} />
+      <SkillsOnboardingDialog />
       <Toaster richColors position="bottom-right" theme={resolvedTheme} />
     </div>
   );

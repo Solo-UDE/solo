@@ -3,7 +3,8 @@
  * Shown during message composition, cleared on submit.
  */
 
-import { Paperclip, X } from '@phosphor-icons/react';
+import { Cross2Icon } from '@radix-ui/react-icons';
+import { Paperclip } from 'lucide-react';
 import { useAttachmentStore } from '../../../stores/attachmentStore';
 import { AnimatedList } from '@/components/ui/animated-list';
 
@@ -38,7 +39,7 @@ export const AttachmentBar: FC = () => {
 								className="absolute top-0.5 right-0.5 opacity-0 group-hover:opacity-100 bg-black/60 rounded-full p-0.5 transition-opacity"
 								type="button"
 							>
-								<X className="w-3 h-3 text-white" weight="bold" />
+								<Cross2Icon width={12} height={12} className="text-white" />
 							</button>
 							<div className="absolute bottom-0 left-0 right-0 bg-black/50 px-1 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
 								<span className="text-[10px] text-white truncate block">
@@ -67,7 +68,7 @@ export const AttachmentBar: FC = () => {
 								className="hover:bg-muted-foreground/20 rounded-full p-0.5 transition-colors"
 								type="button"
 							>
-								<X className="w-3 h-3 text-muted-foreground" weight="bold" />
+								<Cross2Icon width={12} height={12} className="text-muted-foreground" />
 							</button>
 						</div>
 					))}

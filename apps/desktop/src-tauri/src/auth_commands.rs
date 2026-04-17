@@ -1,6 +1,9 @@
-//! Supabase OAuth authentication commands for Solo IDE
+//! AWS Cognito OAuth authentication commands for Solo IDE.
 //!
-//! Implements PKCE OAuth flow with deep linking for desktop authentication.
+//! Implements PKCE OAuth flow with deep linking for desktop authentication
+//! against an AWS Cognito User Pool. Federates Google and GitHub (via the
+//! solo-ide GitHub OIDC wrapper); email/password also supported via the
+//! Cognito Hosted UI.
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use rand::Rng;
@@ -16,25 +19,36 @@ use url::Url;
 
 use crate::provider_commands::ProviderAuthState;
 
+fn now_epoch_secs() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
 // =============================================================================
 // Configuration
 // =============================================================================
 
 const REDIRECT_URL: &str = "soloide://auth/callback";
-const SUPABASE_URL_ENV_KEYS: &[&str] = &["SOLO_SUPABASE_URL", "SUPABASE_URL"];
-const SUPABASE_ANON_KEY_ENV_KEYS: &[&str] = &["SOLO_SUPABASE_ANON_KEY", "SUPABASE_ANON_KEY"];
+const SIGNOUT_URL: &str = "soloide://auth/signout";
 
-/// Vault key names for Supabase auth tokens
-const VAULT_KEY_ACCESS_TOKEN: &str = "supabase.accessToken";
-const VAULT_KEY_REFRESH_TOKEN: &str = "supabase.refreshToken";
+const COGNITO_DOMAIN_ENV_KEYS: &[&str] = &["SOLO_COGNITO_DOMAIN"];
+const COGNITO_CLIENT_ID_ENV_KEYS: &[&str] = &["SOLO_COGNITO_CLIENT_ID"];
+const COGNITO_REGION_ENV_KEYS: &[&str] = &["SOLO_AWS_REGION", "AWS_REGION"];
 
-static SUPABASE_CONFIG: OnceLock<Result<SupabaseConfig, String>> = OnceLock::new();
+/// Vault keys — `cognito.*` per the Supabase→Cognito migration.
+const VAULT_KEY_ACCESS_TOKEN: &str = "cognito.accessToken";
+const VAULT_KEY_REFRESH_TOKEN: &str = "cognito.refreshToken";
+const VAULT_KEY_ID_TOKEN: &str = "cognito.idToken";
+
+static COGNITO_CONFIG: OnceLock<Result<CognitoConfig, String>> = OnceLock::new();
 
 // =============================================================================
 // Types
 // =============================================================================
 
-/// PKCE state stored during OAuth flow
+/// PKCE state stored during OAuth flow.
 #[derive(Debug, Clone)]
 struct PkceState {
     verifier: String,
@@ -42,12 +56,24 @@ struct PkceState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct SupabaseConfig {
-    url: String,
-    anon_key: String,
+struct CognitoConfig {
+    /// Fully-qualified Cognito domain, e.g. `solo-ide-dev.auth.us-east-1.amazoncognito.com`.
+    /// Does NOT include the scheme; scheme is always `https`.
+    domain: String,
+    client_id: String,
+    #[allow(dead_code)]
+    region: String,
 }
 
-/// Supabase user information
+impl CognitoConfig {
+    fn base_url(&self) -> String {
+        format!("https://{}", self.domain)
+    }
+}
+
+/// User information — same shape as the Supabase-era struct for frontend
+/// compatibility. `id` holds Cognito's `sub`; `user_metadata` absorbs other
+/// standard OIDC claims like `name`, `picture`, `preferred_username`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct User {
     pub id: String,
@@ -56,7 +82,6 @@ pub struct User {
     pub created_at: String,
 }
 
-/// Supabase session
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Session {
     pub access_token: String,
@@ -67,29 +92,51 @@ pub struct Session {
     pub user: User,
 }
 
-/// Auth state for frontend
 #[derive(Debug, Clone, Serialize)]
 pub struct AuthStateResponse {
     pub user: Option<User>,
     pub is_authenticated: bool,
 }
 
-/// Token exchange response from Supabase
+/// Token exchange response from Cognito (`POST /oauth2/token`).
 #[derive(Debug, Deserialize)]
 struct TokenResponse {
     access_token: String,
-    refresh_token: String,
+    /// Refresh token is only returned on the initial authorization-code
+    /// exchange, not on refresh-token grant responses.
+    #[serde(default)]
+    refresh_token: Option<String>,
+    id_token: String,
     expires_in: i64,
-    expires_at: Option<i64>,
     token_type: String,
-    user: User,
 }
 
-/// Error response from Supabase
+/// Standard OIDC userInfo response (`GET /oauth2/userInfo`).
 #[derive(Debug, Deserialize)]
-struct SupabaseError {
+struct UserInfoResponse {
+    sub: String,
+    #[serde(default)]
+    email: Option<String>,
+    #[serde(default)]
+    email_verified: Option<serde_json::Value>,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    preferred_username: Option<String>,
+    #[serde(default)]
+    picture: Option<String>,
+    #[serde(flatten)]
+    extra: HashMap<String, serde_json::Value>,
+}
+
+/// Error response from Cognito (`application/json`).
+#[derive(Debug, Deserialize)]
+struct CognitoError {
+    #[serde(default)]
     error: Option<String>,
+    #[serde(default)]
     error_description: Option<String>,
+    #[serde(default)]
     message: Option<String>,
 }
 
@@ -97,13 +144,9 @@ struct SupabaseError {
 // Auth State
 // =============================================================================
 
-/// Application state for authentication
 pub struct AuthState {
-    /// Current PKCE state (during OAuth flow)
     pkce: Arc<RwLock<Option<PkceState>>>,
-    /// Cached session
     session: Arc<RwLock<Option<Session>>>,
-    /// HTTP client for API requests
     client: reqwest::Client,
 }
 
@@ -116,20 +159,14 @@ impl AuthState {
         }
     }
 
-    /// Generate PKCE verifier and challenge
     fn generate_pkce() -> PkceState {
         let mut rng = rand::thread_rng();
-
-        // Generate 32-byte random verifier
         let verifier_bytes: [u8; 32] = rng.gen();
         let verifier = URL_SAFE_NO_PAD.encode(verifier_bytes);
 
-        // SHA256 hash and base64url encode for challenge
         let mut hasher = Sha256::new();
         hasher.update(verifier.as_bytes());
-        let hash = hasher.finalize();
-        let challenge = URL_SAFE_NO_PAD.encode(hash);
-
+        let challenge = URL_SAFE_NO_PAD.encode(hasher.finalize());
         PkceState {
             verifier,
             challenge,
@@ -152,86 +189,115 @@ fn read_env(keys: &[&str]) -> Option<String> {
     })
 }
 
-fn normalize_supabase_url(raw_url: &str) -> Result<String, String> {
-    let trimmed = raw_url.trim().trim_end_matches('/');
-    let parsed =
-        Url::parse(trimmed).map_err(|err| format!("Invalid Supabase URL `{trimmed}`: {err}"))?;
-
-    if parsed.scheme() != "https" {
+fn normalize_cognito_domain(raw: &str) -> Result<String, String> {
+    let trimmed = raw.trim().trim_end_matches('/');
+    let candidate = if trimmed.starts_with("https://") {
+        trimmed.trim_start_matches("https://").to_string()
+    } else if trimmed.starts_with("http://") {
         return Err(format!(
-            "Invalid Supabase URL `{trimmed}`: expected an https URL"
+            "Invalid Cognito domain `{trimmed}`: must be https, not http"
+        ));
+    } else {
+        trimmed.to_string()
+    };
+
+    let probe = format!("https://{}", candidate);
+    let parsed = Url::parse(&probe)
+        .map_err(|err| format!("Invalid Cognito domain `{candidate}`: {err}"))?;
+    if parsed.host_str().is_none() {
+        return Err(format!("Invalid Cognito domain `{candidate}`: missing host"));
+    }
+    if !candidate.contains(".amazoncognito.com") && !candidate.contains(".") {
+        return Err(format!(
+            "Invalid Cognito domain `{candidate}`: expected a fully-qualified hostname"
         ));
     }
-
-    if parsed.host_str().is_none() {
-        return Err(format!("Invalid Supabase URL `{trimmed}`: missing host"));
-    }
-
-    Ok(trimmed.to_string())
+    Ok(candidate)
 }
 
-fn resolve_supabase_config(
-    compile_time_url: Option<&str>,
-    compile_time_anon_key: Option<&str>,
-    runtime_url: Option<String>,
-    runtime_anon_key: Option<String>,
-) -> Result<SupabaseConfig, String> {
-    let url = compile_time_url
+fn resolve_cognito_config(
+    compile_domain: Option<&str>,
+    compile_client_id: Option<&str>,
+    compile_region: Option<&str>,
+    runtime_domain: Option<String>,
+    runtime_client_id: Option<String>,
+    runtime_region: Option<String>,
+) -> Result<CognitoConfig, String> {
+    let domain = compile_domain
         .map(str::trim)
-        .filter(|value| !value.is_empty())
+        .filter(|v| !v.is_empty())
         .map(str::to_string)
-        .or(runtime_url)
+        .or(runtime_domain)
         .ok_or_else(|| {
             format!(
                 "Desktop auth is not configured. Set {} before building the app.",
-                SUPABASE_URL_ENV_KEYS.join(" or ")
+                COGNITO_DOMAIN_ENV_KEYS.join(" or ")
             )
         })?;
 
-    let anon_key = compile_time_anon_key
+    let client_id = compile_client_id
         .map(str::trim)
-        .filter(|value| !value.is_empty())
+        .filter(|v| !v.is_empty())
         .map(str::to_string)
-        .or(runtime_anon_key)
+        .or(runtime_client_id)
         .ok_or_else(|| {
             format!(
                 "Desktop auth is not configured. Set {} before building the app.",
-                SUPABASE_ANON_KEY_ENV_KEYS.join(" or ")
+                COGNITO_CLIENT_ID_ENV_KEYS.join(" or ")
             )
         })?;
 
-    Ok(SupabaseConfig {
-        url: normalize_supabase_url(&url)?,
-        anon_key,
+    let region = compile_region
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(str::to_string)
+        .or(runtime_region)
+        .unwrap_or_else(|| "us-east-1".to_string());
+
+    Ok(CognitoConfig {
+        domain: normalize_cognito_domain(&domain)?,
+        client_id,
+        region,
     })
 }
 
-fn load_supabase_config() -> Result<SupabaseConfig, String> {
-    resolve_supabase_config(
-        option_env!("SOLO_SUPABASE_URL").or(option_env!("SUPABASE_URL")),
-        option_env!("SOLO_SUPABASE_ANON_KEY").or(option_env!("SUPABASE_ANON_KEY")),
-        read_env(SUPABASE_URL_ENV_KEYS),
-        read_env(SUPABASE_ANON_KEY_ENV_KEYS),
+fn load_cognito_config() -> Result<CognitoConfig, String> {
+    resolve_cognito_config(
+        option_env!("SOLO_COGNITO_DOMAIN"),
+        option_env!("SOLO_COGNITO_CLIENT_ID"),
+        option_env!("SOLO_AWS_REGION"),
+        read_env(COGNITO_DOMAIN_ENV_KEYS),
+        read_env(COGNITO_CLIENT_ID_ENV_KEYS),
+        read_env(COGNITO_REGION_ENV_KEYS),
     )
 }
 
-fn supabase_config() -> Result<&'static SupabaseConfig, String> {
-    match SUPABASE_CONFIG.get_or_init(load_supabase_config) {
-        Ok(config) => Ok(config),
+fn cognito_config() -> Result<&'static CognitoConfig, String> {
+    match COGNITO_CONFIG.get_or_init(load_cognito_config) {
+        Ok(cfg) => Ok(cfg),
         Err(error) => Err(error.clone()),
     }
 }
 
+/// Maps a caller-facing provider string to the Cognito IdP name (or None for
+/// email/password via the Hosted UI). Accepted inputs are case-insensitive.
+fn cognito_identity_provider(provider: &str) -> Result<Option<&'static str>, String> {
+    match provider.to_ascii_lowercase().as_str() {
+        "google" => Ok(Some("Google")),
+        "github" => Ok(Some("GitHub")),
+        "email" | "" | "cognito" => Ok(None),
+        other => Err(format!("Unsupported OAuth provider: {}", other)),
+    }
+}
+
 // =============================================================================
-// Vault Helpers (delegate to CredentialManager)
+// Vault helpers
 // =============================================================================
 
-/// Read a value from the credential vault
 async fn vault_read(auth: &ProviderAuthState, key: &str) -> Option<String> {
     auth.credentials.vault_get_raw(key).await.ok().flatten()
 }
 
-/// Write a value to the credential vault
 async fn vault_write(auth: &ProviderAuthState, key: &str, value: &str) -> Result<(), String> {
     auth.credentials
         .vault_set_raw(key, value)
@@ -239,7 +305,6 @@ async fn vault_write(auth: &ProviderAuthState, key: &str, value: &str) -> Result
         .map_err(|e| format!("Failed to write to vault: {}", e))
 }
 
-/// Delete a value from the credential vault
 async fn vault_delete_key(auth: &ProviderAuthState, key: &str) -> Result<(), String> {
     auth.credentials
         .vault_delete_raw(key)
@@ -247,129 +312,178 @@ async fn vault_delete_key(auth: &ProviderAuthState, key: &str) -> Result<(), Str
         .map_err(|e| format!("Failed to delete from vault: {}", e))
 }
 
+fn email_verified_as_bool(raw: &Option<serde_json::Value>) -> bool {
+    match raw {
+        Some(serde_json::Value::Bool(b)) => *b,
+        Some(serde_json::Value::String(s)) => {
+            let lower = s.to_ascii_lowercase();
+            lower == "true" || lower == "1"
+        }
+        _ => false,
+    }
+}
+
+fn user_from_info(info: UserInfoResponse) -> User {
+    let UserInfoResponse {
+        sub,
+        email,
+        email_verified,
+        name,
+        preferred_username,
+        picture,
+        extra,
+    } = info;
+    let mut metadata: HashMap<String, serde_json::Value> = extra;
+    metadata.insert(
+        "email_verified".to_string(),
+        serde_json::Value::Bool(email_verified_as_bool(&email_verified)),
+    );
+    if let Some(n) = name.as_ref() {
+        metadata.insert("name".to_string(), serde_json::Value::String(n.clone()));
+    }
+    if let Some(u) = preferred_username.as_ref() {
+        metadata.insert(
+            "preferred_username".to_string(),
+            serde_json::Value::String(u.clone()),
+        );
+    }
+    if let Some(p) = picture.as_ref() {
+        metadata.insert(
+            "avatar_url".to_string(),
+            serde_json::Value::String(p.clone()),
+        );
+    }
+    User {
+        id: sub,
+        email,
+        user_metadata: metadata,
+        created_at: String::new(),
+    }
+}
+
+async fn fetch_user_info(
+    client: &reqwest::Client,
+    config: &CognitoConfig,
+    access_token: &str,
+) -> Result<User, String> {
+    let resp = client
+        .get(format!("{}/oauth2/userInfo", config.base_url()))
+        .header("Authorization", format!("Bearer {}", access_token))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch userInfo: {}", e))?;
+    let status = resp.status();
+    if !status.is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        return Err(format!("userInfo failed ({}): {}", status, body));
+    }
+    let info: UserInfoResponse = resp
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse userInfo: {}", e))?;
+    Ok(user_from_info(info))
+}
+
 // =============================================================================
 // Commands
 // =============================================================================
 
-/// Start OAuth flow - returns URL to open in browser
+/// Start OAuth flow. Returns the URL the frontend should open in the browser.
+/// `provider` accepts `google`, `github`, or `email` (also `cognito` / empty
+/// string) to route through the Cognito Hosted UI for email+password.
 #[tauri::command]
 pub async fn auth_start_oauth(
     provider: String,
     state: State<'_, AuthState>,
 ) -> Result<String, String> {
     info!(provider = %provider, "Starting OAuth flow");
-    let config = supabase_config()?;
+    let config = cognito_config()?;
+    let idp = cognito_identity_provider(&provider)?;
 
-    // Validate provider
-    if provider != "github" {
-        return Err(format!("Unsupported OAuth provider: {}", provider));
-    }
-
-    // Generate PKCE codes
     let pkce = AuthState::generate_pkce();
 
-    // Build OAuth URL - let Supabase handle state internally
-    let auth_url = format!(
-        "{}/auth/v1/authorize?provider={}&redirect_to={}&code_challenge={}&code_challenge_method=S256",
-        config.url,
-        provider,
-        urlencoding::encode(REDIRECT_URL),
-        pkce.challenge
-    );
+    let mut url = Url::parse(&format!("{}/oauth2/authorize", config.base_url()))
+        .map_err(|e| format!("Failed to build authorize URL: {}", e))?;
+    {
+        let mut q = url.query_pairs_mut();
+        q.append_pair("response_type", "code");
+        q.append_pair("client_id", &config.client_id);
+        q.append_pair("redirect_uri", REDIRECT_URL);
+        q.append_pair("scope", "openid email profile");
+        q.append_pair("code_challenge", &pkce.challenge);
+        q.append_pair("code_challenge_method", "S256");
+        if let Some(provider_name) = idp {
+            q.append_pair("identity_provider", provider_name);
+        }
+    }
 
-    // Store PKCE state for later verification
     *state.pkce.write().await = Some(pkce);
 
-    info!(url = %auth_url, "Generated OAuth URL - opening in browser");
-    Ok(auth_url)
+    info!(url = %url, "Generated OAuth URL - opening in browser");
+    Ok(url.to_string())
 }
 
-/// Send magic link email
+/// Backwards-compatible stub. Magic links aren't native to Cognito; instead
+/// we open the Hosted UI email/password signup page with the address pre-filled
+/// via `login_hint`.
 #[tauri::command]
 pub async fn auth_start_magic_link(
     email: String,
     state: State<'_, AuthState>,
-) -> Result<(), String> {
-    info!(email = %email, "Sending magic link");
-    let config = supabase_config()?;
-
-    // Generate PKCE codes for magic link flow
+) -> Result<String, String> {
+    info!(email = %email, "Opening email signin (Cognito Hosted UI)");
+    let config = cognito_config()?;
     let pkce = AuthState::generate_pkce();
 
-    let response = state
-        .client
-        .post(format!("{}/auth/v1/otp", config.url))
-        .header("apikey", &config.anon_key)
-        .header("Content-Type", "application/json")
-        .json(&serde_json::json!({
-            "email": email,
-            "options": {
-                "emailRedirectTo": REDIRECT_URL,
-                "shouldCreateUser": true
-            }
-        }))
-        .send()
-        .await
-        .map_err(|e| format!("Failed to send magic link: {}", e))?;
-
-    if response.status().is_success() {
-        // Store PKCE state for token exchange
-        *state.pkce.write().await = Some(pkce);
-        info!("Magic link sent successfully");
-        Ok(())
-    } else {
-        let error: SupabaseError = response.json().await.unwrap_or(SupabaseError {
-            error: Some("Unknown error".to_string()),
-            error_description: None,
-            message: None,
-        });
-        Err(error
-            .message
-            .or(error.error_description)
-            .or(error.error)
-            .unwrap_or_else(|| "Failed to send magic link".to_string()))
+    let mut url = Url::parse(&format!("{}/oauth2/authorize", config.base_url()))
+        .map_err(|e| format!("Failed to build authorize URL: {}", e))?;
+    {
+        let mut q = url.query_pairs_mut();
+        q.append_pair("response_type", "code");
+        q.append_pair("client_id", &config.client_id);
+        q.append_pair("redirect_uri", REDIRECT_URL);
+        q.append_pair("scope", "openid email profile");
+        q.append_pair("code_challenge", &pkce.challenge);
+        q.append_pair("code_challenge_method", "S256");
+        q.append_pair("login_hint", &email);
     }
+
+    *state.pkce.write().await = Some(pkce);
+    Ok(url.to_string())
 }
 
-/// Exchange authorization code for session tokens
+/// Exchange authorization code for session tokens.
 #[tauri::command]
 pub async fn auth_exchange_code(
     code: String,
     state: State<'_, AuthState>,
     auth: State<'_, ProviderAuthState>,
 ) -> Result<AuthStateResponse, String> {
-    let config = supabase_config()?;
+    let config = cognito_config()?;
     info!(
         "Exchanging authorization code for tokens, code={}",
-        &code[..8]
+        &code[..code.len().min(8)]
     );
 
-    // Get PKCE verifier
     let pkce = match state.pkce.read().await.clone() {
-        Some(p) => {
-            info!("Found PKCE verifier");
-            p
-        }
+        Some(p) => p,
         None => {
-            warn!("No PKCE state found - OAuth flow not initiated from this app instance");
-            return Err("No pending OAuth flow - please try signing in again".to_string());
+            warn!("No PKCE state found — OAuth flow not initiated from this app instance");
+            return Err("No pending OAuth flow — please try signing in again".to_string());
         }
     };
 
-    info!("Sending token exchange request to Supabase...");
-
-    // Exchange code for tokens using Supabase's non-standard parameter name
-    // Note: Supabase GoTrue uses "auth_code" instead of standard OAuth2 "code"
-    // See: https://github.com/supabase/auth/issues/2306
     let response = state
         .client
-        .post(format!("{}/auth/v1/token?grant_type=pkce", config.url))
-        .header("apikey", &config.anon_key)
-        .header("Content-Type", "application/json")
-        .json(&serde_json::json!({
-            "auth_code": code,
-            "code_verifier": pkce.verifier,
-        }))
+        .post(format!("{}/oauth2/token", config.base_url()))
+        .header("Content-Type", "application/x-www-form-urlencoded")
+        .form(&[
+            ("grant_type", "authorization_code"),
+            ("client_id", config.client_id.as_str()),
+            ("code", code.as_str()),
+            ("redirect_uri", REDIRECT_URL),
+            ("code_verifier", pkce.verifier.as_str()),
+        ])
         .send()
         .await
         .map_err(|e| {
@@ -377,70 +491,60 @@ pub async fn auth_exchange_code(
             format!("Failed to exchange code: {}", e)
         })?;
 
-    info!("Received response with status: {}", response.status());
-
-    if response.status().is_success() {
-        let token_response: TokenResponse = response
-            .json()
-            .await
-            .map_err(|e| format!("Failed to parse token response: {}", e))?;
-
-        // Store tokens in vault
-        vault_write(&auth, VAULT_KEY_ACCESS_TOKEN, &token_response.access_token).await?;
-        vault_write(
-            &auth,
-            VAULT_KEY_REFRESH_TOKEN,
-            &token_response.refresh_token,
-        )
-        .await?;
-
-        // Create session
-        let session = Session {
-            access_token: token_response.access_token,
-            refresh_token: token_response.refresh_token,
-            expires_in: token_response.expires_in,
-            expires_at: token_response.expires_at,
-            token_type: token_response.token_type,
-            user: token_response.user.clone(),
-        };
-
-        // Cache session
-        *state.session.write().await = Some(session);
-
-        // Clear PKCE state
-        *state.pkce.write().await = None;
-
-        info!(user_id = %token_response.user.id, "Authentication successful");
-
-        Ok(AuthStateResponse {
-            user: Some(token_response.user),
-            is_authenticated: true,
-        })
-    } else {
-        let status = response.status();
+    let status = response.status();
+    if !status.is_success() {
         let body = response.text().await.unwrap_or_default();
         warn!("Token exchange failed with status {}: {}", status, body);
-
-        let error: SupabaseError = serde_json::from_str(&body).unwrap_or(SupabaseError {
+        let error: CognitoError = serde_json::from_str(&body).unwrap_or(CognitoError {
             error: Some(format!("HTTP {}", status)),
-            error_description: Some(body),
+            error_description: Some(body.clone()),
             message: None,
         });
-
-        // Clear PKCE state on error
         *state.pkce.write().await = None;
-
-        let error_msg = error
+        let msg = error
             .message
             .or(error.error_description)
             .or(error.error)
             .unwrap_or_else(|| "Failed to exchange code".to_string());
-        warn!("Auth error: {}", error_msg);
-        Err(error_msg)
+        return Err(msg);
     }
+
+    let tokens: TokenResponse = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse token response: {}", e))?;
+
+    let refresh_token = tokens
+        .refresh_token
+        .clone()
+        .ok_or_else(|| "Cognito did not return a refresh_token".to_string())?;
+
+    let user = fetch_user_info(&state.client, config, &tokens.access_token).await?;
+
+    vault_write(&auth, VAULT_KEY_ACCESS_TOKEN, &tokens.access_token).await?;
+    vault_write(&auth, VAULT_KEY_REFRESH_TOKEN, &refresh_token).await?;
+    vault_write(&auth, VAULT_KEY_ID_TOKEN, &tokens.id_token).await?;
+
+    let session = Session {
+        access_token: tokens.access_token,
+        refresh_token,
+        expires_in: tokens.expires_in,
+        expires_at: Some(now_epoch_secs() + tokens.expires_in),
+        token_type: tokens.token_type,
+        user: user.clone(),
+    };
+
+    *state.session.write().await = Some(session);
+    *state.pkce.write().await = None;
+
+    info!(user_id = %user.id, "Authentication successful");
+    Ok(AuthStateResponse {
+        user: Some(user),
+        is_authenticated: true,
+    })
 }
 
-/// Get current session (restores from vault if needed)
+/// Get current session — restores from vault if needed, refreshes on expiry.
 #[tauri::command]
 pub async fn auth_get_session(
     state: State<'_, AuthState>,
@@ -448,7 +552,6 @@ pub async fn auth_get_session(
 ) -> Result<AuthStateResponse, String> {
     debug!("Getting current session");
 
-    // Check cached session first
     if let Some(session) = state.session.read().await.as_ref() {
         return Ok(AuthStateResponse {
             user: Some(session.user.clone()),
@@ -456,9 +559,8 @@ pub async fn auth_get_session(
         });
     }
 
-    // Try to restore from vault
     let access_token = match vault_read(&auth, VAULT_KEY_ACCESS_TOKEN).await {
-        Some(token) => token,
+        Some(t) => t,
         None => {
             debug!("No stored session found");
             return Ok(AuthStateResponse {
@@ -467,222 +569,277 @@ pub async fn auth_get_session(
             });
         }
     };
-
     let refresh_token = vault_read(&auth, VAULT_KEY_REFRESH_TOKEN).await;
-    let config = supabase_config()?;
 
-    // Validate token by getting user info
-    let response = state
-        .client
-        .get(format!("{}/auth/v1/user", config.url))
-        .header("apikey", &config.anon_key)
-        .header("Authorization", format!("Bearer {}", access_token))
-        .send()
-        .await
-        .map_err(|e| format!("Failed to get user: {}", e))?;
-
-    if response.status().is_success() {
-        let user: User = response
-            .json()
-            .await
-            .map_err(|e| format!("Failed to parse user: {}", e))?;
-
-        // Create session
-        let session = Session {
-            access_token,
-            refresh_token: refresh_token.unwrap_or_default(),
-            expires_in: 0, // Unknown from restore
-            expires_at: None,
-            token_type: "bearer".to_string(),
-            user: user.clone(),
-        };
-
-        *state.session.write().await = Some(session);
-
-        Ok(AuthStateResponse {
-            user: Some(user),
-            is_authenticated: true,
-        })
-    } else if response.status() == 401 {
-        // Token expired, try refresh
-        if let Some(refresh) = refresh_token {
-            return refresh_session_internal(&state, &auth, &refresh).await;
+    match fetch_user_info(&state.client, cognito_config()?, &access_token).await {
+        Ok(user) => {
+            let session = Session {
+                access_token,
+                refresh_token: refresh_token.clone().unwrap_or_default(),
+                expires_in: 0,
+                expires_at: None,
+                token_type: "Bearer".to_string(),
+                user: user.clone(),
+            };
+            *state.session.write().await = Some(session);
+            Ok(AuthStateResponse {
+                user: Some(user),
+                is_authenticated: true,
+            })
         }
-
-        // No refresh token, clear invalid tokens
-        let _ = vault_delete_key(&auth, VAULT_KEY_ACCESS_TOKEN).await;
-        let _ = vault_delete_key(&auth, VAULT_KEY_REFRESH_TOKEN).await;
-
-        Ok(AuthStateResponse {
-            user: None,
-            is_authenticated: false,
-        })
-    } else {
-        warn!("Failed to validate token");
-        Ok(AuthStateResponse {
-            user: None,
-            is_authenticated: false,
-        })
+        Err(err) => {
+            warn!("userInfo probe failed: {}", err);
+            if let Some(refresh) = refresh_token {
+                return refresh_session_internal(&state, &auth, &refresh).await;
+            }
+            let _ = vault_delete_key(&auth, VAULT_KEY_ACCESS_TOKEN).await;
+            let _ = vault_delete_key(&auth, VAULT_KEY_REFRESH_TOKEN).await;
+            let _ = vault_delete_key(&auth, VAULT_KEY_ID_TOKEN).await;
+            Ok(AuthStateResponse {
+                user: None,
+                is_authenticated: false,
+            })
+        }
     }
 }
 
-/// Refresh the session using refresh token
+/// Refresh the current session using the stored refresh token.
 #[tauri::command]
 pub async fn auth_refresh_session(
     state: State<'_, AuthState>,
     auth: State<'_, ProviderAuthState>,
 ) -> Result<AuthStateResponse, String> {
     info!("Refreshing session");
-
     let refresh_token = vault_read(&auth, VAULT_KEY_REFRESH_TOKEN)
         .await
         .ok_or("No refresh token available")?;
-
     refresh_session_internal(&state, &auth, &refresh_token).await
 }
 
-/// Internal function to refresh session
 async fn refresh_session_internal(
     state: &State<'_, AuthState>,
     auth: &State<'_, ProviderAuthState>,
     refresh_token: &str,
 ) -> Result<AuthStateResponse, String> {
-    let config = supabase_config()?;
+    let config = cognito_config()?;
     let response = state
         .client
-        .post(format!("{}/auth/v1/token", config.url))
-        .header("apikey", &config.anon_key)
+        .post(format!("{}/oauth2/token", config.base_url()))
+        .header("Content-Type", "application/x-www-form-urlencoded")
         .form(&[
             ("grant_type", "refresh_token"),
+            ("client_id", config.client_id.as_str()),
             ("refresh_token", refresh_token),
         ])
         .send()
         .await
         .map_err(|e| format!("Failed to refresh token: {}", e))?;
 
-    if response.status().is_success() {
-        let token_response: TokenResponse = response
-            .json()
-            .await
-            .map_err(|e| format!("Failed to parse refresh response: {}", e))?;
-
-        // Store new tokens in vault
-        vault_write(auth, VAULT_KEY_ACCESS_TOKEN, &token_response.access_token).await?;
-        vault_write(auth, VAULT_KEY_REFRESH_TOKEN, &token_response.refresh_token).await?;
-
-        let session = Session {
-            access_token: token_response.access_token,
-            refresh_token: token_response.refresh_token,
-            expires_in: token_response.expires_in,
-            expires_at: token_response.expires_at,
-            token_type: token_response.token_type,
-            user: token_response.user.clone(),
-        };
-
-        *state.session.write().await = Some(session);
-
-        info!("Session refreshed successfully");
-        Ok(AuthStateResponse {
-            user: Some(token_response.user),
-            is_authenticated: true,
-        })
-    } else {
-        // Refresh failed, clear tokens
+    let status = response.status();
+    if !status.is_success() {
+        let body = response.text().await.unwrap_or_default();
+        warn!("Refresh failed ({}): {}", status, body);
         let _ = vault_delete_key(auth, VAULT_KEY_ACCESS_TOKEN).await;
         let _ = vault_delete_key(auth, VAULT_KEY_REFRESH_TOKEN).await;
+        let _ = vault_delete_key(auth, VAULT_KEY_ID_TOKEN).await;
         *state.session.write().await = None;
-
-        Err("Session expired, please sign in again".to_string())
+        return Err("Session expired, please sign in again".to_string());
     }
+
+    let tokens: TokenResponse = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse refresh response: {}", e))?;
+
+    let refresh_token = tokens
+        .refresh_token
+        .clone()
+        .unwrap_or_else(|| refresh_token.to_string());
+
+    let user = fetch_user_info(&state.client, config, &tokens.access_token).await?;
+
+    vault_write(auth, VAULT_KEY_ACCESS_TOKEN, &tokens.access_token).await?;
+    vault_write(auth, VAULT_KEY_REFRESH_TOKEN, &refresh_token).await?;
+    vault_write(auth, VAULT_KEY_ID_TOKEN, &tokens.id_token).await?;
+
+    let session = Session {
+        access_token: tokens.access_token,
+        refresh_token,
+        expires_in: tokens.expires_in,
+        expires_at: Some(now_epoch_secs() + tokens.expires_in),
+        token_type: tokens.token_type,
+        user: user.clone(),
+    };
+    *state.session.write().await = Some(session);
+
+    info!("Session refreshed successfully");
+    Ok(AuthStateResponse {
+        user: Some(user),
+        is_authenticated: true,
+    })
 }
 
-/// Sign out - clear session and tokens
+/// Sign out — clears local tokens and returns the Cognito logout URL when
+/// available. Never fails from the caller's perspective: sign-out is a
+/// *local* operation by contract — the browser hop to Cognito's hosted
+/// `/logout` is a nicety to invalidate the hosted-UI cookie, but if the
+/// config is missing or vault I/O errors, local state still ends up cleared.
+///
+/// Returns an empty string when no logout URL can be constructed; callers
+/// should just skip the browser open in that case.
 #[tauri::command]
 pub async fn auth_sign_out(
     state: State<'_, AuthState>,
     auth: State<'_, ProviderAuthState>,
-) -> Result<(), String> {
-    info!("Signing out");
-    let config = supabase_config()?;
+) -> Result<String, String> {
+    info!("auth_sign_out: start");
 
-    // Try to call Supabase logout (best effort)
-    if let Some(session) = state.session.read().await.as_ref() {
-        let _ = state
-            .client
-            .post(format!("{}/auth/v1/logout", config.url))
-            .header("apikey", &config.anon_key)
-            .header("Authorization", format!("Bearer {}", session.access_token))
-            .send()
-            .await;
+    // Drop in-memory state first so any concurrent access sees a
+    // "signed-out" snapshot even if the vault I/O below takes its time.
+    info!("auth_sign_out: acquiring session write lock");
+    {
+        let mut guard = state.session.write().await;
+        *guard = None;
     }
+    info!("auth_sign_out: session cleared");
+    info!("auth_sign_out: acquiring pkce write lock");
+    {
+        let mut guard = state.pkce.write().await;
+        *guard = None;
+    }
+    info!("auth_sign_out: pkce cleared");
 
-    // Clear vault entries
-    vault_delete_key(&auth, VAULT_KEY_ACCESS_TOKEN).await?;
-    vault_delete_key(&auth, VAULT_KEY_REFRESH_TOKEN).await?;
+    for (label, key) in [
+        ("access", VAULT_KEY_ACCESS_TOKEN),
+        ("refresh", VAULT_KEY_REFRESH_TOKEN),
+        ("id", VAULT_KEY_ID_TOKEN),
+    ] {
+        match vault_delete_key(&auth, key).await {
+            Ok(()) => info!(token = label, "auth_sign_out: vault key deleted"),
+            Err(e) => {
+                // Non-fatal: missing keys are fine during sign-out. Log so
+                // a real keychain failure still surfaces in telemetry.
+                tracing::warn!(token = label, error = %e, "auth_sign_out: vault delete failed (ignored)");
+            }
+        }
+    }
+    info!("auth_sign_out: vault cleared");
 
-    // Clear cached session
-    *state.session.write().await = None;
+    // Build the Cognito logout URL when possible. Missing env / bad config
+    // is NOT a sign-out failure — local state is already clean. Return an
+    // empty URL so the frontend can skip opening a browser.
+    let logout_url = match cognito_config() {
+        Ok(config) => match Url::parse(&format!("{}/logout", config.base_url())) {
+            Ok(mut url) => {
+                url.query_pairs_mut()
+                    .append_pair("client_id", &config.client_id)
+                    .append_pair("logout_uri", SIGNOUT_URL);
+                let built = url.to_string();
+                info!(url = %built, "auth_sign_out: built logout url");
+                built
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "auth_sign_out: failed to parse logout url; returning empty");
+                String::new()
+            }
+        },
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                "auth_sign_out: cognito config unavailable; skipping browser logout hop"
+            );
+            String::new()
+        }
+    };
 
-    info!("Signed out successfully");
-    Ok(())
+    info!("auth_sign_out: done");
+    Ok(logout_url)
 }
 
-/// Get the current access token (for API calls)
 #[tauri::command]
 pub async fn auth_get_access_token(
     state: State<'_, AuthState>,
     auth: State<'_, ProviderAuthState>,
 ) -> Result<Option<String>, String> {
-    if let Some(session) = state.session.read().await.as_ref() {
-        return Ok(Some(session.access_token.clone()));
-    }
+    Ok(access_token_snapshot(&state, &auth).await)
+}
 
-    // Try vault
-    Ok(vault_read(&auth, VAULT_KEY_ACCESS_TOKEN).await)
+/// Non-command helper: returns the current access token without going through
+/// the Tauri invoke layer. Used by `stats_commands` and other backend modules
+/// that need to make authenticated HTTP calls on behalf of the signed-in user.
+pub async fn access_token_snapshot(
+    state: &State<'_, AuthState>,
+    auth: &State<'_, ProviderAuthState>,
+) -> Option<String> {
+    if let Some(session) = state.session.read().await.as_ref() {
+        return Some(session.access_token.clone());
+    }
+    vault_read(auth, VAULT_KEY_ACCESS_TOKEN).await
+}
+
+/// Returns the stored ID token (JWT with identity claims) — useful for
+/// offline inspection of the current user without hitting Cognito.
+#[tauri::command]
+pub async fn auth_get_id_token(
+    auth: State<'_, ProviderAuthState>,
+) -> Result<Option<String>, String> {
+    Ok(vault_read(&auth, VAULT_KEY_ID_TOKEN).await)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::resolve_supabase_config;
+    use super::{cognito_identity_provider, normalize_cognito_domain, resolve_cognito_config};
 
     #[test]
     fn uses_compile_time_values_when_present() {
-        let config = resolve_supabase_config(
-            Some("https://example.supabase.co/"),
-            Some("anon-key"),
-            Some("https://runtime.supabase.co".to_string()),
-            Some("runtime-key".to_string()),
+        let cfg = resolve_cognito_config(
+            Some("solo-ide-dev.auth.us-east-1.amazoncognito.com"),
+            Some("abc123"),
+            Some("us-east-1"),
+            Some("runtime-domain.example".to_string()),
+            Some("runtime-client".to_string()),
+            Some("eu-west-1".to_string()),
         )
         .unwrap();
-
-        assert_eq!(config.url, "https://example.supabase.co");
-        assert_eq!(config.anon_key, "anon-key");
+        assert_eq!(cfg.domain, "solo-ide-dev.auth.us-east-1.amazoncognito.com");
+        assert_eq!(cfg.client_id, "abc123");
+        assert_eq!(cfg.region, "us-east-1");
     }
 
     #[test]
     fn falls_back_to_runtime_values() {
-        let config = resolve_supabase_config(
+        let cfg = resolve_cognito_config(
             None,
             None,
-            Some("https://runtime.supabase.co".to_string()),
-            Some("runtime-key".to_string()),
+            None,
+            Some("runtime.auth.us-east-1.amazoncognito.com".to_string()),
+            Some("runtime-client".to_string()),
+            Some("us-west-2".to_string()),
         )
         .unwrap();
-
-        assert_eq!(config.url, "https://runtime.supabase.co");
-        assert_eq!(config.anon_key, "runtime-key");
+        assert_eq!(cfg.domain, "runtime.auth.us-east-1.amazoncognito.com");
+        assert_eq!(cfg.client_id, "runtime-client");
+        assert_eq!(cfg.region, "us-west-2");
     }
 
     #[test]
-    fn rejects_invalid_supabase_url() {
-        let error = resolve_supabase_config(
-            Some("http://example.supabase.co"),
-            Some("anon-key"),
-            None,
-            None,
-        )
-        .unwrap_err();
+    fn rejects_http_domain() {
+        let err = normalize_cognito_domain("http://example.amazoncognito.com").unwrap_err();
+        assert!(err.to_lowercase().contains("https"));
+    }
 
-        assert!(error.contains("expected an https URL"));
+    #[test]
+    fn accepts_domain_with_scheme_prefix() {
+        let n = normalize_cognito_domain("https://x.auth.us-east-1.amazoncognito.com/").unwrap();
+        assert_eq!(n, "x.auth.us-east-1.amazoncognito.com");
+    }
+
+    #[test]
+    fn maps_providers() {
+        assert_eq!(cognito_identity_provider("google").unwrap(), Some("Google"));
+        assert_eq!(cognito_identity_provider("github").unwrap(), Some("GitHub"));
+        assert_eq!(cognito_identity_provider("email").unwrap(), None);
+        assert_eq!(cognito_identity_provider("").unwrap(), None);
+        assert!(cognito_identity_provider("facebook").is_err());
     }
 }

@@ -4,7 +4,8 @@
  */
 
 import { useCallback, useState, useEffect, useMemo, useRef } from 'react';
-import { CheckCircle, WarningCircle, CircleNotch, Clock, Terminal, Sparkle, ArrowClockwise, XCircle, ShieldCheck, TreeStructure } from '@phosphor-icons/react';
+import { CheckCircledIcon, ExclamationTriangleIcon, CrossCircledIcon, ReloadIcon, StarFilledIcon } from '@radix-ui/react-icons';
+import { Loader2, Clock, Terminal, ShieldCheck, Network } from 'lucide-react';
 import { motion } from 'motion/react';
 import { ListSkeleton } from '../../ui/skeletons';
 import { useSettingsStore } from '../../../stores/settingsStore';
@@ -39,7 +40,7 @@ function ConnectionStatusBadge({
   if (!authInfo || authInfo.authType === 'none') {
     return (
       <div className="flex items-center gap-1.5 text-xs text-warning">
-        <WarningCircle className="w-3.5 h-3.5" />
+        <ExclamationTriangleIcon className="w-3.5 h-3.5" />
         Not configured
       </div>
     );
@@ -50,7 +51,7 @@ function ConnectionStatusBadge({
   return (
     <div className="flex items-center gap-2">
       <div className="flex items-center gap-1.5 text-xs text-success">
-        <CheckCircle className="w-3.5 h-3.5" />
+        <CheckCircledIcon className="w-3.5 h-3.5" />
         Connected
       </div>
       {isOAuth && authInfo.expiresInSeconds !== null && (
@@ -112,7 +113,7 @@ function ProviderCard({
       }
     : {
         name: 'OpenAI',
-        icon: Sparkle,
+        icon: StarFilledIcon,
         iconColor: 'text-[#10a37f]',
         buttonColor: 'bg-[#10a37f] hover:bg-[#0d8c6d]',
         buttonText: 'Sign in with ChatGPT',
@@ -168,7 +169,7 @@ function ProviderCard({
           >
             {isOAuthPending ? (
               <>
-                <CircleNotch weight="bold" className="w-4 h-4 animate-spin" />
+                <Loader2 className="w-4 h-4 animate-spin" />
                 Waiting for sign in...
               </>
             ) : (
@@ -255,7 +256,7 @@ function ProviderCard({
           <div className="text-xs text-muted-foreground">API Key</div>
           {hasCredentials && authInfo?.authType === 'api-key' && (
             <div className="flex items-center gap-1.5 text-xs text-success">
-              <CheckCircle className="w-3.5 h-3.5" />
+              <CheckCircledIcon className="w-3.5 h-3.5" />
               Saved
             </div>
           )}
@@ -336,9 +337,9 @@ function ClaudeSetupDiagnostic() {
       return <span className="text-muted-foreground">—</span>;
     }
     return ok ? (
-      <CheckCircle className="w-3.5 h-3.5 text-success inline" />
+      <CheckCircledIcon className="w-3.5 h-3.5 text-success inline" />
     ) : (
-      <XCircle className="w-3.5 h-3.5 text-destructive inline" />
+      <CrossCircledIcon className="w-3.5 h-3.5 text-destructive inline" />
     );
   };
 
@@ -357,7 +358,7 @@ function ClaudeSetupDiagnostic() {
           transition={{ duration: 0.3 }}
           className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
         >
-          <ArrowClockwise className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+          <ReloadIcon className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
           {loading ? 'Checking...' : 'Recheck'}
         </motion.button>
       </div>
@@ -713,18 +714,27 @@ export function AITab() {
           Behavior
         </h3>
         <div className="divide-y divide-border">
-          <SettingRow
-            label="Max Tokens"
-            description="Maximum response length (1024-32768)"
-          >
-            <NumberInput
-              value={maxTokens}
-              min={1024}
-              max={32768}
-              step={256}
-              onChange={setMaxTokens}
-            />
-          </SettingRow>
+          {(() => {
+            // Slider ceiling = active model's declared output-token capacity.
+            // Server-side clamp in Claude Code still enforces the model's true upperLimit.
+            const activeModel = allModels.find((m) => m.id === selectedModel);
+            const modelMax = activeModel?.max_output_tokens ?? 32_768;
+            const clampedValue = Math.min(maxTokens, modelMax);
+            return (
+              <SettingRow
+                label="Max Output Tokens"
+                description={`Cap per response (1024–${modelMax.toLocaleString()}${activeModel ? ` for ${activeModel.display_name}` : ''})`}
+              >
+                <NumberInput
+                  value={clampedValue}
+                  min={1024}
+                  max={modelMax}
+                  step={256}
+                  onChange={setMaxTokens}
+                />
+              </SettingRow>
+            );
+          })()}
 
           <SettingRow
             label="Stream Responses"
@@ -762,7 +772,7 @@ export function AITab() {
       {/* Worktree Setup Section */}
       <div>
         <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4 flex items-center gap-2">
-          <TreeStructure className="w-3.5 h-3.5" />
+          <Network className="w-3.5 h-3.5" />
           Worktree Setup
         </h3>
         <div className="space-y-3">

@@ -3,7 +3,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { CheckCircle, WarningCircle } from '@phosphor-icons/react';
+import { CheckCircledIcon, ExclamationTriangleIcon } from '@radix-ui/react-icons';
 import { SettingRow } from '../controls';
 import { PasswordInput } from '../controls';
 import { SelectDropdown } from '../controls';
@@ -108,10 +108,10 @@ export function VoiceTab() {
                 disabled={saving}
               />
               {saved && (
-                <CheckCircle weight="fill" className="w-4 h-4 text-green-500 shrink-0" />
+                <CheckCircledIcon className="w-4 h-4 text-green-500 shrink-0" />
               )}
               {error && (
-                <WarningCircle weight="fill" className="w-4 h-4 text-destructive shrink-0" />
+                <ExclamationTriangleIcon className="w-4 h-4 text-destructive shrink-0" />
               )}
             </div>
           </SettingRow>

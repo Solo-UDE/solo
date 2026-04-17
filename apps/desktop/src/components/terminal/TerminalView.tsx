@@ -9,7 +9,7 @@ import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import type { SearchAddon } from '@xterm/addon-search';
-import { MagnifyingGlass, X, ArrowUp, ArrowDown } from '@phosphor-icons/react';
+import { MagnifyingGlassIcon, Cross2Icon, ArrowUpIcon, ArrowDownIcon } from '@radix-ui/react-icons';
 import '@xterm/xterm/css/xterm.css';
 
 import { writeTerminal, resizeTerminal } from '@/lib/tauri/terminal';
@@ -336,7 +336,7 @@ export function TerminalView({ terminalId, isActive, onExit }: TerminalViewProps
 			{/* Search bar overlay */}
 			{searchOpen && (
 				<div className="absolute top-1 right-2 z-10 flex items-center gap-1 bg-sidebar border border-border/50 rounded-md px-2 py-1 shadow-sm">
-					<MagnifyingGlass className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+					<MagnifyingGlassIcon className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
 					<input
 						ref={searchInputRef}
 						type="text"
@@ -357,21 +357,21 @@ export function TerminalView({ terminalId, isActive, onExit }: TerminalViewProps
 						className="p-0.5 rounded hover:bg-muted-foreground/20 text-muted-foreground"
 						aria-label="Previous match"
 					>
-						<ArrowUp className="w-3 h-3" />
+						<ArrowUpIcon className="w-3 h-3" />
 					</button>
 					<button
 						onClick={handleSearchNext}
 						className="p-0.5 rounded hover:bg-muted-foreground/20 text-muted-foreground"
 						aria-label="Next match"
 					>
-						<ArrowDown className="w-3 h-3" />
+						<ArrowDownIcon className="w-3 h-3" />
 					</button>
 					<button
 						onClick={closeSearch}
 						className="p-0.5 rounded hover:bg-muted-foreground/20 text-muted-foreground"
 						aria-label="Close search"
 					>
-						<X className="w-3 h-3" />
+						<Cross2Icon className="w-3 h-3" />
 					</button>
 				</div>
 			)}

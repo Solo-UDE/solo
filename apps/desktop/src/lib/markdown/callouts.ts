@@ -7,30 +7,24 @@
  *   > Content here
  */
 
-import { createElement, type ReactNode } from 'react';
-import type { Icon } from '@phosphor-icons/react';
-import {
-	Info,
-	Lightbulb,
-	Warning,
-	WarningOctagon,
-	Fire,
-} from '@phosphor-icons/react';
+import { createElement, type ReactNode, type ComponentType } from 'react';
+import { InfoCircledIcon, ExclamationTriangleIcon } from '@radix-ui/react-icons';
+import { Lightbulb, Flame } from 'lucide-react';
 
 export type CalloutType = 'NOTE' | 'TIP' | 'IMPORTANT' | 'WARNING' | 'CAUTION';
 
 interface CalloutConfig {
-	icon: Icon;
+	icon: ComponentType<{ className?: string }>;
 	label: string;
 	className: string;
 }
 
 const CALLOUT_CONFIG: Record<CalloutType, CalloutConfig> = {
-	NOTE: { icon: Info, label: 'Note', className: 'callout-note' },
-	TIP: { icon: Lightbulb, label: 'Tip', className: 'callout-tip' },
-	IMPORTANT: { icon: WarningOctagon, label: 'Important', className: 'callout-important' },
-	WARNING: { icon: Warning, label: 'Warning', className: 'callout-warning' },
-	CAUTION: { icon: Fire, label: 'Caution', className: 'callout-caution' },
+	NOTE: { icon: InfoCircledIcon, label: 'Note', className: 'callout-note' },
+	TIP: { icon: Lightbulb as ComponentType<{ className?: string }>, label: 'Tip', className: 'callout-tip' },
+	IMPORTANT: { icon: ExclamationTriangleIcon, label: 'Important', className: 'callout-important' },
+	WARNING: { icon: ExclamationTriangleIcon, label: 'Warning', className: 'callout-warning' },
+	CAUTION: { icon: Flame as ComponentType<{ className?: string }>, label: 'Caution', className: 'callout-caution' },
 };
 
 const CALLOUT_REGEX = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*/;
@@ -101,7 +95,6 @@ export function renderCallout(
 			{ className: 'callout-title' },
 			createElement(IconComponent, {
 				className: 'callout-icon',
-				weight: 'bold' as const,
 			}),
 			createElement('span', null, config.label),
 		),

@@ -6,19 +6,16 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { Cross2Icon, GitHubLogoIcon, ExclamationTriangleIcon } from '@radix-ui/react-icons';
 import {
-  X,
   Bug,
   Image as ImageIcon,
-  SpinnerGap,
-  Warning,
-  GithubLogo,
-  CircleNotch,
-  MagicWand,
-  PaperPlaneTilt,
-  ArrowsOutSimple,
-  ArrowsInSimple,
-} from '@phosphor-icons/react';
+  Loader2,
+  Wand2,
+  Send,
+  Maximize2,
+  Minimize2,
+} from 'lucide-react';
 import { Button, IconButton, Input } from '@solo/ui';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { toast } from 'sonner';
@@ -264,7 +261,7 @@ export function BugReportDialog({ onClose }: BugReportDialogProps) {
         {/* Header */}
         <div className="flex items-center justify-between px-5 pt-5 pb-3">
           <div className="flex items-center gap-2">
-            <Bug className="w-4 h-4 text-primary" weight="duotone" />
+            <Bug className="w-4 h-4 text-primary" size={16} />
             <h2 className="text-sm font-semibold text-foreground">Report a Bug</h2>
           </div>
           <IconButton
@@ -274,7 +271,7 @@ export function BugReportDialog({ onClose }: BugReportDialogProps) {
             disabled={isSubmitting}
             title="Close"
           >
-            <X className="w-3.5 h-3.5 text-muted-foreground" />
+            <Cross2Icon className="w-3.5 h-3.5 text-muted-foreground" />
           </IconButton>
         </div>
 
@@ -283,7 +280,7 @@ export function BugReportDialog({ onClose }: BugReportDialogProps) {
           {!ghToken && (
             <div className="space-y-2">
               <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-muted/40 text-muted-foreground text-xs">
-                <GithubLogo className="w-3.5 h-3.5 shrink-0 mt-0.5" weight="bold" />
+                <GitHubLogoIcon className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                 <span>Connect your GitHub account to submit bug reports.</span>
               </div>
               <Button
@@ -294,9 +291,9 @@ export function BugReportDialog({ onClose }: BugReportDialogProps) {
                 className="w-full h-8 text-xs"
               >
                 {isConnecting ? (
-                  <CircleNotch className="w-3.5 h-3.5 animate-spin" />
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" size={14} />
                 ) : (
-                  <GithubLogo className="w-3.5 h-3.5" weight="bold" />
+                  <GitHubLogoIcon className="w-3.5 h-3.5" />
                 )}
                 {isConnecting ? 'Waiting for authorization...' : 'Connect GitHub'}
               </Button>
@@ -350,7 +347,7 @@ export function BugReportDialog({ onClose }: BugReportDialogProps) {
                       className="absolute top-0.5 right-0.5 opacity-0 group-hover:opacity-100 bg-black/60 rounded-full p-0.5 transition-opacity"
                       type="button"
                     >
-                      <X className="w-3 h-3 text-white" weight="bold" />
+                      <Cross2Icon className="w-3 h-3 text-white" />
                     </button>
                   </div>
                 ))}
@@ -361,7 +358,7 @@ export function BugReportDialog({ onClose }: BugReportDialogProps) {
           {/* Paste hint */}
           {screenshots.length === 0 && (
             <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/20 border border-dashed border-border/40">
-              <ImageIcon className="w-3.5 h-3.5 text-muted-foreground/50" />
+              <ImageIcon className="w-3.5 h-3.5 text-muted-foreground/50" size={14} />
               <span className="text-xs text-muted-foreground/50">
                 Paste ({navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+V) or drag screenshots here
               </span>
@@ -378,9 +375,9 @@ export function BugReportDialog({ onClose }: BugReportDialogProps) {
                   className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
                 >
                   {showExpanded ? (
-                    <ArrowsInSimple className="w-3 h-3" />
+                    <Minimize2 className="w-3 h-3" size={12} />
                   ) : (
-                    <ArrowsOutSimple className="w-3 h-3" />
+                    <Maximize2 className="w-3 h-3" size={12} />
                   )}
                   {showExpanded ? 'Collapse' : 'Expand'}
                 </button>
@@ -396,7 +393,7 @@ export function BugReportDialog({ onClose }: BugReportDialogProps) {
           {/* Error message */}
           {error && (
             <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-destructive/10 text-destructive text-xs">
-              <Warning className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              <ExclamationTriangleIcon className="w-3.5 h-3.5 shrink-0 mt-0.5" />
               <span>{error}</span>
             </div>
           )}
@@ -412,9 +409,9 @@ export function BugReportDialog({ onClose }: BugReportDialogProps) {
               title={!description.trim() ? 'Enter a description first' : 'Expand description with AI'}
             >
               {isExpanding ? (
-                <SpinnerGap className="w-3.5 h-3.5 animate-spin" />
+                <Loader2 className="w-3.5 h-3.5 animate-spin" size={14} />
               ) : (
-                <MagicWand className="w-3.5 h-3.5" />
+                <Wand2 className="w-3.5 h-3.5" size={14} />
               )}
               {isExpanding ? 'Expanding...' : 'Expand with AI'}
             </Button>
@@ -428,12 +425,12 @@ export function BugReportDialog({ onClose }: BugReportDialogProps) {
             >
               {isSubmitting ? (
                 <>
-                  <SpinnerGap className="w-3.5 h-3.5 animate-spin" />
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" size={14} />
                   Submitting...
                 </>
               ) : (
                 <>
-                  <PaperPlaneTilt className="w-3.5 h-3.5" />
+                  <Send className="w-3.5 h-3.5" size={14} />
                   Submit to GitHub
                 </>
               )}

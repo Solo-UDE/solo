@@ -3,7 +3,8 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { CircleNotch, WarningCircle, ArrowsClockwise } from '@phosphor-icons/react';
+import { ExclamationTriangleIcon, ReloadIcon } from '@radix-ui/react-icons';
+import { Loader2 } from 'lucide-react';
 import { gitGetBranchDiff } from '@/lib/tauri/git';
 import type { FileDiff } from '@/lib/tauri/git';
 import type { PanelProps } from '@/lib/panels/types';
@@ -49,7 +50,7 @@ export const BranchDiffPanel = ({ data, onTitleChange }: PanelProps<BranchDiffDa
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full gap-2">
-        <CircleNotch className="w-4 h-4 animate-spin text-muted-foreground" />
+        <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" size={16} />
         <span className="text-xs text-muted-foreground">Loading diff...</span>
       </div>
     );
@@ -58,7 +59,7 @@ export const BranchDiffPanel = ({ data, onTitleChange }: PanelProps<BranchDiffDa
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-2 px-6">
-        <WarningCircle className="w-6 h-6 text-destructive" />
+        <ExclamationTriangleIcon className="w-6 h-6 text-destructive" />
         <p className="text-xs text-muted-foreground text-center">{error}</p>
       </div>
     );
@@ -92,7 +93,7 @@ export const BranchDiffPanel = ({ data, onTitleChange }: PanelProps<BranchDiffDa
           className="ml-auto p-1 rounded hover:bg-muted/50 transition-colors"
           title="Refresh diff"
         >
-          <ArrowsClockwise className="w-3.5 h-3.5" />
+          <ReloadIcon className="w-3.5 h-3.5" />
         </button>
       </div>
 

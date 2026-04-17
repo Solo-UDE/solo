@@ -1,4 +1,4 @@
-import { ShieldCheck } from '@phosphor-icons/react';
+import { ShieldCheck } from 'lucide-react';
 import React from 'react';
 
 import { cn } from '../../../lib/utils';
@@ -32,7 +32,7 @@ export const AcceptModeToggle: React.FC<AcceptModeToggleProps> = ({
         disabled && 'opacity-50 cursor-not-allowed',
       )}
     >
-      <ShieldCheck className="h-4 w-4" weight={enabled ? 'fill' : 'regular'} />
+      <ShieldCheck className="h-4 w-4" />
       <span>Accept</span>
     </button>
   );

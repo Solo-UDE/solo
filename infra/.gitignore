@@ -1,0 +1,30 @@
+# CDK synth artifacts
+cdk.out/
+cdk.context.json
+
+# Build artifacts
+dist/
+*.js
+*.d.ts
+!jest.config.js
+
+# Dependencies
+node_modules/
+
+# Env files
+.env
+.env.*
+!.env.example
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Lambda bundle artifacts (esbuild)
+lambda/**/*.js
+lambda/**/*.js.map
+lambda/**/dist/

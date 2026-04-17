@@ -1,4 +1,5 @@
-import { PencilSimple, CaretDown, CircleNotch } from '@phosphor-icons/react';
+import { Pencil2Icon, ChevronDownIcon } from '@radix-ui/react-icons';
+import { Loader2 } from 'lucide-react';
 import { useState } from 'react';
 
 import type { FC } from 'react';
@@ -32,13 +33,13 @@ export const EditToolWidget: FC<EditToolWidgetProps> = ({
   const hasMore = oldLines.length > maxCollapsedLines || newLines.length > maxCollapsedLines;
 
   return (
-    <div className="my-2 rounded-lg border border-border bg-card overflow-hidden">
+    <div className="my-2 tool-widget-frame">
       {/* Header */}
       <button
         onClick={() => { setIsExpanded(!isExpanded); }}
         className="w-full flex items-center gap-2 px-3 py-2 hover:bg-accent/50 transition-colors"
       >
-        <PencilSimple className={`h-4 w-4 shrink-0 ${isRunning ? 'text-muted-foreground animate-pulse' : 'text-warning'}`} />
+        <Pencil2Icon className={`h-4 w-4 shrink-0 ${isRunning ? 'text-muted-foreground animate-pulse' : 'text-warning'}`} />
 
         <div className="flex items-center gap-2 flex-1 min-w-0">
           <span className="text-sm font-medium text-foreground truncate" title={filePath}>
@@ -50,18 +51,21 @@ export const EditToolWidget: FC<EditToolWidgetProps> = ({
         <div className="flex items-center gap-2 shrink-0">
           {isRunning ? (
             <div className="flex items-center gap-1.5 text-muted-foreground">
-              <CircleNotch className="h-3 w-3 animate-spin" />
+              <Loader2 className="h-3 w-3 animate-spin" />
               <span className="text-xs">Editing...</span>
             </div>
           ) : (
             <DiffStat additions={additions} deletions={deletions} />
           )}
-          <CaretDown className={`h-4 w-4 text-muted-foreground transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+          <ChevronDownIcon className={`h-4 w-4 text-muted-foreground transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
         </div>
       </button>
 
-      {/* Diff preview */}
-      <div className={`border-t border-border overflow-hidden transition-all ${isExpanded ? 'max-h-[500px]' : 'max-h-[250px]'}`}>
+      {/* Diff preview — max-h animates with ease-out-quart to match Orbit motion feel */}
+      <div
+        className={`border-t tool-widget-divider overflow-hidden ${isExpanded ? 'max-h-[500px]' : 'max-h-[250px]'}`}
+        style={{ transition: 'max-height 250ms cubic-bezier(0.25, 1, 0.5, 1)' }}
+      >
         <div className="overflow-auto">
           {/* Deleted lines (old) */}
           {displayOldLines.map((line, index) => (
@@ -74,7 +78,7 @@ export const EditToolWidget: FC<EditToolWidgetProps> = ({
 
           {/* Separator */}
           {displayOldLines.length > 0 && displayNewLines.length > 0 ? (
-            <div className="h-px bg-border" />
+            <div className="h-px" style={{ background: 'var(--border-tool)' }} />
           ) : null}
 
           {/* Added lines (new) */}
@@ -91,9 +95,9 @@ export const EditToolWidget: FC<EditToolWidgetProps> = ({
         {hasMore && !isExpanded ? (
           <button
             onClick={() => { setIsExpanded(true); }}
-            className="w-full py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors border-t border-border flex items-center justify-center gap-1"
+            className="w-full py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors border-t tool-widget-divider flex items-center justify-center gap-1"
           >
-            <CaretDown className="h-3 w-3" />
+            <ChevronDownIcon className="h-3 w-3" />
             <span>Show all changes</span>
           </button>
         ) : null}

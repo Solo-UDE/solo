@@ -1,4 +1,5 @@
-import { Robot, GearSix, Plus } from '@phosphor-icons/react';
+import { GearIcon, PlusIcon } from '@radix-ui/react-icons';
+import { Bot } from 'lucide-react';
 import { IconButton } from '@solo/ui';
 
 import type { FC } from 'react';
@@ -27,7 +28,7 @@ export const AgentWindowHeader: FC<AgentWindowHeaderProps> = ({
 			{/* Left: Agent info */}
 			<div className="flex items-center gap-3">
 				<div className="w-7 h-7 rounded-full bg-secondary flex items-center justify-center">
-					<Robot className="w-4 h-4 text-secondary-foreground" />
+					<Bot className="w-4 h-4 text-secondary-foreground" />
 				</div>
 				<div className="flex flex-col">
 					<span className="text-sm font-medium text-foreground">{agentName}</span>
@@ -46,7 +47,7 @@ export const AgentWindowHeader: FC<AgentWindowHeaderProps> = ({
 						onClick={onNewSession}
 						title="New session"
 					>
-						<Plus className="w-4 h-4 text-muted-foreground" />
+						<PlusIcon width={16} height={16} className="text-muted-foreground" />
 					</IconButton>
 				)}
 				{onSettings && (
@@ -56,7 +57,7 @@ export const AgentWindowHeader: FC<AgentWindowHeaderProps> = ({
 						onClick={onSettings}
 						title="Settings"
 					>
-						<GearSix className="w-4 h-4 text-muted-foreground" />
+						<GearIcon width={16} height={16} className="text-muted-foreground" />
 					</IconButton>
 				)}
 			</div>

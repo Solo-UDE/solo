@@ -8,3 +8,5 @@
 - If the command cannot be run fully, treat that as a blocker and report exactly what was not validated.
 - If a merge from `dev` introduces failures, fix them in the source branch and rerun the gate before merging.
 - Treat the `Pre-Merge Master Gate` GitHub Actions workflow as the CI equivalent of this local check. Treat the `Build Master DMG` workflow as a post-merge artifact build, not as merge validation.
+
+&nbsp;

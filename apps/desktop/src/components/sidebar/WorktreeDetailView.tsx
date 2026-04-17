@@ -5,7 +5,8 @@
 
 import { useState, useCallback, useRef } from 'react';
 import type { FC } from 'react';
-import { CaretLeft, Files, ChatTeardrop, GitBranch, Plus } from '@phosphor-icons/react';
+import { ChevronLeftIcon, PlusIcon } from '@radix-ui/react-icons';
+import { Files, MessageCircle, GitBranch } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { FileExplorer } from '@/components/file-explorer';
 import { SessionList } from '@/components/agent';
@@ -20,7 +21,7 @@ type WorktreeDetailSection = 'explorer' | 'sessions' | 'changes';
 
 const SECTIONS: { key: WorktreeDetailSection; icon: typeof Files; label: string }[] = [
   { key: 'explorer', icon: Files, label: 'Explorer' },
-  { key: 'sessions', icon: ChatTeardrop, label: 'Sessions' },
+  { key: 'sessions', icon: MessageCircle, label: 'Sessions' },
   { key: 'changes', icon: GitBranch, label: 'Changes' },
 ];
 
@@ -76,7 +77,7 @@ export const WorktreeDetailView: FC<WorktreeDetailViewProps> = ({ onFileOpen }) 
           'transition-colors duration-150',
         )}
       >
-        <CaretLeft className="w-3.5 h-3.5 shrink-0" weight="bold" />
+        <ChevronLeftIcon className="w-3.5 h-3.5 shrink-0" />
         <span className="truncate text-[13px] font-semibold">{branchLabel}</span>
         {commitsAhead != null && commitsAhead > 0 && (
           <span className="text-[10px] text-primary/70 shrink-0">
@@ -107,7 +108,6 @@ export const WorktreeDetailView: FC<WorktreeDetailViewProps> = ({ onFileOpen }) 
             >
               <Icon
                 className="w-[16px] h-[16px]"
-                weight={activeSection === key ? 'fill' : 'regular'}
                 aria-hidden="true"
               />
               {/* Change count badge on GitBranch icon */}
@@ -139,7 +139,7 @@ export const WorktreeDetailView: FC<WorktreeDetailViewProps> = ({ onFileOpen }) 
             )}
             title="New Session"
           >
-            <Plus className="w-3 h-3" weight="bold" />
+            <PlusIcon className="w-3 h-3" />
           </button>
         )}
       </div>

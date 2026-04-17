@@ -8,7 +8,8 @@
  */
 
 import React, { useCallback, useEffect } from 'react';
-import { Waveform, Stop } from '@phosphor-icons/react';
+import { StopIcon } from '@radix-ui/react-icons';
+import { AudioLines } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useVoiceInput } from '@/hooks/useVoiceInput';
 import { LiveWaveform } from '@/components/ui/live-waveform';
@@ -116,7 +117,7 @@ export const VoiceButton: React.FC<VoiceButtonProps> = ({
           )}
           aria-label="Stop recording"
         >
-          <Stop weight="fill" className="h-2.5 w-2.5" />
+          <StopIcon width={10} height={10} />
         </button>
       </div>
     );
@@ -144,7 +145,7 @@ export const VoiceButton: React.FC<VoiceButtonProps> = ({
       title={isSuggestionVisible ? 'Try speaking' : tooltipText}
     >
       <div className="flex items-center gap-1.5 px-2">
-        <Waveform
+        <AudioLines
           className="h-4 w-4 shrink-0"
           style={isSuggestionVisible ? { color: 'hsl(var(--solo-green))' } : undefined}
         />

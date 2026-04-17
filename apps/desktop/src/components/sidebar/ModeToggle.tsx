@@ -1,5 +1,5 @@
 /**
- * ModeToggle - Segmented pill toggle for Dev/Studio sidebar modes.
+ * ModeToggle - Segmented pill toggle for Dev/Vault sidebar modes.
  */
 
 import type { FC } from 'react';
@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils';
 
 const MODES: { key: SidebarMode; label: string }[] = [
   { key: 'dev', label: 'Dev' },
-  { key: 'studio', label: 'Studio' },
+  { key: 'vault', label: 'Vault' },
 ];
 
 export const ModeToggle: FC = () => {
@@ -18,23 +18,23 @@ export const ModeToggle: FC = () => {
   const setSidebarMode = useUIStore((s) => s.setSidebarMode);
 
   return (
-    <div className="mx-3 my-2.5">
-      <div className="relative flex h-8 rounded-lg bg-muted/30 p-0.5 border border-border/10">
+    <div className="mx-3.5 mb-2 mt-1">
+      <div className="relative flex h-8 rounded-[9px] border border-border/70 bg-background/55 p-0.5">
         {MODES.map(({ key, label }) => (
           <button
             key={key}
             onClick={() => setSidebarMode(key)}
             className={cn(
-              'relative z-10 flex-1 text-xs font-medium rounded-md transition-colors duration-150',
+              'relative z-10 flex-1 rounded-[7px] text-xs font-medium transition-colors duration-150',
               sidebarMode === key
-                ? 'text-primary font-semibold'
+                ? 'text-foreground font-semibold'
                 : 'text-muted-foreground hover:text-foreground',
             )}
           >
             {sidebarMode === key && (
               <motion.div
                 layoutId="mode-indicator"
-                className="absolute inset-0 rounded-md bg-primary/10 shadow-sm"
+                className="absolute inset-0 rounded-[7px] border border-border/70 bg-card shadow-[0_10px_18px_-18px_rgba(0,0,0,0.35)]"
                 transition={{ type: 'spring', stiffness: 500, damping: 35 }}
               />
             )}

@@ -4,7 +4,8 @@
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { FolderOpen, CaretDown, Plus, X, FolderSimple, Clock } from '@phosphor-icons/react';
+import { ChevronDownIcon, PlusIcon, Cross2Icon } from '@radix-ui/react-icons';
+import { FolderOpen, Folder, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 import { useFileExplorerStore } from '@/stores/fileExplorerStore';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
@@ -95,29 +96,28 @@ export function WorkspaceSwitcher() {
   // No folder open — just show "Solo"
   if (!rootPath) {
     return (
-      <div className="flex items-center gap-1.5">
-        <span
-          className="text-xs font-medium text-muted-foreground/60"
-          data-tauri-drag-region
-        >
+      <div className="flex items-center gap-1.5" data-tauri-drag-region={false}>
+        <span className="text-xs font-medium text-muted-foreground/60">
           Solo
         </span>
         <button
+          data-tauri-drag-region={false}
           onClick={handleOpenFolder}
           className="w-6 h-6 rounded-md flex items-center justify-center hover:bg-muted/60 hover:scale-105 active:scale-95 transition-[transform,background-color,color] duration-150"
           title="Open Folder"
         >
-          <Plus className="w-3 h-3 text-muted-foreground" weight="bold" />
+          <PlusIcon className="w-3 h-3 text-muted-foreground" />
         </button>
       </div>
     );
   }
 
   return (
-    <div className="relative flex items-center gap-0.5">
+    <div className="relative flex items-center gap-0.5" data-tauri-drag-region={false}>
       {/* Directory name + chevron trigger */}
       <button
         ref={triggerRef}
+        data-tauri-drag-region={false}
         onClick={() => setOpen(!open)}
         className={cn(
           'flex items-center gap-1.5 px-2 h-[26px] rounded-lg transition-[transform,background-color,color] duration-150',
@@ -126,7 +126,7 @@ export function WorkspaceSwitcher() {
         )}
         title={rootPath}
       >
-        <FolderOpen className="w-3.5 h-3.5 text-primary" weight="duotone" />
+        <FolderOpen className="w-3.5 h-3.5 text-primary" />
         <span className="text-xs font-medium text-foreground/80 max-w-[180px] truncate">
           {dirName(rootPath)}
         </span>
@@ -135,22 +135,22 @@ export function WorkspaceSwitcher() {
             {activeRepo.currentBranch}
           </span>
         )}
-        <CaretDown
+        <ChevronDownIcon
           className={cn(
             'w-2.5 h-2.5 text-muted-foreground/60 transition-transform duration-150',
             open && 'rotate-180',
           )}
-          weight="bold"
         />
       </button>
 
       {/* Plus button — open folder dialog */}
       <button
+        data-tauri-drag-region={false}
         onClick={handleOpenFolder}
         className="w-6 h-6 rounded-md flex items-center justify-center hover:bg-muted/60 hover:scale-105 active:scale-95 transition-[transform,background-color,color] duration-150"
         title="Open Folder"
       >
-        <Plus className="w-3 h-3 text-muted-foreground" weight="bold" />
+        <PlusIcon className="w-3 h-3 text-muted-foreground" />
       </button>
 
       {/* Dropdown */}
@@ -162,7 +162,7 @@ export function WorkspaceSwitcher() {
           {/* Current directory */}
           <div className="px-3 py-2.5 border-b border-border/20">
             <div className="flex items-center gap-2">
-              <FolderOpen className="w-4 h-4 text-primary shrink-0" weight="duotone" />
+              <FolderOpen className="w-4 h-4 text-primary shrink-0" />
               <div className="min-w-0">
                 <div className="text-xs font-medium text-foreground truncate">
                   {dirName(rootPath)}
@@ -180,14 +180,14 @@ export function WorkspaceSwitcher() {
               onClick={handleOpenFolder}
               className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs text-foreground/80 hover:bg-muted/60 transition-colors duration-150"
             >
-              <FolderSimple className="w-3.5 h-3.5 text-muted-foreground" />
+              <Folder className="w-3.5 h-3.5 text-muted-foreground" />
               Open Folder...
             </button>
             <button
               onClick={handleCloseFolder}
               className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs text-foreground/80 hover:bg-muted/60 transition-colors duration-150"
             >
-              <X className="w-3.5 h-3.5 text-muted-foreground" />
+              <Cross2Icon className="w-3.5 h-3.5 text-muted-foreground" />
               Close Folder
             </button>
           </div>
@@ -205,7 +205,7 @@ export function WorkspaceSwitcher() {
                   onClick={() => handleSwitchTo(path)}
                   className="group w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs hover:bg-muted/60 transition-colors duration-150"
                 >
-                  <FolderSimple className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                  <Folder className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                   <div className="flex-1 min-w-0 text-left">
                     <div className="text-foreground/80 truncate">{dirName(path)}</div>
                     <div className="text-[10px] text-muted-foreground/50 truncate" title={path}>
@@ -217,7 +217,7 @@ export function WorkspaceSwitcher() {
                     className="w-5 h-5 rounded flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-destructive/10 transition-opacity duration-150"
                     title="Remove from recents"
                   >
-                    <X className="w-3 h-3 text-muted-foreground" />
+                    <Cross2Icon className="w-3 h-3 text-muted-foreground" />
                   </button>
                 </button>
               ))}

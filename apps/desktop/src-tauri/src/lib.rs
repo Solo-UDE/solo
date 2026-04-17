@@ -38,9 +38,12 @@ mod embedding_commands;
 mod fs_commands;
 mod git_commands;
 mod parse_commands;
+mod plan_commands;
 mod provider_commands;
 mod session_commands;
+mod settings_commands;
 mod skills_commands;
+mod stats_commands;
 mod terminal_commands;
 mod update_commands;
 mod vault_commands;
@@ -52,6 +55,7 @@ use embedding_commands::EmbeddingState;
 use fs_commands::FsState;
 use git_commands::GitState;
 use provider_commands::ProviderAuthState;
+use stats_commands::StatsState;
 use tauri::Emitter;
 #[cfg(target_os = "macos")]
 use tauri_plugin_decorum::WebviewWindowExt;
@@ -190,6 +194,7 @@ pub fn run() {
         .manage(WorktreeState::new())
         .manage(ElevenLabsState::new())
         .manage(VaultState::new())
+        .manage(StatsState::new())
         .invoke_handler(tauri::generate_handler![
             // Core commands
             commands::ping,
@@ -221,6 +226,8 @@ pub fn run() {
             agent_commands::agent_get_plan_mode,
             agent_commands::agent_set_accept_mode,
             agent_commands::agent_get_accept_mode,
+            agent_commands::agent_set_debug_mode,
+            agent_commands::agent_get_debug_mode,
             agent_commands::agent_set_tool_policy,
             agent_commands::agent_generate_commit_message,
             agent_commands::agent_refine_transcript,
@@ -264,6 +271,7 @@ pub fn run() {
             auth_commands::auth_refresh_session,
             auth_commands::auth_sign_out,
             auth_commands::auth_get_access_token,
+            auth_commands::auth_get_id_token,
             // Terminal commands
             terminal_commands::spawn_pty,
             terminal_commands::write_pty,
@@ -308,6 +316,23 @@ pub fn run() {
             session_commands::session_read_file,
             session_commands::session_write_file,
             session_commands::session_delete_file,
+            // Settings & permissions commands
+            settings_commands::settings_load,
+            settings_commands::settings_load_scope,
+            settings_commands::settings_save,
+            settings_commands::settings_add_allow_rule,
+            settings_commands::settings_add_deny_rule,
+            settings_commands::settings_add_ask_rule,
+            settings_commands::settings_get_permissions,
+            settings_commands::settings_default_mode,
+            settings_commands::permissions_check,
+            // Plan file commands
+            plan_commands::plan_new_slug,
+            plan_commands::plan_write,
+            plan_commands::plan_read,
+            plan_commands::plan_list,
+            plan_commands::plan_delete,
+            plan_commands::plan_path,
             // Worktree commands
             worktree_commands::worktree_list,
             worktree_commands::worktree_create,
@@ -323,10 +348,24 @@ pub fn run() {
             worktree_commands::worktree_find_by_agent,
             worktree_commands::worktree_diff_from_base,
             worktree_commands::worktree_promote,
+            worktree_commands::worktree_rename,
             worktree_commands::worktree_set_setup_commands,
             worktree_commands::worktree_get_setup_commands,
             // Skills commands
             skills_commands::skills_list_available,
+            skills_commands::skills_write_skill,
+            skills_commands::skills_onboarding_status,
+            skills_commands::skills_onboarding_apply,
+            skills_commands::skills_onboarding_dismiss,
+            skills_commands::skills_onboarding_reset,
+            skills_commands::skills_set_imports,
+            // Stats & tier commands
+            stats_commands::stats_initialize,
+            stats_commands::stats_current,
+            stats_commands::stats_sync_now,
+            stats_commands::stats_get_tier,
+            stats_commands::stats_get_leaderboard,
+            stats_commands::stats_generate_card,
             // ElevenLabs voice commands
             elevenlabs_commands::elevenlabs_set_api_key,
             elevenlabs_commands::elevenlabs_has_api_key,

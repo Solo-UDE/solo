@@ -4,32 +4,36 @@
  * across the rail, tab groups, and agent chat tabs.
  */
 
-import type { Icon as PhosphorIcon } from '@phosphor-icons/react';
+import {
+  StarIcon,
+  CircleIcon,
+  HeartIcon,
+  CubeIcon,
+  MoonIcon,
+  SunIcon,
+} from '@radix-ui/react-icons';
 import {
   Hexagon,
-  Star,
-  Diamond,
-  Circle,
-  Triangle,
-  Lightning,
-  Heart,
-  Flower,
+  Zap,
+  Flower2,
   Crown,
   Atom,
-  Planet,
-  Cube,
-  Drop,
+  Orbit,
+  Droplet,
   Flame,
   Leaf,
-  Moon,
-  Sun,
   Snowflake,
   Shield,
   Sparkle,
-} from '@phosphor-icons/react';
+  Triangle,
+  Diamond,
+} from 'lucide-react';
+
+/** Unified icon type — both Radix and Lucide icons accept className + style. */
+export type RepoIcon = React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
 
 // ---------------------------------------------------------------------------
-// Icon pool - 20 curated abstract Phosphor shapes
+// Icon pool - 20 curated abstract shapes (Radix + Lucide)
 // ---------------------------------------------------------------------------
 
 export const REPO_ICON_POOL = [
@@ -57,24 +61,24 @@ export const REPO_ICON_POOL = [
 
 export type RepoIconName = (typeof REPO_ICON_POOL)[number];
 
-const ICON_MAP: Record<RepoIconName, PhosphorIcon> = {
+const ICON_MAP: Record<RepoIconName, RepoIcon> = {
   Hexagon,
-  Star,
+  Star: StarIcon,
   Diamond,
-  Circle,
+  Circle: CircleIcon,
   Triangle,
-  Lightning,
-  Heart,
-  Flower,
+  Lightning: Zap,
+  Heart: HeartIcon,
+  Flower: Flower2,
   Crown,
   Atom,
-  Planet,
-  Cube,
-  Drop,
+  Planet: Orbit,
+  Cube: CubeIcon,
+  Drop: Droplet,
   Flame,
   Leaf,
-  Moon,
-  Sun,
+  Moon: MoonIcon,
+  Sun: SunIcon,
   Snowflake,
   Shield,
   Sparkle,
@@ -104,8 +108,8 @@ export type RepoColorName = (typeof REPO_COLOR_POOL)[number];
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Returns the Phosphor icon component for a given icon name. */
-export function getRepoIcon(iconName: string): PhosphorIcon {
+/** Returns the icon component for a given icon name. */
+export function getRepoIcon(iconName: string): RepoIcon {
   return ICON_MAP[iconName as RepoIconName] ?? Hexagon;
 }
 

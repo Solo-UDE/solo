@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { FileText, WarningCircle } from '@phosphor-icons/react';
+import { FileTextIcon, ExclamationTriangleIcon } from '@radix-ui/react-icons';
 import { CodeSkeleton } from '@/components/ui/skeletons';
 import * as fs from '../../lib/tauri/fs';
 
@@ -73,7 +73,7 @@ export function FileViewer({ filePath, className = '' }: FileViewerProps) {
     return (
       <div className={`flex items-center justify-center h-full ${className}`}>
         <div className="text-center space-y-4">
-          <FileText className="w-12 h-12 text-muted-foreground/50 mx-auto" />
+          <FileTextIcon className="w-12 h-12 text-muted-foreground/50 mx-auto" />
           <p className="text-muted-foreground">
             Select a file from the explorer to view it
           </p>
@@ -97,7 +97,7 @@ export function FileViewer({ filePath, className = '' }: FileViewerProps) {
     return (
       <div className={`flex items-center justify-center h-full ${className}`}>
         <div className="text-center space-y-4 max-w-md px-4">
-          <WarningCircle className="w-8 h-8 text-destructive mx-auto" />
+          <ExclamationTriangleIcon className="w-8 h-8 text-destructive mx-auto" />
           <p className="text-sm text-destructive">Failed to load file</p>
           <p className="text-xs text-muted-foreground break-all">{error}</p>
         </div>
@@ -115,7 +115,7 @@ export function FileViewer({ filePath, className = '' }: FileViewerProps) {
       {/* Tab bar */}
       <div className="flex items-center h-8 bg-card/80 backdrop-blur-sm border-b border-border/30">
         <div className="flex items-center gap-2 px-4 py-1.5 bg-background shadow-sm rounded-t-lg">
-          <FileText className="w-4 h-4 text-muted-foreground" />
+          <FileTextIcon className="w-4 h-4 text-muted-foreground" />
           <span className="text-[13px] text-foreground">{fileName}</span>
         </div>
       </div>

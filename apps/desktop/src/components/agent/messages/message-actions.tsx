@@ -1,4 +1,4 @@
-import { Check, Copy, SpeakerHigh, Stop } from '@phosphor-icons/react';
+import { CheckIcon, CopyIcon, SpeakerLoudIcon, StopIcon } from '@radix-ui/react-icons';
 import { IconButton } from '@solo/ui';
 import { useState } from 'react';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
@@ -47,7 +47,7 @@ export const MessageActions: FC<MessageActionsProps> = ({
             title={isSpeaking ? 'Stop speaking' : 'Read aloud'}
             onClick={handleSpeak}
           >
-            {isSpeaking ? <Stop weight="fill" className="h-3.5 w-3.5" /> : <SpeakerHigh className="h-3.5 w-3.5" />}
+            {isSpeaking ? <StopIcon width={14} height={14} /> : <SpeakerLoudIcon width={14} height={14} />}
           </IconButton>
         )}
         <IconButton
@@ -58,7 +58,7 @@ export const MessageActions: FC<MessageActionsProps> = ({
           title={copied ? 'Copied!' : 'Copy'}
           onClick={handleCopy}
         >
-          {copied ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : <Copy className="h-3.5 w-3.5" aria-hidden="true" />}
+          {copied ? <CheckIcon width={14} height={14} aria-hidden="true" /> : <CopyIcon width={14} height={14} aria-hidden="true" />}
         </IconButton>
       </div>
       {showDisclaimer ? (

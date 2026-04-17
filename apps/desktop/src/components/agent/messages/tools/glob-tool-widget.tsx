@@ -1,5 +1,7 @@
-import { FolderOpen, CircleNotch } from '@phosphor-icons/react';
+import { FolderOpen, Loader2 } from 'lucide-react';
 import { useState } from 'react';
+
+import { ExpandRegion } from '../shared/ExpandRegion';
 
 import type { FC } from 'react';
 
@@ -20,11 +22,11 @@ export const GlobToolWidget: FC<GlobToolWidgetProps> = ({
   const fileCount = files.length;
 
   return (
-    <div className="my-2 rounded-md border border-border bg-card overflow-hidden">
+    <div className="my-2 tool-widget-frame">
       {/* Header */}
       <button
         onClick={() => { setIsExpanded(!isExpanded); }}
-        className={`w-full flex items-center gap-2 px-3 py-1.5 bg-muted hover:bg-accent/50 transition-colors ${isExpanded ? 'border-b border-border' : ''}`}
+        className={`w-full flex items-center gap-2 px-3 py-1.5 bg-muted hover:bg-accent/50 transition-colors ${isExpanded ? 'border-b tool-widget-divider' : ''}`}
       >
         <FolderOpen className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
         <span className="text-sm font-medium text-foreground">
@@ -32,21 +34,23 @@ export const GlobToolWidget: FC<GlobToolWidgetProps> = ({
         </span>
         <code className="text-xs font-mono text-muted-foreground truncate">{pattern}</code>
         {isRunning ? (
-          <CircleNotch className="h-3 w-3 animate-spin text-muted-foreground ml-auto" />
+          <Loader2 className="h-3 w-3 animate-spin text-muted-foreground ml-auto" />
         ) : fileCount > 0 ? (
           <span className="text-xs text-muted-foreground ml-auto">{fileCount} files</span>
         ) : null}
       </button>
 
-      {isExpanded && files.length > 0 ? (
-        <div className="p-2 max-h-[200px] overflow-auto">
-          {files.map((file, i) => (
-            <div key={`file-${String(i)}`} className="text-xs font-mono text-foreground/80 py-0.5 px-2 truncate">
-              {file}
-            </div>
-          ))}
-        </div>
-      ) : null}
+      <ExpandRegion isExpanded={isExpanded}>
+        {files.length > 0 ? (
+          <div className="p-2 max-h-[200px] overflow-auto">
+            {files.map((file, i) => (
+              <div key={`file-${String(i)}`} className="text-xs font-mono text-foreground/80 py-0.5 px-2 truncate">
+                {file}
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </ExpandRegion>
     </div>
   );
 };

@@ -84,6 +84,18 @@ export async function promote(
 	return invoke('worktree_promote', { worktreeId, branchName });
 }
 
+/**
+ * Rename a worktree's branch. Backed by `git branch -m` on the main repo;
+ * the worktree id + filesystem path stay intact so live agent sessions and
+ * open editor tabs don't break.
+ */
+export async function renameWorktree(
+	worktreeId: string,
+	newBranch: string
+): Promise<WorktreeInfo> {
+	return invoke<WorktreeInfo>('worktree_rename', { worktreeId, newBranch });
+}
+
 export async function setSetupCommands(
 	config: WorktreeSetupConfig
 ): Promise<void> {

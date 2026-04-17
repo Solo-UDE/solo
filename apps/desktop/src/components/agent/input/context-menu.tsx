@@ -1,4 +1,4 @@
-import { Plus, Image, File } from '@phosphor-icons/react';
+import { PlusIcon, FileIcon, ImageIcon } from '@radix-ui/react-icons';
 import React, { useCallback } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { convertFileSrc } from '@tauri-apps/api/core';
@@ -77,15 +77,15 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
         )}
         aria-label="Add context"
       >
-        <Plus className="h-3.5 w-3.5" />
+        <PlusIcon width={14} height={14} />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-48">
         <DropdownMenuItem onClick={handleAddFile}>
-          <File className="h-4 w-4" />
+          <FileIcon width={16} height={16} />
           <span>Add File</span>
         </DropdownMenuItem>
         <DropdownMenuItem onClick={handleAddImage}>
-          <Image className="h-4 w-4" />
+          <ImageIcon width={16} height={16} />
           <span>Add Image</span>
         </DropdownMenuItem>
       </DropdownMenuContent>

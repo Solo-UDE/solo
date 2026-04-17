@@ -1,5 +1,6 @@
-import { useRef } from 'react';
-import { AgentNarrative } from './agent-narrative';
+import { useRef, useState } from 'react';
+import { ChevronRightIcon } from '@radix-ui/react-icons';
+import { StreamdownNarrative as AgentNarrative } from './StreamdownNarrative';
 import { InterruptIndicator } from './interrupt-indicator';
 import { MessageActions } from './message-actions';
 import { NotifyUserCard } from './notify-user-card';
@@ -11,7 +12,7 @@ import { renderToolCard } from '../streaming/tool-registry';
 import { StreamingSkeleton } from '../streaming/StreamingSkeleton';
 import { ToolApprovalCard } from '../streaming/ToolApprovalCard';
 import { ElapsedTimer } from '../streaming/ElapsedTimer';
-import { ChatCircleDots } from '@phosphor-icons/react';
+import { MessageCircle } from 'lucide-react';
 import { ProgressTracker } from '../streaming/ProgressTracker';
 import { ProgressTrackerItem } from '../streaming/ProgressTrackerItem';
 import { deriveProgressPhases, buildInterleavedTimeline } from '@/lib/deriveProgressPhases';
@@ -74,6 +75,18 @@ const renderToolWidget = (
 ): ReactNode => {
   const name = toolName.toLowerCase();
 
+  // Tasks are hoisted into the sticky overlay above the chat input, so we
+  // intentionally suppress the inline rendering here to avoid showing the
+  // same todo list twice (once mid-stream, once pinned). Hidden by `false`
+  // so we can flip back if we ever want the inline view again.
+  const HOIST_TODOS_TO_STICKY = true;
+  if (
+    HOIST_TODOS_TO_STICKY &&
+    (name === 'todowrite' || name === 'taskcreate' || name === 'taskupdate' || name === 'tasklist' || name === 'taskget')
+  ) {
+    return null;
+  }
+
   // TodoWrite and TaskCreate/TaskUpdate use the todo widget
   if (name === 'todowrite' || name === 'taskcreate') {
     // TodoWrite passes an array of todos; TaskCreate passes a single task
@@ -131,14 +144,21 @@ export const AgentMessage: FC<AgentMessageProps> = ({
     }).format(date);
   };
 
-  // Track streaming start time for elapsed timer
+  // Track streaming start time for elapsed timer + capture final duration on completion.
   const streamStartRef = useRef<number | null>(null);
+  const finalDurationMsRef = useRef<number | null>(null);
   if (content.isStreaming && !streamStartRef.current) {
     streamStartRef.current = Date.now();
   }
   if (!content.isStreaming && streamStartRef.current) {
+    finalDurationMsRef.current = Date.now() - streamStartRef.current;
     streamStartRef.current = null;
   }
+
+  // Codex-style "Worked for X" collapse: once the turn finishes, fold all
+  // intermediate blocks (thinking, tool calls) above the final narrative
+  // behind a single chevron header. User can re-expand to audit the trace.
+  const [traceExpanded, setTraceExpanded] = useState(false);
 
   // Use ordered blocks if available, otherwise fall back to legacy rendering
   const hasBlocks = content.blocks && content.blocks.length > 0;
@@ -151,21 +171,88 @@ export const AgentMessage: FC<AgentMessageProps> = ({
     ? deriveProgressPhases(content.blocks ?? [], true)
     : [];
 
+  // Find the index of the final non-empty narrative block. Intermediate blocks
+  // before it become collapsible once streaming completes.
+  const blocks = content.blocks ?? [];
+  let finalNarrativeIdx = -1;
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    const b = blocks[i];
+    if (b && b.type === 'narrative' && b.content.trim().length > 0) {
+      finalNarrativeIdx = i;
+      break;
+    }
+  }
+  const hasIntermediateTrace =
+    !content.isStreaming &&
+    hasBlocks &&
+    finalNarrativeIdx >= 0 &&
+    timeline.some(
+      (e) => e.kind === 'content' && e.blockIndex < finalNarrativeIdx,
+    );
+
+  const formatDuration = (ms: number): string => {
+    const sec = Math.round(ms / 1000);
+    if (sec < 60) return `${sec}s`;
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return s === 0 ? `${m}m` : `${m}m ${s}s`;
+  };
+
   return (
-    <div className={`flex gap-2.5 px-3 animate-in fade-in-0 slide-in-from-bottom-2 duration-200 ${className}`}>
-      {/* Content */}
-      <div className="flex-1 min-w-0 space-y-2.5">
-        {/* Header */}
-        <div className="flex items-center gap-2">
+    <div className={`chat-surface animate-in fade-in-0 slide-in-from-bottom-2 duration-200 ${className}`}>
+      <div className="min-w-0 space-y-3" style={{ maxWidth: 'min(56rem, 100%)' }}>
+        <div className="flex items-center gap-2 text-[11px]">
           <SoloAgentBadge />
-          <span className="text-xs text-muted-foreground">{formatTime(timestamp)}</span>
+          <span className="text-muted-foreground">{formatTime(timestamp)}</span>
           {content.autoProceed ? <ProceedIndicator /> : null}
         </div>
+
+        {/* "Worked for Xm Ys" — Codex-style collapsed trace once the turn finishes.
+            Renders only when there's intermediate work to hide AND a final answer to show. */}
+        {hasIntermediateTrace ? (
+          <div>
+            <button
+              type="button"
+              onClick={() => setTraceExpanded((v) => !v)}
+              className="flex items-center gap-1.5 rounded-full bg-background/55 px-2.5 py-1 text-xs text-muted-foreground hover:bg-card hover:text-foreground transition-[background-color,color] duration-150"
+              aria-expanded={traceExpanded}
+            >
+              <span>
+                {finalDurationMsRef.current
+                  ? `Worked for ${formatDuration(finalDurationMsRef.current)}`
+                  : 'Worked'}
+              </span>
+              <ChevronRightIcon
+                width={12} height={12}
+                className={`text-muted-foreground/50 transition-transform duration-200 ${
+                  traceExpanded ? 'rotate-90' : ''
+                }`}
+              />
+            </button>
+          </div>
+        ) : null}
 
         {/* === Ordered Blocks Rendering (interleaved timeline) === */}
         {hasBlocks ? (
           <div className="space-y-3">
             {timeline.map((entry) => {
+              // Hide intermediate blocks behind the "Worked for X" collapse once
+              // streaming has completed, unless the user has expanded it.
+              if (
+                hasIntermediateTrace &&
+                !traceExpanded &&
+                entry.kind === 'content' &&
+                entry.blockIndex < finalNarrativeIdx
+              ) {
+                return null;
+              }
+              if (
+                hasIntermediateTrace &&
+                !traceExpanded &&
+                entry.kind === 'progress'
+              ) {
+                return null;
+              }
               if (entry.kind === 'progress') {
                 return (
                   <ProgressTrackerItem
@@ -212,7 +299,7 @@ export const AgentMessage: FC<AgentMessageProps> = ({
                         key={`block-${idx}`}
                         className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/5 border border-primary/15 text-xs text-primary/70"
                       >
-                        <ChatCircleDots className="h-3.5 w-3.5 shrink-0" weight="fill" />
+                        <MessageCircle className="h-3.5 w-3.5 shrink-0" />
                         <span>Waiting for your answer below...</span>
                       </div>
                     );

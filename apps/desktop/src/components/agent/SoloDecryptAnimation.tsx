@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
-import { Code, Lightning, GitBranch } from '@phosphor-icons/react';
+import { Bug, FolderOpen, GitBranch, Zap } from 'lucide-react';
 
 import type { FC } from 'react';
 
@@ -251,51 +251,60 @@ const SoloDecryptAnimation: FC = () => {
 
 // ─── Suggested Prompts ──────────────────────────────────────────────────────
 const SUGGESTED_PROMPTS = [
-	{ icon: Code, label: '> write code', prompt: 'Help me write a function that...' },
-	{ icon: Lightning, label: '> fix a bug', prompt: 'I have a bug in my code where...' },
-	{ icon: GitBranch, label: '> git help', prompt: 'Help me with my git workflow...' },
+	{
+		icon: Zap,
+		label: 'Plan an implementation',
+		prompt: 'Plan the cleanest way to implement this feature.',
+		description: 'Break a feature into concrete steps before touching the code.',
+	},
+	{
+		icon: Bug,
+		label: 'Debug a failure',
+		prompt: 'Debug this issue and tell me what to change.',
+		description: 'Inspect logs, trace the problem, and move toward a real fix.',
+	},
+	{
+		icon: FolderOpen,
+		label: 'Inspect the repo',
+		prompt: 'Map this codebase and explain the important pieces.',
+		description: 'Understand structure, ownership, and where to work next.',
+	},
 ];
 
 // ─── Composed Empty State ───────────────────────────────────────────────────
 export const SoloEmptyState: FC<{
 	onPromptClick: (prompt: string) => void;
 }> = ({ onPromptClick }) => {
-	const [showButtons, setShowButtons] = useState(false);
-
-	// Show buttons after the first assemble phase completes (~3s)
-	useEffect(() => {
-		const timer = setTimeout(() => setShowButtons(true), SCRAMBLE_DURATION + ASSEMBLE_DURATION + 200);
-		return () => clearTimeout(timer);
-	}, []);
-
 	return (
-		<div className="flex flex-col items-center gap-0">
-			{/* Decrypt animation */}
-			<SoloDecryptAnimation />
+		<div className="mx-auto w-full max-w-[56rem]">
+			<div className="rounded-[28px] border border-border/70 bg-card/82 px-7 py-8 shadow-[0_28px_80px_-50px_rgba(0,0,0,0.35)] backdrop-blur-xl">
+				<div className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-background/70 px-3 py-1 text-[11px] font-medium text-muted-foreground">
+					<GitBranch className="h-3.5 w-3.5 text-primary" />
+					New conversation
+				</div>
 
-			{/* Tagline */}
-			<p className="text-xs text-muted-foreground/50 tracking-wide mt-4">
-				Your AI coding agent
-			</p>
+				<h2 className="mt-5 text-[32px] font-semibold tracking-tight text-foreground">
+					What should Solo work on?
+				</h2>
+				<p className="mt-2 max-w-2xl text-sm leading-7 text-muted-foreground">
+					Ask for code changes, debugging, repo exploration, terminal work, or a plan before implementation.
+				</p>
 
-			{/* Suggested prompts — stacked, terminal-style */}
-			<div className="flex flex-col items-center gap-2 mt-6">
-				{SUGGESTED_PROMPTS.map(({ icon: Icon, label, prompt }, i) => (
+				<div className="mt-7 grid gap-3 md:grid-cols-3">
+					{SUGGESTED_PROMPTS.map(({ icon: Icon, label, prompt, description }) => (
 					<button
 						key={label}
 						onClick={() => onPromptClick(prompt)}
-						className="h-9 w-full max-w-[240px] px-3.5 rounded-[10px] bg-muted/30 border border-border/30 font-mono text-xs text-muted-foreground hover:bg-muted/50 hover:border-border/50 hover:text-foreground hover:scale-[1.02] active:scale-[0.97] transition-all duration-200 flex items-center gap-2"
-						style={{
-							opacity: showButtons ? 1 : 0,
-							transform: showButtons ? 'translateY(0)' : 'translateY(8px)',
-							transition: 'opacity 200ms var(--ease-smooth), transform 200ms var(--ease-smooth)',
-							transitionDelay: showButtons ? `${i * 60}ms` : '0ms',
-						}}
+						className="rounded-[20px] border border-border/60 bg-background/72 p-4 text-left hover:border-border hover:bg-card transition-[background-color,border-color,transform] duration-150 hover:-translate-y-0.5"
 					>
-						<Icon className="w-3.5 h-3.5 text-primary/60 shrink-0" />
-						<span>{label}</span>
+						<div className="mb-3 flex h-10 w-10 items-center justify-center rounded-[14px] border border-border/60 bg-card/85">
+							<Icon className="h-4 w-4 text-primary" />
+						</div>
+						<p className="text-sm font-medium text-foreground">{label}</p>
+						<p className="mt-1 text-xs leading-6 text-muted-foreground">{description}</p>
 					</button>
 				))}
+				</div>
 			</div>
 		</div>
 	);

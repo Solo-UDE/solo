@@ -1,7 +1,6 @@
 /**
  * Shared markdown table component with scroll shadows, auto-compact mode,
- * and copy-as-TSV. Used by both MarkdownPreview and AgentNarrative via
- * react-markdown's `components` prop.
+ * and copy-as-TSV. Passed to Streamdown's `components` prop.
  */
 
 import {
@@ -13,7 +12,7 @@ import {
   type ReactNode,
   type ComponentPropsWithoutRef,
 } from 'react';
-import { Copy, Check } from '@phosphor-icons/react';
+import { CopyIcon, CheckIcon } from '@radix-ui/react-icons';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import { cn } from '@/lib/utils';
 
@@ -116,9 +115,9 @@ export const MarkdownTable: FC<MarkdownTableProps> = ({ children }) => {
         title={copied ? 'Copied!' : 'Copy table as TSV'}
       >
         {copied ? (
-          <Check className="w-3.5 h-3.5" />
+          <CheckIcon className="w-3.5 h-3.5" />
         ) : (
-          <Copy className="w-3.5 h-3.5" />
+          <CopyIcon className="w-3.5 h-3.5" />
         )}
       </button>
     </div>
@@ -126,7 +125,7 @@ export const MarkdownTable: FC<MarkdownTableProps> = ({ children }) => {
 };
 
 /**
- * Component overrides for react-markdown's `components` prop.
+ * Component overrides for Streamdown's `components` prop.
  * Spread into the components object: `{ ...markdownTableComponents, ... }`
  */
 export const markdownTableComponents: Record<

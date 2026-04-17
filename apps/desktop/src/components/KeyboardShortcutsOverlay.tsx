@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { MagnifyingGlass, GearSix } from '@phosphor-icons/react';
+import { MagnifyingGlassIcon, GearIcon } from '@radix-ui/react-icons';
 import {
   Dialog,
   DialogContent,
@@ -73,7 +73,7 @@ export const KeyboardShortcutsOverlay = ({
             Keyboard Shortcuts
           </DialogTitle>
           <div className="relative flex-1 max-w-[220px]">
-            <MagnifyingGlass className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/50" />
+            <MagnifyingGlassIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/50" />
             <input
               type="text"
               placeholder="Search shortcuts..."
@@ -132,7 +132,7 @@ export const KeyboardShortcutsOverlay = ({
             onClick={onOpenSettings}
             className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors duration-150 group"
           >
-            <GearSix className="w-3.5 h-3.5 group-hover:rotate-45 transition-transform duration-200" />
+            <GearIcon className="w-3.5 h-3.5 group-hover:rotate-45 transition-transform duration-200" />
             <span>Customize in Settings</span>
             <span className="text-muted-foreground/40 group-hover:translate-x-0.5 transition-transform duration-150">
               →

@@ -91,6 +91,23 @@ function main(): void {
     });
   });
 
+  sessionManager.onDebugModeChanged((data) => {
+    sendEvent({
+      type: 'debug_mode_changed',
+      sessionId: data.sessionId,
+      enabled: data.enabled,
+    });
+  });
+
+  sessionManager.onSessionGoalCaptured((data) => {
+    sendEvent({
+      type: 'session_goal_captured',
+      sessionId: data.sessionId,
+      goal: data.goal,
+      capturedAt: data.capturedAt,
+    });
+  });
+
   sessionManager.onError((error) => {
     sendEvent({
       type: 'error_event',
@@ -239,6 +256,18 @@ async function handleRequest(
 
     case 'get_accept_mode': {
       const enabled = sessionManager.getAcceptMode(request.sessionId);
+      sendResponse({ type: 'boolean', requestType: request.type, value: enabled });
+      break;
+    }
+
+    case 'set_debug_mode': {
+      sessionManager.setDebugMode(request.sessionId, request.enabled);
+      sendResponse({ type: 'success', requestType: request.type });
+      break;
+    }
+
+    case 'get_debug_mode': {
+      const enabled = sessionManager.getDebugMode(request.sessionId);
       sendResponse({ type: 'boolean', requestType: request.type, value: enabled });
       break;
     }

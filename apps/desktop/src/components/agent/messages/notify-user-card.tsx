@@ -1,4 +1,4 @@
-import { Info, Warning, XCircle, CheckCircle } from '@phosphor-icons/react';
+import { InfoCircledIcon, ExclamationTriangleIcon, CrossCircledIcon, CheckCircledIcon } from '@radix-ui/react-icons';
 
 import type { FC } from 'react';
 
@@ -24,14 +24,14 @@ export const NotifyUserCard: FC<NotifyUserCardProps> = ({
   const getIcon = (): React.JSX.Element => {
     switch (type) {
       case 'success':
-        return <CheckCircle className="w-4 h-4" />;
+        return <CheckCircledIcon width={16} height={16} />;
       case 'warning':
-        return <Warning className="w-4 h-4" />;
+        return <ExclamationTriangleIcon width={16} height={16} />;
       case 'error':
-        return <XCircle className="w-4 h-4" />;
+        return <CrossCircledIcon width={16} height={16} />;
       case 'info':
       default:
-        return <Info className="w-4 h-4" />;
+        return <InfoCircledIcon width={16} height={16} />;
     }
   };
 

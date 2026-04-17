@@ -5,7 +5,7 @@
 import { cn } from '@/lib/utils';
 
 export const toolbarButtonBase = cn(
-  'inline-flex items-center gap-1.5',
+  'inline-flex shrink-0 items-center gap-1.5',
   'h-[30px] px-2.5 rounded-[8px]',
   'bg-transparent text-muted-foreground',
   'hover:bg-muted/60 hover:text-foreground',

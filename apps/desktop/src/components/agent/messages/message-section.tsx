@@ -2,7 +2,7 @@ import { AgentMessage } from './agent-message';
 import { UserMessage } from './user-message';
 
 import type { AgentMessageContent } from './agent-message';
-import type { Attachment, FileMention } from '@/stores/agentStore';
+import type { Attachment, FileMention, UserContentPart } from '@/stores/agentStore';
 import type { FC } from 'react';
 
 export interface UserMessageData {
@@ -12,6 +12,8 @@ export interface UserMessageData {
   timestamp: Date;
   attachments?: Attachment[];
   mentions?: FileMention[];
+  skills?: string[];
+  parts?: UserContentPart[];
 }
 
 export interface AgentMessageData {
@@ -41,7 +43,7 @@ export const MessageSection: FC<MessageSectionProps> = ({
   return (
     <section
       data-section-index={sectionIndex}
-      className={`py-3 space-y-3 max-w-3xl mx-auto ${className}`}
+      className={`mx-auto max-w-[56rem] space-y-4 px-4 py-4 ${className}`}
     >
       {messages.map((message) => {
         if (message.type === 'user') {
@@ -52,6 +54,8 @@ export const MessageSection: FC<MessageSectionProps> = ({
               timestamp={message.timestamp}
               attachments={message.attachments}
               mentions={message.mentions}
+              skills={message.skills}
+              parts={message.parts}
             />
           );
         }

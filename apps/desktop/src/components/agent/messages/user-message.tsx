@@ -1,8 +1,9 @@
-import { File as FileIcon, Image as ImageIcon, At } from '@phosphor-icons/react';
+import { FileIcon, ImageIcon } from '@radix-ui/react-icons';
+import { AtSign, Zap } from 'lucide-react';
 import { convertFileSrc } from '@tauri-apps/api/core';
 
-import type { FC } from 'react';
-import type { Attachment, FileMention } from '@/stores/agentStore';
+import type { FC, ReactNode } from 'react';
+import type { Attachment, FileMention, UserContentPart } from '@/stores/agentStore';
 
 export interface UserMessageProps {
   content: string;
@@ -10,38 +11,69 @@ export interface UserMessageProps {
   userName?: string;
   attachments?: Attachment[];
   mentions?: FileMention[];
+  /** Flat skill names — fallback for messages without ordered `parts`. */
+  skills?: string[];
+  /** Ordered text/skill sequence from the editor. When present, wins over `skills` + `content`. */
+  parts?: UserContentPart[];
   className?: string;
+}
+
+/** Inline chip styling shared between the interleaved renderer and the legacy header-chip fallback. */
+const InlineSkillChip: FC<{ name: string }> = ({ name }) => (
+  <span
+    className="inline-flex items-center gap-0.5 px-1.5 py-0.5 mx-0.5 rounded bg-primary/15 text-primary text-[11px] font-medium align-middle"
+    title={`/${name}`}
+  >
+    <Zap className="w-3 h-3 shrink-0" />
+    <span>/{name}</span>
+  </span>
+);
+
+/**
+ * Render the interleaved `parts` array preserving chip-in-the-middle order.
+ * Text parts that are just whitespace-between-chips are kept verbatim so the
+ * bubble matches what the user typed.
+ */
+function renderParts(parts: UserContentPart[]): ReactNode {
+  return parts.map((p, i) => {
+    if (p.type === 'skill') return <InlineSkillChip key={`skill-${i}`} name={p.name} />;
+    return <span key={`text-${i}`}>{p.text}</span>;
+  });
 }
 
 export const UserMessage: FC<UserMessageProps> = ({
   content,
-  timestamp,
-  userName = 'You',
+  timestamp: _timestamp,
+  userName: _userName = 'You',
   attachments,
   mentions,
+  skills,
+  parts,
   className = '',
 }) => {
-  const formatTime = (date: Date): string => {
-    return new Intl.DateTimeFormat('en-US', {
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true,
-    }).format(date);
-  };
-
   const imageAttachments = attachments?.filter((a) => a.type === 'image');
   const fileAttachments = attachments?.filter((a) => a.type === 'file');
 
   return (
-    <div className={`flex justify-end px-3 ${className}`}>
-      {/* Card bubble */}
-      <div className="max-w-[85%] rounded-2xl border border-primary px-4 py-3 space-y-1">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-primary">{userName}</span>
-          <span className="text-xs text-muted-foreground">{formatTime(timestamp)}</span>
-        </div>
-        <div className="text-sm text-black dark:text-white whitespace-pre-wrap break-words">
-          {content}
+    <div className={`chat-surface flex justify-end ${className}`}>
+      <div className="max-w-[min(46rem,88%)] space-y-2 rounded-[12px] border border-border/80 bg-agent-user-bg px-4 py-3 text-foreground shadow-[0_16px_28px_-28px_rgba(0,0,0,0.3)]">
+        <div className="text-[13px] whitespace-pre-wrap break-words leading-relaxed">
+          {parts && parts.length > 0 ? (
+            // Ordered rendering: chips appear exactly where the user put them.
+            renderParts(parts)
+          ) : (
+            <>
+              {/* Fallback for messages without `parts` (legacy or missing): chips grouped up front. */}
+              {skills && skills.length > 0 && (
+                <span className="inline-flex flex-wrap gap-1 mr-1.5 align-middle">
+                  {skills.map((name) => (
+                    <InlineSkillChip key={name} name={name} />
+                  ))}
+                </span>
+              )}
+              {content}
+            </>
+          )}
         </div>
 
         {/* Attached images */}
@@ -72,13 +104,13 @@ export const UserMessage: FC<UserMessageProps> = ({
             {fileAttachments.map((file) => (
               <div
                 key={file.id}
-                className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-muted/40 text-xs text-muted-foreground"
+                className="flex items-center gap-1.5 rounded-[12px] border border-border/50 bg-background/55 px-2.5 py-1.5 text-xs text-muted-foreground"
                 title={file.path}
               >
                 {file.mimeType?.startsWith('image/') ? (
-                  <ImageIcon className="w-3.5 h-3.5 flex-shrink-0" />
+                  <ImageIcon width={14} height={14} className="flex-shrink-0" />
                 ) : (
-                  <FileIcon className="w-3.5 h-3.5 flex-shrink-0" />
+                  <FileIcon width={14} height={14} className="flex-shrink-0" />
                 )}
                 <span className="truncate max-w-[150px]">{file.name}</span>
               </div>
@@ -92,10 +124,10 @@ export const UserMessage: FC<UserMessageProps> = ({
             {mentions.map((mention) => (
               <div
                 key={mention.path}
-                className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-primary/10 text-xs text-primary"
+                className="flex items-center gap-1 rounded-[12px] border border-border/50 bg-background/55 px-2.5 py-1 text-xs text-muted-foreground"
                 title={mention.path}
               >
-                <At className="w-3 h-3 flex-shrink-0" />
+                <AtSign className="w-3 h-3 flex-shrink-0" />
                 <span className="truncate max-w-[200px]">{mention.relativePath || mention.name}</span>
               </div>
             ))}

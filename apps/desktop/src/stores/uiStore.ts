@@ -10,12 +10,20 @@ import { SIDEBAR, TERMINAL_SECTION } from '@/lib/constants';
 export type SidebarTab = 'explorer' | 'sessions' | 'source-control';
 
 // Settings tab types
-export type SettingsTabId = 'general' | 'editor' | 'terminal' | 'files' | 'shortcuts' | 'ai' | 'voice';
+export type SettingsTabId = 'journey' | 'leaderboard' | 'general' | 'editor' | 'terminal' | 'files' | 'shortcuts' | 'ai' | 'voice' | 'skills';
 
-// Dev/Studio sidebar mode
-export type SidebarMode = 'dev' | 'studio';
+// Dev/Vault sidebar mode.
+// Sessions moved out of the Vault tab (they're worktree-bound and live under Dev now).
+// Automations + ContentCreation were deprecated during the Solo IDE redesign.
+export type SidebarMode = 'dev' | 'vault';
 export type DevSidebarView = 'worktree-list' | 'worktree-detail';
-export type StudioNav = 'sessions' | 'vault' | 'automations' | 'content-creation';
+export type VaultNav =
+  | 'skills'
+  | 'memory'
+  | 'tasks'
+  | 'current-vault'
+  | 'plugins'
+  | 'connectors';
 
 interface UIState {
   leftSidebarWidth: number;
@@ -31,7 +39,32 @@ interface UIState {
   sidebarMode: SidebarMode;
   devSidebarView: DevSidebarView;
   devDetailWorktreeId: string | null;
-  studioActiveNav: StudioNav;
+  vaultActiveNav: VaultNav;
+  zoomLevel: number;
+}
+
+export const ZOOM = {
+  min: 0.5,
+  max: 2.5,
+  step: 0.1,
+  default: 1.0,
+} as const;
+
+const ZOOM_STORAGE_KEY = 'solo.zoomLevel';
+
+function loadPersistedZoom(): number {
+  if (typeof window === 'undefined') return ZOOM.default;
+  const raw = window.localStorage.getItem(ZOOM_STORAGE_KEY);
+  if (!raw) return ZOOM.default;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return ZOOM.default;
+  return Math.max(ZOOM.min, Math.min(ZOOM.max, n));
+}
+
+function clampZoom(n: number): number {
+  // Round to one decimal to avoid floating-point drift across many step presses.
+  const rounded = Math.round(n * 10) / 10;
+  return Math.max(ZOOM.min, Math.min(ZOOM.max, rounded));
 }
 
 interface UIActions {
@@ -54,7 +87,11 @@ interface UIActions {
   setSidebarMode: (mode: SidebarMode) => void;
   drillIntoWorktree: (worktreeId: string) => void;
   drillOutOfWorktree: () => void;
-  setStudioNav: (nav: StudioNav) => void;
+  setVaultNav: (nav: VaultNav) => void;
+  zoomIn: () => void;
+  zoomOut: () => void;
+  resetZoom: () => void;
+  setZoom: (level: number) => void;
 }
 
 type UIStore = UIState & UIActions;
@@ -68,13 +105,14 @@ export const useUIStore = create<UIStore>()(
     terminalPanelOpen: false,
     terminalPanelHeight: TERMINAL_SECTION.defaultHeight,
     settingsOpen: false,
-    settingsTab: 'general' as SettingsTabId,
+    settingsTab: 'journey' as SettingsTabId,
     tourActive: false,
     tourStep: 0,
     sidebarMode: 'dev' as SidebarMode,
     devSidebarView: 'worktree-list' as DevSidebarView,
     devDetailWorktreeId: null,
-    studioActiveNav: 'sessions' as StudioNav,
+    vaultActiveNav: 'memory' as VaultNav,
+    zoomLevel: loadPersistedZoom(),
 
     toggleLeftSidebar: (): void => {
       set((state) => {
@@ -212,13 +250,49 @@ export const useUIStore = create<UIStore>()(
       });
     },
 
-    setStudioNav: (nav: StudioNav): void => {
+    setVaultNav: (nav: VaultNav): void => {
       set((state) => {
-        state.studioActiveNav = nav;
+        state.vaultActiveNav = nav;
+      });
+    },
+
+    zoomIn: (): void => {
+      set((state) => {
+        state.zoomLevel = clampZoom(state.zoomLevel + ZOOM.step);
+      });
+    },
+
+    zoomOut: (): void => {
+      set((state) => {
+        state.zoomLevel = clampZoom(state.zoomLevel - ZOOM.step);
+      });
+    },
+
+    resetZoom: (): void => {
+      set((state) => {
+        state.zoomLevel = ZOOM.default;
+      });
+    },
+
+    setZoom: (level: number): void => {
+      set((state) => {
+        state.zoomLevel = clampZoom(level);
       });
     },
   }))
 );
+
+if (typeof window !== 'undefined') {
+  useUIStore.subscribe((state, prev) => {
+    if (state.zoomLevel !== prev.zoomLevel) {
+      try {
+        window.localStorage.setItem(ZOOM_STORAGE_KEY, String(state.zoomLevel));
+      } catch {
+        // localStorage may be unavailable (private mode, quota); zoom still works in-session.
+      }
+    }
+  });
+}
 
 // Selector hooks
 export const useIsLeftSidebarCollapsed = (): boolean => {

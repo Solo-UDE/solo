@@ -7,12 +7,12 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Editor, { OnMount, BeforeMount } from '@monaco-editor/react';
 import type * as Monaco from 'monaco-editor';
-import { WarningCircle, CaretRight } from '@phosphor-icons/react';
+import { ExclamationTriangleIcon, ChevronRightIcon } from '@radix-ui/react-icons';
 import { FileIcon } from '@react-symbols/icons/utils';
 import { CodeSkeleton } from '@/components/ui/skeletons';
 import * as fs from '@/lib/tauri/fs';
 import { registerSoloTheme, SOLO_THEME_NAME, SOLO_LIGHT_THEME_NAME, registerSoloLightTheme } from '@/components/editor/theme';
-import { MarkdownEditor } from '@/components/editor/MarkdownEditor';
+import { MarkdownPreview } from '@/components/editor/MarkdownPreview';
 import { MarkdownToggle } from '@/components/editor/MarkdownToggle';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useFileExplorerStore } from '@/stores/fileExplorerStore';
@@ -136,7 +136,6 @@ export function FileViewerPanel({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [fileTooLarge, setFileTooLarge] = useState<{ size: number } | null>(null);
-  const [cursorPosition, setCursorPosition] = useState({ line: 1, col: 1 });
 
   // Markdown mode state — defaults to 'preview' for markdown files
   const [markdownMode, setMarkdownMode] = useState<MarkdownMode>('preview');
@@ -294,14 +293,6 @@ export function FileViewerPanel({
         saveFileRef.current();
       });
 
-      // Track cursor position changes
-      editor.onDidChangeCursorPosition((e) => {
-        setCursorPosition({
-          line: e.position.lineNumber,
-          col: e.position.column,
-        });
-      });
-
       // A5: Restore saved view state
       if (viewStateRef.current) {
         editor.restoreViewState(viewStateRef.current);
@@ -373,7 +364,7 @@ export function FileViewerPanel({
     return (
       <div className="flex items-center justify-center h-full bg-background">
         <div className="text-center space-y-4 max-w-md px-4">
-          <WarningCircle className="w-8 h-8 text-destructive mx-auto" />
+          <ExclamationTriangleIcon className="w-8 h-8 text-destructive mx-auto" />
           <p className="text-sm text-destructive">Failed to load file</p>
           <p className="text-xs text-muted-foreground break-all">{error}</p>
         </div>
@@ -387,7 +378,7 @@ export function FileViewerPanel({
     return (
       <div className="flex items-center justify-center h-full bg-background">
         <div className="text-center space-y-4 max-w-md px-4">
-          <WarningCircle className="w-8 h-8 text-muted-foreground mx-auto" />
+          <ExclamationTriangleIcon className="w-8 h-8 text-muted-foreground mx-auto" />
           <p className="text-sm text-foreground">File too large to open</p>
           <p className="text-xs text-muted-foreground">
             This file is {sizeMB} MB. Files larger than 5 MB are not supported in the editor.
@@ -398,7 +389,6 @@ export function FileViewerPanel({
   }
 
   const language = filePath ? getMonacoLanguage(filePath) : 'plaintext';
-  const lineCount = content.split('\n').length;
 
   // Font family (already includes fallback chain from settings)
   const resolvedFontFamily = editorFontFamily;
@@ -442,14 +432,27 @@ export function FileViewerPanel({
         overviewRulerLanes: 0,
         hideCursorInOverviewRuler: true,
         overviewRulerBorder: false,
+        // Find widget: reserve extra room at the top so the widget isn't
+        // clipped by the breadcrumb/tab strip. (Don't enable
+        // fixedOverflowWidgets here — the find widget is an overlay widget,
+        // not an overflow widget, and portalling breaks the close-button
+        // tooltip + click target.)
+        find: {
+          addExtraSpaceOnTop: true,
+          autoFindInSelection: 'never',
+          seedSearchStringFromSelection: 'selection',
+        },
       }}
     />
   );
 
   return (
     <div className="flex flex-col h-full bg-background">
-      {/* Interactive breadcrumb with markdown toggle */}
-      <div className="flex items-center justify-between h-6 px-3 bg-background/40 backdrop-blur-md border-b border-white/[0.04] shrink-0">
+      {/* Interactive breadcrumb with markdown toggle.
+          z-0 so the editor below (z-10) wins the stacking order — that way
+          Monaco's find-widget hover tooltips (which can extend upward into
+          this strip) render on top of the breadcrumb instead of behind it. */}
+      <div className="relative z-0 flex items-center justify-between h-6 px-3 bg-background/40 border-b border-white/[0.04] shrink-0">
         <div className="flex items-center gap-1 overflow-x-auto scrollbar-none flex-1 min-w-0">
           {breadcrumbSegments.length > 0 && (
             <FileIcon
@@ -461,7 +464,7 @@ export function FileViewerPanel({
           {breadcrumbSegments.map((segment, i) => (
             <div key={segment.fullPath} className="flex items-center gap-1 shrink-0">
               {i > 0 && (
-                <CaretRight className="w-2.5 h-2.5 text-muted-foreground/40 shrink-0" weight="bold" />
+                <ChevronRightIcon className="w-2.5 h-2.5 text-muted-foreground/40 shrink-0" />
               )}
               {segment.isLast ? (
                 <span className="text-[11px] text-foreground/80 font-medium whitespace-nowrap">
@@ -486,33 +489,19 @@ export function FileViewerPanel({
         )}
       </div>
 
-      {/* Editor content */}
-      <div className="flex-1 overflow-hidden">
+      {/* Editor content — relative + z-10 so Monaco's find-widget overlays
+          render above the breadcrumb's stacking context. */}
+      <div className="relative z-10 flex-1 overflow-hidden">
         {isMarkdown && markdownMode === 'preview' ? (
-          <MarkdownEditor
+          <MarkdownPreview
             key={filePath}
             content={content}
-            onContentChange={(md) => setContent(md)}
           />
         ) : (
           monacoEditor
         )}
       </div>
 
-      {/* Status bar */}
-      <div className="flex items-center justify-between h-6 px-3 bg-background/30 backdrop-blur-md text-muted-foreground text-[11px] border-t border-white/[0.04] shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-primary/60 shrink-0" />
-            <span>{language}</span>
-          </div>
-          <span className="text-muted-foreground/50">UTF-8</span>
-        </div>
-        <div className="flex items-center gap-3 text-muted-foreground/60">
-          <span>Ln {cursorPosition.line}, Col {cursorPosition.col}</span>
-          <span>{lineCount} lines</span>
-        </div>
-      </div>
     </div>
   );
 }

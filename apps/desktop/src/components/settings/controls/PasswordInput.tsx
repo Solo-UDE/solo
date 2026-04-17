@@ -3,7 +3,7 @@
  */
 
 import { useState, useCallback } from 'react';
-import { Eye, EyeSlash, X } from '@phosphor-icons/react';
+import { EyeOpenIcon, EyeNoneIcon, Cross2Icon } from '@radix-ui/react-icons';
 
 interface PasswordInputProps {
   value: string;
@@ -57,9 +57,9 @@ export function PasswordInput({
           title={visible ? 'Hide' : 'Show'}
         >
           {visible ? (
-            <EyeSlash className="w-3.5 h-3.5 text-muted-foreground" />
+            <EyeNoneIcon className="w-3.5 h-3.5 text-muted-foreground" />
           ) : (
-            <Eye className="w-3.5 h-3.5 text-muted-foreground" />
+            <EyeOpenIcon className="w-3.5 h-3.5 text-muted-foreground" />
           )}
         </button>
         {value && (
@@ -70,7 +70,7 @@ export function PasswordInput({
             className="p-1.5 rounded-lg hover:bg-muted transition-colors disabled:opacity-50 cursor-pointer"
             title="Clear"
           >
-            <X className="w-3.5 h-3.5 text-muted-foreground" />
+            <Cross2Icon className="w-3.5 h-3.5 text-muted-foreground" />
           </button>
         )}
       </div>

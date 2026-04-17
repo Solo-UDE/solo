@@ -1,11 +1,13 @@
 /**
  * Random plan name generator for plan mode.
- * Generates adjective-verb-noun plan file names (e.g., "cozy-stirring-hopper.md").
- * Plans are stored in ~/.solo/plans/.
+ *
+ * Plans are stored at `<workspace>/.solo/plans/<slug>.md` — project-scoped so
+ * they travel with the repo and can be diffed/checked in (or git-ignored).
+ *
+ * Name format: `adjective-verb-noun` (e.g., `cozy-stirring-hopper.md`).
  */
 
 import * as fs from 'node:fs';
-import * as os from 'node:os';
 import * as path from 'node:path';
 
 const ADJECTIVES = [
@@ -45,14 +47,29 @@ export function generatePlanName(): string {
   return `${adj}-${verb}-${noun}`;
 }
 
-export function getPlanFilePath(name: string): string {
-  return path.join(os.homedir(), '.solo', 'plans', `${name}.md`);
+/**
+ * Resolve the plans directory for a workspace: `<workspace>/.solo/plans/`.
+ *
+ * `workspace` is required and should be the absolute path to the project root.
+ * If it's missing we fall back to the user home's `.solo/plans/` — this is
+ * strictly for legacy callers that don't have a workspace in hand.
+ */
+function plansDir(workspace?: string): string {
+  if (workspace && workspace.length > 0) {
+    return path.join(workspace, '.solo', 'plans');
+  }
+  // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
+  const os = require('node:os');
+  return path.join(os.homedir() as string, '.solo', 'plans');
+}
+
+export function getPlanFilePath(name: string, workspace?: string): string {
+  return path.join(plansDir(workspace), `${name}.md`);
 }
 
 /**
- * Ensure the ~/.solo/plans/ directory exists.
+ * Ensure the plans directory exists for a workspace.
  */
-export function ensurePlanDirectory(): void {
-  const dir = path.join(os.homedir(), '.solo', 'plans');
-  fs.mkdirSync(dir, { recursive: true });
+export function ensurePlanDirectory(workspace?: string): void {
+  fs.mkdirSync(plansDir(workspace), { recursive: true });
 }

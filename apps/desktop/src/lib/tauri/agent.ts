@@ -37,6 +37,8 @@ export interface AgentEventHandlers {
 	onTurnStart?: (sessionId: string, turnNumber: number) => void;
 	onPlanModeChanged?: (sessionId: string, enabled: boolean) => void;
 	onAcceptModeChanged?: (sessionId: string, enabled: boolean) => void;
+	onDebugModeChanged?: (sessionId: string, enabled: boolean) => void;
+	onSessionGoalCaptured?: (sessionId: string, goal: string, capturedAt: number) => void;
 	onError?: (message: string, stack?: string) => void;
 	onReady?: () => void;
 }
@@ -116,6 +118,27 @@ export async function listenToAgentEvents(
 			await listen<AgentModeChangedEvent>('agent:accept_mode_changed', (event) => {
 				h(event.payload.sessionId, event.payload.enabled);
 			})
+		);
+	}
+
+	if (handlers.onDebugModeChanged) {
+		const h = handlers.onDebugModeChanged;
+		unlistens.push(
+			await listen<AgentModeChangedEvent>('agent:debug_mode_changed', (event) => {
+				h(event.payload.sessionId, event.payload.enabled);
+			})
+		);
+	}
+
+	if (handlers.onSessionGoalCaptured) {
+		const h = handlers.onSessionGoalCaptured;
+		unlistens.push(
+			await listen<{ sessionId: string; goal: string; capturedAt: number }>(
+				'agent:session_goal_captured',
+				(event) => {
+					h(event.payload.sessionId, event.payload.goal, event.payload.capturedAt);
+				}
+			)
 		);
 	}
 

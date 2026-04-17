@@ -91,7 +91,9 @@ export interface SessionConfig {
   planEnabled?: boolean;
   acceptEnabled?: boolean;
   critiqueEnabled?: boolean;
-  model?: 'haiku' | 'sonnet' | 'opus';
+  model?: string;
+  /** Output-token cap forwarded to the SDK (Claude Code's CLAUDE_CODE_MAX_OUTPUT_TOKENS). */
+  maxTokens?: number;
   sessionMode?: 'chat' | 'agent';
   resumeSessionId?: string;
   forkSession?: boolean;
@@ -275,6 +277,16 @@ export class SessionManager extends Disposable {
   );
   readonly onAcceptModeChanged = this._onAcceptModeChanged.event;
 
+  private readonly _onDebugModeChanged = this._register(
+    new Emitter<{ sessionId: string; enabled: boolean }>()
+  );
+  readonly onDebugModeChanged = this._onDebugModeChanged.event;
+
+  private readonly _onSessionGoalCaptured = this._register(
+    new Emitter<{ sessionId: string; goal: string; capturedAt: number }>()
+  );
+  readonly onSessionGoalCaptured = this._onSessionGoalCaptured.event;
+
   private readonly _onSessionInit = this._register(new Emitter<SessionInitEvent>());
   readonly onSessionInit = this._onSessionInit.event;
 
@@ -282,6 +294,18 @@ export class SessionManager extends Disposable {
   private activeSessions = new Map<string, OrbitAgent>();
   private sessionConsumers = new Map<string, { cancel: () => void }>();
   private permissionResolvers = new Map<string, PermissionResolver>();
+  /**
+   * Per-session map of pending permission requestIds → the tool call that
+   * triggered them. Stores the tool name + input so `drainPendingPermissions`
+   * can re-run the pipeline against each pending prompt under the new mode
+   * — we only auto-resolve prompts whose new decision actually differs
+   * (Accept + pipeline→allow, or Plan + pipeline→deny), leaving destructive
+   * and ask-ruled prompts in place so the user still sees them.
+   */
+  private pendingRequestsBySession = new Map<
+    string,
+    Map<string, { toolName: string; toolInput: Record<string, unknown> }>
+  >();
   private modePreferences = new Map<
     string,
     {
@@ -289,10 +313,17 @@ export class SessionManager extends Disposable {
       maxThinkingTokens?: number;
       planEnabled?: boolean;
       acceptEnabled?: boolean;
+      debugEnabled?: boolean;
       critiqueEnabled?: boolean;
-      model?: 'haiku' | 'sonnet' | 'opus';
+      model?: string;
+      maxTokens?: number;
     }
   >();
+
+  /** Last observed goal per session — used to debounce SessionGoalCaptured emissions. */
+  private sessionGoals = new Map<string, string>();
+  /** Polls active agents for a newly-captured Debug goal, emits the event once. */
+  private goalPollers = new Map<string, NodeJS.Timeout>();
   private sessionResumeState = new Map<string, { isResumed: boolean; isForked: boolean }>();
   private sessionInitFired = new Set<string>();
 
@@ -331,6 +362,16 @@ export class SessionManager extends Disposable {
     }> => {
       const requestId = randomUUID();
 
+      // Register in the session → requestId-to-toolcall index so mid-turn
+      // mode toggles can re-evaluate each pending prompt under the new mode
+      // and auto-resolve the ones whose decision would change.
+      let pendingForSession = this.pendingRequestsBySession.get(sessionId);
+      if (!pendingForSession) {
+        pendingForSession = new Map();
+        this.pendingRequestsBySession.set(sessionId, pendingForSession);
+      }
+      pendingForSession.set(requestId, { toolName, toolInput });
+
       // Fire event to frontend
       this._onPermissionRequest.fire({
         sessionId,
@@ -347,6 +388,12 @@ export class SessionManager extends Disposable {
       }>((resolve) => {
         this.permissionResolvers.set(requestId, resolve);
       });
+
+      // Clean up the reverse-index entry now that the resolver has fired.
+      pendingForSession.delete(requestId);
+      if (pendingForSession.size === 0) {
+        this.pendingRequestsBySession.delete(sessionId);
+      }
 
       // If approved, emit 'running' for the specific tool
       if (result.decision === 'approve') {
@@ -395,8 +442,10 @@ export class SessionManager extends Disposable {
       maxThinkingTokens: storedPrefs?.maxThinkingTokens ?? config?.maxThinkingTokens,
       planEnabled: storedPrefs?.planEnabled ?? config?.planEnabled ?? false,
       acceptEnabled: storedPrefs?.acceptEnabled ?? config?.acceptEnabled ?? false,
+      debugEnabled: storedPrefs?.debugEnabled ?? false,
       critiqueEnabled: storedPrefs?.critiqueEnabled ?? config?.critiqueEnabled ?? false,
       model: storedPrefs?.model ?? config?.model,
+      maxTokens: storedPrefs?.maxTokens ?? config?.maxTokens,
       cwd: config?.cwd,
       sessionMode: config?.sessionMode ?? 'agent',
       permissionRequestCallback: permissionCallback,
@@ -542,10 +591,27 @@ export class SessionManager extends Disposable {
 
               logger.info({ sessionId, toolName, toolId }, 'Tool use block received');
 
-              // Always start as 'awaiting-permission'.
-              // The permission callback will emit 'running' when approved.
-              // For auto-approved tools (via PreToolUse hook), the transition
-              // awaiting-permission → success happens very fast.
+              // Pre-decide the permission outcome so the UI never sees an
+              // `awaiting-permission` card for tools that are about to be
+              // auto-approved. Without this, every auto-approved tool would
+              // flash a `<ToolApprovalCard>` for one render frame before the
+              // `tool_result` downgrades it to `success`.
+              //
+              // The pipeline is pure + synchronous; it reads `.solo/settings.json`
+              // via an mtime cache so the subsequent real call from `canUseTool`
+              // reuses the parse.
+              const previewed = agent.previewPermission(
+                toolName,
+                toolInput as Record<string, unknown>
+              );
+              const initialStatus =
+                previewed === 'ask' ? 'awaiting-permission' : 'running';
+
+              logger.debug(
+                { sessionId, toolName, previewed, initialStatus },
+                'Initial tool_use status resolved from preview'
+              );
+
               const toolMessage: AgentMessage = {
                 type: 'tool_use',
                 content: `Using tool: ${toolName}`,
@@ -553,7 +619,7 @@ export class SessionManager extends Disposable {
                   toolName,
                   toolId,
                   toolInput,
-                  status: 'awaiting-permission',
+                  status: initialStatus,
                 },
               };
 
@@ -799,7 +865,7 @@ export class SessionManager extends Disposable {
   /**
    * Set model for a session
    */
-  async setModel(sessionId: string, model: 'haiku' | 'sonnet' | 'opus'): Promise<void> {
+  async setModel(sessionId: string, model: string): Promise<void> {
     const agent = this.activeSessions.get(sessionId);
     if (!agent) {
       const prefs = this.modePreferences.get(sessionId) ?? {};
@@ -811,6 +877,57 @@ export class SessionManager extends Disposable {
     const prefs = this.modePreferences.get(sessionId) ?? {};
     prefs.model = model;
     this.modePreferences.set(sessionId, prefs);
+  }
+
+  /**
+   * Re-evaluate every pending permission prompt for a session under the
+   * CURRENT mode and auto-resolve any whose decision would now differ.
+   *
+   * Called when the user toggles a mode mid-turn (Plan / Accept). The
+   * pipeline is run via `agent.previewPermission(...)` so destructive /
+   * ask-ruled / deny-ruled prompts are preserved (they remain bypass-immune
+   * even under Accept) — only prompts whose fresh decision is `allow` get
+   * auto-approved, and only prompts whose fresh decision is `deny` get
+   * auto-denied. Everything else stays on-screen for the user to resolve.
+   *
+   * Mirrors Claude Code's semantic: pending prompts re-read the current
+   * mode via `getAppState()` and behave accordingly.
+   */
+  private reevaluatePendingPermissions(sessionId: string): void {
+    const pending = this.pendingRequestsBySession.get(sessionId);
+    if (!pending || pending.size === 0) return;
+    const agent = this.activeSessions.get(sessionId);
+    if (!agent) return;
+
+    const toDrain: Array<{ requestId: string; decision: 'approve' | 'deny' }> = [];
+    for (const [requestId, { toolName, toolInput }] of pending) {
+      const preview = agent.previewPermission(toolName, toolInput);
+      if (preview === 'allow') {
+        toDrain.push({ requestId, decision: 'approve' });
+      } else if (preview === 'deny') {
+        toDrain.push({ requestId, decision: 'deny' });
+      }
+      // preview === 'ask' → pipeline still wants user input; leave as-is.
+    }
+
+    if (toDrain.length === 0) return;
+
+    logger.info(
+      { sessionId, drained: toDrain.length, pendingTotal: pending.size },
+      'Re-evaluated pending permission prompts after mode change'
+    );
+
+    for (const { requestId, decision } of toDrain) {
+      const resolver = this.permissionResolvers.get(requestId);
+      if (resolver) {
+        this.permissionResolvers.delete(requestId);
+        resolver({ decision, always: false });
+      }
+      pending.delete(requestId);
+    }
+    if (pending.size === 0) {
+      this.pendingRequestsBySession.delete(sessionId);
+    }
   }
 
   /**
@@ -831,6 +948,10 @@ export class SessionManager extends Disposable {
     prefs.planEnabled = enabled;
     this.modePreferences.set(sessionId, prefs);
     this._onPlanModeChanged.fire({ sessionId, enabled, planFilePath });
+
+    // Mode change: re-evaluate any pending prompts so the UI doesn't show
+    // a stale modal for a tool the pipeline would now decide automatically.
+    this.reevaluatePendingPermissions(sessionId);
   }
 
   /**
@@ -862,6 +983,12 @@ export class SessionManager extends Disposable {
     prefs.acceptEnabled = enabled;
     this.modePreferences.set(sessionId, prefs);
     this._onAcceptModeChanged.fire({ sessionId, enabled });
+
+    // Mode change: re-evaluate any pending prompts. Under Accept mode,
+    // anything the pipeline now says `allow` is auto-approved; anything
+    // still saying `ask` (e.g. an `ask`-ruled Bash command — bypass-immune)
+    // stays on screen for the user to resolve.
+    this.reevaluatePendingPermissions(sessionId);
   }
 
   /**
@@ -874,6 +1001,82 @@ export class SessionManager extends Disposable {
       return prefs?.acceptEnabled ?? false;
     }
     return agent.getAcceptMode();
+  }
+
+  /**
+   * Enable/disable Debug mode. When enabled, the first user prompt after
+   * this call is captured as the session goal; a `sessionGoalCaptured` event
+   * is emitted so the UI can pin the goal.
+   */
+  setDebugMode(sessionId: string, enabled: boolean): void {
+    const agent = this.activeSessions.get(sessionId);
+    if (!agent) {
+      const prefs = this.modePreferences.get(sessionId) ?? {};
+      prefs.debugEnabled = enabled;
+      this.modePreferences.set(sessionId, prefs);
+      this._onDebugModeChanged.fire({ sessionId, enabled });
+      return;
+    }
+    agent.setDebugMode(enabled);
+    const prefs = this.modePreferences.get(sessionId) ?? {};
+    prefs.debugEnabled = enabled;
+    this.modePreferences.set(sessionId, prefs);
+    this._onDebugModeChanged.fire({ sessionId, enabled });
+
+    // Start/stop a short-interval poller that watches for goal capture.
+    // The agent sets `_debugGoal` lazily in the UserPromptSubmit hook;
+    // polling lets us emit a one-shot `sessionGoalCaptured` event without
+    // coupling the agent to the event bus.
+    if (enabled) {
+      this.startGoalPoller(sessionId);
+    } else {
+      this.stopGoalPoller(sessionId);
+      this.sessionGoals.delete(sessionId);
+    }
+  }
+
+  /** @internal */
+  private startGoalPoller(sessionId: string): void {
+    this.stopGoalPoller(sessionId);
+    const tick = (): void => {
+      const agent = this.activeSessions.get(sessionId);
+      if (!agent) {
+        this.stopGoalPoller(sessionId);
+        return;
+      }
+      const goal = agent.getDebugGoal();
+      if (goal && this.sessionGoals.get(sessionId) !== goal) {
+        this.sessionGoals.set(sessionId, goal);
+        this._onSessionGoalCaptured.fire({
+          sessionId,
+          goal,
+          capturedAt: Date.now(),
+        });
+        // Goal captured — no need to keep polling.
+        this.stopGoalPoller(sessionId);
+      }
+    };
+    const handle = setInterval(tick, 500);
+    this.goalPollers.set(sessionId, handle);
+  }
+
+  /** @internal */
+  private stopGoalPoller(sessionId: string): void {
+    const handle = this.goalPollers.get(sessionId);
+    if (handle) {
+      clearInterval(handle);
+      this.goalPollers.delete(sessionId);
+    }
+  }
+
+  /** Get Debug mode for a session. */
+  getDebugMode(sessionId: string): boolean {
+    const agent = this.activeSessions.get(sessionId);
+    if (agent === undefined) {
+      const prefs = this.modePreferences.get(sessionId);
+      return prefs?.debugEnabled ?? false;
+    }
+    return agent.getDebugMode();
   }
 
   /**

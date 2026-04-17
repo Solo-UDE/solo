@@ -1,4 +1,5 @@
-import { ListChecks, CircleNotch, Check, Circle } from '@phosphor-icons/react';
+import { CheckIcon, CircleIcon } from '@radix-ui/react-icons';
+import { ListChecks, Loader2 } from 'lucide-react';
 
 import type { FC } from 'react';
 
@@ -27,13 +28,13 @@ export const TodoToolWidget: FC<TodoToolWidgetProps> = ({
   const items = todos?.map(parseTodo) ?? [];
 
   return (
-    <div className="my-2 rounded-md border border-border bg-card overflow-hidden">
+    <div className="my-2 tool-widget-frame">
       <div className="flex items-center gap-2 px-3 py-1.5 bg-muted">
         <ListChecks className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
         <span className="text-sm font-medium text-foreground">
           {isRunning ? 'Updating Tasks...' : 'Tasks'}
         </span>
-        {isRunning ? <CircleNotch className="h-3 w-3 animate-spin text-muted-foreground ml-auto" /> : null}
+        {isRunning ? <Loader2 className="h-3 w-3 animate-spin text-muted-foreground ml-auto" /> : null}
       </div>
 
       {items.length > 0 ? (
@@ -43,9 +44,9 @@ export const TodoToolWidget: FC<TodoToolWidgetProps> = ({
             return (
               <div key={item.id ?? `todo-${String(i)}`} className="flex items-start gap-2 px-2 py-1">
                 {isDone ? (
-                  <Check className="h-3.5 w-3.5 text-success shrink-0 mt-0.5" weight="bold" />
+                  <CheckIcon width={14} height={14} className="text-success shrink-0 mt-0.5" />
                 ) : (
-                  <Circle className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
+                  <CircleIcon width={14} height={14} className="text-muted-foreground shrink-0 mt-0.5" />
                 )}
                 <span className={`text-xs ${isDone ? 'text-muted-foreground line-through' : 'text-foreground'}`}>
                   {item.content ?? JSON.stringify(item)}

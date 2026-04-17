@@ -5,7 +5,7 @@
  * output line count badge, and full output in collapsible section.
  */
 
-import { Terminal } from '@phosphor-icons/react';
+import { Terminal } from 'lucide-react';
 
 import { ToolCard } from './ToolCard';
 

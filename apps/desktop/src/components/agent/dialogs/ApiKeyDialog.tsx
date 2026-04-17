@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
-import { Key, Eye, EyeSlash, CircleNotch } from '@phosphor-icons/react';
+import { EyeOpenIcon, EyeNoneIcon } from '@radix-ui/react-icons';
+import { KeyRound, Loader2 } from 'lucide-react';
 import {
 	Dialog,
 	DialogContent,
@@ -68,7 +69,7 @@ export const ApiKeyDialog: FC<ApiKeyDialogProps> = ({
 				{/* Header */}
 				<div className="flex items-center gap-3 px-6 py-4 border-b border-border">
 					<div className="p-2 rounded-lg bg-primary/10">
-						<Key className="w-5 h-5 text-primary" />
+						<KeyRound className="w-5 h-5 text-primary" />
 					</div>
 					<div>
 						<DialogTitle className="text-lg font-semibold text-foreground">
@@ -113,9 +114,9 @@ export const ApiKeyDialog: FC<ApiKeyDialogProps> = ({
 								className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-muted/60"
 							>
 								{showKey ? (
-									<EyeSlash className="w-4 h-4 text-muted-foreground" />
+									<EyeNoneIcon width={16} height={16} className="text-muted-foreground" />
 								) : (
-									<Eye className="w-4 h-4 text-muted-foreground" />
+									<EyeOpenIcon width={16} height={16} className="text-muted-foreground" />
 								)}
 							</button>
 						</div>
@@ -152,7 +153,7 @@ export const ApiKeyDialog: FC<ApiKeyDialogProps> = ({
 							disabled:opacity-50 disabled:cursor-not-allowed
 						`}
 					>
-						{isSubmitting && <CircleNotch weight="bold" className="w-4 h-4 animate-spin" />}
+						{isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
 						{isSubmitting ? 'Saving...' : 'Save API Key'}
 					</button>
 				</div>

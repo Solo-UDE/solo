@@ -9,6 +9,7 @@ use git2::{
     IndexAddOption, MergeOptions, PushOptions, RemoteCallbacks, Repository, ResetType, Signature,
     StatusOptions,
 };
+use solo_fs::{git_watcher, SharedGitRefWatcher};
 use solo_protocol::{
     BackendEvent, BranchInfo, DiffHunk, DiffLine, FileDiff, GitChangedFile, GitChangesResponse,
     GitChangesSummary, GitFileDiffResponse, GitFileStatus, GitMergeResult, GitPullResponse,
@@ -16,8 +17,9 @@ use solo_protocol::{
 };
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use tauri::{AppHandle, Emitter, State};
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 use tracing::{error, info, warn};
 
 /// Application state for git operations
@@ -25,12 +27,17 @@ pub struct GitState {
     /// Cached workspace path (reserved for future use)
     #[allow(dead_code)]
     pub workspace_path: RwLock<Option<PathBuf>>,
+    /// Watcher for `.git/` mutations made outside our Tauri commands
+    /// (agent Bash tool, embedded terminal, external CLIs). Emits
+    /// `GitChangesUpdated` so the UI doesn't lag behind reality.
+    pub ref_watcher: SharedGitRefWatcher,
 }
 
 impl GitState {
     pub fn new() -> Self {
         Self {
             workspace_path: RwLock::new(None),
+            ref_watcher: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -39,6 +46,34 @@ impl Default for GitState {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Install a fresh `.git/` watcher for `workspace` and spawn a task that forwards
+/// its debounced signals to the frontend as `GitChangesUpdated` events.
+/// Replaces any previously-installed watcher. Safe to call even on non-repo paths.
+pub async fn install_git_ref_watcher(
+    git_state: &GitState,
+    app: AppHandle,
+    workspace: PathBuf,
+) {
+    if let Err(e) = git_watcher::install(&git_state.ref_watcher, &workspace).await {
+        warn!("Failed to install .git watcher for {}: {}", workspace.display(), e);
+        return;
+    }
+
+    // If install() produced a watcher, subscribe and forward signals.
+    let slot = git_state.ref_watcher.lock().await;
+    let Some(watcher) = slot.as_ref() else {
+        return; // not a repo — nothing to forward
+    };
+    let mut rx = watcher.subscribe();
+    drop(slot);
+
+    tokio::spawn(async move {
+        while rx.recv().await.is_ok() {
+            let _ = app.emit("backend-event", &BackendEvent::GitChangesUpdated {});
+        }
+    });
 }
 
 /// Helper to get the workspace path from FsState
@@ -357,6 +392,7 @@ pub async fn git_setup(
 pub async fn git_push(
     fs_state: State<'_, crate::fs_commands::FsState>,
     app: AppHandle,
+    stats: State<'_, crate::stats_commands::StatsState>,
     access_token: String,
     github_repo_url: String,
     branch: String,
@@ -366,7 +402,7 @@ pub async fn git_push(
     let _ = commit_message;
     let workspace_path = get_workspace_path(&fs_state).await?;
 
-    tokio::task::spawn_blocking(move || {
+    let result = tokio::task::spawn_blocking(move || {
         emit_git_progress(&app, "push", "Preparing to push...");
         cleanup_git_locks(&workspace_path);
 
@@ -474,7 +510,19 @@ pub async fn git_push(
         result
     })
     .await
-    .map_err(|e| format!("Task join error: {}", e))?
+    .map_err(|e| format!("Task join error: {}", e))?;
+
+    if let Ok(ref response) = result {
+        if response.commits_count > 0 {
+            stats
+                .record(solo_stats::StatsEvent::CommitsPushed {
+                    count: response.commits_count.try_into().unwrap_or(u32::MAX),
+                })
+                .await;
+        }
+    }
+
+    result
 }
 
 /// Pull changes from GitHub
@@ -1668,6 +1716,9 @@ pub async fn git_fetch(
         })();
 
         let _ = upsert_remote(&repo, "github-integ", &github_repo_url);
+
+        // Remote-tracking refs moved — signal the UI to re-read status/changes.
+        emit_git_changes_updated(&app);
         result
     })
     .await

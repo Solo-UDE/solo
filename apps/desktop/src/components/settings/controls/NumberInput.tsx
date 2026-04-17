@@ -4,7 +4,7 @@
  */
 
 import { useCallback } from 'react';
-import { Minus, Plus } from '@phosphor-icons/react';
+import { MinusIcon, PlusIcon } from '@radix-ui/react-icons';
 import { cn } from '../../../lib/utils';
 
 interface NumberInputProps {
@@ -53,13 +53,13 @@ export function NumberInput({
         onClick={handleDecrement}
         disabled={disabled || value <= min}
         className={cn(
-          "p-2 border border-r-0 border-border rounded-l-lg",
-          "bg-muted hover:bg-muted/80",
+          "rounded-l-[8px] border border-r-0 border-border bg-muted px-2.5 py-1.5",
+          "hover:bg-muted/80",
           "disabled:cursor-not-allowed disabled:opacity-50",
           "transition-colors cursor-pointer"
         )}
       >
-        <Minus className="w-3 h-3" />
+        <MinusIcon className="w-3 h-3" />
       </button>
       <input
         type="number"
@@ -69,8 +69,9 @@ export function NumberInput({
         max={max}
         step={step}
         disabled={disabled}
+        style={{ width: `${Math.max(4, String(max).length + 2)}ch` }}
         className={cn(
-          "w-16 px-3 py-1.5 text-center text-sm",
+          "px-2 py-1.5 text-center text-sm tabular-nums",
           "border-y border-border bg-background text-foreground",
           "focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-inset",
           "disabled:cursor-not-allowed disabled:opacity-50",
@@ -82,13 +83,13 @@ export function NumberInput({
         onClick={handleIncrement}
         disabled={disabled || value >= max}
         className={cn(
-          "p-2 border border-l-0 border-border rounded-r-lg",
-          "bg-muted hover:bg-muted/80",
+          "rounded-r-[8px] border border-l-0 border-border bg-muted px-2.5 py-1.5",
+          "hover:bg-muted/80",
           "disabled:cursor-not-allowed disabled:opacity-50",
           "transition-colors cursor-pointer"
         )}
       >
-        <Plus className="w-3 h-3" />
+        <PlusIcon className="w-3 h-3" />
       </button>
     </div>
   );

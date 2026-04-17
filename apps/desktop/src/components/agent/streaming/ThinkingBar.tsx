@@ -6,7 +6,7 @@
  * processing indicator between tool calls.
  */
 
-import { CaretRight } from '@phosphor-icons/react';
+import { ChevronRightIcon } from '@radix-ui/react-icons';
 
 import { TextShimmer } from './TextShimmer';
 import { ThinkingDots } from './ThinkingDots';
@@ -50,7 +50,7 @@ export const ThinkingBar: FC<ThinkingBarProps> = ({
         className="flex items-center gap-1 text-sm transition-opacity hover:opacity-80"
       >
         <TextShimmer className="font-medium text-xs">{text}</TextShimmer>
-        <CaretRight className="text-muted-foreground h-3.5 w-3.5" />
+        <ChevronRightIcon width={14} height={14} className="text-muted-foreground" />
       </button>
     ) : (
       <TextShimmer className="cursor-default font-medium text-xs">{text}</TextShimmer>

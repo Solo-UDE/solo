@@ -2,7 +2,7 @@
  * ThemeSelector - Visual preview cards for theme selection
  */
 
-import { Monitor, Sun, Moon } from '@phosphor-icons/react';
+import { DesktopIcon, SunIcon, MoonIcon } from '@radix-ui/react-icons';
 import type { ColorScheme } from '@/stores/settingsStore';
 
 interface ThemeSelectorProps {
@@ -132,15 +132,15 @@ const SystemPreview = () => (
   </div>
 );
 
-const options: { value: ColorScheme; label: string; Icon: typeof Monitor }[] = [
-  { value: 'system', label: 'System', Icon: Monitor },
-  { value: 'light', label: 'Light', Icon: Sun },
-  { value: 'dark', label: 'Dark', Icon: Moon },
+const options: { value: ColorScheme; label: string; Icon: typeof DesktopIcon }[] = [
+  { value: 'system', label: 'System', Icon: DesktopIcon },
+  { value: 'light', label: 'Light', Icon: SunIcon },
+  { value: 'dark', label: 'Dark', Icon: MoonIcon },
 ];
 
 export function ThemeSelector({ value, onChange }: ThemeSelectorProps) {
   return (
-    <div className="flex gap-3">
+    <div className="flex gap-2.5">
       {options.map(({ value: scheme, label, Icon }) => {
         const selected = value === scheme;
         return (
@@ -149,11 +149,11 @@ export function ThemeSelector({ value, onChange }: ThemeSelectorProps) {
             type="button"
             onClick={() => onChange(scheme)}
             className={`
-              group flex flex-col items-center gap-2 rounded-xl p-2 pb-2.5
-              transition-[transform,box-shadow,border-color] duration-200
+              group flex flex-col items-center gap-2 rounded-[10px] border px-2 py-2
+              transition-[transform,background-color,border-color,box-shadow] duration-200
               ${selected
-                ? 'bg-primary/10 ring-2 ring-primary shadow-md'
-                : 'bg-muted/30 ring-1 ring-border/40 hover:ring-border/70 hover:shadow-sm'
+                ? 'border-primary/50 bg-primary/8 shadow-[0_10px_24px_-18px_rgba(0,0,0,0.28)] dark:shadow-[0_10px_24px_-18px_rgba(0,0,0,0.45)]'
+                : 'border-border/60 bg-background/70 hover:border-border hover:bg-background'
               }
             `}
             style={{
@@ -163,9 +163,9 @@ export function ThemeSelector({ value, onChange }: ThemeSelectorProps) {
             {/* Preview card */}
             <div
               className={`
-                w-[120px] h-[72px] rounded-md overflow-hidden
+                h-[68px] w-[112px] overflow-hidden rounded-[7px] border border-border/50
                 transition-transform duration-200
-                ${!selected ? 'group-hover:scale-[1.02]' : ''}
+                ${!selected ? 'group-hover:scale-[1.01]' : ''}
               `}
               style={{
                 transitionTimingFunction: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
@@ -180,12 +180,12 @@ export function ThemeSelector({ value, onChange }: ThemeSelectorProps) {
             {/* Label */}
             <div className="flex items-center gap-1.5">
               <Icon
-                size={14}
-                weight={selected ? 'fill' : 'regular'}
+                width={14}
+                height={14}
                 className={selected ? 'text-primary' : 'text-muted-foreground'}
               />
               <span
-                className={`text-xs font-medium ${
+                className={`text-[12px] font-medium ${
                   selected ? 'text-primary' : 'text-muted-foreground'
                 }`}
               >

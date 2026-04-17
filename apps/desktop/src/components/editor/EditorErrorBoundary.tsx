@@ -3,7 +3,7 @@
  */
 
 import { Component, ErrorInfo, ReactNode } from 'react';
-import { WarningCircle, ArrowsClockwise } from '@phosphor-icons/react';
+import { ExclamationTriangleIcon, ReloadIcon } from '@radix-ui/react-icons';
 
 interface Props {
   children: ReactNode;
@@ -39,7 +39,7 @@ export class EditorErrorBoundary extends Component<Props, State> {
       return (
         <div className="flex flex-col items-center justify-center h-full bg-background p-8">
           <div className="text-center space-y-4 max-w-md">
-            <WarningCircle className="w-12 h-12 text-destructive mx-auto" />
+            <ExclamationTriangleIcon className="w-12 h-12 text-destructive mx-auto" />
             <h2 className="text-lg font-medium text-foreground">Editor Error</h2>
             <p className="text-sm text-muted-foreground">
               Something went wrong while rendering the editor.
@@ -53,7 +53,7 @@ export class EditorErrorBoundary extends Component<Props, State> {
               onClick={this.handleReset}
               className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-[10px] hover:brightness-110 active:scale-[0.97] transition-[transform,background-color] duration-200"
             >
-              <ArrowsClockwise className="w-4 h-4" />
+              <ReloadIcon className="w-4 h-4" />
               Try Again
             </button>
           </div>

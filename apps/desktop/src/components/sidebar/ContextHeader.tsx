@@ -4,20 +4,8 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import type { FC } from 'react';
-import {
-  GitBranch,
-  FolderOpen,
-  FilePlus,
-  FolderPlus,
-  ArrowsClockwise,
-  X,
-  Plus,
-  CloudArrowDown,
-  CloudArrowUp,
-  ArrowsInSimple,
-  TreeStructure,
-  CaretDown,
-} from '@phosphor-icons/react';
+import { ChevronDownIcon, Cross2Icon, PlusIcon, ReloadIcon } from '@radix-ui/react-icons';
+import { GitBranch, FolderOpen, FilePlus, FolderPlus, CloudDownload, CloudUpload, Minimize2, Network } from 'lucide-react';
 import { useUIStore } from '@/stores/uiStore';
 import { useGitStore } from '@/stores/gitStore';
 import { useActiveWorktree } from '@/stores/worktreeStore';
@@ -133,15 +121,14 @@ export const ContextHeader: FC<ContextHeaderProps> = ({ onNewSession }) => {
           {DisplayIcon && (
             <DisplayIcon
               className={cn('w-3.5 h-3.5 shrink-0', isGitRepo && 'text-primary')}
-              weight="bold"
             />
           )}
           <span className="truncate">{displayName}</span>
           {activeWorktree && (
-            <TreeStructure className="w-3 h-3 text-primary/60 shrink-0" weight="bold" />
+            <Network className="w-3 h-3 text-primary/60 shrink-0" />
           )}
           {isGitRepo && (
-            <CaretDown className="w-3 h-3 text-muted-foreground/60 shrink-0" weight="bold" />
+            <ChevronDownIcon className="w-3 h-3 text-muted-foreground/60 shrink-0" />
           )}
         </button>
 
@@ -156,14 +143,14 @@ export const ContextHeader: FC<ContextHeaderProps> = ({ onNewSession }) => {
           <>
             <IconButton onClick={handleNewFile} title="New File" icon={FilePlus} />
             <IconButton onClick={handleNewFolder} title="New Folder" icon={FolderPlus} />
-            <IconButton onClick={collapseAll} title="Collapse All" icon={ArrowsInSimple} />
-            <IconButton onClick={handleRefreshExplorer} title="Refresh" icon={ArrowsClockwise} />
-            <IconButton onClick={closeFolder} title="Close Folder" icon={X} />
+            <IconButton onClick={collapseAll} title="Collapse All" icon={Minimize2} />
+            <IconButton onClick={handleRefreshExplorer} title="Refresh" icon={ReloadIcon} />
+            <IconButton onClick={closeFolder} title="Close Folder" icon={Cross2Icon} />
           </>
         )}
 
         {activeTab === 'sessions' && (
-          <IconButton onClick={onNewSession} title="New Session" icon={Plus} />
+          <IconButton onClick={onNewSession} title="New Session" icon={PlusIcon} />
         )}
 
         {activeTab === 'source-control' && (
@@ -171,19 +158,19 @@ export const ContextHeader: FC<ContextHeaderProps> = ({ onNewSession }) => {
             <IconButton
               onClick={handlePull}
               title="Pull"
-              icon={CloudArrowDown}
+              icon={CloudDownload}
               disabled={isPulling || !repoStatus?.has_remote}
               loading={isPulling}
             />
             <IconButton
               onClick={handlePush}
               title={commitsAhead && commitsAhead > 0 ? `Push (${commitsAhead} ahead)` : 'Push'}
-              icon={CloudArrowUp}
+              icon={CloudUpload}
               disabled={isPushing || !repoStatus?.has_remote || commitsAhead === 0 || commitsAhead === null}
               loading={isPushing}
               badge={commitsAhead != null && commitsAhead > 0 ? commitsAhead : undefined}
             />
-            <IconButton onClick={handleRefreshGit} title="Refresh" icon={ArrowsClockwise} />
+            <IconButton onClick={handleRefreshGit} title="Refresh" icon={ReloadIcon} />
           </>
         )}
       </div>
@@ -195,7 +182,7 @@ export const ContextHeader: FC<ContextHeaderProps> = ({ onNewSession }) => {
 interface IconButtonProps {
   onClick: () => void;
   title: string;
-  icon: React.ComponentType<{ className?: string; weight?: 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone' }>;
+  icon: React.ComponentType<{ className?: string }>;
   disabled?: boolean;
   loading?: boolean;
   badge?: number;
@@ -213,7 +200,7 @@ const IconButton: FC<IconButtonProps> = ({ onClick, title, icon: Icon, disabled,
     )}
     title={title}
   >
-    <Icon className={cn('w-3.5 h-3.5', loading && 'animate-spin')} weight="bold" />
+    <Icon className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
     {badge != null && badge > 0 && (
       <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-0.5 flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[9px] font-semibold leading-none">
         {badge}
