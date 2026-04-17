@@ -1,9 +1,9 @@
 /**
- * MentionDropdown - Floating search dropdown for @-mention file selection.
+ * MentionDropdown — Codex-style single-line file picker for @-mentions.
  *
- * Styling follows the same tokens as SlashCommandDropdown and @solo/ui Menu:
- * rounded-md popover surface, ring+shadow-xl elevation, rounded-sm items
- * with bg-accent highlight, fade-in-scale entrance.
+ * Shares the same row layout as SlashCommandDropdown: one row per result,
+ * icon + name + inline path description. Blurred translucent popover
+ * surface with subtle ring.
  */
 
 import { FileIcon } from '@react-symbols/icons/utils';
@@ -20,9 +20,9 @@ export interface MentionDropdownProps {
 }
 
 const itemBase =
-	'group w-full flex items-start gap-2 rounded-sm px-2 py-1 text-[13px] text-left ' +
+	'group flex w-full items-center gap-2 rounded-sm px-2 h-7 text-[13px] text-left ' +
 	'cursor-default select-none outline-none transition-colors';
-const itemIdle = 'hover:bg-accent hover:text-accent-foreground';
+const itemIdle = 'text-foreground/90 hover:bg-accent hover:text-accent-foreground';
 const itemActive = 'bg-accent text-accent-foreground';
 
 export const MentionDropdown: FC<MentionDropdownProps> = ({
@@ -42,15 +42,15 @@ export const MentionDropdown: FC<MentionDropdownProps> = ({
 		<div
 			ref={listRef}
 			className={
-				'fixed z-50 w-72 max-h-60 overflow-y-auto rounded-md p-1 ' +
-				'bg-popover text-popover-foreground ' +
-				'ring-1 ring-black/5 dark:ring-white/10 shadow-xl ' +
+				'fixed z-50 w-[32rem] max-h-80 overflow-y-auto rounded-lg p-1 ' +
+				'bg-popover/90 backdrop-blur-md text-popover-foreground ' +
+				'ring-1 ring-black/10 dark:ring-white/10 shadow-xl ' +
 				'animate-[fade-in-scale_150ms_cubic-bezier(0.16,1,0.3,1)]'
 			}
 			style={{ bottom: position.bottom, left: position.left }}
 		>
 			{results.length === 0 ? (
-				<div className="px-2 py-2 text-[13px] text-muted-foreground text-center">
+				<div className="h-7 flex items-center justify-center text-[13px] text-muted-foreground">
 					No files found
 				</div>
 			) : (
@@ -64,17 +64,15 @@ export const MentionDropdown: FC<MentionDropdownProps> = ({
 							className={`${itemBase} ${isActive ? itemActive : itemIdle}`}
 							type="button"
 						>
-							<span className="mt-[1px] shrink-0">
-								<FileIcon fileName={result.name} autoAssign className="size-3.5" />
+							<span className="shrink-0">
+								<FileIcon fileName={result.name} autoAssign className="size-4" />
 							</span>
-							<div className="min-w-0 flex-1">
-								<div className="truncate font-medium text-foreground">
-									{result.name}
-								</div>
-								<div className="truncate text-[11px] text-muted-foreground">
-									{result.relativePath}
-								</div>
-							</div>
+							<span className="shrink-0 font-medium truncate max-w-[16rem]">
+								{result.name}
+							</span>
+							<span className="min-w-0 flex-1 truncate text-muted-foreground/90 group-hover:text-accent-foreground/80">
+								{result.relativePath}
+							</span>
 						</button>
 					);
 				})
