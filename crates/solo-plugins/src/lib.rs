@@ -12,4 +12,8 @@ pub mod store;
 pub mod toggles;
 
 pub use id::{PluginId, PluginIdError, validate_plugin_segment};
+pub use manifest::{
+    PluginManifest, PluginManifestInterface, PluginManifestPaths, find_plugin_manifest_path,
+    load_plugin_manifest,
+};
 pub use path::AbsolutePathBuf;
