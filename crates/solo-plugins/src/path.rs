@@ -1,8 +1,9 @@
 //! Absolute-path newtype and safe-relative-path resolver.
 //!
-//! Minimal subset of codex-rs/utils/absolute-path/src/lib.rs — Solo does not
-//! need tilde expansion, a deserialize guard, or `dunce` canonicalization at
-//! the foundation layer.
+//! Minimal subset of `codex-rs/utils/absolute-path/src/lib.rs` (Apache-2.0) —
+//! Solo does not need tilde expansion, a deserialize guard, or `dunce`
+//! canonicalization at the foundation layer. See the crate-level `README.md`
+//! for full attribution.
 
 use std::path::{Component, Path, PathBuf};
 
