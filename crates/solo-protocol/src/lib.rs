@@ -1185,6 +1185,96 @@ pub enum OnboardingImportMode {
     Symlink,
 }
 
+// =============================================================================
+// Stats & Tier Protocol
+// =============================================================================
+
+/// Pending counters buffered on-device before the next cloud sync.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub struct StatsDelta {
+    #[serde(default)]
+    pub commits: u64,
+    #[serde(default)]
+    pub tokens: u64,
+    #[serde(default)]
+    pub worktrees: u64,
+    #[serde(default)]
+    pub sessions: u64,
+    #[serde(default)]
+    pub messages: u64,
+}
+
+/// Cumulative stats pulled from the cloud. Drives the Journey page UI.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub struct CumulativeStats {
+    #[serde(default)]
+    pub commits: u64,
+    #[serde(default)]
+    pub tokens: u64,
+    #[serde(default)]
+    pub worktrees: u64,
+    #[serde(default)]
+    pub sessions: u64,
+    #[serde(default)]
+    pub messages: u64,
+    #[serde(default)]
+    pub tier: u8,
+    #[serde(default)]
+    pub tier_progress: f64,
+    #[serde(default)]
+    pub score: f64,
+    #[serde(default)]
+    pub streak_current: u32,
+    #[serde(default)]
+    pub streak_longest: u32,
+    #[serde(default)]
+    pub last_active: Option<String>,
+}
+
+/// Full on-disk + in-memory snapshot of the local stats state.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub struct StatsSnapshot {
+    #[serde(default)]
+    pub pending: StatsDelta,
+    #[serde(default)]
+    pub cumulative: CumulativeStats,
+    #[serde(default)]
+    pub last_sync_at: Option<String>,
+}
+
+/// Single entry in the cloud leaderboard response.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub struct LeaderboardEntry {
+    pub user_id: String,
+    #[serde(default)]
+    pub github_username: Option<String>,
+    pub tier: u8,
+    pub score: f64,
+    pub commits: u64,
+    pub tokens: u64,
+    pub worktrees: u64,
+}
+
+/// Tier metadata returned by `/v1/tier/me` plus the unlocked name pool.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub struct TierInfo {
+    pub tier: u8,
+    pub tier_progress: f64,
+    pub score: f64,
+    pub tier_name: String,
+    pub names: Vec<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
