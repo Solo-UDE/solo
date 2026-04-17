@@ -94,6 +94,12 @@ export interface SessionConfig {
   model?: string;
   /** Output-token cap forwarded to the SDK (Claude Code's CLAUDE_CODE_MAX_OUTPUT_TOKENS). */
   maxTokens?: number;
+  /**
+   * Explicit per-session tool allow-list. When present, the SDK is started
+   * with this exact list and no other tools are callable. Used by the Git
+   * Agent harness to restrict the model to git + read-only file operations.
+   */
+  allowedTools?: string[];
   sessionMode?: 'chat' | 'agent';
   resumeSessionId?: string;
   forkSession?: boolean;
@@ -446,6 +452,7 @@ export class SessionManager extends Disposable {
       critiqueEnabled: storedPrefs?.critiqueEnabled ?? config?.critiqueEnabled ?? false,
       model: storedPrefs?.model ?? config?.model,
       maxTokens: storedPrefs?.maxTokens ?? config?.maxTokens,
+      allowedTools: config?.allowedTools,
       cwd: config?.cwd,
       sessionMode: config?.sessionMode ?? 'agent',
       permissionRequestCallback: permissionCallback,
