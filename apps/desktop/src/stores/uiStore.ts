@@ -12,10 +12,18 @@ export type SidebarTab = 'explorer' | 'sessions' | 'source-control';
 // Settings tab types
 export type SettingsTabId = 'journey' | 'leaderboard' | 'general' | 'editor' | 'terminal' | 'files' | 'shortcuts' | 'ai' | 'voice' | 'skills';
 
-// Dev/Studio sidebar mode
-export type SidebarMode = 'dev' | 'studio';
+// Dev/Vault sidebar mode.
+// Sessions moved out of the Vault tab (they're worktree-bound and live under Dev now).
+// Automations + ContentCreation were deprecated during the Solo IDE redesign.
+export type SidebarMode = 'dev' | 'vault';
 export type DevSidebarView = 'worktree-list' | 'worktree-detail';
-export type StudioNav = 'sessions' | 'vault' | 'automations' | 'content-creation';
+export type VaultNav =
+  | 'skills'
+  | 'memory'
+  | 'tasks'
+  | 'current-vault'
+  | 'plugins'
+  | 'connectors';
 
 interface UIState {
   leftSidebarWidth: number;
@@ -31,7 +39,7 @@ interface UIState {
   sidebarMode: SidebarMode;
   devSidebarView: DevSidebarView;
   devDetailWorktreeId: string | null;
-  studioActiveNav: StudioNav;
+  vaultActiveNav: VaultNav;
   zoomLevel: number;
 }
 
@@ -79,7 +87,7 @@ interface UIActions {
   setSidebarMode: (mode: SidebarMode) => void;
   drillIntoWorktree: (worktreeId: string) => void;
   drillOutOfWorktree: () => void;
-  setStudioNav: (nav: StudioNav) => void;
+  setVaultNav: (nav: VaultNav) => void;
   zoomIn: () => void;
   zoomOut: () => void;
   resetZoom: () => void;
@@ -103,7 +111,7 @@ export const useUIStore = create<UIStore>()(
     sidebarMode: 'dev' as SidebarMode,
     devSidebarView: 'worktree-list' as DevSidebarView,
     devDetailWorktreeId: null,
-    studioActiveNav: 'sessions' as StudioNav,
+    vaultActiveNav: 'memory' as VaultNav,
     zoomLevel: loadPersistedZoom(),
 
     toggleLeftSidebar: (): void => {
@@ -242,9 +250,9 @@ export const useUIStore = create<UIStore>()(
       });
     },
 
-    setStudioNav: (nav: StudioNav): void => {
+    setVaultNav: (nav: VaultNav): void => {
       set((state) => {
-        state.studioActiveNav = nav;
+        state.vaultActiveNav = nav;
       });
     },
 
