@@ -7,6 +7,7 @@ import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
 import type { User } from "../lib/auth";
 import * as auth from "../lib/auth";
+import { useCloudStatsStore } from "./cloudStatsStore";
 
 // =============================================================================
 // Types
@@ -31,6 +32,8 @@ interface AuthActions {
 
   // OAuth
   signInWithGitHub: () => Promise<void>;
+  signInWithGoogle: () => Promise<void>;
+  signInWithEmail: (email: string) => Promise<void>;
   signInWithMagicLink: (email: string) => Promise<void>;
   handleAuthCallback: (code: string) => Promise<void>;
 
@@ -61,7 +64,7 @@ const initialState: AuthState = {
 // =============================================================================
 
 export const useAuthStore = create<AuthStore>()(
-  immer((set, _get) => ({
+  immer((set, get) => ({
     ...initialState,
 
     initialize: async () => {
@@ -78,6 +81,10 @@ export const useAuthStore = create<AuthStore>()(
           state.isAuthenticated = session.is_authenticated;
           state.isInitializing = false;
         });
+
+        if (session.is_authenticated) {
+          void useCloudStatsStore.getState().initialize();
+        }
       } catch (error) {
         console.error("Failed to initialize auth:", error);
         set((state) => {
@@ -109,25 +116,44 @@ export const useAuthStore = create<AuthStore>()(
       }
     },
 
-    signInWithMagicLink: async (email: string) => {
+    signInWithGoogle: async () => {
       set((state) => {
         state.isAuthenticating = true;
         state.error = null;
       });
 
       try {
-        await auth.signInWithMagicLink(email);
-        set((state) => {
-          state.isAuthenticating = false;
-        });
+        await auth.signInWithOAuth("google");
       } catch (error) {
-        console.error("Failed to send magic link:", error);
+        console.error("Failed to start Google OAuth:", error);
         set((state) => {
           state.isAuthenticating = false;
           state.error =
-            error instanceof Error ? error.message : "Failed to send magic link";
+            error instanceof Error ? error.message : "Failed to start Google sign-in";
         });
       }
+    },
+
+    signInWithEmail: async (email: string) => {
+      set((state) => {
+        state.isAuthenticating = true;
+        state.error = null;
+      });
+
+      try {
+        await auth.signInWithEmail(email);
+      } catch (error) {
+        console.error("Failed to start email sign-in:", error);
+        set((state) => {
+          state.isAuthenticating = false;
+          state.error =
+            error instanceof Error ? error.message : "Failed to start email sign-in";
+        });
+      }
+    },
+
+    signInWithMagicLink: async (email: string) => {
+      await get().signInWithEmail(email);
     },
 
     handleAuthCallback: async (code: string) => {
@@ -144,6 +170,10 @@ export const useAuthStore = create<AuthStore>()(
           s.isAuthenticated = session.is_authenticated;
           s.isAuthenticating = false;
         });
+
+        if (session.is_authenticated) {
+          void useCloudStatsStore.getState().initialize();
+        }
       } catch (error) {
         console.error("Failed to complete authentication:", error);
         set((s) => {
@@ -157,15 +187,24 @@ export const useAuthStore = create<AuthStore>()(
     },
 
     signOut: async () => {
+      console.debug("[authStore.signOut] optimistic clear");
+      // Optimistic: flip the UI first so the user sees immediate feedback.
+      // Rust cleanup (vault deletes + Cognito logout URL) runs concurrently;
+      // if it errors we surface a toast-level message but don't rehydrate
+      // the session — the user's intent is unambiguous.
+      set((state) => {
+        state.user = null;
+        state.isAuthenticated = false;
+        state.error = null;
+      });
+      useCloudStatsStore.getState().reset();
+      console.debug("[authStore.signOut] state cleared; invoking Rust");
+
       try {
         await auth.signOut();
-
-        set((state) => {
-          state.user = null;
-          state.isAuthenticated = false;
-        });
+        console.debug("[authStore.signOut] Rust signOut completed");
       } catch (error) {
-        console.error("Failed to sign out:", error);
+        console.error("[authStore.signOut] Rust signOut errored:", error);
         set((state) => {
           state.error =
             error instanceof Error ? error.message : "Failed to sign out";
