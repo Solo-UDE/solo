@@ -17,4 +17,5 @@ pub use manifest::{
     load_plugin_manifest,
 };
 pub use path::AbsolutePathBuf;
+pub use store::{PluginInstallResult, PluginStore, PluginStoreError};
 pub use toggles::{PluginToggleEntry, PluginToggles};
