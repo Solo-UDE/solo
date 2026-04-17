@@ -32,6 +32,8 @@ import { useAttachmentStore } from '../../../stores/attachmentStore';
 import { useWorktreeList } from '../../../stores/worktreeStore';
 import { DEFAULT_MODEL_ID } from '../../../lib/constants';
 import { VoiceButton } from './voice-button';
+import { toolbarButtonIconOnly } from './toolbar-button-class';
+import { cn } from '../../../lib/utils';
 
 import type { Mode } from './mode-selector';
 
@@ -69,23 +71,26 @@ export interface ChatInputContainerProps {
   debugModeActive?: boolean;
 }
 
-export const ChatInputContainer = forwardRef<ChatInputContainerHandle, ChatInputContainerProps>(({
-  onSubmit,
-  onEnqueue,
-  onRecallQueue,
-  onLocalCommand,
-  onAbort,
-  isAgentRunning = false,
-  className = '',
-  worktreeId,
-  onWorktreeChange,
-  onModeChange,
-  thinkingEnabled = false,
-  onThinkingChange,
-  planModeActive = false,
-  acceptModeActive = false,
-  debugModeActive = false,
-}, forwardedRef) => {
+function ChatInputContainerInner(
+  {
+    onSubmit,
+    onEnqueue,
+    onRecallQueue,
+    onLocalCommand,
+    onAbort,
+    isAgentRunning = false,
+    className = '',
+    worktreeId,
+    onWorktreeChange,
+    onModeChange,
+    thinkingEnabled = false,
+    onThinkingChange,
+    planModeActive = false,
+    acceptModeActive = false,
+    debugModeActive = false,
+  }: ChatInputContainerProps,
+  forwardedRef: React.ForwardedRef<ChatInputContainerHandle>,
+) {
   const [content, setContent] = useState('');
   // Derive initial mode from bridge state so remounted components get the right mode
   const [mode, setMode] = useState<Mode>(() => {
@@ -283,143 +288,152 @@ export const ChatInputContainer = forwardRef<ChatInputContainerHandle, ChatInput
   const showWorktreeSelector = onWorktreeChange && worktrees.length > 1;
 
   return (
-    <div className={`bg-background ${className}`}>
-      <div className="max-w-3xl mx-auto px-3 pb-3 pt-1.5">
-        {/* Floating card wrapping editor + toolbar */}
-        <div className="bg-card/95 backdrop-blur-md rounded-[16px] shadow-[0_4px_24px_-4px_rgba(0,0,0,0.15)] ring-1 ring-white/[0.06]">
-          {/* Attachment chips/thumbnails — above editor (like Conductor) */}
+    <div className={`bg-transparent ${className}`}>
+      <div className="mx-auto max-w-[56rem] px-4 pb-3 pt-2">
+        <div className="rounded-[14px] border border-border/80 bg-card/96 shadow-[0_18px_36px_-30px_rgba(0,0,0,0.42)]">
           <AttachmentBar />
 
-          {/* Editor with drop zone — stays live while the agent is running so users can queue messages. */}
           <DropZoneOverlay>
-            <LexicalEditor
-              ref={editorRef}
-              onChange={setContent}
-              onKeyDown={handleKeyDown}
-              onMentionsChange={setMentions}
-              onSkillsChange={setSkillNames}
-              onLocalCommand={onLocalCommand}
-              onAgentCommand={handleAgentCommand}
-              placeholder={isAgentRunning ? 'Queue a follow-up… (Enter to queue)' : 'Ask anything, @ for context, / for skills'}
-              mode={messageMode}
-              onEmptyUpArrow={handleRecallQueue}
-            />
+            <div className="px-2.5 pt-1.5">
+              <LexicalEditor
+                ref={editorRef}
+                onChange={setContent}
+                onKeyDown={handleKeyDown}
+                onMentionsChange={setMentions}
+                onSkillsChange={setSkillNames}
+                onLocalCommand={onLocalCommand}
+                onAgentCommand={handleAgentCommand}
+                placeholder={
+                  isAgentRunning
+                    ? 'Queue a follow-up while Solo is working...'
+                    : 'Ask Solo to plan, code, inspect, or debug. Use @ for files and / for skills.'
+                }
+                mode={messageMode}
+                onEmptyUpArrow={handleRecallQueue}
+              />
+            </div>
           </DropZoneOverlay>
 
-          {/* Bottom Controls */}
-          <div className="flex items-center justify-between px-3 pb-3 pt-1" style={{ fontFamily: 'var(--font-sans)' }}>
-            <div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
-              <ContextMenu disabled={isAgentRunning} />
-              {/* Mode is intentionally togglable mid-turn. The pipeline reads
-                  the mode dynamically on every tool call (see
-                  `permissions.ts::resolveMode`), so switching to Accept while
-                  the agent is running takes effect on the next tool use. A
-                  pending permission prompt is auto-resolved by the bridge when
-                  Accept/Plan is toggled on — matching Claude Code's behavior. */}
-              <ModeSelector value={mode} onChange={handleModeChange} />
-              <ModelPicker side="top" disabled={isAgentRunning} />
-              <ThinkingToggle
-                enabled={thinkingEnabled}
-                onChange={(enabled) => onThinkingChange?.(enabled)}
-                disabled={isAgentRunning}
-              />
-              <ContextTracker disabled={isAgentRunning} />
+          <div className="border-t border-border/70 px-3 pb-3 pt-2" style={{ fontFamily: 'var(--font-sans)' }}>
+            <div className="flex items-center gap-2">
+              <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
+                <ContextMenu disabled={isAgentRunning} />
+                <ModeSelector value={mode} onChange={handleModeChange} />
+                <ModelPicker
+                  side="top"
+                  disabled={isAgentRunning}
+                  className="min-w-0 max-w-[10.5rem] shrink"
+                />
+                <ThinkingToggle
+                  enabled={thinkingEnabled}
+                  onChange={(enabled) => onThinkingChange?.(enabled)}
+                  disabled={isAgentRunning}
+                />
+                <ContextTracker disabled={isAgentRunning} />
 
-              {showWorktreeSelector && (
-                <Select
-                  value={worktreeId ?? '__main__'}
-                  onValueChange={(v) => onWorktreeChange(v === '__main__' ? null : v)}
+                {showWorktreeSelector && (
+                  <div className="min-w-0 basis-[120px] shrink">
+                    <Select
+                      value={worktreeId ?? '__main__'}
+                      onValueChange={(v) => onWorktreeChange(v === '__main__' ? null : v)}
+                      disabled={isAgentRunning}
+                    >
+                      <SelectTrigger
+                        className="h-[30px] min-w-0 w-full rounded-[8px] bg-transparent px-2.5 text-xs font-medium text-muted-foreground hover:bg-muted/60 hover:text-foreground [&>span]:min-w-0 [&>span]:truncate"
+                        title="Worktree"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__main__">Main workspace</SelectItem>
+                        {worktrees.filter((wt) => !wt.is_main).map((wt) => (
+                          <SelectItem key={wt.id} value={wt.id}>
+                            {wt.branch ?? wt.id}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
+
+              <div className="ml-auto flex shrink-0 items-center gap-1">
+                <VoiceButton
+                  disabled={isAgentRunning}
+                  onTranscript={handleVoiceTranscript}
+                  showSuggestion={showVoiceSuggestion}
+                  onSuggestionDismiss={handleDismissVoiceSuggestion}
+                  previousText={voiceContext}
+                  chatContext={voiceContext}
+                />
+
+                <button
+                  type="button"
+                  className={cn(
+                    toolbarButtonIconOnly,
+                    'disabled:cursor-not-allowed disabled:opacity-40',
+                  )}
+                  aria-label="Screen record"
+                  title="Screen record"
                   disabled={isAgentRunning}
                 >
-                  <SelectTrigger
-                    className="h-[30px] px-2.5 text-xs font-medium rounded-[8px] bg-transparent text-muted-foreground hover:bg-muted/60 hover:text-foreground max-w-[120px] truncate"
-                    title="Worktree"
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__main__">Main workspace</SelectItem>
-                    {worktrees.filter((wt) => !wt.is_main).map((wt) => (
-                      <SelectItem key={wt.id} value={wt.id}>
-                        {wt.branch ?? wt.id}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            </div>
-
-            <div className="flex items-center gap-1 shrink-0">
-              {/* Voice input (ElevenLabs STT) */}
-              <VoiceButton
-                disabled={isAgentRunning}
-                onTranscript={handleVoiceTranscript}
-                showSuggestion={showVoiceSuggestion}
-                onSuggestionDismiss={handleDismissVoiceSuggestion}
-                previousText={voiceContext}
-                chatContext={voiceContext}
-              />
-
-              {/* Screen record (mock) */}
-              <button
-                type="button"
-                className="inline-flex items-center justify-center h-[30px] w-[30px] rounded-[8px] text-muted-foreground hover:bg-muted/60 hover:text-foreground active:scale-95 transition-[transform,background-color,color] duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
-                aria-label="Screen record"
-                title="Screen record"
-                disabled={isAgentRunning}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 256 256" className="h-4 w-4">
-                  <path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm0-160a72,72,0,1,0,72,72A72.08,72.08,0,0,0,128,56Zm0,128a56,56,0,1,1,56-56A56.06,56.06,0,0,1,128,184Z" />
-                </svg>
-              </button>
-
-              {/* Sketch canvas */}
-              <Popover open={sketchOpen} onOpenChange={setSketchOpen}>
-                <PopoverTrigger asChild>
-                  <button
-                    type="button"
-                    className="inline-flex items-center justify-center h-[30px] w-[30px] rounded-[8px] text-muted-foreground hover:bg-muted/60 hover:text-foreground active:scale-95 transition-[transform,background-color,color] duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
-                    aria-label="Sketch"
-                    title="Sketch"
-                    disabled={isAgentRunning}
-                  >
-                    <Paintbrush size={16} />
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent
-                  side="top"
-                  align="end"
-                  sideOffset={8}
-                  className="w-auto p-0 bg-card/95 backdrop-blur-md border border-border/50 rounded-lg shadow-glass"
-                >
-                  <Suspense fallback={<div className="w-[640px] h-[440px] flex items-center justify-center text-muted-foreground text-sm">Loading canvas...</div>}>
-                    <LazySketchPopoverContent onClose={() => setSketchOpen(false)} />
-                  </Suspense>
-                </PopoverContent>
-              </Popover>
-
-              {/* Submit / Stop */}
-              {isAgentRunning ? (
-                <button
-                  onClick={handleStopAndRecall}
-                  className="inline-flex items-center justify-center h-[30px] w-[30px] rounded-[8px] bg-destructive text-white shadow-[0_0_8px_-2px] shadow-destructive/40 hover:brightness-110 hover:scale-105 active:scale-95 transition-[transform,background-color,filter] duration-200"
-                  aria-label="Stop and edit queued messages"
-                  title="Stop and edit queued messages (Esc)"
-                >
-                  <StopIcon width={14} height={14} />
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 256 256" className="h-4 w-4">
+                    <path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm0-160a72,72,0,1,0,72,72A72.08,72.08,0,0,0,128,56Zm0,128a56,56,0,1,1,56-56A56.06,56.06,0,0,1,128,184Z" />
+                  </svg>
                 </button>
-              ) : (
-                <SubmitButton
-                  onClick={handleSubmit}
-                  disabled={!content.trim()}
-                />
-              )}
+
+                <Popover open={sketchOpen} onOpenChange={setSketchOpen}>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      className={cn(
+                        toolbarButtonIconOnly,
+                        'disabled:cursor-not-allowed disabled:opacity-40',
+                      )}
+                      aria-label="Sketch"
+                      title="Sketch"
+                      disabled={isAgentRunning}
+                    >
+                      <Paintbrush size={16} />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    side="top"
+                    align="end"
+                    sideOffset={8}
+                    className="w-auto p-0 bg-card/95 backdrop-blur-md border border-border/50 rounded-lg shadow-glass"
+                  >
+                    <Suspense fallback={<div className="w-[640px] h-[440px] flex items-center justify-center text-muted-foreground text-sm">Loading canvas...</div>}>
+                      <LazySketchPopoverContent onClose={() => setSketchOpen(false)} />
+                    </Suspense>
+                  </PopoverContent>
+                </Popover>
+
+                {isAgentRunning ? (
+                  <button
+                    onClick={handleStopAndRecall}
+                    className="inline-flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[8px] bg-destructive text-white shadow-[0_0_8px_-2px] shadow-destructive/40 transition-[transform,background-color,filter] duration-200 hover:scale-105 hover:brightness-110 active:scale-95"
+                    aria-label="Stop and edit queued messages"
+                    title="Stop and edit queued messages (Esc)"
+                  >
+                    <StopIcon width={14} height={14} />
+                  </button>
+                ) : (
+                  <SubmitButton
+                    onClick={handleSubmit}
+                    disabled={!content.trim()}
+                    className="shrink-0"
+                  />
+                )}
+              </div>
             </div>
           </div>
         </div>
       </div>
     </div>
   );
-});
+}
+
+export const ChatInputContainer = forwardRef(ChatInputContainerInner);
 
 ChatInputContainer.displayName = 'ChatInputContainer';
