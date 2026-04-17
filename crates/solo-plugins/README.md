@@ -5,9 +5,11 @@ for Solo IDE.
 
 ## Provenance
 
-Portions of this crate (`manifest.rs`, `store.rs`, `id.rs`, `path.rs`) are
-hard-forked from [codex-rs](https://github.com/openai/codex) `core-plugins`
-and related utility crates, which are licensed under Apache-2.0. See the
-module-level doc comments for the specific upstream source file each module
-originated from. The fork drops all `codex-*` crate dependencies by inlining
-the minimal subset Solo actually needs.
+This crate includes code hard-forked from the [codex-rs](https://github.com/openai/codex) repository (licensed under Apache-2.0). Upstream sources, per module:
+
+- `src/id.rs` — `codex-rs/plugin/src/plugin_id.rs` (crate `codex-plugin`)
+- `src/path.rs` — `codex-rs/utils/absolute-path/src/lib.rs` (crate `codex-utils-absolute-path`)
+- `src/manifest.rs` — `codex-rs/core-plugins/src/manifest.rs` (crate `codex-core-plugins`)
+- `src/store.rs` — `codex-rs/core-plugins/src/store.rs` (crate `codex-core-plugins`)
+
+The fork drops all `codex-*` crate dependencies by inlining the minimal subset Solo actually needs. Stub module files (`adapters.rs`, `toggles.rs`, `loader.rs`) are written from scratch for Solo and carry no upstream provenance.
