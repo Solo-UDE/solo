@@ -35,6 +35,11 @@
   --animate-pop-in: pop-in 150ms var(--ease-spring);
   --animate-slide-up: slide-up 200ms var(--ease-smooth);
 
+  /* Codex-derived animations (ported from design-dump extraction) */
+  --animate-dialog-enter: dialog-enter 200ms var(--ease-smooth);
+  --animate-overlay-in: overlay-in 150ms var(--ease-snappy);
+  --animate-loading-shimmer: loading-shimmer 1.4s var(--ease-snappy) infinite;
+
   /* Monospace font */
   --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
@@ -942,6 +947,22 @@ html.dark .hover-lift:hover {
 @keyframes slide-up {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* Codex dialog entrance — translateY + scale (from extraction) */
+@keyframes dialog-enter {
+  from { opacity: 0; transform: translateY(calc(var(--radius-base, 0.5rem) * 0.25)) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes overlay-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes loading-shimmer {
+  from { background-position: -100% 0; }
+  to   { background-position: 250% 0; }
 }
 
 @keyframes streaming-dot {
