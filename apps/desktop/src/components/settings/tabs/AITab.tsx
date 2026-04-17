@@ -714,18 +714,27 @@ export function AITab() {
           Behavior
         </h3>
         <div className="divide-y divide-border">
-          <SettingRow
-            label="Max Tokens"
-            description="Maximum response length (1024-32768)"
-          >
-            <NumberInput
-              value={maxTokens}
-              min={1024}
-              max={32768}
-              step={256}
-              onChange={setMaxTokens}
-            />
-          </SettingRow>
+          {(() => {
+            // Slider ceiling = active model's declared output-token capacity.
+            // Server-side clamp in Claude Code still enforces the model's true upperLimit.
+            const activeModel = allModels.find((m) => m.id === selectedModel);
+            const modelMax = activeModel?.max_output_tokens ?? 32_768;
+            const clampedValue = Math.min(maxTokens, modelMax);
+            return (
+              <SettingRow
+                label="Max Output Tokens"
+                description={`Cap per response (1024–${modelMax.toLocaleString()}${activeModel ? ` for ${activeModel.display_name}` : ''})`}
+              >
+                <NumberInput
+                  value={clampedValue}
+                  min={1024}
+                  max={modelMax}
+                  step={256}
+                  onChange={setMaxTokens}
+                />
+              </SettingRow>
+            );
+          })()}
 
           <SettingRow
             label="Stream Responses"
