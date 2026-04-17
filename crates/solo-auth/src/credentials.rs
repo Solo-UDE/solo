@@ -1303,9 +1303,11 @@ impl CredentialManager {
                 }
                 Err(e) => tracing::warn!("failed to serialize migrated OpenAI OAuth store: {}", e),
             }
-            // Clear API-key cache for OpenAI to match set_openai_oauth_token's behavior.
-            self.cache.write().await.remove(&ProviderType::OpenAI);
         }
+
+        // Clear API-key cache for OpenAI so OAuth takes priority (matches
+        // set_openai_oauth_token's behavior; mirrors get_oauth_token for Anthropic).
+        self.cache.write().await.remove(&ProviderType::OpenAI);
 
         let active = match store.active() {
             Some(p) => p,
