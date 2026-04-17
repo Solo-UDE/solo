@@ -12,7 +12,7 @@
  */
 
 import type { FC } from 'react';
-import { ChevronRight, GitBranch, Lock } from 'lucide-react';
+import { ChevronRight, FolderTree, Lock } from 'lucide-react';
 import type { WorktreeInfo } from '@/bindings';
 import { cn } from '@/lib/utils';
 
@@ -96,19 +96,21 @@ export const WorktreeGroupHeader: FC<WorktreeGroupHeaderProps> = ({
           e.stopPropagation();
           onDrillIn();
         }}
-        title={`Open ${branchLabel}`}
+        title={`Open ${branchLabel} (file tree + git)`}
         aria-label={`Open ${branchLabel}`}
         className={cn(
-          'flex size-5 shrink-0 items-center justify-center rounded-sm',
-          'text-muted-foreground transition-[color,background-color] duration-150',
-          'hover:bg-accent hover:text-foreground',
+          'flex h-6 shrink-0 items-center gap-1 rounded-md pl-1.5 pr-1 text-muted-foreground',
+          'bg-muted/50 ring-1 ring-black/5 dark:ring-white/10',
+          'hover:bg-accent hover:text-foreground hover:ring-black/10',
+          'transition-[color,background-color,box-shadow] duration-150',
         )}
       >
         {worktree.is_locked ? (
-          <Lock className="h-3 w-3" />
+          <Lock className="size-3" />
         ) : (
-          <GitBranch className="h-3 w-3" />
+          <FolderTree className="size-3" />
         )}
+        <ChevronRight className="size-3 opacity-70" />
       </button>
     </div>
   );
