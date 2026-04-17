@@ -41,8 +41,11 @@ export interface SlashCommandDropdownProps {
 	position: { bottom: number; left: number };
 }
 
+// Concentric radii per Inspirations UI skill (border-radius.md):
+// outer rounded-2xl (1.25rem) minus the container's p-1.5 (0.375rem) ≈ 0.875rem,
+// which matches rounded-xl on the inner item.
 const itemBase =
-	'group flex w-full items-center gap-2 rounded-sm px-2 h-7 text-[13px] text-left ' +
+	'group flex w-full items-center gap-2 rounded-xl px-3 h-7 text-[13px] text-left ' +
 	'cursor-default select-none outline-none transition-colors';
 const itemIdle = 'text-foreground/90 hover:bg-accent hover:text-accent-foreground';
 const itemActive = 'bg-accent text-accent-foreground';
@@ -65,7 +68,7 @@ export const SlashCommandDropdown: FC<SlashCommandDropdownProps> = ({
 	return (
 		<div
 			className={
-				'fixed z-50 max-h-80 w-[32rem] overflow-y-auto rounded-lg p-1 ' +
+				'fixed z-50 max-h-80 w-[32rem] overflow-y-auto rounded-2xl p-1.5 ' +
 				'bg-popover/90 backdrop-blur-md text-popover-foreground ' +
 				'ring-1 ring-black/10 dark:ring-white/10 shadow-xl ' +
 				'animate-[fade-in-scale_150ms_cubic-bezier(0.16,1,0.3,1)]'
