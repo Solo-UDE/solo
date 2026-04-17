@@ -1188,54 +1188,151 @@ impl CredentialManager {
     pub async fn set_openai_oauth_token(&self, token: OpenAIOAuthToken) -> ProviderResult<()> {
         let key = Self::oauth_vault_key(ProviderType::OpenAI);
 
-        let token_json = serde_json::to_string(&token)
-            .map_err(|e| ProviderError::AuthError(format!("Failed to serialize OpenAI token: {}", e)))?;
+        let mut store = match self.vault_get(&key).await? {
+            Some(s) if !s.is_empty() => {
+                crate::oauth::profiles::migrate_legacy_blob(&s, "openai").unwrap_or_else(|e| {
+                    tracing::warn!(
+                        "failed to parse existing OpenAI OAuth store: {} — starting fresh, existing profiles will be discarded",
+                        e
+                    );
+                    crate::oauth::profiles::ProviderOAuthStore::empty()
+                })
+            }
+            _ => crate::oauth::profiles::ProviderOAuthStore::empty(),
+        };
 
-        self.vault_set(&key, &token_json).await?;
+        let active_name = store
+            .active_profile
+            .clone()
+            .unwrap_or_else(|| "default".to_string());
+        let existing = store.get(&active_name).cloned();
 
-        // Update cache
+        // Identity fields: prefer the *new* token's values if present, else fall
+        // back to what was already on the profile.
+        let id_token = token
+            .id_token
+            .clone()
+            .or_else(|| existing.as_ref().and_then(|e| e.id_token.clone()));
+        let account_id = token
+            .account_id
+            .clone()
+            .or_else(|| existing.as_ref().and_then(|e| e.account_id.clone()));
+
+        let profile = crate::oauth::profiles::OAuthProfile {
+            access_token: token.access_token.clone(),
+            refresh_token: token.refresh_token.clone().unwrap_or_default(),
+            id_token,
+            expires_at: i64::try_from(token.expires_at).unwrap_or(i64::MAX),
+            last_refresh: existing.as_ref().map(|e| e.last_refresh).unwrap_or(0),
+            email: existing
+                .as_ref()
+                .map(|e| e.email.clone())
+                .unwrap_or_default(),
+            account_id,
+            plan_type: existing.as_ref().and_then(|e| e.plan_type.clone()),
+        };
+        store.upsert_profile(active_name, profile);
+
+        let json = serde_json::to_string(&store).map_err(|e| {
+            ProviderError::AuthError(format!("Failed to serialize OpenAI OAuth store: {}", e))
+        })?;
+        self.vault_set(&key, &json).await?;
+
+        // Cache the same projected shape get_openai_oauth_token returns on a cold miss.
+        let cached_token = match store.active() {
+            Some(p) => OpenAIOAuthToken {
+                access_token: p.access_token.clone(),
+                refresh_token: if p.refresh_token.is_empty() {
+                    None
+                } else {
+                    Some(p.refresh_token.clone())
+                },
+                expires_at: u64::try_from(p.expires_at.max(0)).unwrap_or(0),
+                token_type: "Bearer".into(),
+                scope: None,
+                id_token: p.id_token.clone(),
+                account_id: p.account_id.clone(),
+            },
+            None => token, // shouldn't happen — we just upserted
+        };
+
         *self.openai_oauth_cache.write().await = Some(OpenAIOAuthCredentialInfo {
-            token,
+            token: cached_token,
             source: CredentialSource::SoloOAuth,
         });
 
-        // Clear API key cache for OpenAI to ensure OAuth takes priority
+        // Clear API-key cache so OAuth takes priority.
         self.cache.write().await.remove(&ProviderType::OpenAI);
 
         tracing::info!("Stored OpenAI OAuth token");
-
         Ok(())
     }
 
     /// Get OpenAI OAuth token
     pub async fn get_openai_oauth_token(&self) -> ProviderResult<Option<OpenAIOAuthToken>> {
-        // Check cache first
+        // Cache hit fast path.
         if let Some(info) = self.openai_oauth_cache.read().await.as_ref() {
             return Ok(Some(info.token.clone()));
         }
 
-        // Try to load from vault
         let key = Self::oauth_vault_key(ProviderType::OpenAI);
-        match self.vault_get(&key).await? {
-            Some(token_json) if token_json.is_empty() => Ok(None),
-            Some(token_json) => {
-                match serde_json::from_str::<OpenAIOAuthToken>(&token_json) {
-                    Ok(token) => {
-                        // Cache the token
-                        *self.openai_oauth_cache.write().await = Some(OpenAIOAuthCredentialInfo {
-                            token: token.clone(),
-                            source: CredentialSource::SoloOAuth,
-                        });
-                        Ok(Some(token))
-                    }
-                    Err(e) => {
-                        tracing::warn!("Failed to parse OpenAI OAuth token from vault: {}", e);
-                        Ok(None)
+        let raw = match self.vault_get(&key).await? {
+            Some(s) if !s.is_empty() => s,
+            _ => return Ok(None),
+        };
+
+        let needs_migration = !crate::oauth::profiles::is_already_migrated(&raw);
+        let store = match crate::oauth::profiles::migrate_legacy_blob(&raw, "openai") {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::warn!(
+                    "failed to parse OpenAI OAuth store: {} — treating as absent",
+                    e
+                );
+                return Ok(None);
+            }
+        };
+
+        // Persist the migrated shape so the next read skips migration.
+        if needs_migration {
+            match serde_json::to_string(&store) {
+                Ok(new_json) => {
+                    if let Err(e) = self.vault_set(&key, &new_json).await {
+                        tracing::warn!("failed to persist migrated OpenAI OAuth store: {}", e);
                     }
                 }
+                Err(e) => tracing::warn!("failed to serialize migrated OpenAI OAuth store: {}", e),
             }
-            None => Ok(None),
+            // Clear API-key cache for OpenAI to match set_openai_oauth_token's behavior.
+            self.cache.write().await.remove(&ProviderType::OpenAI);
         }
+
+        let active = match store.active() {
+            Some(p) => p,
+            None => return Ok(None),
+        };
+
+        let expires_at = u64::try_from(active.expires_at.max(0)).unwrap_or(0);
+        let token = OpenAIOAuthToken {
+            access_token: active.access_token.clone(),
+            refresh_token: if active.refresh_token.is_empty() {
+                None
+            } else {
+                Some(active.refresh_token.clone())
+            },
+            expires_at,
+            token_type: "Bearer".into(),
+            scope: None,
+            id_token: active.id_token.clone(),
+            account_id: active.account_id.clone(),
+        };
+
+        *self.openai_oauth_cache.write().await = Some(OpenAIOAuthCredentialInfo {
+            token: token.clone(),
+            source: CredentialSource::SoloOAuth,
+        });
+
+        Ok(Some(token))
     }
 
     /// Check if we have an OpenAI OAuth token
@@ -1691,5 +1788,178 @@ mod profile_tests {
             .await
             .unwrap()
             .is_none());
+    }
+
+    #[tokio::test]
+    async fn get_openai_oauth_token_returns_active_profile_with_account_id() {
+        let mut store = ProviderOAuthStore::empty();
+        store.upsert_profile(
+            "default",
+            OAuthProfile {
+                access_token: "oa-ak".into(),
+                refresh_token: "oa-rk".into(),
+                id_token: Some("eyJ.p.s".into()),
+                expires_at: 9_999_999_999,
+                last_refresh: 0,
+                email: "me@openai".into(),
+                account_id: Some("acct-xyz".into()),
+                plan_type: Some("plus".into()),
+            },
+        );
+        let json = serde_json::to_string(&store).unwrap();
+        let mut vault = HashMap::new();
+        vault.insert("openai.oauth".into(), json);
+
+        let m = manager_with_vault(vault).await;
+        let token = m
+            .get_openai_oauth_token()
+            .await
+            .unwrap()
+            .expect("openai oauth token");
+        assert_eq!(token.access_token, "oa-ak");
+        assert_eq!(token.refresh_token.as_deref(), Some("oa-rk"));
+        assert_eq!(token.account_id.as_deref(), Some("acct-xyz"));
+        assert_eq!(token.id_token.as_deref(), Some("eyJ.p.s"));
+    }
+
+    #[tokio::test]
+    async fn get_openai_oauth_token_migrates_legacy_blob() {
+        let legacy = r#"{
+            "access_token": "legacy-ak",
+            "refresh_token": "legacy-rk",
+            "expires_at": 9999999999,
+            "token_type": "Bearer",
+            "scope": null,
+            "id_token": "legacy.jwt.sig",
+            "account_id": "legacy-acct"
+        }"#;
+        let mut vault = HashMap::new();
+        vault.insert("openai.oauth".into(), legacy.into());
+
+        let m = manager_with_vault(vault).await;
+        let token = m
+            .get_openai_oauth_token()
+            .await
+            .unwrap()
+            .expect("openai oauth token");
+        assert_eq!(token.access_token, "legacy-ak");
+        assert_eq!(token.account_id.as_deref(), Some("legacy-acct"));
+        assert_eq!(token.id_token.as_deref(), Some("legacy.jwt.sig"));
+    }
+
+    #[tokio::test]
+    async fn set_openai_oauth_token_persists_account_id_and_id_token() {
+        let m = manager_with_vault(HashMap::new()).await;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let token = crate::oauth::OpenAIOAuthToken {
+            access_token: "fresh-ak".into(),
+            refresh_token: Some("fresh-rk".into()),
+            expires_at: now + 3600,
+            token_type: "Bearer".into(),
+            scope: None,
+            id_token: Some("jwt".into()),
+            account_id: Some("acct-fresh".into()),
+        };
+        m.set_openai_oauth_token(token).await.unwrap();
+
+        // Cold-cache read must see the same identity fields.
+        *m.openai_oauth_cache.write().await = None;
+        let got = m.get_openai_oauth_token().await.unwrap().unwrap();
+        assert_eq!(got.access_token, "fresh-ak");
+        assert_eq!(got.refresh_token.as_deref(), Some("fresh-rk"));
+        assert_eq!(got.account_id.as_deref(), Some("acct-fresh"));
+        assert_eq!(got.id_token.as_deref(), Some("jwt"));
+    }
+
+    #[tokio::test]
+    async fn set_openai_oauth_token_preserves_existing_email_and_plan_type() {
+        // Seed the vault with an existing profile that has identity info.
+        let mut store = ProviderOAuthStore::empty();
+        store.upsert_profile(
+            "default",
+            OAuthProfile {
+                access_token: "old-ak".into(),
+                refresh_token: "old-rk".into(),
+                id_token: Some("old.jwt".into()),
+                expires_at: 1_000_000,
+                last_refresh: 42,
+                email: "me@openai.com".into(),
+                account_id: Some("acct-old".into()),
+                plan_type: Some("pro".into()),
+            },
+        );
+        let json = serde_json::to_string(&store).unwrap();
+        let mut vault = HashMap::new();
+        vault.insert("openai.oauth".into(), json);
+
+        let m = manager_with_vault(vault).await;
+        let new_token = crate::oauth::OpenAIOAuthToken {
+            access_token: "new-ak".into(),
+            refresh_token: Some("new-rk".into()),
+            expires_at: 9_999_999_999,
+            token_type: "Bearer".into(),
+            scope: None,
+            id_token: None,              // new token has no id_token
+            account_id: None,            // new token has no account_id
+        };
+        m.set_openai_oauth_token(new_token).await.unwrap();
+
+        // Read back the raw vault — email and plan_type must be preserved,
+        // and id_token/account_id must fall back to the existing values
+        // since the new token didn't carry them.
+        let raw = m.vault_get_raw("openai.oauth").await.unwrap().unwrap();
+        let saved: ProviderOAuthStore = serde_json::from_str(&raw).unwrap();
+        let saved_active = saved.active().expect("active profile");
+        assert_eq!(saved_active.email, "me@openai.com");
+        assert_eq!(saved_active.plan_type.as_deref(), Some("pro"));
+        assert_eq!(saved_active.id_token.as_deref(), Some("old.jwt"));
+        assert_eq!(saved_active.account_id.as_deref(), Some("acct-old"));
+        assert_eq!(saved_active.access_token, "new-ak");
+        assert_eq!(saved_active.last_refresh, 42);
+    }
+
+    #[tokio::test]
+    async fn set_openai_oauth_token_overwrites_identity_when_new_token_has_them() {
+        let mut store = ProviderOAuthStore::empty();
+        store.upsert_profile(
+            "default",
+            OAuthProfile {
+                access_token: "old-ak".into(),
+                refresh_token: "old-rk".into(),
+                id_token: Some("old.jwt".into()),
+                expires_at: 1_000_000,
+                last_refresh: 100,
+                email: "me@openai.com".into(),
+                account_id: Some("acct-old".into()),
+                plan_type: Some("pro".into()),
+            },
+        );
+        let json = serde_json::to_string(&store).unwrap();
+        let mut vault = HashMap::new();
+        vault.insert("openai.oauth".into(), json);
+
+        let m = manager_with_vault(vault).await;
+        let new_token = crate::oauth::OpenAIOAuthToken {
+            access_token: "new-ak".into(),
+            refresh_token: Some("new-rk".into()),
+            expires_at: 9_999_999_999,
+            token_type: "Bearer".into(),
+            scope: None,
+            id_token: Some("NEW.jwt".into()),
+            account_id: Some("acct-new".into()),
+        };
+        m.set_openai_oauth_token(new_token).await.unwrap();
+
+        let raw = m.vault_get_raw("openai.oauth").await.unwrap().unwrap();
+        let saved: ProviderOAuthStore = serde_json::from_str(&raw).unwrap();
+        let saved_active = saved.active().expect("active profile");
+        assert_eq!(saved_active.id_token.as_deref(), Some("NEW.jwt"));
+        assert_eq!(saved_active.account_id.as_deref(), Some("acct-new"));
+        // email and plan_type stay put — the token carries no such info.
+        assert_eq!(saved_active.email, "me@openai.com");
+        assert_eq!(saved_active.plan_type.as_deref(), Some("pro"));
     }
 }
