@@ -59,7 +59,7 @@ export const AlertDialogContent = forwardRef<HTMLDivElement, AlertDialogContentP
           "fixed left-1/2 top-1/2 z-40 -translate-x-1/2 -translate-y-1/2",
           "w-full p-6 rounded-xl",
           "bg-popover text-popover-foreground",
-          "ring-1 ring-black/5 dark:ring-white/5 shadow-[var(--shadow-glass)]",
+          "ring-1 ring-black/5 dark:ring-white/5 shadow-xl",
           "data-[state=open]:animate-[dialog-enter_200ms_cubic-bezier(0.16,1,0.3,1)]",
           "data-[state=closed]:animate-[fade-out_100ms_cubic-bezier(0.4,0,0.2,1)]",
           "focus:outline-none",
