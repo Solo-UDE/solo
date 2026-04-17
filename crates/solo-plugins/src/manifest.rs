@@ -218,11 +218,70 @@ fn resolve_manifest_path(
     }
 }
 
-// Stub — implemented in Task 6.
 fn process_interface(
-    _plugin_root: &Path,
-    _raw: Option<RawPluginManifestInterface>,
+    plugin_root: &Path,
+    raw: Option<RawPluginManifestInterface>,
 ) -> Option<PluginManifestInterface> {
+    let raw = raw?;
+    let RawPluginManifestInterface {
+        display_name,
+        short_description,
+        long_description,
+        developer_name,
+        category,
+        capabilities,
+        website_url,
+        privacy_policy_url,
+        terms_of_service_url,
+        default_prompt,
+        brand_color,
+        composer_icon,
+        logo,
+        screenshots,
+    } = raw;
+
+    let interface = PluginManifestInterface {
+        display_name,
+        short_description,
+        long_description,
+        developer_name,
+        category,
+        capabilities,
+        website_url,
+        privacy_policy_url,
+        terms_of_service_url,
+        default_prompts: resolve_default_prompts(default_prompt).unwrap_or_default(),
+        brand_color,
+        composer_icon: resolve_manifest_path(plugin_root, "interface.composerIcon", composer_icon.as_deref()),
+        logo: resolve_manifest_path(plugin_root, "interface.logo", logo.as_deref()),
+        screenshots: screenshots
+            .iter()
+            .filter_map(|s| resolve_manifest_path(plugin_root, "interface.screenshots", Some(s)))
+            .collect(),
+    };
+
+    let has_any = interface.display_name.is_some()
+        || interface.short_description.is_some()
+        || interface.long_description.is_some()
+        || interface.developer_name.is_some()
+        || interface.category.is_some()
+        || !interface.capabilities.is_empty()
+        || interface.website_url.is_some()
+        || interface.privacy_policy_url.is_some()
+        || interface.terms_of_service_url.is_some()
+        || !interface.default_prompts.is_empty()
+        || interface.brand_color.is_some()
+        || interface.composer_icon.is_some()
+        || interface.logo.is_some()
+        || !interface.screenshots.is_empty();
+
+    has_any.then_some(interface)
+}
+
+// Stub — implemented in Task 7.
+fn resolve_default_prompts(
+    _raw: Option<RawPluginManifestDefaultPrompt>,
+) -> Option<Vec<String>> {
     None
 }
 
@@ -300,5 +359,68 @@ mod tests {
         let root = tmp.path().join("sample");
         write_manifest(&root, ".solo-plugin/plugin.json", r#"{not json"#);
         assert!(load_plugin_manifest(&root).is_none());
+    }
+
+    #[test]
+    fn interface_display_name_parses() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path().join("sample");
+        write_manifest(
+            &root,
+            ".solo-plugin/plugin.json",
+            r##"{"name":"x","interface":{"displayName":"My Plugin","shortDescription":"short","brandColor":"#336699"}}"##,
+        );
+        let manifest = load_plugin_manifest(&root).unwrap();
+        let interface = manifest.interface.unwrap();
+        assert_eq!(interface.display_name.as_deref(), Some("My Plugin"));
+        assert_eq!(interface.short_description.as_deref(), Some("short"));
+        assert_eq!(interface.brand_color.as_deref(), Some("#336699"));
+    }
+
+    #[test]
+    fn interface_asset_paths_resolve_under_root() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path().join("sample");
+        write_manifest(
+            &root,
+            ".solo-plugin/plugin.json",
+            r#"{"name":"x","interface":{"logo":"./assets/logo.png","screenshots":["./s1.png","./s2.png"]}}"#,
+        );
+        let manifest = load_plugin_manifest(&root).unwrap();
+        let interface = manifest.interface.unwrap();
+        assert_eq!(interface.logo.unwrap().as_path(), root.join("assets/logo.png"));
+        assert_eq!(interface.screenshots.len(), 2);
+    }
+
+    #[test]
+    fn interface_rejects_unsafe_asset_paths() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path().join("sample");
+        write_manifest(
+            &root,
+            ".solo-plugin/plugin.json",
+            r#"{"name":"x","interface":{"displayName":"ok","logo":"../evil.png"}}"#,
+        );
+        let manifest = load_plugin_manifest(&root).unwrap();
+        let interface = manifest.interface.unwrap();
+        assert!(interface.logo.is_none());
+    }
+
+    #[test]
+    fn empty_interface_object_returns_none() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path().join("sample");
+        write_manifest(&root, ".solo-plugin/plugin.json", r#"{"name":"x","interface":{}}"#);
+        let manifest = load_plugin_manifest(&root).unwrap();
+        assert!(manifest.interface.is_none());
+    }
+
+    #[test]
+    fn no_interface_block_returns_none() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path().join("sample");
+        write_manifest(&root, ".solo-plugin/plugin.json", r#"{"name":"x"}"#);
+        let manifest = load_plugin_manifest(&root).unwrap();
+        assert!(manifest.interface.is_none());
     }
 }
