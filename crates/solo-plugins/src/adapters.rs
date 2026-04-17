@@ -102,9 +102,70 @@ fn sanitize(raw: &str) -> String {
 }
 
 // ─── Codex adapter ──────────────────────────────────────────────────
-// Implementation in Task 12.
-pub fn discover_codex_adapter(_codex_plugins_dir: &Path) -> Vec<AdapterPlugin> {
-    Vec::new()
+
+/// Walk codex's `~/.codex/plugins/cache/<mk>/<name>/<ver>/` layout.
+/// For each (marketplace, name) pair, pick the active version using the same
+/// local-wins-then-lexicographic rule as PluginStore::active_plugin_version.
+pub fn discover_codex_adapter(codex_cache_dir: &Path) -> Vec<AdapterPlugin> {
+    let mut out = Vec::new();
+    let Ok(marketplaces) = std::fs::read_dir(codex_cache_dir) else {
+        return out;
+    };
+
+    for mk in marketplaces.flatten() {
+        if !mk.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            continue;
+        }
+        let marketplace_name = match mk.file_name().into_string() {
+            Ok(n) => n,
+            Err(_) => continue,
+        };
+
+        let Ok(plugins) = std::fs::read_dir(mk.path()) else {
+            continue;
+        };
+        for plugin in plugins.flatten() {
+            if !plugin.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                continue;
+            }
+            let plugin_name = match plugin.file_name().into_string() {
+                Ok(n) => n,
+                Err(_) => continue,
+            };
+
+            let active_version = pick_active_version(&plugin.path());
+            let Some(version) = active_version else {
+                continue;
+            };
+            let root = plugin.path().join(&version);
+            let Ok(id) = PluginId::new(sanitize(&marketplace_name), sanitize(&plugin_name)) else {
+                continue;
+            };
+            out.push(AdapterPlugin {
+                id,
+                root,
+                source: AdapterSource::Codex,
+            });
+        }
+    }
+    out
+}
+
+fn pick_active_version(plugin_dir: &Path) -> Option<String> {
+    let mut versions: Vec<String> = std::fs::read_dir(plugin_dir)
+        .ok()?
+        .filter_map(Result::ok)
+        .filter(|e| e.file_type().ok().is_some_and(|t| t.is_dir()))
+        .filter_map(|e| e.file_name().into_string().ok())
+        .collect();
+    versions.sort_unstable();
+    if versions.is_empty() {
+        None
+    } else if versions.iter().any(|v| v == "local") {
+        Some("local".to_string())
+    } else {
+        versions.pop()
+    }
 }
 
 #[cfg(test)]
@@ -193,5 +254,57 @@ mod tests {
         assert_eq!(sanitize("foo.bar"), "foo-bar");
         assert_eq!(sanitize("a/b"), "a-b");
         assert_eq!(sanitize("keep_1-2"), "keep_1-2");
+    }
+
+    fn make_codex_plugin(cache: &Path, marketplace: &str, name: &str, version: &str) -> PathBuf {
+        let p = cache.join(marketplace).join(name).join(version);
+        fs::create_dir_all(&p).unwrap();
+        p
+    }
+
+    #[test]
+    fn codex_adapter_missing_root_returns_empty() {
+        let tmp = tempdir().unwrap();
+        let missing = tmp.path().join("not-there");
+        assert!(discover_codex_adapter(&missing).is_empty());
+    }
+
+    #[test]
+    fn codex_adapter_discovers_plugins() {
+        let tmp = tempdir().unwrap();
+        let cache = tmp.path().join("cache");
+        make_codex_plugin(&cache, "openai", "github", "1-0-0");
+        make_codex_plugin(&cache, "community", "linear", "local");
+
+        let mut out = discover_codex_adapter(&cache);
+        out.sort_by(|a, b| a.id.name.cmp(&b.id.name));
+        assert_eq!(out.len(), 2);
+        // sorted by name: "github" < "linear"
+        assert_eq!(out[0].id.marketplace, "openai");
+        assert_eq!(out[0].id.name, "github");
+        assert_eq!(out[1].id.marketplace, "community");
+        assert_eq!(out[1].id.name, "linear");
+    }
+
+    #[test]
+    fn codex_adapter_uses_latest_version_directory() {
+        let tmp = tempdir().unwrap();
+        let cache = tmp.path().join("cache");
+        make_codex_plugin(&cache, "openai", "github", "1-0-0");
+        make_codex_plugin(&cache, "openai", "github", "2-0-0");
+        let out = discover_codex_adapter(&cache);
+        assert_eq!(out.len(), 1);
+        assert!(out[0].root.ends_with("2-0-0"));
+    }
+
+    #[test]
+    fn codex_adapter_local_sentinel_wins() {
+        let tmp = tempdir().unwrap();
+        let cache = tmp.path().join("cache");
+        make_codex_plugin(&cache, "openai", "github", "1-0-0");
+        make_codex_plugin(&cache, "openai", "github", "local");
+        let out = discover_codex_adapter(&cache);
+        assert_eq!(out.len(), 1);
+        assert!(out[0].root.ends_with("local"));
     }
 }
