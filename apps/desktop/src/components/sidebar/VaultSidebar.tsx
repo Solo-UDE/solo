@@ -1,80 +1,112 @@
 /**
- * StudioSidebar - Business automation mode sidebar.
- * Vertical nav list with Sessions, Vault, Automations, Content Creation.
+ * VaultSidebar — project-scoped, shared across all worktrees.
+ *
+ * Six sections: Skills, Memory, Tasks, Current Vault, Plugins, Connectors.
+ * For now most are placeholder shells; Phase 3F wires up Memory against the
+ * existing memory store. Sessions moved out of this tab — they're
+ * worktree-bound and live under the Dev tab now.
  */
 
 import type { FC } from 'react';
 import { motion } from 'motion/react';
-import { MessageCircle, Vault, Zap, PenTool } from 'lucide-react';
-import { SessionList } from '@/components/agent';
-import { VaultPlaceholder } from './studio/VaultPlaceholder';
-import { AutomationsPlaceholder } from './studio/AutomationsPlaceholder';
-import { ContentCreationPlaceholder } from './studio/ContentCreationPlaceholder';
+import {
+  Sparkles,
+  Brain,
+  ListChecks,
+  Vault as VaultIcon,
+  Puzzle,
+  PlugZap,
+} from 'lucide-react';
+import { VaultPlaceholder } from './vault/VaultPlaceholder';
 import { useUIStore } from '@/stores/uiStore';
-import type { StudioNav } from '@/stores/uiStore';
-import { useSidebarActions } from '@/hooks/useSidebarActions';
+import type { VaultNav } from '@/stores/uiStore';
 import { cn } from '@/lib/utils';
 
 interface NavItem {
-  key: StudioNav;
+  key: VaultNav;
   label: string;
   icon: FC<{ className?: string }>;
   badge?: string;
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { key: 'sessions', label: 'Sessions', icon: MessageCircle },
-  { key: 'vault', label: 'Vault', icon: Vault, badge: 'Soon' },
-  { key: 'automations', label: 'Automations', icon: Zap },
-  { key: 'content-creation', label: 'Content Creation', icon: PenTool },
+  { key: 'skills', label: 'Skills', icon: Sparkles, badge: 'Soon' },
+  { key: 'memory', label: 'Memory', icon: Brain },
+  { key: 'tasks', label: 'Tasks', icon: ListChecks, badge: 'Soon' },
+  { key: 'current-vault', label: 'Current Vault', icon: VaultIcon, badge: 'Soon' },
+  { key: 'plugins', label: 'Plugins', icon: Puzzle, badge: 'Soon' },
+  { key: 'connectors', label: 'Connectors', icon: PlugZap, badge: 'Soon' },
 ];
 
-const CONTENT_MAP: Record<StudioNav, FC<{ onSessionSelect: (id: string) => void; onNewSession: () => void }>> = {
-  sessions: ({ onSessionSelect, onNewSession }) => (
-    <SessionList
-      onSessionSelect={onSessionSelect}
-      onNewSession={onNewSession}
-      className="h-full"
-    />
-  ),
-  vault: () => <VaultPlaceholder />,
-  automations: () => <AutomationsPlaceholder />,
-  'content-creation': () => <ContentCreationPlaceholder />,
+// Placeholder shells until 3F lands per-section components. They all render
+// the same stub copy keyed by section label so the UI reads coherently.
+const PLACEHOLDER_BODY: Record<VaultNav, { title: string; description: string }> = {
+  skills: {
+    title: 'Skills',
+    description: 'Curate the agent capabilities available to this project.',
+  },
+  memory: {
+    title: 'Memory',
+    description: 'Persistent context the agent references across sessions.',
+  },
+  tasks: {
+    title: 'Tasks',
+    description: 'Assignable work items, Linear-style, scoped to this project.',
+  },
+  'current-vault': {
+    title: 'Current Vault',
+    description: 'The active memory bundle the agent is drawing from right now.',
+  },
+  plugins: {
+    title: 'Plugins',
+    description: 'Install and toggle agent plugins for this project.',
+  },
+  connectors: {
+    title: 'Connectors',
+    description: 'External service integrations — Linear, Slack, and more.',
+  },
 };
 
-export const StudioSidebar: FC = () => {
-  const studioActiveNav = useUIStore((s) => s.studioActiveNav);
-  const setStudioNav = useUIStore((s) => s.setStudioNav);
-  const { handleSessionSelect, handleNewSession } = useSidebarActions();
+export const VaultSidebar: FC = () => {
+  const vaultActiveNav = useUIStore((s) => s.vaultActiveNav);
+  const setVaultNav = useUIStore((s) => s.setVaultNav);
 
-  const ContentComponent = CONTENT_MAP[studioActiveNav];
+  const copy = PLACEHOLDER_BODY[vaultActiveNav];
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      {/* Nav items */}
-      <div className="px-2 py-1.5 space-y-0.5 shrink-0">
+      <div className="px-4 pb-2 pt-4 shrink-0">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/60">
+          Vault
+        </p>
+        <p className="mt-1 text-sm font-medium text-foreground">
+          Shared project context
+        </p>
+      </div>
+
+      <div className="px-3 pb-2 space-y-1 shrink-0">
         {NAV_ITEMS.map(({ key, label, icon: Icon, badge }) => (
           <button
             key={key}
-            onClick={() => setStudioNav(key)}
+            onClick={() => setVaultNav(key)}
             className={cn(
-              'relative w-full h-9 px-3 flex items-center gap-2 rounded-xl text-xs transition-colors duration-150',
-              studioActiveNav === key
-                ? 'text-primary'
-                : 'text-muted-foreground hover:bg-muted/40 hover:text-foreground',
+              'relative w-full h-10 px-3 flex items-center gap-2 rounded-[14px] text-xs transition-colors duration-150',
+              vaultActiveNav === key
+                ? 'text-foreground'
+                : 'text-muted-foreground hover:bg-card hover:text-foreground',
             )}
           >
-            {studioActiveNav === key && (
+            {vaultActiveNav === key && (
               <motion.div
-                layoutId="studio-nav-indicator"
-                className="absolute inset-0 rounded-xl bg-primary/10"
+                layoutId="vault-nav-indicator"
+                className="absolute inset-0 rounded-[14px] border border-border/70 bg-card shadow-[0_12px_24px_-18px_rgba(0,0,0,0.35)]"
                 transition={{ type: 'spring', stiffness: 500, damping: 35 }}
               />
             )}
             <Icon className="relative w-4 h-4 shrink-0" />
             <span className="relative flex-1 text-left font-medium">{label}</span>
             {badge && (
-              <span className="relative text-[9px] px-1.5 py-0.5 rounded-full bg-primary/8 text-primary/60 font-medium">
+              <span className="relative rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] font-medium text-primary/70">
                 {badge}
               </span>
             )}
@@ -82,15 +114,10 @@ export const StudioSidebar: FC = () => {
         ))}
       </div>
 
-      {/* Divider */}
-      <div className="h-px mx-3 shrink-0" style={{ background: 'linear-gradient(to right, transparent, var(--border) 20%, var(--border) 80%, transparent)', opacity: 0.15 }} />
+      <div className="mx-4 h-px shrink-0 bg-border/60" />
 
-      {/* Content area */}
       <div className="flex-1 min-h-0 overflow-hidden">
-        <ContentComponent
-          onSessionSelect={handleSessionSelect}
-          onNewSession={handleNewSession}
-        />
+        <VaultPlaceholder title={copy.title} description={copy.description} />
       </div>
     </div>
   );
