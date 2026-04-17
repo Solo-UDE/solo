@@ -96,14 +96,12 @@ export const PrimarySidebar = forwardRef<HTMLElement, PrimarySidebarProps>(({ wi
           ) : (
             <>
               <ModeToggle />
-              <div className="min-h-0 flex-1 px-1.5 pb-1.5">
-                <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[10px] border border-border/70 bg-background/45">
-                  {sidebarMode === 'dev' ? (
-                    <DevSidebar onFileOpen={onFileOpen} />
-                  ) : (
-                    <VaultSidebar />
-                  )}
-                </div>
+              <div className="min-h-0 flex-1 flex flex-col overflow-hidden">
+                {sidebarMode === 'dev' ? (
+                  <DevSidebar onFileOpen={onFileOpen} />
+                ) : (
+                  <VaultSidebar />
+                )}
               </div>
             </>
           )}
