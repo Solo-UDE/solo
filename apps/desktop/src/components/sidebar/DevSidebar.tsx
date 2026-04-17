@@ -167,14 +167,14 @@ export const DevSidebar: FC<DevSidebarProps> = ({ onFileOpen }) => {
                   Sessions
                 </p>
               </div>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-0.5">
                 <button
                   onClick={handleRefresh}
                   disabled={isSwitching}
                   className={cn(
-                    'flex h-8 w-8 items-center justify-center rounded-[8px] border border-border/70 bg-background/65',
-                    'text-muted-foreground hover:border-border hover:bg-card hover:text-foreground',
-                    'active:scale-95 transition-all duration-150',
+                    'flex size-6 items-center justify-center rounded-md text-muted-foreground',
+                    'hover:bg-accent hover:text-foreground',
+                    'active:scale-95 transition-[background-color,color,transform] duration-150',
                     isSwitching && 'opacity-60',
                   )}
                   title="Refresh"
@@ -186,9 +186,9 @@ export const DevSidebar: FC<DevSidebarProps> = ({ onFileOpen }) => {
                 <button
                   onClick={handlePrune}
                   className={cn(
-                    'flex h-8 w-8 items-center justify-center rounded-[8px] border border-border/70 bg-background/65',
-                    'text-muted-foreground hover:border-border hover:bg-card hover:text-foreground',
-                    'active:scale-95 transition-all duration-150',
+                    'flex size-6 items-center justify-center rounded-md text-muted-foreground',
+                    'hover:bg-accent hover:text-foreground',
+                    'active:scale-95 transition-[background-color,color,transform] duration-150',
                   )}
                   title="Prune stale worktrees"
                 >
@@ -203,9 +203,9 @@ export const DevSidebar: FC<DevSidebarProps> = ({ onFileOpen }) => {
                 onClick={handleNewSession}
                 disabled={isCreatingSession || !activeRepoPath}
                 className={cn(
-                  'inline-flex h-9 items-center justify-center gap-1.5 rounded-[9px]',
-                  'border border-border/70 bg-background/65 text-xs font-medium text-foreground',
-                  'hover:border-border hover:bg-card',
+                  'inline-flex h-8 items-center justify-center gap-1.5 rounded-md',
+                  'text-[12px] font-medium text-foreground',
+                  'hover:bg-accent',
                   'disabled:opacity-50 disabled:cursor-not-allowed',
                   'active:scale-[0.98] transition-all duration-150',
                 )}
@@ -222,9 +222,9 @@ export const DevSidebar: FC<DevSidebarProps> = ({ onFileOpen }) => {
                 onClick={handleNewWorktree}
                 disabled={isCreatingWorktree || !activeRepoPath}
                 className={cn(
-                  'inline-flex h-9 items-center justify-center gap-1.5 rounded-[9px]',
-                  'border border-border/70 bg-background/65 text-xs font-medium text-foreground',
-                  'hover:border-border hover:bg-card',
+                  'inline-flex h-8 items-center justify-center gap-1.5 rounded-md',
+                  'text-[12px] font-medium text-foreground',
+                  'hover:bg-accent',
                   'disabled:opacity-50 disabled:cursor-not-allowed',
                   'active:scale-[0.98] transition-all duration-150',
                 )}
