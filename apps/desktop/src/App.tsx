@@ -569,7 +569,7 @@ function AppContent() {
                   className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background"
                   style={{ paddingTop: HEIGHTS.titlebar }}
                 >
-                  {splashComplete && (rootPath !== null || sidebarMode === 'studio') ? (
+                  {splashComplete && (rootPath !== null || sidebarMode === 'vault') ? (
                     <>
                       <div className="min-h-0 flex-1 overflow-hidden">
                         <MosaicLayout />
