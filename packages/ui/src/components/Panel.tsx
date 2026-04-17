@@ -1,40 +1,42 @@
 import { forwardRef, type HTMLAttributes } from "react";
 import { cn } from "../utils/cn";
 
+/**
+ * Panel — generic surface container.
+ *
+ * Variants:
+ *   default — card surface with soft shadow.
+ *   inset   — recessed well (darker than canvas), no shadow.
+ *   raised  — floating panel for overlays (stronger shadow + optional blur).
+ */
 export interface PanelProps extends HTMLAttributes<HTMLDivElement> {
-  /** Floating panel with more prominent shadow */
-  floating?: boolean;
-  /** Enable backdrop blur */
+  variant?: "default" | "inset" | "raised";
   blur?: boolean;
 }
 
-/**
- * Panel component following Solo/Orbit design system
- *
- * Features:
- * - Soft shadows instead of borders
- * - Optional glassmorphism (backdrop blur)
- * - Generous border radius
- */
 export const Panel = forwardRef<HTMLDivElement, PanelProps>(
-  ({ className, floating, blur, children, ...props }, ref) => {
+  ({ className, variant = "default", blur, children, ...props }, ref) => {
+    const variants = {
+      default: "bg-card text-card-foreground shadow-md ring-1 ring-black/5 dark:ring-white/5",
+      inset:   "bg-muted/60 text-foreground",
+      raised:  "bg-popover text-popover-foreground shadow-xl ring-1 ring-black/5 dark:ring-white/10",
+    };
+
     return (
       <div
         ref={ref}
         className={cn(
-          "rounded-[14px] bg-card/95",
-          floating
-            ? "shadow-[0_8px_32px_-8px_rgba(0,0,0,0.3)]"
-            : "shadow-lg",
+          "rounded-lg",
+          variants[variant],
           blur && "backdrop-blur-md",
-          className
+          className,
         )}
         {...props}
       >
         {children}
       </div>
     );
-  }
+  },
 );
 
 Panel.displayName = "Panel";
