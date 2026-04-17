@@ -124,6 +124,19 @@ jobs:
             exit 1
           }
 
+      - name: Reclaim disk space before DMG
+        run: |
+          df -h /
+          # Keep the release binary/bundle, drop intermediate compile artifacts and node_modules
+          rm -rf target/aarch64-apple-darwin/release/deps
+          rm -rf target/aarch64-apple-darwin/release/build
+          rm -rf target/aarch64-apple-darwin/release/incremental
+          rm -rf target/aarch64-apple-darwin/release/.fingerprint
+          rm -rf node_modules
+          rm -rf apps/desktop/node_modules
+          rm -rf ~/.cargo/registry/src
+          df -h /
+
       - name: Create DMG
         run: |
           VERSION=$(jq -r .version apps/desktop/src-tauri/tauri.conf.json)
