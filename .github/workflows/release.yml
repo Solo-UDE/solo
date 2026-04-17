@@ -80,7 +80,8 @@ jobs:
       - name: Build Tauri app (unsigned .app only)
         run: |
           cd apps/desktop
-          bunx tauri build --target aarch64-apple-darwin --bundles app
+          bunx tauri build --target aarch64-apple-darwin --bundles app \
+            --config '{"bundle":{"createUpdaterArtifacts":false}}'
 
       - name: Code-sign app (inside-out)
         run: |
