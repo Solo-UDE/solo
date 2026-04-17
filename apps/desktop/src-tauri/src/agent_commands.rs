@@ -37,8 +37,11 @@ pub async fn agent_create_session(
     session_id: String,
     config: Option<SessionConfig>,
     state: State<'_, Arc<SessionManager>>,
+    stats: State<'_, crate::stats_commands::StatsState>,
 ) -> Result<()> {
-    state.create_session(&session_id, config).map_err(to_error)
+    state.create_session(&session_id, config).map_err(to_error)?;
+    stats.record(solo_stats::StatsEvent::SessionCreated).await;
+    Ok(())
 }
 
 /// Delete an agent session
@@ -57,10 +60,13 @@ pub async fn agent_send_message(
     message: String,
     attachments: Option<Vec<AttachmentContentBlock>>,
     state: State<'_, Arc<SessionManager>>,
+    stats: State<'_, crate::stats_commands::StatsState>,
 ) -> Result<()> {
     state
         .send_message(&session_id, &message, attachments)
-        .map_err(to_error)
+        .map_err(to_error)?;
+    stats.record(solo_stats::StatsEvent::MessageSent).await;
+    Ok(())
 }
 
 /// Interrupt the current agent execution
