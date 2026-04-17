@@ -4,7 +4,8 @@
   "workspaces": [
     "apps/desktop",
     "packages/*",
-    "agent-bridge"
+    "agent-bridge",
+    "infra"
   ],
   "scripts": {
     "postinstall": "bun run --filter @solo/agent-bridge build",
