@@ -54,11 +54,11 @@ export const SlashCommandDropdown: FC<SlashCommandDropdownProps> = ({
 
 	return (
 		<div
-			className="fixed z-50 w-80 max-h-72 overflow-y-auto rounded-md bg-popover shadow-glass animate-in fade-in slide-in-from-bottom-2 duration-150"
+			className="fixed z-50 max-h-72 w-[22rem] overflow-y-auto rounded-[10px] border border-border/80 bg-popover shadow-glass animate-in fade-in slide-in-from-bottom-2 duration-150"
 			style={{ bottom: position.bottom, left: position.left }}
 		>
 			{commands.length === 0 ? (
-				<div className="p-3 text-sm text-muted-foreground text-center">
+				<div className="p-2.5 text-sm text-muted-foreground text-center">
 					No commands found
 				</div>
 			) : (
@@ -72,7 +72,7 @@ export const SlashCommandDropdown: FC<SlashCommandDropdownProps> = ({
 								ref={globalIdx === selectedIndex ? selectedRef : undefined}
 								onClick={() => onSelect(cmd)}
 								className={`
-									w-full flex items-center gap-3 px-3 py-2 text-sm text-left
+									w-full flex items-center gap-2.5 px-3 py-1.5 text-sm text-left
 									hover:bg-muted transition-colors
 									${globalIdx === selectedIndex ? 'bg-muted' : ''}
 								`}
@@ -83,7 +83,7 @@ export const SlashCommandDropdown: FC<SlashCommandDropdownProps> = ({
 									<div className="flex items-center gap-2">
 										<span className="font-mono text-foreground">/{cmd.id}</span>
 									</div>
-									<div className="truncate text-xs text-muted-foreground">
+									<div className="truncate text-[11px] text-muted-foreground">
 										{cmd.description}
 									</div>
 								</div>
@@ -91,7 +91,7 @@ export const SlashCommandDropdown: FC<SlashCommandDropdownProps> = ({
 						);
 					})}
 					{skills.length > 0 && regularCommands.length > 0 && (
-						<div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 border-t border-border/30">
+						<div className="border-t border-border/40 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
 							Skills
 						</div>
 					)}
@@ -103,7 +103,7 @@ export const SlashCommandDropdown: FC<SlashCommandDropdownProps> = ({
 								ref={globalIdx === selectedIndex ? selectedRef : undefined}
 								onClick={() => onSelect(cmd)}
 								className={`
-									w-full flex items-center gap-3 px-3 py-2 text-sm text-left
+									w-full flex items-center gap-2.5 px-3 py-1.5 text-sm text-left
 									hover:bg-muted transition-colors
 									${globalIdx === selectedIndex ? 'bg-muted' : ''}
 								`}
@@ -126,7 +126,7 @@ export const SlashCommandDropdown: FC<SlashCommandDropdownProps> = ({
 											</span>
 										)}
 									</div>
-									<div className="truncate text-xs text-muted-foreground">
+									<div className="truncate text-[11px] text-muted-foreground">
 										{cmd.description}
 									</div>
 								</div>

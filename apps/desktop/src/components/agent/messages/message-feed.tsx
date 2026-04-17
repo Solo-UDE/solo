@@ -110,8 +110,8 @@ export const MessageFeed: FC<MessageFeedProps> = ({
   return (
     <div
       ref={setScrollElement}
-      className={`flex-1 overflow-y-auto overflow-x-hidden ${className}`}
-      style={{ contain: 'layout style' }}
+      className={`flex-1 overflow-y-auto overflow-x-hidden px-1 pb-2 pt-2 ${className}`}
+      style={{ contain: 'layout style', scrollbarGutter: 'stable' }}
     >
       <div
         style={{

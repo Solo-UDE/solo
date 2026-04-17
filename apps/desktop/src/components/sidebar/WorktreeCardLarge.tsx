@@ -49,10 +49,10 @@ export const WorktreeCardLarge: FC<WorktreeCardLargeProps> = ({
       transition={{ type: 'spring', stiffness: 500, damping: 30 }}
       onClick={onSelect}
       className={cn(
-        'group relative mx-2 my-1 px-3 py-2.5 rounded-xl cursor-pointer',
+        'group relative mx-1.5 my-1 px-3 py-2 rounded-[8px] cursor-pointer',
         'transition-all duration-150',
         isActive
-          ? 'bg-muted/40 shadow-sm'
+          ? 'bg-muted/35 shadow-sm'
           : 'hover:bg-muted/30',
       )}
     >
