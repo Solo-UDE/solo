@@ -130,14 +130,14 @@ pub fn is_already_migrated(json: &str) -> bool {
 /// below, so we don't need to branch by provider at the field level. The
 /// `provider` argument is accepted for logging/future use only.
 pub fn migrate_legacy_blob(json: &str, provider: &str) -> Result<ProviderOAuthStore, String> {
-    // Fast path: already migrated.
-    if is_already_migrated(json) {
-        return serde_json::from_str::<ProviderOAuthStore>(json)
-            .map_err(|e| format!("failed to parse already-migrated store: {}", e));
-    }
-
     let v: serde_json::Value = serde_json::from_str(json)
         .map_err(|e| format!("legacy OAuth blob is not valid JSON: {}", e))?;
+
+    // Fast path: already migrated.
+    if v.get("profiles").is_some() {
+        return serde_json::from_value::<ProviderOAuthStore>(v)
+            .map_err(|e| format!("failed to parse already-migrated store: {}", e));
+    }
 
     let obj = v.as_object().ok_or_else(|| {
         format!("legacy OAuth blob is not a JSON object (provider={})", provider)
@@ -146,8 +146,12 @@ pub fn migrate_legacy_blob(json: &str, provider: &str) -> Result<ProviderOAuthSt
     let access_token = obj
         .get("access_token")
         .and_then(|x| x.as_str())
-        .ok_or_else(|| "legacy blob missing access_token".to_string())?
+        .ok_or_else(|| format!("legacy blob missing access_token (provider={})", provider))?
         .to_string();
+
+    if access_token.is_empty() {
+        return Err(format!("legacy blob has empty access_token (provider={})", provider));
+    }
 
     // Legacy `OAuthToken` may or may not have refresh_token.
     let refresh_token = obj
@@ -159,7 +163,11 @@ pub fn migrate_legacy_blob(json: &str, provider: &str) -> Result<ProviderOAuthSt
     let expires_at = obj
         .get("expires_at")
         .and_then(|x| x.as_i64())
-        .or_else(|| obj.get("expires_at").and_then(|x| x.as_u64()).map(|n| n as i64))
+        .or_else(|| {
+            obj.get("expires_at")
+                .and_then(|x| x.as_u64())
+                .and_then(|n| i64::try_from(n).ok())
+        })
         .unwrap_or(0);
 
     let id_token = obj
@@ -177,18 +185,16 @@ pub fn migrate_legacy_blob(json: &str, provider: &str) -> Result<ProviderOAuthSt
         .and_then(|x| x.as_str())
         .map(|s| s.to_string());
 
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64;
-
+    // `email` is left empty on migration because we have no identity
+    // information from the legacy blob. It will be populated on the next
+    // successful OAuth sign-in via save_{provider}_oauth_token.
     let profile = OAuthProfile {
         access_token,
         refresh_token,
         id_token,
         expires_at,
-        last_refresh: now,
-        email: "default".to_string(),
+        last_refresh: 0,
+        email: String::new(),
         account_id,
         plan_type,
     };
@@ -354,7 +360,7 @@ mod tests {
         assert_eq!(p.access_token, "sk-ant-oat-abc");
         assert_eq!(p.refresh_token, "sk-ant-ort-abc");
         assert_eq!(p.expires_at, 1_700_000_000);
-        assert_eq!(p.email, "default");
+        assert_eq!(p.email, "");
         assert!(p.id_token.is_none());
         assert!(p.account_id.is_none());
     }
@@ -393,6 +399,13 @@ mod tests {
     fn migrate_garbage_json_errors() {
         assert!(migrate_legacy_blob("not json", "anthropic").is_err());
         assert!(migrate_legacy_blob("{}", "anthropic").is_err());
+        assert!(migrate_legacy_blob("null", "anthropic").is_err());
+        assert!(migrate_legacy_blob("", "anthropic").is_err());
+        // Empty access_token string must not produce a usable profile.
+        assert!(migrate_legacy_blob(
+            r#"{"access_token":"","refresh_token":"r","expires_at":1}"#,
+            "anthropic"
+        ).is_err());
     }
 
     #[test]
