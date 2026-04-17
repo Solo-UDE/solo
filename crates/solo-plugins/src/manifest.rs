@@ -137,7 +137,16 @@ pub fn find_plugin_manifest_path(plugin_root: &Path) -> Option<PathBuf> {
 
 pub fn load_plugin_manifest(plugin_root: &Path) -> Option<PluginManifest> {
     let manifest_path = find_plugin_manifest_path(plugin_root)?;
-    let contents = std::fs::read_to_string(&manifest_path).ok()?;
+    let contents = match std::fs::read_to_string(&manifest_path) {
+        Ok(c) => c,
+        Err(err) => {
+            tracing::warn!(
+                path = %manifest_path.display(),
+                "failed to read plugin manifest: {err}"
+            );
+            return None;
+        }
+    };
     let raw: RawPluginManifest = match serde_json::from_str(&contents) {
         Ok(r) => r,
         Err(err) => {
@@ -200,7 +209,10 @@ fn resolve_manifest_path(
     match crate::path::resolve_relative_inside(plugin_root, raw) {
         Ok(p) => Some(p),
         Err(err) => {
-            tracing::warn!("ignoring {field}: {err}");
+            tracing::warn!(
+                plugin_root = %plugin_root.display(),
+                "ignoring {field}: {err}"
+            );
             None
         }
     }
