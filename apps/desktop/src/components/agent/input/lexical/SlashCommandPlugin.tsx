@@ -1,16 +1,26 @@
 /**
- * SlashCommandPlugin - Lexical plugin that detects '/' at line start and shows command palette
+ * SlashCommandPlugin - detects '/' anywhere in the editor (not just at line
+ * start) and shows a command palette for skills + built-in commands.
  *
- * Shows both built-in commands and user/project skills from .solo/skills/.
- * Skills are loaded from disk on mount and appear in the dropdown alongside commands.
+ * Two flavors of entries:
+ *  - SKILLS: insert an inline `SkillChipNode` at the position of the `/` trigger.
+ *    Works anywhere — the `/query` span is surgically replaced with a chip,
+ *    preserving text before and after. Mirrors the @-mention replacement.
+ *  - LOCAL / AGENT commands (/clear, /compact, …): legacy behavior. These
+ *    fire an action that replaces or dispatches the whole message, so they
+ *    only make sense when the trigger is at the very start of the first
+ *    paragraph. We filter them out of the dropdown otherwise.
  */
 
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
 import {
+	$createTextNode,
 	$getRoot,
 	$getSelection,
+	$isElementNode,
 	$isRangeSelection,
 	$isTextNode,
+	$nodesOfType,
 	COMMAND_PRIORITY_HIGH,
 	KEY_ARROW_DOWN_COMMAND,
 	KEY_ARROW_UP_COMMAND,
@@ -38,6 +48,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import { SlashCommandDropdown } from './SlashCommandDropdown';
+import { $createSkillChipNode, SkillChipNode } from './SkillChipNode';
 import { useSkillStore } from '../../../../stores/skillStore';
 import { useFileExplorerStore } from '../../../../stores/fileExplorerStore';
 
@@ -67,6 +78,48 @@ const SLASH_COMMANDS: SlashCommand[] = [
 	{ id: 'add-dir', label: '/add-dir', description: 'Link a workspace from another repository', category: 'agent', icon: FolderPlus },
 ];
 
+interface SlashMatch {
+	/** Offset of the `/` character inside the anchor text node. */
+	start: number;
+	/** Text the user typed after `/`. */
+	query: string;
+	/**
+	 * True iff the `/` is at the very start of the message (offset 0 in the
+	 * first paragraph's first text node). Gates whether built-in /commands
+	 * like /compact appear — they only make sense as whole-message actions.
+	 */
+	atMessageStart: boolean;
+}
+
+/**
+ * Walk backwards from the cursor to find a `/` that's either at the start
+ * of the text node or preceded by whitespace. Returns null if not inside a
+ * slash context (e.g. the user typed `foo/bar` — that's not a trigger).
+ */
+function getSlashMatch(textContent: string, offset: number): { start: number; query: string } | null {
+	let i = offset - 1;
+	while (i >= 0) {
+		const ch = textContent[i];
+		if (ch === '/') {
+			if (i === 0 || /\s/.test(textContent[i - 1])) {
+				return { start: i, query: textContent.slice(i + 1, offset) };
+			}
+			return null;
+		}
+		if (/\s/.test(ch)) return null;
+		i--;
+	}
+	return null;
+}
+
+/** Cursor rect for dropdown anchoring — mirrors MentionPlugin. */
+function getCursorPosition(): { bottom: number; left: number } | null {
+	const sel = window.getSelection();
+	if (!sel || sel.rangeCount === 0) return null;
+	const rect = sel.getRangeAt(0).getBoundingClientRect();
+	return { bottom: window.innerHeight - rect.top + 4, left: rect.left };
+}
+
 export interface SlashCommandPluginProps {
 	onLocalCommand?: (commandId: string) => void;
 	onAgentCommand?: (commandText: string) => void;
@@ -79,26 +132,39 @@ export const SlashCommandPlugin: FC<SlashCommandPluginProps> = ({
 	const [editor] = useLexicalComposerContext();
 
 	const [isOpen, setIsOpen] = useState(false);
-	const [query, setQuery] = useState('');
+	const [match, setMatch] = useState<SlashMatch | null>(null);
 	const [position, setPosition] = useState({ bottom: 0, left: 0 });
 	const [selectedIndex, setSelectedIndex] = useState(0);
+	// Names of skills currently chipped into the editor — used to show the
+	// "Active" indicator in the dropdown.
+	const [chippedSkills, setChippedSkills] = useState<Set<string>>(new Set());
 
-	// Skill store integration
 	const availableSkills = useSkillStore((s) => s.available);
-	const attachedSkills = useSkillStore((s) => s.attached);
-	const toggleSkill = useSkillStore((s) => s.toggleSkill);
 	const loadSkills = useSkillStore((s) => s.loadSkills);
 	const skillsLoaded = useSkillStore((s) => s.loaded);
 	const rootPath = useFileExplorerStore((s) => s.rootPath);
 
-	// Load skills when workspace root changes
 	useEffect(() => {
 		if (rootPath && !skillsLoaded) {
 			loadSkills(rootPath);
 		}
 	}, [rootPath, skillsLoaded, loadSkills]);
 
-	// Build combined commands + skills list
+	// Keep local `chippedSkills` set in sync with the editor so the dropdown
+	// can mark entries already chipped.
+	useEffect(() => {
+		const sync = () => {
+			editor.getEditorState().read(() => {
+				const chips = $nodesOfType(SkillChipNode);
+				setChippedSkills(new Set(chips.map((c) => c.getSkillName())));
+			});
+		};
+		sync();
+		return editor.registerUpdateListener(sync);
+	}, [editor]);
+
+	// Dropdown items: skills always available; built-in commands only when the
+	// trigger is at message start. `query` field and ordering preserved.
 	const allItems = useMemo(() => {
 		const skillItems: SlashCommand[] = availableSkills
 			.filter((s) => s.enabled)
@@ -108,81 +174,70 @@ export const SlashCommandPlugin: FC<SlashCommandPluginProps> = ({
 				description: skill.description || `Skill from ${skill.source}`,
 				category: 'skill' as const,
 				icon: Zap,
-				attached: attachedSkills.has(skill.name),
+				attached: chippedSkills.has(skill.name),
+				source: skill.source,
 			}));
-		return [...SLASH_COMMANDS, ...skillItems];
-	}, [availableSkills, attachedSkills]);
+		const base = match?.atMessageStart ? SLASH_COMMANDS : [];
+		return [...base, ...skillItems];
+	}, [availableSkills, chippedSkills, match?.atMessageStart]);
 
 	const filteredCommands = useMemo(() => {
+		const query = match?.query ?? '';
 		if (!query) return allItems;
 		const lowerQuery = query.toLowerCase();
 		return allItems.filter(
 			(cmd) =>
 				cmd.id.toLowerCase().includes(lowerQuery) ||
 				cmd.label.toLowerCase().includes(lowerQuery) ||
-				cmd.description.toLowerCase().includes(lowerQuery)
+				cmd.description.toLowerCase().includes(lowerQuery),
 		);
-	}, [query, allItems]);
+	}, [match?.query, allItems]);
 
-	// Listen for editor updates to detect / trigger
+	// Detect the `/` trigger anywhere in the editor.
 	useEffect(() => {
 		return editor.registerUpdateListener(({ editorState }) => {
-			let shouldOpen = false;
-			let commandQuery = '';
+			let nextMatch: SlashMatch | null = null;
 
 			editorState.read(() => {
 				const selection = $getSelection();
-				if (!$isRangeSelection(selection) || !selection.isCollapsed()) {
-					setIsOpen(false);
-					return;
-				}
+				if (!$isRangeSelection(selection) || !selection.isCollapsed()) return;
 
 				const anchor = selection.anchor;
 				const node = anchor.getNode();
+				if (!$isTextNode(node)) return;
 
-				if (!$isTextNode(node)) {
-					setIsOpen(false);
-					return;
-				}
-
-				// Only trigger when the node is inside the first paragraph
-				const root = $getRoot();
-				const firstChild = root.getFirstChild();
-				if (!firstChild || node.getParent()?.getKey() !== firstChild.getKey()) {
-					setIsOpen(false);
-					return;
-				}
-
-				// Get the full text content up to cursor
 				const textContent = node.getTextContent();
 				const offset = anchor.offset;
-				const textUpToCursor = textContent.slice(0, offset);
+				const raw = getSlashMatch(textContent, offset);
+				if (!raw) return;
 
-				// Check if text starts with '/'
-				if (textUpToCursor.startsWith('/')) {
-					commandQuery = textUpToCursor.slice(1);
-					shouldOpen = true;
-				} else {
-					setIsOpen(false);
-				}
+				// `atMessageStart` only when the slash is at offset 0 of the
+				// first text node of the first paragraph of the root.
+				const root = $getRoot();
+				const firstParagraph = root.getFirstChild();
+				const firstTextNode = firstParagraph && $isElementNode(firstParagraph)
+					? firstParagraph.getFirstChild()
+					: null;
+				const atMessageStart =
+					raw.start === 0 &&
+					firstTextNode != null &&
+					firstTextNode.getKey() === node.getKey();
+
+				nextMatch = { start: raw.start, query: raw.query, atMessageStart };
 			});
 
-			if (shouldOpen) {
-				// Position dropdown after DOM flush, anchored to the '/' character
+			if (nextMatch) {
+				// Anchor dropdown near the cursor position after the DOM settles.
 				requestAnimationFrame(() => {
-					const sel = window.getSelection();
-					if (sel && sel.rangeCount > 0) {
-						const range = sel.getRangeAt(0).cloneRange();
-						// Collapse to start of text node to get position of '/'
-						range.setStart(range.startContainer, 0);
-						range.collapse(true);
-						const rect = range.getBoundingClientRect();
-						setPosition({ bottom: window.innerHeight - rect.top + 4, left: rect.left });
-					}
-					setQuery(commandQuery);
+					const cursorPos = getCursorPosition();
+					if (cursorPos) setPosition(cursorPos);
+					setMatch(nextMatch);
 					setSelectedIndex(0);
 					setIsOpen(true);
 				});
+			} else {
+				setIsOpen(false);
+				setMatch(null);
 			}
 		});
 	}, [editor]);
@@ -190,27 +245,76 @@ export const SlashCommandPlugin: FC<SlashCommandPluginProps> = ({
 	const handleSelect = useCallback(
 		(command: SlashCommand) => {
 			if (command.category === 'skill') {
-				// Skills: toggle attached state, clear the /query text, keep editor open
 				const skillName = command.id.replace('skill:', '');
-				toggleSkill(skillName);
+				const skillMeta = availableSkills.find((s) => s.name === skillName);
 
-				// Clear the slash text from the editor
+				// Splice the `/query` text out of the anchor text node and insert
+				// a chip exactly where the slash lived — preserving everything
+				// else the user has typed before or after.
 				editor.update(() => {
-					const root = $getRoot();
-					root.clear();
+					const selection = $getSelection();
+					if (!$isRangeSelection(selection) || !match) return;
+					const anchor = selection.anchor;
+					const node = anchor.getNode();
+					if (!$isTextNode(node)) return;
+
+					const textContent = node.getTextContent();
+					const beforeSlash = textContent.slice(0, match.start);
+					const afterQuery = textContent.slice(match.start + 1 + match.query.length);
+
+					// Toggle: if the same skill is already chipped elsewhere in the
+					// editor, just strip the `/query` text without adding a second.
+					const alreadyChipped = chippedSkills.has(skillName);
+
+					node.setTextContent(beforeSlash);
+
+					if (alreadyChipped) {
+						// Reattach trailing text as a separate node so the cursor can
+						// land after it.
+						if (afterQuery) {
+							const after = $createTextNode(afterQuery);
+							node.insertAfter(after);
+							after.select(0, 0);
+						}
+						if (beforeSlash.length === 0) node.remove();
+						return;
+					}
+
+					const chip = $createSkillChipNode(skillName, skillMeta?.description ?? '');
+
+					if (beforeSlash.length === 0) {
+						node.insertBefore(chip);
+						node.remove();
+					} else {
+						node.insertAfter(chip);
+					}
+
+					if (afterQuery) {
+						const afterNode = $createTextNode(afterQuery);
+						chip.insertAfter(afterNode);
+						afterNode.select(0, 0);
+					} else {
+						// Trailing space so the user can keep typing without the caret
+						// getting stuck inside the chip.
+						const spaceNode = $createTextNode(' ');
+						chip.insertAfter(spaceNode);
+						spaceNode.select(1, 1);
+					}
 				});
 
 				setIsOpen(false);
+				setMatch(null);
 				return;
 			}
 
-			// Regular commands: clear editor and dispatch
+			// Built-in /command (local or agent). These only appear in the
+			// dropdown when `atMessageStart === true`, so clearing the editor
+			// and dispatching is safe.
 			editor.update(() => {
-				const root = $getRoot();
-				root.clear();
+				$getRoot().clear();
 			});
-
 			setIsOpen(false);
+			setMatch(null);
 
 			if (command.category === 'local') {
 				onLocalCommand?.(command.id);
@@ -218,7 +322,7 @@ export const SlashCommandPlugin: FC<SlashCommandPluginProps> = ({
 				onAgentCommand?.(`/${command.id}`);
 			}
 		},
-		[editor, onLocalCommand, onAgentCommand, toggleSkill]
+		[editor, onLocalCommand, onAgentCommand, availableSkills, chippedSkills, match],
 	);
 
 	// Keyboard navigation
@@ -231,18 +335,16 @@ export const SlashCommandPlugin: FC<SlashCommandPluginProps> = ({
 				setSelectedIndex((prev) => Math.min(prev + 1, filteredCommands.length - 1));
 				return true;
 			},
-			COMMAND_PRIORITY_HIGH
+			COMMAND_PRIORITY_HIGH,
 		);
-
 		const removeArrowUp = editor.registerCommand(
 			KEY_ARROW_UP_COMMAND,
 			() => {
 				setSelectedIndex((prev) => Math.max(prev - 1, 0));
 				return true;
 			},
-			COMMAND_PRIORITY_HIGH
+			COMMAND_PRIORITY_HIGH,
 		);
-
 		const removeEnter = editor.registerCommand(
 			KEY_ENTER_COMMAND,
 			() => {
@@ -252,9 +354,8 @@ export const SlashCommandPlugin: FC<SlashCommandPluginProps> = ({
 				}
 				return false;
 			},
-			COMMAND_PRIORITY_HIGH
+			COMMAND_PRIORITY_HIGH,
 		);
-
 		const removeTab = editor.registerCommand(
 			KEY_TAB_COMMAND,
 			() => {
@@ -264,16 +365,16 @@ export const SlashCommandPlugin: FC<SlashCommandPluginProps> = ({
 				}
 				return false;
 			},
-			COMMAND_PRIORITY_HIGH
+			COMMAND_PRIORITY_HIGH,
 		);
-
 		const removeEscape = editor.registerCommand(
 			KEY_ESCAPE_COMMAND,
 			() => {
 				setIsOpen(false);
+				setMatch(null);
 				return true;
 			},
-			COMMAND_PRIORITY_HIGH
+			COMMAND_PRIORITY_HIGH,
 		);
 
 		return () => {
@@ -294,6 +395,6 @@ export const SlashCommandPlugin: FC<SlashCommandPluginProps> = ({
 			onSelect={handleSelect}
 			position={position}
 		/>,
-		document.body
+		document.body,
 	);
 };

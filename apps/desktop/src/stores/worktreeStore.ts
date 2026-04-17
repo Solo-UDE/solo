@@ -29,6 +29,7 @@ interface WorktreeState {
 interface WorktreeActions {
 	loadWorktrees: () => Promise<void>;
 	createWorktree: (branch: string, createBranch?: boolean, base?: string) => Promise<WorktreeInfo>;
+	renameWorktree: (id: string, newBranch: string) => Promise<WorktreeInfo>;
 	removeWorktree: (id: string, force?: boolean) => Promise<void>;
 	setActive: (id: string | null) => Promise<void>;
 	lock: (id: string, reason?: string) => Promise<void>;
@@ -120,6 +121,25 @@ export const useWorktreeStore = create<WorktreeStore>()(
 				...wtSnapshot(info),
 			});
 
+			return info;
+		},
+
+		renameWorktree: async (id, newBranch) => {
+			set((state) => {
+				state.error = null;
+			});
+			const info = await wtTrace(
+				'renameWorktree',
+				{ id, newBranch },
+				() => worktreeApi.renameWorktree(id, newBranch),
+			);
+			set((state) => {
+				state.worktrees.set(info.id, info);
+			});
+			wtLog('info', 'worktree renamed', {
+				action: 'renameWorktree',
+				...wtSnapshot(info),
+			});
 			return info;
 		},
 

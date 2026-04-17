@@ -1,5 +1,6 @@
 /**
- * LoginScreen - Authentication screen with GitHub OAuth and Magic Link options
+ * LoginScreen - Authentication screen with GitHub, Google, and Email options
+ * backed by AWS Cognito.
  */
 
 import { useState, useCallback } from "react";
@@ -14,10 +15,11 @@ import {
 
 export function LoginScreen() {
   const [email, setEmail] = useState("");
-  const [magicLinkSent, setMagicLinkSent] = useState(false);
+  const [emailFlowStarted, setEmailFlowStarted] = useState(false);
 
   const signInWithGitHub = useAuthStore((state) => state.signInWithGitHub);
-  const signInWithMagicLink = useAuthStore((state) => state.signInWithMagicLink);
+  const signInWithGoogle = useAuthStore((state) => state.signInWithGoogle);
+  const signInWithEmail = useAuthStore((state) => state.signInWithEmail);
   const clearError = useAuthStore((state) => state.clearError);
 
   const isAuthenticating = useIsAuthenticating();
@@ -28,16 +30,21 @@ export function LoginScreen() {
     await signInWithGitHub();
   }, [signInWithGitHub, clearError]);
 
-  const handleMagicLinkSubmit = useCallback(
+  const handleGoogleClick = useCallback(async () => {
+    clearError();
+    await signInWithGoogle();
+  }, [signInWithGoogle, clearError]);
+
+  const handleEmailSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
       if (!email.trim()) return;
 
       clearError();
-      await signInWithMagicLink(email);
-      setMagicLinkSent(true);
+      await signInWithEmail(email);
+      setEmailFlowStarted(true);
     },
-    [email, signInWithMagicLink, clearError]
+    [email, signInWithEmail, clearError]
   );
 
   return (
@@ -75,6 +82,22 @@ export function LoginScreen() {
           Continue with GitHub
         </Button>
 
+        {/* Google OAuth button */}
+        <Button
+          variant="secondary"
+          size="md"
+          onClick={handleGoogleClick}
+          disabled={isAuthenticating}
+          className="w-full mt-2"
+        >
+          {isAuthenticating ? (
+            <Loader2 className="w-4 h-4 animate-spin" size={16} />
+          ) : (
+            <GoogleGlyph />
+          )}
+          Continue with Google
+        </Button>
+
         {/* Browser notice */}
         {isAuthenticating && (
           <p className="mt-3 text-center text-xs text-muted-foreground flex items-center justify-center gap-1">
@@ -93,26 +116,26 @@ export function LoginScreen() {
           </div>
         </div>
 
-        {/* Magic link form */}
-        {magicLinkSent ? (
+        {/* Email sign-in form (opens Cognito Hosted UI pre-filled) */}
+        {emailFlowStarted ? (
           <div className="text-center p-4 rounded-lg bg-muted/50 shadow-sm">
             <EnvelopeClosedIcon className="w-8 h-8 mx-auto text-primary mb-2" />
             <p className="text-sm text-foreground font-medium mb-1">
-              Check your email
+              Finish in your browser
             </p>
             <p className="text-xs text-muted-foreground mb-3">
-              We sent a magic link to <strong>{email}</strong>
+              We opened a secure sign-in page for <strong>{email}</strong>
             </p>
             <button
               type="button"
-              onClick={() => setMagicLinkSent(false)}
+              onClick={() => setEmailFlowStarted(false)}
               className="text-xs text-primary hover:underline"
             >
               Use a different email
             </button>
           </div>
         ) : (
-          <form onSubmit={handleMagicLinkSubmit}>
+          <form onSubmit={handleEmailSubmit}>
             <label
               htmlFor="email"
               className="block text-sm font-medium text-foreground mb-1.5"
@@ -139,7 +162,7 @@ export function LoginScreen() {
               ) : (
                 <EnvelopeClosedIcon className="w-4 h-4" />
               )}
-              Send Magic Link
+              Continue with Email
             </Button>
           </form>
         )}
@@ -150,5 +173,16 @@ export function LoginScreen() {
         </p>
       </div>
     </div>
+  );
+}
+
+function GoogleGlyph(): React.JSX.Element {
+  return (
+    <svg className="w-4 h-4" viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="#4285F4" d="M21.8 12.2c0-.7-.1-1.4-.2-2H12v3.8h5.5a4.7 4.7 0 0 1-2 3.1v2.6h3.3c1.9-1.8 3-4.4 3-7.5Z" />
+      <path fill="#34A853" d="M12 22c2.7 0 5-.9 6.7-2.4l-3.3-2.6c-.9.6-2.1 1-3.4 1-2.6 0-4.8-1.8-5.6-4.1H3v2.6A10 10 0 0 0 12 22Z" />
+      <path fill="#FBBC05" d="M6.4 13.9A6 6 0 0 1 6 12c0-.7.1-1.3.3-1.9V7.5H3A10 10 0 0 0 2 12c0 1.6.4 3.1 1 4.5l3.4-2.6Z" />
+      <path fill="#EA4335" d="M12 6c1.5 0 2.8.5 3.8 1.5l2.8-2.8A10 10 0 0 0 3 7.5l3.4 2.6C7.2 7.8 9.4 6 12 6Z" />
+    </svg>
   );
 }

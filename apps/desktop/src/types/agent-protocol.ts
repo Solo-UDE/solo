@@ -63,10 +63,12 @@ export interface SessionConfig {
 	cwd?: string;
 	thinkingEnabled?: boolean;
 	maxThinkingTokens?: number;
+	/** Output-token cap per response (forwarded to SDK via env var) */
+	maxTokens?: number;
 	planEnabled?: boolean;
 	acceptEnabled?: boolean;
 	critiqueEnabled?: boolean;
-	model?: 'haiku' | 'sonnet' | 'opus';
+	model?: string;
 	sessionMode?: 'chat' | 'agent';
 	resumeSessionId?: string;
 	forkSession?: boolean;

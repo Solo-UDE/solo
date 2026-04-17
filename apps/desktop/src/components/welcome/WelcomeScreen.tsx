@@ -1,22 +1,20 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, type MouseEvent } from 'react';
 import { Cross2Icon } from '@radix-ui/react-icons';
 import { FolderOpen, GitBranch, Clock, Folder } from 'lucide-react';
-import { Button, IconButton } from '@solo/ui';
-import SoloDecryptAnimation from '../agent/SoloDecryptAnimation';
-import { StarsBackground } from '@/components/ui/stars-background';
+
 import { CloneDialog } from './CloneDialog';
+import { StarsBackground } from '@/components/ui/stars-background';
+import SoloDecryptAnimation from '../agent/SoloDecryptAnimation';
 import { openFolderDialog } from '@/lib/tauri/fs';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
 import { useRepoStore } from '@/stores/repoStore';
 import { useStartupSound } from '@/hooks/useStartupSound';
 
-/** Extract the last segment of a path */
 const dirName = (p: string) => {
   const sep = p.includes('\\') ? '\\' : '/';
   return p.split(sep).pop() ?? p;
 };
 
-/** Truncate a path for display */
 const truncatePath = (p: string, maxLen = 50) => {
   if (p.length <= maxLen) return p;
   const sep = p.includes('\\') ? '\\' : '/';
@@ -36,13 +34,11 @@ export function WelcomeScreen({ onProjectOpen }: WelcomeScreenProps = {}) {
   const [showContent, setShowContent] = useState(false);
   const [showRecentProjects, setShowRecentProjects] = useState(false);
 
-  // Play startup sound on first mount (synced with decrypt animation)
   useStartupSound();
 
-  // Reveal content after the decrypt animation assembles (~2.4s)
   useEffect(() => {
-    const t = setTimeout(() => setShowContent(true), 2400);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setShowContent(true), 2400);
+    return () => clearTimeout(timer);
   }, []);
 
   useEffect(() => {
@@ -51,11 +47,10 @@ export function WelcomeScreen({ onProjectOpen }: WelcomeScreenProps = {}) {
       return;
     }
 
-    const t = setTimeout(() => setShowRecentProjects(true), 120);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setShowRecentProjects(true), 120);
+    return () => clearTimeout(timer);
   }, [recentDirectories.length, showContent]);
 
-  // Open or select a repo via the repoStore (which internally calls switchWorkspace)
   const openOrSelectRepo = useCallback(async (path: string) => {
     const store = useRepoStore.getState();
     if (store.repos.has(path)) {
@@ -67,29 +62,27 @@ export function WelcomeScreen({ onProjectOpen }: WelcomeScreenProps = {}) {
 
   const handleOpenProject = useCallback(async () => {
     const path = await openFolderDialog();
-    if (path) {
-      onProjectOpen?.();
-      await openOrSelectRepo(path);
-    }
-  }, [openOrSelectRepo, onProjectOpen]);
+    if (!path) return;
+    onProjectOpen?.();
+    await openOrSelectRepo(path);
+  }, [onProjectOpen, openOrSelectRepo]);
 
   const handleSwitchTo = useCallback(
     async (path: string) => {
       onProjectOpen?.();
       await openOrSelectRepo(path);
     },
-    [openOrSelectRepo, onProjectOpen],
+    [onProjectOpen, openOrSelectRepo],
   );
 
   const handleRemoveRecent = useCallback(
-    (e: React.MouseEvent, path: string) => {
+    (e: MouseEvent, path: string) => {
       e.stopPropagation();
       removeRecent(path);
     },
     [removeRecent],
   );
 
-  // ⌘O keyboard shortcut to open project
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.metaKey && e.key === 'o') {
@@ -97,14 +90,22 @@ export function WelcomeScreen({ onProjectOpen }: WelcomeScreenProps = {}) {
         handleOpenProject();
       }
     };
+
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [handleOpenProject]);
 
   return (
     <>
-      <div className="relative bg-background flex-1 flex flex-col items-center justify-center h-full overflow-hidden select-none">
-        {/* Animated stars background (dark mode only) */}
+      <div className="relative flex h-full flex-1 select-none flex-col items-center justify-center overflow-hidden bg-background">
+        <div
+          className="absolute inset-0 opacity-100"
+          style={{
+            background:
+              'radial-gradient(circle at 50% 34%, color-mix(in oklch, var(--primary) 9%, transparent) 0%, transparent 38%), linear-gradient(180deg, transparent, color-mix(in oklch, var(--background) 92%, transparent))',
+          }}
+        />
+
         <StarsBackground
           className="absolute inset-0 z-0"
           count={150}
@@ -113,130 +114,127 @@ export function WelcomeScreen({ onProjectOpen }: WelcomeScreenProps = {}) {
           pointerEvents={false}
         />
 
-        {/* Animated glow — breathes continuously while welcome screen is visible */}
         <div
-          className="absolute top-[30%] left-1/2 rounded-full pointer-events-none startup-glow z-[1]"
+          className="startup-glow pointer-events-none absolute left-1/2 top-[30%] z-[1] rounded-full"
           style={{
             width: 300,
             height: 300,
-            background: 'radial-gradient(circle, var(--primary) 0%, transparent 70%)',
+            background: 'radial-gradient(circle, color-mix(in oklch, var(--primary) 70%, transparent) 0%, transparent 70%)',
             filter: 'blur(90px)',
+            transform: 'translateX(-50%)',
           }}
         />
 
-        {/* Solo decrypt animation */}
-        <SoloDecryptAnimation />
+        <div className="relative z-10 flex w-full max-w-4xl flex-col items-center px-6">
+          <SoloDecryptAnimation />
 
-        {/* Tagline */}
-        <p className="relative z-10 text-xs text-muted-foreground/50 tracking-wide mt-4">
-          Your AI coding agent
-        </p>
+          <p className="mt-4 text-[12px] tracking-[0.08em] text-muted-foreground/65">
+            Your AI coding agent
+          </p>
 
-        {/* Action buttons — fade in after decrypt assembles */}
-        <div
-          className="relative z-10 flex items-center gap-3 mt-8"
-          style={{
-            opacity: showContent ? 1 : 0,
-            transform: showContent ? 'translateY(0)' : 'translateY(8px)',
-            transition: 'opacity 280ms var(--ease-smooth), transform 280ms var(--ease-smooth)',
-          }}
-        >
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={handleOpenProject}
-            className="text-xs shadow-sm"
-          >
-            <FolderOpen className="w-3.5 h-3.5" size={14} />
-            Open Project
-            <kbd className="ml-1 text-[10px] opacity-60 font-normal">⌘O</kbd>
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => setCloneOpen(true)}
-            className="text-xs"
-          >
-            <GitBranch className="w-3.5 h-3.5 text-muted-foreground" />
-            Clone from GitHub
-          </Button>
-        </div>
-
-        {/* Recent Projects — staggered fade-in */}
-        {recentDirectories.length > 0 && (
           <div
-            className="relative z-10 mt-8 w-full max-w-sm"
+            className="mt-8 flex flex-wrap items-center justify-center gap-3"
             style={{
-              opacity: showRecentProjects ? 1 : 0,
-              transform: showRecentProjects ? 'translateY(0) scale(1)' : 'translateY(18px) scale(0.985)',
-              filter: showRecentProjects ? 'blur(0px)' : 'blur(8px)',
-              transition:
-                'opacity 420ms var(--ease-smooth), transform 520ms var(--ease-smooth), filter 420ms var(--ease-smooth)',
-              willChange: 'opacity, transform, filter',
+              opacity: showContent ? 1 : 0,
+              transform: showContent ? 'translateY(0)' : 'translateY(8px)',
+              transition: 'opacity 280ms var(--ease-smooth), transform 280ms var(--ease-smooth)',
             }}
           >
-            <div className="rounded-xl bg-card/50 border border-border/30 p-3 backdrop-blur-sm">
-              <div className="flex items-center gap-1.5 mb-2">
-                <Clock className="w-3 h-3 text-muted-foreground/80" />
-                <span
-                  className="text-[11px] font-medium text-muted-foreground/90 tracking-wide"
-                  style={{ textShadow: '0 0 6px rgba(255,255,255,0.18)' }}
-                >
-                  Recent Projects
-                </span>
-              </div>
-              <div className="space-y-0.5">
-                {recentDirectories.slice(0, 5).map((path, i) => (
-                  <div
-                    key={path}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => handleSwitchTo(path)}
-                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSwitchTo(path); } }}
-                    className="group w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs hover:bg-muted/40 active:scale-[0.99] transition-all duration-150 cursor-pointer"
-                    style={{
-                      opacity: showRecentProjects ? 1 : 0,
-                      transform: showRecentProjects ? 'translateY(0)' : 'translateY(12px)',
-                      filter: showRecentProjects ? 'blur(0px)' : 'blur(6px)',
-                      transition: `opacity 320ms var(--ease-smooth) ${140 + i * 75}ms, transform 420ms var(--ease-smooth) ${140 + i * 75}ms, filter 360ms var(--ease-smooth) ${140 + i * 75}ms`,
-                      willChange: 'opacity, transform, filter',
-                    }}
-                  >
-                    <Folder className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                    <div className="flex-1 min-w-0 text-left">
-                      <div
-                        className="text-[13px] text-foreground truncate"
-                        style={{ textShadow: '0 0 8px rgba(255,255,255,0.25)' }}
-                      >
-                        {dirName(path)}
-                      </div>
-                      <div
-                        className="text-[11px] text-muted-foreground/80 truncate"
-                        title={path}
-                        style={{ textShadow: '0 0 6px rgba(255,255,255,0.12)' }}
-                      >
-                        {truncatePath(path)}
-                      </div>
-                    </div>
-                    <IconButton
-                      variant="ghost"
-                      size="sm"
-                      onClick={(e) => handleRemoveRecent(e, path)}
-                      className="w-5 h-5 opacity-0 group-hover:opacity-100 hover:bg-destructive/10 transition-opacity duration-150"
-                      title="Remove from recents"
+            <button
+              onClick={handleOpenProject}
+              className="inline-flex h-10 items-center gap-2 rounded-[12px] bg-primary px-4 text-[13px] font-medium text-primary-foreground shadow-[0_14px_32px_-24px_rgba(0,0,0,0.4)] transition-[transform,filter] duration-150 hover:brightness-105 active:scale-[0.96]"
+            >
+              <FolderOpen className="h-4 w-4" />
+              Open project
+              <span className="rounded-[6px] bg-black/10 px-1.5 py-0.5 text-[10px] text-primary-foreground/80">
+                ⌘O
+              </span>
+            </button>
+
+            <button
+              onClick={() => setCloneOpen(true)}
+              className="inline-flex h-10 items-center gap-2 rounded-[12px] border border-border/65 bg-card/78 px-4 text-[13px] font-medium text-foreground shadow-[0_14px_32px_-28px_rgba(0,0,0,0.32)] backdrop-blur-sm transition-[transform,background-color,border-color] duration-150 hover:border-border hover:bg-card/92 active:scale-[0.96]"
+            >
+              <GitBranch className="h-4 w-4 text-primary" />
+              Clone repository
+            </button>
+          </div>
+
+          {recentDirectories.length > 0 ? (
+            <div
+              className="relative z-10 mt-8 w-full max-w-[30rem]"
+              style={{
+                opacity: showRecentProjects ? 1 : 0,
+                transform: showRecentProjects ? 'translateY(0) scale(1)' : 'translateY(18px) scale(0.985)',
+                filter: showRecentProjects ? 'blur(0px)' : 'blur(8px)',
+                transition:
+                  'opacity 420ms var(--ease-smooth), transform 520ms var(--ease-smooth), filter 420ms var(--ease-smooth)',
+                willChange: 'opacity, transform, filter',
+              }}
+            >
+              <div className="rounded-[16px] border border-border/60 bg-card/74 p-3 shadow-[0_18px_40px_-30px_rgba(0,0,0,0.35)] backdrop-blur-xl">
+                <div className="mb-2 flex items-center gap-1.5 px-1">
+                  <Clock className="h-3.5 w-3.5 text-muted-foreground/55" />
+                  <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/55">
+                    Recent Projects
+                  </span>
+                </div>
+
+                <div className="space-y-1">
+                  {recentDirectories.slice(0, 5).map((path, index) => (
+                    <div
+                      key={path}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => handleSwitchTo(path)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          handleSwitchTo(path);
+                        }
+                      }}
+                      className="group flex w-full cursor-pointer items-center gap-3 rounded-[11px] px-3 py-2.5 text-left transition-[transform,background-color,border-color] duration-150 hover:bg-background/68 active:scale-[0.99]"
+                      style={{
+                        opacity: showRecentProjects ? 1 : 0,
+                        transform: showRecentProjects ? 'translateY(0)' : 'translateY(12px)',
+                        filter: showRecentProjects ? 'blur(0px)' : 'blur(6px)',
+                        transition: `opacity 320ms var(--ease-smooth) ${140 + index * 75}ms, transform 420ms var(--ease-smooth) ${140 + index * 75}ms, filter 360ms var(--ease-smooth) ${140 + index * 75}ms`,
+                        willChange: 'opacity, transform, filter',
+                      }}
                     >
-                      <Cross2Icon className="w-3 h-3 text-muted-foreground" />
-                    </IconButton>
-                  </div>
-                ))}
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] border border-border/50 bg-background/58">
+                        <Folder className="h-4 w-4 text-muted-foreground" />
+                      </div>
+
+                      <div className="min-w-0 flex-1 text-left">
+                        <div className="truncate text-[13px] font-medium text-foreground">
+                          {dirName(path)}
+                        </div>
+                        <div
+                          className="mt-0.5 truncate text-[11px] text-muted-foreground/75"
+                          title={path}
+                        >
+                          {truncatePath(path)}
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={(e) => handleRemoveRecent(e, path)}
+                        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] text-muted-foreground opacity-0 transition-[opacity,background-color,color] duration-150 hover:bg-background group-hover:opacity-100"
+                        title="Remove from recents"
+                      >
+                        <Cross2Icon className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          ) : null}
+        </div>
 
-        {/* Version footer */}
         <div
-          className="absolute bottom-4 text-[10px] text-muted-foreground/30"
+          className="absolute bottom-4 z-10 text-[10px] text-muted-foreground/35"
           style={{
             opacity: showContent ? 1 : 0,
             transition: 'opacity 400ms var(--ease-smooth) 200ms',
@@ -246,10 +244,7 @@ export function WelcomeScreen({ onProjectOpen }: WelcomeScreenProps = {}) {
         </div>
       </div>
 
-      {/* Clone dialog */}
-      {cloneOpen && (
-        <CloneDialog onClose={() => setCloneOpen(false)} />
-      )}
+      {cloneOpen ? <CloneDialog onClose={() => setCloneOpen(false)} /> : null}
     </>
   );
 }

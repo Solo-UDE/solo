@@ -8,10 +8,16 @@ import * as fs from 'node:fs';
 
 import { ClaudeCredentials } from './credentials.js';
 import { createLogger } from './logger.js';
+import { loadMergedSettings } from './permission-pipeline.js';
 import { PermissionManager } from './permissions.js';
 import { generatePlanName, getPlanFilePath, ensurePlanDirectory } from './plan-names.js';
 import { getAllowedToolsForMode } from './session-mode.js';
-import { loadSkills, formatSkillsForPrompt } from './skills.js';
+// Option D UX: skills are injected per-message as content blocks from the
+// desktop frontend (see agentStore.toContentBlocks). The session-level
+// `loadSkills` import is intentionally removed so unchipped skills don't
+// leak into the system prompt. The helper file still exists for the
+// Skills settings UI and future callers.
+import { buildIdentityAppend } from './identity-grounding.js';
 import { buildContentBlocks } from './utils/content.js';
 import { formatToolResult } from './utils/formatter.js';
 
@@ -120,8 +126,11 @@ export interface OrbitAgentConfig {
   thinkingEnabled?: boolean;
   /** Token budget for extended thinking (default: 10000) */
   maxThinkingTokens?: number;
+  /** Output-token cap per response — set via CLAUDE_CODE_MAX_OUTPUT_TOKENS env var */
+  maxTokens?: number;
   planEnabled?: boolean;
   acceptEnabled?: boolean;
+  debugEnabled?: boolean;
   critiqueEnabled?: boolean;
   cwd?: string;
   sessionMode?: OrbitSessionMode;
@@ -233,9 +242,17 @@ export class OrbitAgent {
   private _planMode: boolean;
   private _planFilePath: string | null = null;
   private _acceptMode: boolean;
+  private _debugMode: boolean = false;
+  /** Captured goal text for Debug mode — set on first user prompt when debug is on. */
+  private _debugGoal: string | null = null;
+  /** Counts assistant turns since the last Debug-mode review question. */
+  private _debugTurnsSinceReview = 0;
+  /** Turns-between-reviews cadence — overridden from merged settings at startup. */
+  private _debugReviewInterval = 3;
   private _critiqueMode: boolean;
   private model?: string;
   private _fallbackModel?: string;
+  private _maxTokens?: number;
   private _sessionMode: OrbitSessionMode;
 
   // Session resume/fork fields
@@ -260,9 +277,11 @@ export class OrbitAgent {
     this.permissionManager = new PermissionManager(
       config.permissionRequestCallback,
       config.snapshotCallback,
-      () => this._acceptMode, // Pass Accept mode getter for dynamic checking
-      () => this._planMode, // Pass Plan mode getter for dynamic enforcement
-      () => this._planFilePath // Pass plan file path getter for file-specific allows
+      () => this._acceptMode, // Accept mode (dynamic)
+      () => this._planMode,   // Plan mode (dynamic)
+      () => this._planFilePath, // Plan file path for Plan-mode write special case
+      () => this.cwd, // Workspace for loading .solo/settings.json
+      () => this._debugMode // Debug mode (dynamic)
     );
     this.cwd = config.cwd ?? process.cwd();
     this._thinkingMode = config.thinkingEnabled ?? false;
@@ -271,11 +290,12 @@ export class OrbitAgent {
     // Generate plan file path if plan mode is already enabled (e.g., from stored preferences)
     if (this._planMode) {
       const planName = generatePlanName();
-      this._planFilePath = getPlanFilePath(planName);
-      ensurePlanDirectory();
+      this._planFilePath = getPlanFilePath(planName, this.cwd);
+      ensurePlanDirectory(this.cwd);
       logger.info({ planName, planFilePath: this._planFilePath }, 'Plan file path generated during construction');
     }
     this._acceptMode = config.acceptEnabled ?? false;
+    this._debugMode = config.debugEnabled ?? false;
     this._critiqueMode = config.critiqueEnabled ?? false;
     this._sessionMode = config.sessionMode ?? 'agent';
     this._resumeSessionId = config.resumeSessionId;
@@ -286,9 +306,24 @@ export class OrbitAgent {
     if (config.fallbackModel !== undefined) {
       this._fallbackModel = config.fallbackModel;
     }
+    if (config.maxTokens !== undefined) {
+      this._maxTokens = config.maxTokens;
+    }
     this._mcpServers = config.mcpServers ?? {};
     this._outputFormat = config.outputFormat;
     this._agents = config.agents;
+
+    // Load the Debug-mode review cadence from `.solo/settings.json` (if any).
+    // Falls back to 3 when the workspace doesn't define one.
+    try {
+      const settings = loadMergedSettings(this.cwd);
+      const interval = settings.modes.debug.reviewInterval;
+      if (typeof interval === 'number' && interval > 0) {
+        this._debugReviewInterval = interval;
+      }
+    } catch {
+      // Settings are optional — keep the default.
+    }
     logger.info(
       {
         sessionMode: this._sessionMode,
@@ -349,6 +384,19 @@ export class OrbitAgent {
     return this.permissionManager;
   }
 
+  /**
+   * Preview what the permission pipeline would decide for a tool call, without
+   * invoking any side effects. Used by the session-manager to pick the right
+   * initial `status` on streamed `tool_use` events so auto-approved tools
+   * never flash an approval card.
+   */
+  previewPermission(
+    toolName: string,
+    toolInput: Record<string, unknown>
+  ): 'allow' | 'ask' | 'deny' {
+    return this.permissionManager.previewDecision(toolName, toolInput);
+  }
+
   private _createOptions(): Options {
     /**
      * Create Claude agent options with full Claude Code capabilities.
@@ -359,6 +407,8 @@ export class OrbitAgent {
         type: 'preset' as const,
         preset: 'claude_code' as const,
         append: `
+${buildIdentityAppend(this.model)}
+
 ## Browser Automation
 
 You have access to browser automation tools via MCP. Use mcp__browser__open_browser to start a browser session.
@@ -448,7 +498,7 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
 ### When to Use DevTools vs Browser Tools
 - **Browser tools (mcp__browser__)**: Page interaction, navigation, clicking, typing
 - **DevTools tools (mcp__orbit-devtools__)**: Deep inspection, debugging, storage, performance analysis
-` + formatSkillsForPrompt(loadSkills(this.cwd)),
+`,
       },
       // Working directory
       cwd: this.cwd,
@@ -740,34 +790,101 @@ When browser is open, you also have access to Chrome DevTools Protocol tools via
           },
         ],
 
-        // UserPromptSubmit hook - inject plan mode system prompt per-turn
+        // UserPromptSubmit hook - injects mode-specific context per-turn.
+        //
+        // Handles three cases (composable):
+        //   1. Plan mode: inject the plan-mode directive + plan file path
+        //   2. Debug mode (first turn): capture the user's prompt as the
+        //      session goal and inject the Debug-mode preamble
+        //   3. Debug mode (every N turns): inject a review-checkpoint
+        //      directive asking the agent to call AskUserQuestion
         UserPromptSubmit: [
           {
             timeout: 30,
             hooks: [
-              (_input: unknown): Promise<HookJSONOutput> => {
-                if (!this._planMode || !this._planFilePath) {
-                  return Promise.resolve({});
-                }
+              (input: unknown): Promise<HookJSONOutput> => {
+                const parts: string[] = [];
 
-                const planExists = fs.existsSync(this._planFilePath);
-                const planModePrompt = `Plan mode is active. The user indicated that they do not want you to execute yet -- you MUST NOT make any edits (with the exception of the plan file mentioned below), run any non-readonly tools (including changing configs or making commits), or otherwise make any changes to the system. This supercedes any other instructions you have received.
+                // --- Plan mode context injection ---
+                if (this._planMode && this._planFilePath) {
+                  const planExists = fs.existsSync(this._planFilePath);
+                  parts.push(
+                    `Plan mode is active. The user indicated that they do not want you to execute yet -- you MUST NOT make any edits (with the exception of the plan file mentioned below), run any non-readonly tools (including changing configs or making commits), or otherwise make any changes to the system. This supercedes any other instructions you have received.
 
 ## Plan File Info:
-${planExists
-  ? `Your plan is at ${this._planFilePath}. Edit it incrementally.`
-  : `No plan file exists yet. You should create your plan at ${this._planFilePath} using the Write tool.`}
-You should build your plan incrementally by writing to or editing this file. NOTE that this is the only file you are allowed to edit - other than this you are only allowed to take READ-ONLY actions.`;
+${
+  planExists
+    ? `Your plan is at ${this._planFilePath}. Edit it incrementally.`
+    : `No plan file exists yet. You should create your plan at ${this._planFilePath} using the Write tool.`
+}
+You should build your plan incrementally by writing to or editing this file. NOTE that this is the only file you are allowed to edit - other than this you are only allowed to take READ-ONLY actions.`
+                  );
+                }
+
+                // --- Debug mode context injection ---
+                if (this._debugMode) {
+                  // Capture the goal on the first user turn (if configured
+                  // to use 'firstMessage' which is the default).
+                  const promptText = (() => {
+                    const p = (input as { prompt?: unknown })?.prompt;
+                    return typeof p === 'string' ? p : '';
+                  })();
+
+                  if (this._debugGoal === null && promptText.trim().length > 0) {
+                    this._debugGoal = promptText.trim();
+                    this._debugTurnsSinceReview = 0;
+                    logger.info(
+                      { goalPreview: this._debugGoal.slice(0, 120) },
+                      'Debug mode — captured session goal from first prompt'
+                    );
+                  }
+
+                  // Always pin the goal into the system context while Debug is on.
+                  parts.push(
+                    `Debug mode is active. Continuously evaluate your work against the user's stated goal for this session:
+
+"""
+${this._debugGoal ?? '(goal will be captured from this message)'}
+"""
+
+When you complete a coherent unit of work, invoke the AskUserQuestion tool to run a structured review. Prefer 3–5 targeted questions picked from:
+- Problems the user has flagged or you suspect
+- Improvements to propose
+- What the user actually wants (vs. what you inferred)
+- Whether the goal has been met (yes/no + evidence)
+- Whether the technical implementation satisfies the goal
+- Software improvements worth making now
+- Business / UX / correctness gaps
+
+Do NOT overwhelm the user with a full checklist every time — pick the most important items given the current session state.`
+                  );
+
+                  // Periodic review trigger: every N turns, nudge the agent
+                  // to run a review explicitly before doing more work.
+                  this._debugTurnsSinceReview += 1;
+                  if (this._debugTurnsSinceReview >= this._debugReviewInterval) {
+                    parts.push(
+                      `[Debug-mode review checkpoint] It has been ${this._debugTurnsSinceReview} turns since the last user-facing check-in. Before processing further, invoke the AskUserQuestion tool with a concise review aligned to the session goal above.`
+                    );
+                    this._debugTurnsSinceReview = 0;
+                  }
+                }
+
+                if (parts.length === 0) return Promise.resolve({});
 
                 logger.info(
-                  { planFilePath: this._planFilePath, planExists },
-                  'Hook: UserPromptSubmit — injecting plan mode system prompt'
+                  {
+                    planMode: this._planMode,
+                    debugMode: this._debugMode,
+                    goalCaptured: this._debugGoal !== null,
+                  },
+                  'Hook: UserPromptSubmit — injecting mode-specific context'
                 );
 
                 return Promise.resolve({
                   hookSpecificOutput: {
                     hookEventName: 'UserPromptSubmit' as const,
-                    additionalContext: planModePrompt,
+                    additionalContext: parts.join('\n\n'),
                   },
                 });
               },
@@ -789,17 +906,44 @@ You should build your plan incrementally by writing to or editing this file. NOT
       logger.info({ fallbackModel: this._fallbackModel }, 'Fallback model configured');
     }
 
-    // Permission mode
-    // - Accept mode: 'acceptEdits' - SDK auto-approves all tools
-    // - Default mode: 'default' - canUseTool callback handles all permissions
-    // Plan mode is enforced via UserPromptSubmit hook (soft) + canUseTool callback (hard).
-    // We never use SDK's 'plan' permission mode because it blocks ALL writes before
-    // canUseTool fires, preventing the agent from writing to its plan file.
-    const permissionMode: PermissionMode = this._acceptMode
-      ? 'acceptEdits'
-      : 'default';
-    options.permissionMode = permissionMode;
-    logger.info({ permissionMode }, 'Permission mode set');
+    // Output-token cap — Claude Code reads CLAUDE_CODE_MAX_OUTPUT_TOKENS from env.
+    // The runtime clamps it to the active model's upperLimit server-side, so we
+    // don't need to know per-model caps here; the model registry's max_output_tokens
+    // is the authoritative ceiling.
+    if (this._maxTokens !== undefined) {
+      options.env = {
+        ...process.env,
+        CLAUDE_CODE_MAX_OUTPUT_TOKENS: String(this._maxTokens),
+      };
+      logger.info({ maxTokens: this._maxTokens }, 'Output-token cap configured');
+    }
+
+    // Permission mode — always `'default'` so our `canUseTool` callback is
+    // the single decision point. This is deliberate:
+    //
+    //   - The SDK's `'acceptEdits'` / `'bypassPermissions'` modes are set at
+    //     session creation and cannot be un-set mid-turn; if we configured
+    //     `'acceptEdits'` when the user started in Accept mode, toggling OUT
+    //     of Accept mid-turn would have no effect on Write/Edit tools (the
+    //     SDK would keep auto-approving them) until the session was rebuilt.
+    //   - With `'default'`, every tool use is routed through `canUseTool`,
+    //     which reads `_acceptMode` / `_planMode` / `_debugMode` via live
+    //     getters on the PermissionManager. Toggling any mode at any time —
+    //     including while a turn is actively streaming — takes effect on
+    //     the next tool call with no session restart.
+    //   - Plan mode is enforced via the UserPromptSubmit hook (soft) and
+    //     canUseTool (hard). Never use the SDK's `'plan'` mode because it
+    //     blocks ALL writes before canUseTool fires, which would prevent
+    //     the agent from writing to its own plan file.
+    options.permissionMode = 'default' as PermissionMode;
+    logger.info(
+      {
+        acceptMode: this._acceptMode,
+        planMode: this._planMode,
+        debugMode: this._debugMode,
+      },
+      "Permission mode set to 'default' — runtime gating via canUseTool"
+    );
 
     // Enable streaming partial messages for real-time text streaming
     options.includePartialMessages = true;
@@ -1137,8 +1281,8 @@ You should build your plan incrementally by writing to or editing this file. NOT
       // Generate plan file path and ensure directory exists
       if (!this._planFilePath) {
         const planName = generatePlanName();
-        this._planFilePath = getPlanFilePath(planName);
-        ensurePlanDirectory();
+        this._planFilePath = getPlanFilePath(planName, this.cwd);
+        ensurePlanDirectory(this.cwd);
         logger.info({ planName, planFilePath: this._planFilePath }, 'Plan file path generated');
       }
     } else {
@@ -1174,6 +1318,32 @@ You should build your plan incrementally by writing to or editing this file. NOT
 
   getAcceptMode(): boolean {
     return this._acceptMode;
+  }
+
+  /**
+   * Enable/disable Debug mode. Turning it on captures the next user prompt
+   * as the session goal; turning it off clears any captured goal.
+   */
+  setDebugMode(enabled: boolean): void {
+    this._debugMode = enabled;
+    if (!enabled) {
+      this._debugGoal = null;
+      this._debugTurnsSinceReview = 0;
+    } else {
+      // Mutually exclusive with Plan/Accept, matching the frontend selector.
+      this._planMode = false;
+      this._acceptMode = false;
+    }
+    logger.info({ enabled }, 'Debug mode changed');
+  }
+
+  getDebugMode(): boolean {
+    return this._debugMode;
+  }
+
+  /** Read the captured goal (set lazily by the UserPromptSubmit hook). */
+  getDebugGoal(): string | null {
+    return this._debugGoal;
   }
 
   setCritiqueMode(enabled: boolean): void {

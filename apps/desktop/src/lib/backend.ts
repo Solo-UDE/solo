@@ -34,6 +34,7 @@ export interface ModelInfo {
 	is_default: boolean;
 	description: string;
 	context_window: number;
+	max_output_tokens: number;
 }
 
 // Re-export for convenience
@@ -148,7 +149,7 @@ export async function agentRespondPermission(
 }
 
 /**
- * Set model for a session (haiku | sonnet | opus)
+ * Set model for a session — full model ID (e.g. 'claude-opus-4-7[1m]') or alias.
  */
 export async function agentSetModel(sessionId: string, model: string): Promise<void> {
 	return invoke('agent_set_model', { sessionId, model });
@@ -198,6 +199,22 @@ export async function agentSetAcceptMode(sessionId: string, enabled: boolean): P
  */
 export async function agentGetAcceptMode(sessionId: string): Promise<boolean> {
 	return invoke<boolean>('agent_get_accept_mode', { sessionId });
+}
+
+/**
+ * Enable or disable Debug mode for a session.
+ *
+ * When enabled, the next user prompt is captured as the session goal and a
+ * `session:goal_captured` event is emitted. The agent periodically asks the
+ * user review questions (cadence configured via `.solo/settings.json`).
+ */
+export async function agentSetDebugMode(sessionId: string, enabled: boolean): Promise<void> {
+	return invoke('agent_set_debug_mode', { sessionId, enabled });
+}
+
+/** Get Debug mode for a session. */
+export async function agentGetDebugMode(sessionId: string): Promise<boolean> {
+	return invoke<boolean>('agent_get_debug_mode', { sessionId });
 }
 
 /**
@@ -264,4 +281,127 @@ export async function checkClaudeAuthStatus(): Promise<boolean> {
 
 export async function verifyClaudeSetup(): Promise<ClaudeSetupStatus> {
 	return invoke<ClaudeSetupStatus>('verify_claude_setup');
+}
+
+// =============================================================================
+// Settings & Permissions Commands
+// =============================================================================
+
+import type {
+	SoloSettings,
+	SettingsScope,
+	PermissionsConfig,
+	PermissionMode,
+	PermissionCheckRequest,
+	PermissionDecision,
+} from '../bindings';
+
+/** Load fully-merged settings (user → project → local) for a workspace. */
+export async function settingsLoad(workspace: string): Promise<SoloSettings> {
+	return invoke<SoloSettings>('settings_load', { workspace });
+}
+
+/** Load settings for a single scope (for the settings UI). */
+export async function settingsLoadScope(
+	scope: SettingsScope,
+	workspace: string
+): Promise<SoloSettings> {
+	return invoke<SoloSettings>('settings_load_scope', { scope, workspace });
+}
+
+/** Save a scope's settings and broadcast a settings:changed event. */
+export async function settingsSave(
+	scope: SettingsScope,
+	workspace: string,
+	settings: SoloSettings
+): Promise<void> {
+	return invoke('settings_save', { scope, workspace, settings });
+}
+
+/** Append an allow rule to a scope (deduped). Returns the merged settings. */
+export async function settingsAddAllowRule(
+	scope: SettingsScope,
+	workspace: string,
+	rule: string
+): Promise<SoloSettings> {
+	return invoke<SoloSettings>('settings_add_allow_rule', { scope, workspace, rule });
+}
+
+/** Append a deny rule to a scope (deduped). Returns the merged settings. */
+export async function settingsAddDenyRule(
+	scope: SettingsScope,
+	workspace: string,
+	rule: string
+): Promise<SoloSettings> {
+	return invoke<SoloSettings>('settings_add_deny_rule', { scope, workspace, rule });
+}
+
+/** Append an ask rule to a scope (deduped). Returns the merged settings. */
+export async function settingsAddAskRule(
+	scope: SettingsScope,
+	workspace: string,
+	rule: string
+): Promise<SoloSettings> {
+	return invoke<SoloSettings>('settings_add_ask_rule', { scope, workspace, rule });
+}
+
+/** Convenience: fetch just the merged permissions config. */
+export async function settingsGetPermissions(workspace: string): Promise<PermissionsConfig> {
+	return invoke<PermissionsConfig>('settings_get_permissions', { workspace });
+}
+
+/** Resolve the default mode for a new session from merged settings. */
+export async function settingsDefaultMode(workspace: string): Promise<PermissionMode> {
+	return invoke<PermissionMode>('settings_default_mode', { workspace });
+}
+
+/**
+ * Run the permission decision pipeline for a tool call.
+ *
+ * Agents should call this BEFORE emitting any permission request UI, so
+ * Accept-mode auto-approvals don't flash a modal before resolving.
+ */
+export async function permissionsCheck(
+	workspace: string,
+	request: PermissionCheckRequest
+): Promise<PermissionDecision> {
+	return invoke<PermissionDecision>('permissions_check', { workspace, request });
+}
+
+// =============================================================================
+// Plan File Commands
+// =============================================================================
+
+/** Generate a fresh plan slug that doesn't collide with existing files. */
+export async function planNewSlug(workspace: string): Promise<string> {
+	return invoke<string>('plan_new_slug', { workspace });
+}
+
+/** Write plan content atomically. Returns the absolute path on disk. */
+export async function planWrite(
+	workspace: string,
+	slug: string,
+	content: string
+): Promise<string> {
+	return invoke<string>('plan_write', { workspace, slug, content });
+}
+
+/** Read plan contents. Returns null when missing. */
+export async function planRead(workspace: string, slug: string): Promise<string | null> {
+	return invoke<string | null>('plan_read', { workspace, slug });
+}
+
+/** List all plan slugs in the workspace, sorted. */
+export async function planList(workspace: string): Promise<string[]> {
+	return invoke<string[]>('plan_list', { workspace });
+}
+
+/** Delete a plan file. Idempotent. */
+export async function planDelete(workspace: string, slug: string): Promise<void> {
+	return invoke('plan_delete', { workspace, slug });
+}
+
+/** Resolve the absolute path for a plan slug without reading the file. */
+export async function planPath(workspace: string, slug: string): Promise<string> {
+	return invoke<string>('plan_path', { workspace, slug });
 }

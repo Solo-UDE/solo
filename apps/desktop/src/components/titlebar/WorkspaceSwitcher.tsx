@@ -96,14 +96,12 @@ export function WorkspaceSwitcher() {
   // No folder open — just show "Solo"
   if (!rootPath) {
     return (
-      <div className="flex items-center gap-1.5">
-        <span
-          className="text-xs font-medium text-muted-foreground/60"
-          data-tauri-drag-region
-        >
+      <div className="flex items-center gap-1.5" data-tauri-drag-region={false}>
+        <span className="text-xs font-medium text-muted-foreground/60">
           Solo
         </span>
         <button
+          data-tauri-drag-region={false}
           onClick={handleOpenFolder}
           className="w-6 h-6 rounded-md flex items-center justify-center hover:bg-muted/60 hover:scale-105 active:scale-95 transition-[transform,background-color,color] duration-150"
           title="Open Folder"
@@ -115,10 +113,11 @@ export function WorkspaceSwitcher() {
   }
 
   return (
-    <div className="relative flex items-center gap-0.5">
+    <div className="relative flex items-center gap-0.5" data-tauri-drag-region={false}>
       {/* Directory name + chevron trigger */}
       <button
         ref={triggerRef}
+        data-tauri-drag-region={false}
         onClick={() => setOpen(!open)}
         className={cn(
           'flex items-center gap-1.5 px-2 h-[26px] rounded-lg transition-[transform,background-color,color] duration-150',
@@ -146,6 +145,7 @@ export function WorkspaceSwitcher() {
 
       {/* Plus button — open folder dialog */}
       <button
+        data-tauri-drag-region={false}
         onClick={handleOpenFolder}
         className="w-6 h-6 rounded-md flex items-center justify-center hover:bg-muted/60 hover:scale-105 active:scale-95 transition-[transform,background-color,color] duration-150"
         title="Open Folder"

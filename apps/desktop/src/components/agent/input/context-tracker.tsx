@@ -19,8 +19,9 @@ import { toolbarButtonBase } from './toolbar-button-class';
 import type { FC } from 'react';
 import type { Message } from '../../../stores/agentStore';
 import type { ModelInfo } from '../../../lib/backend';
+import type { TokenUsage } from '../../../types/agent-protocol';
 
-// Rough token estimation: ~4 characters per token
+// Char-per-token heuristic used only before the first API usage report lands.
 const CHARS_PER_TOKEN = 4;
 
 function getContextWindow(modelId: string | null, models: ModelInfo[]): number {
@@ -38,33 +39,61 @@ function estimateTokens(text: string): number {
   return Math.ceil(text.length / CHARS_PER_TOKEN);
 }
 
+/**
+ * The SDK's Result message carries a `usage` object describing exactly how many
+ * tokens the API saw for *that* turn. The most recent turn's usage is the
+ * ground truth for current context occupancy — no estimation needed.
+ *
+ * Total context occupancy = input + cache_creation + cache_read.
+ * All three consume the context window; they only differ in billing tier.
+ * Output tokens are the model's reply and are NOT part of the input budget.
+ */
+function findLatestUsage(messages: Message[]): TokenUsage | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg && msg.usage) return msg.usage;
+  }
+  return null;
+}
+
 function computeBreakdown(messages: Message[], modelId: string | null, models: ModelInfo[]): {
   breakdown: ContextBreakdown[];
   total: number;
   max: number;
+  source: 'real' | 'estimate';
 } {
   const max = getContextWindow(modelId, models);
+  const latestUsage = findLatestUsage(messages);
 
-  // Estimate system prompt tokens (base system prompt is ~2-3k tokens)
-  const systemPromptTokens = 3000;
+  if (latestUsage) {
+    // Authoritative: report exactly what the API counted on the last turn.
+    const fresh = latestUsage.inputTokens;
+    const cacheCreation = latestUsage.cacheCreationInputTokens ?? 0;
+    const cacheRead = latestUsage.cacheReadInputTokens ?? 0;
+    const total = fresh + cacheCreation + cacheRead;
 
-  // Estimate system tools tokens (tool definitions ~1500 tokens for 7 tools)
-  const systemToolsTokens = 1500;
+    const breakdown: ContextBreakdown[] = [
+      { label: 'Input (fresh)', tokens: fresh },
+      { label: 'Cache write', tokens: cacheCreation },
+      { label: 'Cache read', tokens: cacheRead },
+    ];
 
-  // Count message tokens
+    return { breakdown, total, max, source: 'real' };
+  }
+
+  // Pre-first-turn fallback: heuristic estimate so the gauge shows something
+  // reasonable before any API call has returned usage data.
+  const systemPromptTokens = 3000; // base system prompt
+  const systemToolsTokens = 1500; // tool definitions
   let messageTokens = 0;
   let toolResultTokens = 0;
 
   for (const msg of messages) {
-    if (msg.content) {
-      messageTokens += estimateTokens(msg.content);
-    }
+    if (msg.content) messageTokens += estimateTokens(msg.content);
     if (msg.toolCalls) {
       for (const tc of msg.toolCalls) {
-        // Tool call input
         const inputStr = typeof tc.input === 'string' ? tc.input : JSON.stringify(tc.input || '');
         toolResultTokens += estimateTokens(inputStr);
-        // Tool output
         toolResultTokens += estimateTokens(tc.output || '');
       }
     }
@@ -76,10 +105,8 @@ function computeBreakdown(messages: Message[], modelId: string | null, models: M
     { label: 'Messages', tokens: messageTokens },
     { label: 'Tool results', tokens: toolResultTokens },
   ];
-
   const total = breakdown.reduce((sum, item) => sum + item.tokens, 0);
-
-  return { breakdown, total, max };
+  return { breakdown, total, max, source: 'estimate' };
 }
 
 function formatTokenCount(tokens: number): string {
@@ -106,7 +133,7 @@ export const ContextTracker: FC<ContextTrackerProps> = ({
   const selectedModel = useProviderStore((state) => state.selectedModel);
   const models = useModels();
 
-  const { breakdown, total, max } = useMemo(
+  const { breakdown, total, max, source } = useMemo(
     () => computeBreakdown(messages, selectedModel, models),
     [messages, selectedModel, models]
   );
@@ -149,9 +176,26 @@ export const ContextTracker: FC<ContextTrackerProps> = ({
           <div className="px-4 pt-3 pb-2">
             {/* Header */}
             <div className="flex items-center justify-between mb-2.5">
-              <span className="text-sm font-medium text-foreground">
-                Context
-              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-sm font-medium text-foreground">
+                  Context
+                </span>
+                <span
+                  className={cn(
+                    'text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded',
+                    source === 'real'
+                      ? 'bg-success/15 text-success'
+                      : 'bg-muted text-muted-foreground'
+                  )}
+                  title={
+                    source === 'real'
+                      ? 'Reported by the API on the last turn'
+                      : 'Rough estimate (no API usage yet)'
+                  }
+                >
+                  {source === 'real' ? 'live' : 'est'}
+                </span>
+              </div>
               <span className="text-sm text-muted-foreground tabular-nums">
                 {formatTokenCount(total)}/{formatTokenCount(max)}
               </span>

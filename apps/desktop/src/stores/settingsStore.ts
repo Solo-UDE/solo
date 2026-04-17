@@ -400,7 +400,10 @@ export const useSettingsStore = create<SettingsStore>()(
 
       setMaxTokens: (tokens) =>
         set((s) => {
-          s.ai.maxTokens = Math.max(1024, Math.min(32768, tokens));
+          // Hard safety bounds; per-model ceiling is enforced at the UI layer
+          // (slider max = active model's max_output_tokens) and server-side
+          // by Claude Code's validateBoundedIntEnvVar against the model's upperLimit.
+          s.ai.maxTokens = Math.max(1024, Math.min(200_000, tokens));
         }),
 
       setCustomApiUrl: (url) =>

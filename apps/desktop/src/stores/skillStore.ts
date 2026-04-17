@@ -1,41 +1,48 @@
 /**
  * Skill Store
  *
- * Manages available skills discovered from .solo/skills/ directories
- * and tracks which skills are attached to the current message.
+ * Manages available skills discovered from `.solo/skills/` plus adapter
+ * sources (Claude Code, Codex). Attachment state lives in the editor
+ * (Option D — chips are first-class editor nodes), so the store only
+ * tracks the catalog and onboarding state.
  */
 
 import { create } from 'zustand';
-import { enableMapSet } from 'immer';
 import { immer } from 'zustand/middleware/immer';
-import { skillsListAvailable } from '../lib/tauri/skills';
+import {
+  skillsListAvailable,
+  skillsOnboardingStatus,
+  skillsOnboardingApply,
+  skillsOnboardingDismiss,
+  skillsWriteSkill,
+} from '../lib/tauri/skills';
 
-enableMapSet();
-
-import type { SkillInfo } from '../lib/tauri/skills';
+import type {
+  SkillInfo,
+  SkillsOnboardingStatus,
+  OnboardingImportMode,
+  SkillWriteRequest,
+} from '../lib/tauri/skills';
 
 interface SkillState {
-  /** All discovered skills (user + project, merged) */
+  /** All discovered skills (Solo + adapter sources, merged and deduped). */
   available: SkillInfo[];
-  /** Names of skills attached to the current compose context */
-  attached: Set<string>;
-  /** Whether skills have been loaded at least once */
+  /** Whether skills have been loaded at least once. */
   loaded: boolean;
+  /** Onboarding probe result — null until `checkOnboarding` has run. */
+  onboarding: SkillsOnboardingStatus | null;
 }
 
 interface SkillActions {
-  /** Fetch available skills from disk via Tauri */
   loadSkills: (cwd: string) => Promise<void>;
-  /** Attach a skill by name */
-  attachSkill: (name: string) => void;
-  /** Detach a skill by name */
-  detachSkill: (name: string) => void;
-  /** Toggle a skill's attached state */
-  toggleSkill: (name: string) => void;
-  /** Clear all attached skills */
-  clearAttached: () => void;
-  /** Get the full SkillInfo for an attached skill */
-  getAttachedSkills: () => SkillInfo[];
+  /** Probe whether first-launch onboarding should be offered. */
+  checkOnboarding: (cwd: string) => Promise<void>;
+  /** Apply the user's onboarding choice, then reload skills. */
+  applyOnboarding: (cwd: string, mode: OnboardingImportMode) => Promise<number>;
+  /** Dismiss onboarding without importing. */
+  dismissOnboarding: (cwd: string) => Promise<void>;
+  /** Persist a new skill to disk (agent-driven write), then reload. */
+  saveSkill: (cwd: string, req: SkillWriteRequest) => Promise<string>;
 }
 
 type SkillStore = SkillState & SkillActions;
@@ -43,8 +50,8 @@ type SkillStore = SkillState & SkillActions;
 export const useSkillStore = create<SkillStore>()(
   immer((set, get) => ({
     available: [],
-    attached: new Set<string>(),
     loaded: false,
+    onboarding: null,
 
     loadSkills: async (cwd: string) => {
       try {
@@ -62,37 +69,41 @@ export const useSkillStore = create<SkillStore>()(
       }
     },
 
-    attachSkill: (name: string) => {
-      set((state) => {
-        state.attached.add(name);
-      });
+    checkOnboarding: async (cwd) => {
+      try {
+        const status = await skillsOnboardingStatus(cwd);
+        set((state) => {
+          state.onboarding = status;
+        });
+      } catch (err) {
+        console.warn('[SkillStore] onboarding probe failed:', err);
+      }
     },
 
-    detachSkill: (name: string) => {
+    applyOnboarding: async (cwd, mode) => {
+      const imported = await skillsOnboardingApply(cwd, mode);
       set((state) => {
-        state.attached.delete(name);
+        if (state.onboarding) {
+          state.onboarding.shouldPrompt = false;
+        }
       });
+      await get().loadSkills(cwd);
+      return imported;
     },
 
-    toggleSkill: (name: string) => {
+    dismissOnboarding: async (cwd) => {
+      await skillsOnboardingDismiss(cwd);
       set((state) => {
-        if (state.attached.has(name)) {
-          state.attached.delete(name);
-        } else {
-          state.attached.add(name);
+        if (state.onboarding) {
+          state.onboarding.shouldPrompt = false;
         }
       });
     },
 
-    clearAttached: () => {
-      set((state) => {
-        state.attached = new Set();
-      });
-    },
-
-    getAttachedSkills: () => {
-      const { available, attached } = get();
-      return available.filter((s) => attached.has(s.name));
+    saveSkill: async (cwd, req) => {
+      const path = await skillsWriteSkill(req);
+      await get().loadSkills(cwd);
+      return path;
     },
   }))
 );

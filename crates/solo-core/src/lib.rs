@@ -26,6 +26,10 @@
 //! This crate provides the foundational abstractions used across
 //! the Solo IDE, including traits for services and common types.
 
+pub mod permissions;
+pub mod plans;
+pub mod settings;
+
 use thiserror::Error;
 
 /// Core error types for the Solo IDE
@@ -119,7 +123,7 @@ pub struct AgentConfig {
     pub max_tokens: u32,
 }
 
-pub const DEFAULT_MODEL_ID: &str = "claude-opus-4-6";
+pub const DEFAULT_MODEL_ID: &str = "claude-opus-4-7[1m]";
 
 impl Default for AgentConfig {
     fn default() -> Self {

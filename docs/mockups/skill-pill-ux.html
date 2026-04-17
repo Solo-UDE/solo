@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Solo — Skill pill UX options</title>
+<style>
+  :root {
+    --bg: #faf7f2;
+    --panel: #ffffff;
+    --panel-2: #f4efe7;
+    --text: #1a1a1a;
+    --text-muted: #6b6b6b;
+    --border: #e8e2d7;
+    --primary: #3aa26a;
+    --primary-soft: #3aa26a1a;
+    --primary-ring: #3aa26a33;
+    --user: #eeeae1;
+    --chip: #f0ebe0;
+    --shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.04);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 40px 24px 80px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+  }
+  header {
+    max-width: 1100px;
+    margin: 0 auto 32px;
+  }
+  header h1 {
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 0 0 6px;
+  }
+  header p {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 13px;
+    max-width: 640px;
+  }
+  .grid {
+    max-width: 1100px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px;
+    box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .card h2 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .tag {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: var(--primary-soft);
+    color: var(--primary);
+  }
+  .card .why {
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.5;
+    margin: -4px 0 0;
+  }
+  .chat {
+    background: var(--panel-2);
+    border-radius: 10px;
+    padding: 14px;
+    min-height: 200px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .messages {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 6px 2px;
+    overflow-y: auto;
+    max-height: 140px;
+  }
+  .msg {
+    padding: 8px 12px;
+    background: var(--user);
+    border-radius: 10px;
+    font-size: 12.5px;
+    align-self: flex-end;
+    max-width: 75%;
+    position: relative;
+    animation: slideIn .24s ease-out;
+  }
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .skill-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--primary);
+    background: var(--primary-soft);
+    padding: 2px 6px;
+    border-radius: 999px;
+    margin-top: 6px;
+  }
+  .msg .skill-chip::before {
+    content: "⚡";
+    font-size: 9px;
+  }
+  .input-area {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--panel);
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .input-editor {
+    min-height: 32px;
+    font-size: 13px;
+    color: var(--text);
+    outline: none;
+  }
+  .input-editor:empty::before {
+    content: attr(data-placeholder);
+    color: var(--text-muted);
+    opacity: .6;
+  }
+  .input-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--primary-soft);
+    color: var(--primary);
+    font-size: 11px;
+    font-weight: 500;
+    padding: 3px 8px 3px 8px;
+    border-radius: 999px;
+    line-height: 1;
+    transition: all .2s ease;
+  }
+  .pill::before {
+    content: "⚡";
+    font-size: 10px;
+  }
+  .pill.ghost {
+    background: transparent;
+    color: var(--text-muted);
+    border: 1px dashed var(--border);
+  }
+  .pill button {
+    background: none;
+    border: 0;
+    cursor: pointer;
+    color: inherit;
+    padding: 0 2px;
+    line-height: 1;
+    opacity: .6;
+    font-size: 13px;
+  }
+  .pill button:hover { opacity: 1; }
+  .pin {
+    cursor: pointer;
+    opacity: .55;
+    font-size: 11px;
+  }
+  .pin.active { opacity: 1; color: var(--primary); }
+  .send {
+    margin-left: auto;
+    background: var(--primary);
+    color: white;
+    border: 0;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: transform .15s ease;
+  }
+  .send:active { transform: scale(.97); }
+  .reset {
+    background: transparent;
+    border: 0;
+    font-size: 11px;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 0;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .reset:hover { color: var(--text); }
+
+  /* Inline chip (Option D) */
+  .editor-inline {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .inline-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--primary-soft);
+    color: var(--primary);
+    font-size: 11px;
+    font-weight: 500;
+    padding: 2px 7px;
+    border-radius: 6px;
+    user-select: none;
+  }
+  .inline-chip::before {
+    content: "⚡";
+    font-size: 10px;
+  }
+  .inline-chip button {
+    background: none;
+    border: 0;
+    color: inherit;
+    cursor: pointer;
+    font-size: 11px;
+    opacity: .5;
+    padding: 0 1px;
+  }
+  .inline-chip button:hover { opacity: 1; }
+  .inline-text {
+    flex: 1;
+    min-width: 80px;
+    outline: none;
+    font-size: 13px;
+  }
+  .inline-text:empty::before {
+    content: attr(data-placeholder);
+    color: var(--text-muted);
+    opacity: .6;
+  }
+
+  /* Pros/cons bar */
+  .pros-cons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    font-size: 11.5px;
+    padding: 10px 12px;
+    background: var(--panel-2);
+    border-radius: 8px;
+  }
+  .pros-cons h3 {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    margin: 0 0 4px;
+    color: var(--text-muted);
+  }
+  .pros-cons ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    line-height: 1.55;
+    color: var(--text-muted);
+  }
+  .pros-cons ul li::before {
+    content: "— ";
+    color: var(--text-muted);
+  }
+
+  /* Footer decision UI */
+  .decision {
+    max-width: 1100px;
+    margin: 32px auto 0;
+    padding: 20px 24px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  .decision h2 { font-size: 14px; font-weight: 600; margin: 0; }
+  .decision p { font-size: 12px; color: var(--text-muted); margin: 4px 0 0; }
+  .decision code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Skill pill UX — pick the behavior you want</h1>
+  <p>The issue: after sending a message with a skill attached, the pill stays in the input and the sent message shows no trace that a skill was active. Here are four distinct ways to fix it. Each card is interactive — type something, click <em>Send</em>, and watch what happens.</p>
+</header>
+
+<section class="grid">
+  <!-- ============ OPTION A ============ -->
+  <article class="card" data-option="A">
+    <h2>Option A <span class="tag">Clear on send</span></h2>
+    <p class="why">The pill is a one-time attachment. On send, it animates into the user message as a badge; the input returns to a clean state. Re-attach explicitly for the next message.</p>
+    <div class="chat">
+      <div class="messages" id="msgs-A"></div>
+      <div class="input-area">
+        <div class="input-editor" contenteditable data-placeholder="Type a message…" data-editor="A"></div>
+        <div class="input-bar" id="bar-A">
+          <span class="pill" data-pill>
+            per-file-commit
+            <button data-detach>×</button>
+          </span>
+          <button class="send" data-send="A">Send ↵</button>
+        </div>
+      </div>
+      <button class="reset" data-reset="A">Reset demo</button>
+    </div>
+    <div class="pros-cons">
+      <div><h3>Pros</h3><ul><li>Unambiguous — every message declares its skills</li><li>Zero stale-state risk</li><li>Clean input after send</li></ul></div>
+      <div><h3>Cons</h3><ul><li>Re-attach each message when iterating</li></ul></div>
+    </div>
+  </article>
+
+  <!-- ============ OPTION B ============ -->
+  <article class="card" data-option="B">
+    <h2>Option B <span class="tag">Sticky + trace</span></h2>
+    <p class="why">The pill persists for the session (current behavior). Every sent message gets a small <em>"used:"</em> badge so the history is unambiguous. Detach with × when done.</p>
+    <div class="chat">
+      <div class="messages" id="msgs-B"></div>
+      <div class="input-area">
+        <div class="input-editor" contenteditable data-placeholder="Type a message…" data-editor="B"></div>
+        <div class="input-bar" id="bar-B">
+          <span class="pill" data-pill>
+            per-file-commit
+            <button data-detach>×</button>
+          </span>
+          <button class="send" data-send="B">Send ↵</button>
+        </div>
+      </div>
+      <button class="reset" data-reset="B">Reset demo</button>
+    </div>
+    <div class="pros-cons">
+      <div><h3>Pros</h3><ul><li>Low friction for repeated use of one skill</li><li>Message history still shows what applied</li></ul></div>
+      <div><h3>Cons</h3><ul><li>Easy to forget a skill is still attached</li></ul></div>
+    </div>
+  </article>
+
+  <!-- ============ OPTION C ============ -->
+  <article class="card" data-option="C">
+    <h2>Option C <span class="tag">Pin to keep</span></h2>
+    <p class="why">Default = clear on send. A pin icon on each pill flips it to sticky. Unpinned pills have a dashed ghost border; pinned pills are solid. Best of both modes under explicit user control.</p>
+    <div class="chat">
+      <div class="messages" id="msgs-C"></div>
+      <div class="input-area">
+        <div class="input-editor" contenteditable data-placeholder="Type a message…" data-editor="C"></div>
+        <div class="input-bar" id="bar-C">
+          <span class="pill ghost" data-pill data-pinned="false">
+            per-file-commit
+            <span class="pin" data-pin title="Pin to keep across messages">📌</span>
+            <button data-detach>×</button>
+          </span>
+          <button class="send" data-send="C">Send ↵</button>
+        </div>
+      </div>
+      <button class="reset" data-reset="C">Reset demo</button>
+    </div>
+    <div class="pros-cons">
+      <div><h3>Pros</h3><ul><li>Explicit intent, no surprises</li><li>One-off and batch flows both first-class</li></ul></div>
+      <div><h3>Cons</h3><ul><li>Extra affordance to learn (the pin icon)</li></ul></div>
+    </div>
+  </article>
+
+  <!-- ============ OPTION D ============ -->
+  <article class="card" data-option="D">
+    <h2>Option D <span class="tag">Inline chip</span></h2>
+    <p class="why">The skill lives <em>inside</em> the editor as a non-editable chip at the start of the message — like a mention. It sends with the text, then disappears when the input clears. Visually inseparable from the content.</p>
+    <div class="chat">
+      <div class="messages" id="msgs-D"></div>
+      <div class="input-area">
+        <div class="input-editor editor-inline" data-editor="D">
+          <span class="inline-chip" data-inline>
+            /per-file-commit
+            <button data-detach>×</button>
+          </span>
+          <span class="inline-text" contenteditable data-placeholder="commit these changes…"></span>
+        </div>
+        <div class="input-bar">
+          <button class="send" data-send="D" style="margin-left:auto">Send ↵</button>
+        </div>
+      </div>
+      <button class="reset" data-reset="D">Reset demo</button>
+    </div>
+    <div class="pros-cons">
+      <div><h3>Pros</h3><ul><li>Skill is literally part of the message — zero ambiguity</li><li>Feels familiar (like @mentions / #channels)</li></ul></div>
+      <div><h3>Cons</h3><ul><li>Implementation cost in Lexical (custom node)</li><li>Takes up inline space in the editor</li></ul></div>
+    </div>
+  </article>
+</section>
+
+<section class="decision">
+  <div>
+    <h2>Which one do you want?</h2>
+    <p>Tell me <code>A</code>, <code>B</code>, <code>C</code>, or <code>D</code> and I'll implement it in <code>SkillBar.tsx</code> + the agent message bubble. I'd recommend <strong>A</strong> for the cleanest mental model, <strong>C</strong> if you want power-user flexibility.</p>
+  </div>
+</section>
+
+<script>
+  const options = ['A', 'B', 'C', 'D'];
+  const state = {};
+  for (const o of options) state[o] = { attached: true, pinned: false, sentCount: 0 };
+
+  function getEditorText(key) {
+    if (key === 'D') {
+      return document.querySelector('[data-editor="D"] .inline-text').textContent.trim();
+    }
+    return document.querySelector('[data-editor="' + key + '"]').textContent.trim();
+  }
+  function clearEditor(key) {
+    if (key === 'D') {
+      document.querySelector('[data-editor="D"] .inline-text').textContent = '';
+      return;
+    }
+    document.querySelector('[data-editor="' + key + '"]').textContent = '';
+  }
+
+  function renderPill(key) {
+    const bar = document.querySelector('#bar-' + key);
+    const existing = bar && bar.querySelector('[data-pill]');
+    if (!existing) return;
+    if (!state[key].attached) {
+      existing.style.display = 'none';
+    } else {
+      existing.style.display = 'inline-flex';
+      if (key === 'C') {
+        existing.classList.toggle('ghost', !state[key].pinned);
+        const pin = existing.querySelector('[data-pin]');
+        if (pin) pin.classList.toggle('active', state[key].pinned);
+      }
+    }
+  }
+
+  function makeChip(label) {
+    const chip = document.createElement('span');
+    chip.className = 'skill-chip';
+    chip.textContent = label;
+    return chip;
+  }
+
+  function sendMessage(key) {
+    const text = getEditorText(key);
+    if (!text) return;
+    const msgs = document.querySelector('#msgs-' + key);
+    const m = document.createElement('div');
+    m.className = 'msg';
+
+    if (key === 'D' && state[key].attached) {
+      m.appendChild(makeChip('/per-file-commit'));
+      m.appendChild(document.createElement('br'));
+    }
+
+    m.appendChild(document.createTextNode(text));
+
+    if (state[key].attached && (key === 'A' || key === 'B')) {
+      m.appendChild(document.createElement('br'));
+      m.appendChild(makeChip(key === 'B' ? 'used: per-file-commit' : 'per-file-commit'));
+    }
+    if (key === 'C' && state[key].attached) {
+      m.appendChild(document.createElement('br'));
+      m.appendChild(makeChip('per-file-commit'));
+    }
+
+    msgs.appendChild(m);
+    msgs.scrollTop = msgs.scrollHeight;
+    clearEditor(key);
+    state[key].sentCount += 1;
+
+    if (key === 'A') state[key].attached = false;
+    if (key === 'B') { /* stay attached */ }
+    if (key === 'C') { if (!state[key].pinned) state[key].attached = false; }
+    if (key === 'D') {
+      const inline = document.querySelector('[data-inline]');
+      if (inline) inline.style.display = 'none';
+      state[key].attached = false;
+    }
+    renderPill(key);
+  }
+
+  function resetDemo(key) {
+    document.querySelector('#msgs-' + key).innerText = '';
+    state[key].attached = true;
+    state[key].pinned = false;
+    clearEditor(key);
+    if (key === 'D') {
+      const inline = document.querySelector('[data-inline]');
+      if (inline) inline.style.display = 'inline-flex';
+    }
+    renderPill(key);
+  }
+
+  document.querySelectorAll('[data-send]').forEach(function (btn) {
+    btn.addEventListener('click', function () { sendMessage(btn.dataset.send); });
+  });
+  document.querySelectorAll('[data-reset]').forEach(function (btn) {
+    btn.addEventListener('click', function () { resetDemo(btn.dataset.reset); });
+  });
+  document.querySelectorAll('[data-detach]').forEach(function (btn) {
+    btn.addEventListener('click', function (e) {
+      const card = e.target.closest('.card');
+      const key = card && card.dataset.option;
+      if (!key) return;
+      if (key === 'D') {
+        const inline = document.querySelector('[data-inline]');
+        if (inline) inline.style.display = 'none';
+      }
+      state[key].attached = false;
+      renderPill(key);
+    });
+  });
+  document.querySelectorAll('[data-pin]').forEach(function (pin) {
+    pin.addEventListener('click', function (e) {
+      const card = e.target.closest('.card');
+      const key = card && card.dataset.option;
+      if (!key) return;
+      state[key].pinned = !state[key].pinned;
+      renderPill(key);
+    });
+  });
+  document.querySelectorAll('[data-editor]').forEach(function (el) {
+    const target = el.classList.contains('editor-inline')
+      ? el.querySelector('.inline-text')
+      : el;
+    target.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        const card = el.closest('.card');
+        sendMessage(card.dataset.option);
+      }
+    });
+  });
+  options.forEach(function (o) {
+    const el = o === 'D'
+      ? document.querySelector('[data-editor="D"] .inline-text')
+      : document.querySelector('[data-editor="' + o + '"]');
+    if (el) el.textContent = 'commit these changes';
+  });
+</script>
+</body>
+</html>

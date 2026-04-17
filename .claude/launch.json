@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "solo-web",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "--cwd", "/Users/sachin/Developer/Orbit_Main/solo-web", "dev"],
+      "port": 3001
+    }
+  ]
+}

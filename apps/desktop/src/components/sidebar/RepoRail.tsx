@@ -1,23 +1,20 @@
 /**
- * RepoRail - Vertical icon rail showing one icon per repository.
- * Always visible. Supports two modes:
- *   - Collapsed (48px): icon-only buttons with tooltips on hover
- *   - Expanded (200px): full rows showing icon, repo name, and branch
- * Toggle between modes via the button at the bottom of the rail.
+ * RepoRail - Slim repository switcher inspired by Codex/Orbit.
+ * Keeps navigation visually quiet and pushes detail into the main sidebar.
  */
 
-import { useCallback, useRef, useState, type FC } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { PlusIcon, Cross2Icon, TrashIcon } from '@radix-ui/react-icons';
+import { useCallback, useEffect, useRef, type FC } from 'react';
+import { motion } from 'motion/react';
 import { GitBranch } from 'lucide-react';
+import { PlusIcon, TrashIcon } from '@radix-ui/react-icons';
 import { useRepoStore, useRepoList } from '@/stores/repoStore';
 import type { RepoEntry } from '@/stores/repoStore';
-import { getRepoIcon, getRepoColorVar, getRepoColorMutedVar } from '@/lib/repoIdentity';
+import { getRepoIcon, getRepoColorVar } from '@/lib/repoIdentity';
 import { openFolderDialog } from '@/lib/tauri/fs';
 import { cn } from '@/lib/utils';
+import { HEIGHTS, SIDEBAR } from '@/lib/constants';
+import { useUIStore, useIsLeftSidebarCollapsed } from '@/stores/uiStore';
 import { toast } from 'sonner';
-import { SIDEBAR } from '@/lib/constants';
-import { useUIStore } from '@/stores/uiStore';
 import {
   ContextMenu,
   ContextMenuTrigger,
@@ -25,7 +22,8 @@ import {
   ContextMenuItem,
 } from '@/components/ui/context-menu';
 
-const RAIL_SPRING = { type: 'spring' as const, stiffness: 600, damping: 35 };
+const RAIL_SPRING = { type: 'spring' as const, stiffness: 560, damping: 38 };
+const HOVER_OPEN_DELAY_MS = 180;
 
 export const RepoRail: FC = () => {
   const repos = useRepoList();
@@ -33,9 +31,10 @@ export const RepoRail: FC = () => {
   const selectWorktree = useRepoStore((s) => s.selectWorktree);
   const addRepo = useRepoStore((s) => s.addRepo);
   const removeRepo = useRepoStore((s) => s.removeRepo);
-
   const railExpanded = useUIStore((s) => s.railExpanded);
   const setRailExpanded = useUIStore((s) => s.setRailExpanded);
+  const isSidebarCollapsed = useIsLeftSidebarCollapsed();
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleAddRepo = useCallback(async () => {
     try {
@@ -48,98 +47,95 @@ export const RepoRail: FC = () => {
     }
   }, [addRepo]);
 
-  // Auto-expand on hover, collapse on leave
-  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const canHoverExpand = isSidebarCollapsed;
+  const isExpanded = canHoverExpand && railExpanded;
+
+  useEffect(() => {
+    if (!canHoverExpand && railExpanded) {
+      setRailExpanded(false);
+    }
+  }, [canHoverExpand, railExpanded, setRailExpanded]);
+
+  useEffect(() => {
+    return () => {
+      if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+    };
+  }, []);
 
   const handleMouseEnter = useCallback(() => {
+    if (!canHoverExpand) return;
     if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
     hoverTimerRef.current = setTimeout(() => {
       setRailExpanded(true);
-    }, 250);
-  }, [setRailExpanded]);
+    }, HOVER_OPEN_DELAY_MS);
+  }, [canHoverExpand, setRailExpanded]);
 
   const handleMouseLeave = useCallback(() => {
+    if (!canHoverExpand) return;
     if (hoverTimerRef.current) {
       clearTimeout(hoverTimerRef.current);
       hoverTimerRef.current = null;
     }
     setRailExpanded(false);
-  }, [setRailExpanded]);
-
-  const railWidth = railExpanded ? SIDEBAR.railExpandedWidth : SIDEBAR.railWidth;
+  }, [canHoverExpand, setRailExpanded]);
 
   return (
     <motion.aside
-      className="h-full flex flex-col py-2 gap-1 bg-sidebar border-r border-border/20 pt-[38px] shrink-0 overflow-hidden"
-      animate={{ width: railWidth }}
+      className="flex h-full shrink-0 flex-col overflow-hidden border-r border-border/80 bg-sidebar"
+      animate={{ width: isExpanded ? SIDEBAR.railExpandedWidth : 58 }}
       transition={RAIL_SPRING}
-      style={{ width: railWidth }}
+      style={{
+        width: isExpanded ? SIDEBAR.railExpandedWidth : 58,
+        paddingTop: HEIGHTS.titlebar + 12,
+        paddingBottom: 12,
+      }}
       role="navigation"
-      aria-label="Repository rail"
+      aria-label="Repositories"
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
-      {/* Add repo button */}
       <div
         className={cn(
-          'flex flex-col gap-1',
-          railExpanded ? 'items-stretch px-1.5' : 'items-center',
+          'flex flex-col gap-3 px-2',
+          isExpanded ? 'items-stretch' : 'items-center',
         )}
       >
         <button
           onClick={handleAddRepo}
           className={cn(
-            'flex items-center justify-center rounded-lg',
-            'text-muted-foreground/50 hover:text-muted-foreground',
-            'hover:bg-muted/40 active:scale-95',
-            'transition-all duration-200',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-1',
-            railExpanded ? 'h-8 w-full gap-2 px-2' : 'w-9 h-9',
+            'inline-flex items-center rounded-[10px] border border-border/70 bg-background/70 text-muted-foreground',
+            'hover:border-border hover:bg-card hover:text-foreground',
+            'transition-[background-color,border-color,color,transform] duration-150 active:scale-95',
+            isExpanded ? 'h-9 w-full justify-start gap-2.5 px-3' : 'mx-auto h-9 w-9 justify-center',
           )}
-          title="Add Repository"
-          aria-label="Add Repository"
+          title="Add repository"
+          aria-label="Add repository"
         >
-          <PlusIcon className="w-4 h-4 shrink-0" />
-          {railExpanded && <span className="text-xs truncate">Add Repository</span>}
+          <PlusIcon className="h-4 w-4 shrink-0" />
+          {isExpanded ? <span className="truncate text-xs font-medium">Add repository</span> : null}
         </button>
       </div>
 
-      <div className="h-px mx-2 bg-border/10 my-1" />
-
-      {/* Repo list */}
       <div
         className={cn(
-          'flex flex-col gap-1 flex-1 overflow-y-auto overflow-x-hidden scrollbar-none py-1',
-          !railExpanded && 'items-center',
+          'mt-3 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-1',
+          isExpanded ? 'items-stretch' : 'items-center',
         )}
       >
-        <AnimatePresence initial={false}>
-          {repos.map((repo) => (
-            <motion.div
-              key={repo.path}
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.8 }}
-              transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-            >
-              <RailIcon
-                repo={repo}
-                isActive={repo.path === activeRepoPath}
-                expanded={railExpanded}
-                onClick={() => selectWorktree(repo.path, null)}
-                onRemove={() => removeRepo(repo.path)}
-              />
-            </motion.div>
-          ))}
-        </AnimatePresence>
+        {repos.map((repo) => (
+          <RailIcon
+            key={repo.path}
+            repo={repo}
+            isActive={repo.path === activeRepoPath}
+            expanded={isExpanded}
+            onClick={() => selectWorktree(repo.path, null)}
+            onRemove={() => removeRepo(repo.path)}
+          />
+        ))}
       </div>
     </motion.aside>
   );
 };
-
-// ---------------------------------------------------------------------------
-// RailIcon - Individual repo icon button in the rail
-// ---------------------------------------------------------------------------
 
 interface RailIconProps {
   repo: RepoEntry;
@@ -150,168 +146,64 @@ interface RailIconProps {
 }
 
 const RailIcon: FC<RailIconProps> = ({ repo, isActive, expanded, onClick, onRemove }) => {
-  const [isHovered, setIsHovered] = useState(false);
   const Icon = getRepoIcon(repo.icon);
 
-  if (expanded) {
-    return (
-      <ContextMenu>
-        <ContextMenuTrigger asChild>
-          <div className="relative group px-1">
-            {/* Active accent bar */}
-            {isActive && (
-              <motion.div
-                layoutId="rail-accent"
-                className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full z-10"
-                style={{ backgroundColor: getRepoColorVar(repo.color) }}
-                initial={{ scaleY: 0 }}
-                animate={{ scaleY: 1 }}
-                transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-              />
-            )}
-
-            <button
-              onClick={onClick}
-              className={cn(
-                'relative w-full flex items-center gap-2.5 px-3 py-2 rounded-lg',
-                'transition-colors duration-150 text-left',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-1',
-                isActive ? 'shadow-sm' : 'hover:bg-muted/40',
-              )}
-              style={isActive ? { backgroundColor: getRepoColorMutedVar(repo.color) } : undefined}
-              aria-label={`${repo.name}${repo.currentBranch ? ` (${repo.currentBranch})` : ''}`}
-            >
-              <Icon
-                className="w-[18px] h-[18px] shrink-0"
-                style={{ color: isActive ? getRepoColorVar(repo.color) : undefined }}
-              />
-              <div className="flex flex-col min-w-0 flex-1">
-                <span
-                  className={cn(
-                    'text-xs font-medium truncate leading-tight',
-                    isActive ? 'text-foreground' : 'text-muted-foreground',
-                  )}
-                  title={repo.name}
-                >
-                  {repo.name}
-                </span>
-                {repo.currentBranch && (
-                  <span className="flex items-center gap-1 text-[10px] text-muted-foreground/60 leading-tight mt-0.5">
-                    <GitBranch className="w-2.5 h-2.5 shrink-0" />
-                    <span className="truncate" title={repo.currentBranch}>{repo.currentBranch}</span>
-                  </span>
-                )}
-              </div>
-              {repo.worktrees.length > 1 && (
-                <span
-                  className={cn(
-                    'text-[10px] text-muted-foreground/50 tabular-nums shrink-0',
-                    'transition-opacity duration-150',
-                    'group-hover:opacity-0',
-                  )}
-                >
-                  {repo.worktrees.length}wt
-                </span>
-              )}
-            </button>
-
-            {/* Hover close button */}
-            <button
-              onClick={(e) => { e.stopPropagation(); onRemove(); }}
-              className={cn(
-                'absolute right-2 top-1/2 -translate-y-1/2',
-                'w-5 h-5 flex items-center justify-center rounded shrink-0',
-                'opacity-0 group-hover:opacity-100 transition-opacity duration-150',
-                'text-muted-foreground/50 hover:text-foreground hover:bg-muted/60',
-              )}
-              title="Remove repository"
-              aria-label={`Remove ${repo.name}`}
-            >
-              <Cross2Icon className="w-3 h-3" />
-            </button>
-          </div>
-        </ContextMenuTrigger>
-        <ContextMenuContent className="w-44">
-          <ContextMenuItem
-            onClick={onRemove}
-            className="text-destructive focus:text-destructive"
-          >
-            <TrashIcon className="h-3.5 w-3.5" /> Remove
-          </ContextMenuItem>
-        </ContextMenuContent>
-      </ContextMenu>
-    );
-  }
-
-  // Collapsed mode - icon only with tooltip and right-click context menu
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
-        <div className="relative flex items-center justify-center">
-          {/* Active accent bar */}
-          {isActive && (
-            <motion.div
-              layoutId="rail-accent"
-              className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full"
+        <div className={cn('relative flex w-full', expanded ? 'justify-stretch' : 'justify-center')}>
+          {isActive ? (
+            <motion.span
+              layoutId="repo-rail-active"
+              className={cn(
+                'absolute top-1/2 h-6 w-[2px] -translate-y-1/2 rounded-r-full',
+                expanded ? 'left-0' : '-left-2',
+              )}
               style={{ backgroundColor: getRepoColorVar(repo.color) }}
-              initial={{ scaleY: 0 }}
-              animate={{ scaleY: 1 }}
-              transition={{ type: 'spring', stiffness: 500, damping: 30 }}
             />
-          )}
+          ) : null}
 
-          <motion.button
+          <button
             onClick={onClick}
-            onMouseEnter={() => setIsHovered(true)}
-            onMouseLeave={() => setIsHovered(false)}
-            onFocus={() => setIsHovered(true)}
-            onBlur={() => setIsHovered(false)}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
             className={cn(
-              'relative w-9 h-9 flex items-center justify-center rounded-lg',
-              'transition-colors duration-150',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-1',
+              'group relative inline-flex border transition-[background-color,border-color,color,transform,box-shadow] duration-150 active:scale-95',
+              expanded
+                ? 'h-11 w-full items-center gap-2.5 rounded-[12px] px-3 text-left'
+                : 'h-10 w-10 items-center justify-center rounded-[10px]',
               isActive
-                ? 'shadow-sm'
-                : 'hover:bg-muted/40',
+                ? 'border-border/70 bg-card text-foreground shadow-[0_14px_28px_-18px_rgba(0,0,0,0.35)]'
+                : 'border-transparent bg-transparent text-muted-foreground hover:border-border/60 hover:bg-card/80 hover:text-foreground',
             )}
-            style={isActive ? {
-              backgroundColor: getRepoColorMutedVar(repo.color),
-            } : undefined}
-            title={`${repo.name}${repo.currentBranch ? ` (${repo.currentBranch})` : ''}`}
-            aria-label={`${repo.name}${repo.currentBranch ? ` (${repo.currentBranch})` : ''}`}
+            title={repo.currentBranch ? `${repo.name} · ${repo.currentBranch}` : repo.name}
+            aria-label={repo.name}
           >
             <Icon
-              className="w-[18px] h-[18px]"
+              className="h-[18px] w-[18px] shrink-0"
               style={{ color: isActive ? getRepoColorVar(repo.color) : undefined }}
             />
-          </motion.button>
-
-          {/* Tooltip on hover */}
-          <AnimatePresence>
-            {isHovered && (
-              <motion.div
-                initial={{ opacity: 0, x: -4 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -4 }}
-                transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                className={cn(
-                  'absolute left-full ml-2 z-50 pointer-events-none',
-                  'px-2.5 py-1.5 rounded-lg',
-                  'bg-popover border border-border/30 shadow-glass',
-                  'text-xs text-foreground whitespace-nowrap',
-                )}
-              >
-                <div className="font-medium">{repo.name}</div>
-                {repo.currentBranch && (
-                  <div className="text-muted-foreground/70 text-[10px] mt-0.5">
-                    {repo.currentBranch}
-                  </div>
-                )}
-              </motion.div>
-            )}
-          </AnimatePresence>
+            {expanded ? (
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[12px] font-semibold leading-tight text-foreground">
+                  {repo.name}
+                </span>
+                {repo.currentBranch ? (
+                  <span className="mt-0.5 flex items-center gap-1 text-[10px] leading-tight text-muted-foreground/70">
+                    <GitBranch className="h-2.5 w-2.5 shrink-0" />
+                    <span className="truncate">{repo.currentBranch}</span>
+                  </span>
+                ) : null}
+              </span>
+            ) : null}
+            {repo.worktrees.length > 1 ? (
+              expanded ? (
+                <span className="shrink-0 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary/85">
+                  {repo.worktrees.length} wt
+                </span>
+              ) : (
+                <span className="absolute bottom-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-primary/80" />
+              )
+            ) : null}
+          </button>
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent className="w-44">
@@ -319,7 +211,7 @@ const RailIcon: FC<RailIconProps> = ({ repo, isActive, expanded, onClick, onRemo
           onClick={onRemove}
           className="text-destructive focus:text-destructive"
         >
-          <TrashIcon className="h-3.5 w-3.5" /> Remove
+          <TrashIcon className="h-3.5 w-3.5" /> Remove repository
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
