@@ -17,6 +17,7 @@ import { SlashCommandPlugin } from './lexical/SlashCommandPlugin';
 import type { EditorState, LexicalEditor as LexicalEditorType, LexicalNode } from 'lexical';
 import type { FileMention, UserContentPart } from '../../../stores/agentStore';
 import { $isSkillChipNode } from './lexical/SkillChipNode';
+import { cn } from '@/lib/utils';
 
 export interface LexicalEditorHandle {
   clear: () => void;
@@ -313,6 +314,8 @@ export const LexicalEditor = forwardRef<LexicalEditorHandle, LexicalEditorProps>
     editable: !disabled,
   }), [disabled]);
 
+  const editorTextMetricsClass = 'px-4 py-2.5 text-[14px] leading-7';
+
   return (
     <div className={`relative ${className}`}>
       <LexicalComposer initialConfig={initialConfig}>
@@ -320,16 +323,20 @@ export const LexicalEditor = forwardRef<LexicalEditorHandle, LexicalEditorProps>
           <PlainTextPlugin
             contentEditable={
               <ContentEditable
-                className={`
-                  min-h-[80px] max-h-[200px] overflow-y-auto
-                  px-4 py-3 bg-transparent
-                  focus:outline-none
-                  ${disabled ? 'opacity-50 cursor-not-allowed' : ''}
-                `}
+                className={cn(
+                  'min-h-[56px] max-h-[148px] overflow-y-auto bg-transparent focus:outline-none',
+                  editorTextMetricsClass,
+                  disabled && 'cursor-not-allowed opacity-50',
+                )}
               />
             }
             placeholder={
-              <div className="absolute top-3 left-4 text-muted-foreground/50 pointer-events-none">
+              <div
+                className={cn(
+                  'pointer-events-none absolute inset-x-0 top-0 truncate overflow-hidden text-muted-foreground/55',
+                  editorTextMetricsClass,
+                )}
+              >
                 {placeholder}
               </div>
             }
