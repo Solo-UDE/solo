@@ -1,6 +1,7 @@
 //! Stable plugin identifier parsing and validation.
 //!
-//! Forked and adapted from codex-rs/plugin/src/plugin_id.rs.
+//! Forked and adapted from `codex-rs/plugin/src/plugin_id.rs` (Apache-2.0).
+//! See the crate-level `README.md` for full attribution.
 
 #[derive(Debug, thiserror::Error)]
 pub enum PluginIdError {
@@ -15,6 +16,12 @@ pub struct PluginId {
 }
 
 impl PluginId {
+    /// Construct a validated `PluginId`.
+    ///
+    /// Arguments are `marketplace` first, then `name` — matching the struct's
+    /// field order. This diverges from upstream codex, which takes
+    /// `(plugin_name, marketplace_name)`; the reversal is deliberate and
+    /// matches the on-wire serialization order used in `solo-protocol`.
     pub fn new(marketplace: String, name: String) -> Result<Self, PluginIdError> {
         validate_plugin_segment(&marketplace, "marketplace name")
             .map_err(PluginIdError::Invalid)?;
@@ -22,7 +29,13 @@ impl PluginId {
         Ok(Self { marketplace, name })
     }
 
-    /// Stringified form used for display and as toggles.json keys.
+    /// Stable serialized form: `"<marketplace>/<name>"`.
+    ///
+    /// This format is a persistent contract — it is the key used in
+    /// `~/.solo/plugins/toggles.json`, and any change to the separator or
+    /// field order would corrupt existing on-disk state. Upstream codex
+    /// uses `<plugin>@<marketplace>`; Solo deliberately diverged to `/` to
+    /// stay filesystem-path-friendly for future marketplace names.
     pub fn as_key(&self) -> String {
         format!("{}/{}", self.marketplace, self.name)
     }
@@ -77,5 +90,21 @@ mod tests {
     fn validate_segment_returns_descriptive_error() {
         let err = validate_plugin_segment("a b", "plugin name").unwrap_err();
         assert!(err.contains("plugin name"), "error was: {err}");
+    }
+
+    #[test]
+    fn separator_only_segments_are_valid() {
+        // Current rule allows any mix of ASCII alphanum + '_' + '-',
+        // including all-separator strings. Surprising but intentional —
+        // we deliberately match upstream codex's permissiveness here.
+        assert!(PluginId::new("---".into(), "___".into()).is_ok());
+    }
+
+    #[test]
+    fn unicode_alphanumeric_is_rejected() {
+        // `café` is Unicode alphanumeric but not ASCII alphanumeric.
+        // validate_plugin_segment must reject it.
+        assert!(PluginId::new("local".into(), "caf\u{00e9}".into()).is_err());
+        assert!(PluginId::new("caf\u{00e9}".into(), "x".into()).is_err());
     }
 }
