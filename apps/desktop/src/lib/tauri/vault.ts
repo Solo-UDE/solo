@@ -1,0 +1,107 @@
+/**
+ * Tauri IPC wrappers for vault commands.
+ *
+ * V0: every command is a thin invoke. Backends are stubbed in
+ * `vault_commands.rs`; real work lands in Phase V1.
+ */
+
+import { invoke } from '@tauri-apps/api/core';
+import type { VaultEntry } from '../../bindings/VaultEntry';
+import type { VaultScope } from '../../bindings/VaultScope';
+import type { VaultListFilters } from '../../bindings/VaultListFilters';
+import type { VaultSearchMode } from '../../bindings/VaultSearchMode';
+import type { VaultSearchResult } from '../../bindings/VaultSearchResult';
+import type { MemoryType } from '../../bindings/MemoryType';
+import type { EntryKind } from '../../bindings/EntryKind';
+import type { PlacementSuggestion } from '../../bindings/PlacementSuggestion';
+import type { PlacementResult } from '../../bindings/PlacementResult';
+import type { PlacementMode } from '../../bindings/PlacementMode';
+
+export type {
+  VaultEntry,
+  VaultScope,
+  VaultListFilters,
+  VaultSearchMode,
+  VaultSearchResult,
+  MemoryType,
+  EntryKind,
+  PlacementSuggestion,
+  PlacementResult,
+  PlacementMode,
+};
+export type { VaultChunk } from '../../bindings/VaultChunk';
+export type { CloudSyncState } from '../../bindings/CloudSyncState';
+export type { IndexStatus } from '../../bindings/IndexStatus';
+export type { RetrievalStats } from '../../bindings/RetrievalStats';
+
+export const vaultDropPaths = (
+  paths: string[],
+  scope: VaultScope,
+  memoryType: MemoryType,
+) => invoke<string[]>('vault_drop_paths', { paths, scope, memoryType });
+
+export const vaultList = (scope: VaultScope, filters: VaultListFilters) =>
+  invoke<VaultEntry[]>('vault_list', { scope, filters });
+
+export const vaultGet = (entryId: string) =>
+  invoke<VaultEntry | null>('vault_get', { entryId });
+
+export const vaultUpdateTags = (entryId: string, tags: string[]) =>
+  invoke<VaultEntry | null>('vault_update_tags', { entryId, tags });
+
+export const vaultSetPinned = (entryId: string, pinned: boolean) =>
+  invoke<VaultEntry | null>('vault_set_pinned', { entryId, pinned });
+
+export const vaultMoveScope = (entryId: string, newScope: VaultScope) =>
+  invoke<VaultEntry | null>('vault_move_scope', { entryId, newScope });
+
+export const vaultMoveBucket = (entryId: string, newKind: EntryKind) =>
+  invoke<VaultEntry | null>('vault_move_bucket', { entryId, newKind });
+
+export const vaultDelete = (entryId: string, alsoRemote: boolean) =>
+  invoke<void>('vault_delete', { entryId, alsoRemote });
+
+export const vaultSearch = (
+  query: string,
+  scope: VaultScope,
+  topK: number,
+  mode: VaultSearchMode,
+) => invoke<VaultSearchResult[]>('vault_search', { query, scope, topK, mode });
+
+export const vaultSuggestPlacement = (entryId: string, workspacePath: string) =>
+  invoke<PlacementSuggestion | null>('vault_suggest_placement', { entryId, workspacePath });
+
+export const vaultAcceptPlacement = (
+  entryId: string,
+  targetPath: string,
+  mode: PlacementMode,
+) => invoke<PlacementResult>('vault_accept_placement', { entryId, targetPath, mode });
+
+/**
+ * Result from the semantic embedding backfill. Counts are cumulative for
+ * the single backfill run; the backend also streams
+ * `vault:backfill_progress` BackendEvent ticks while it runs.
+ */
+export interface VaultBackfillResult {
+  total: number;
+  embedded: number;
+  failed: number;
+  retries: number;
+  totalMs: number;
+}
+
+export const vaultBackfillEmbeddings = (batchSize?: number) =>
+  invoke<VaultBackfillResult>('vault_backfill_embeddings', { batchSize: batchSize ?? null });
+
+export const vaultPendingEmbeddingsCount = () =>
+  invoke<number>('vault_pending_embeddings_count');
+
+export const vaultLogClassifierCorrection = (
+  entryId: string,
+  oldKind: EntryKind,
+  newKind: EntryKind,
+) =>
+  invoke<void>('vault_log_classifier_correction', { entryId, oldKind, newKind });
+
+export const vaultUnsortedCount = () =>
+  invoke<number>('vault_unsorted_count');

@@ -24,6 +24,7 @@ solo-auth = { path = "../../../crates/solo-auth" }
 solo-parse = { path = "../../../crates/solo-parse" }
 solo-embeddings = { path = "../../../crates/solo-embeddings" }
 solo-git = { path = "../../../crates/solo-git" }
+solo-vault = { path = "../../../crates/solo-vault" }
 solo-elevenlabs = { path = "../../../crates/solo-elevenlabs" }
 solo-stats = { path = "../../../crates/solo-stats" }
 

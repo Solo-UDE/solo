@@ -38,7 +38,17 @@ export function useUpdateStream(): void {
       }
 
       if (payload.type === 'update:error') {
-        console.error('Update error:', payload.payload.error);
+        const msg = payload.payload.error ?? '';
+        // In dev there is no published release manifest; demote that
+        // expected error to a debug log instead of polluting the console.
+        const isDevNoRelease =
+          msg.includes('Could not fetch a valid release JSON') ||
+          msg.includes('release JSON from the remote');
+        if (isDevNoRelease) {
+          console.debug('Update check skipped (no manifest):', msg);
+        } else {
+          console.error('Update error:', msg);
+        }
       }
     })
       .then((fn) => {

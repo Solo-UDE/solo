@@ -46,6 +46,7 @@ mod skills_commands;
 mod stats_commands;
 mod terminal_commands;
 mod update_commands;
+mod vault_commands;
 mod worktree_commands;
 
 use auth_commands::AuthState;
@@ -60,6 +61,7 @@ use tauri::Emitter;
 use tauri_plugin_decorum::WebviewWindowExt;
 use terminal_commands::TerminalState;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use vault_commands::VaultState;
 use worktree_commands::WorktreeState;
 
 use std::env;
@@ -147,6 +149,9 @@ pub fn run() {
             }
 
             // Pre-warm credential vault — single keychain read before frontend mounts
+            // (Solo OAuth / Claude / Anthropic credentials still live here; the
+            // vault's semantic search now runs locally via fastembed-rs so no
+            // OpenAI key forwarding is needed anymore.)
             {
                 use tauri::Manager;
                 let auth = app.state::<ProviderAuthState>();
@@ -188,6 +193,7 @@ pub fn run() {
         .manage(GitState::new())
         .manage(WorktreeState::new())
         .manage(ElevenLabsState::new())
+        .manage(VaultState::new())
         .manage(StatsState::new())
         .invoke_handler(tauri::generate_handler![
             // Core commands
@@ -373,6 +379,22 @@ pub fn run() {
             // Update commands
             update_commands::check_for_update,
             update_commands::install_update,
+            // Vault commands
+            vault_commands::vault_drop_paths,
+            vault_commands::vault_list,
+            vault_commands::vault_get,
+            vault_commands::vault_update_tags,
+            vault_commands::vault_set_pinned,
+            vault_commands::vault_move_scope,
+            vault_commands::vault_move_bucket,
+            vault_commands::vault_delete,
+            vault_commands::vault_search,
+            vault_commands::vault_suggest_placement,
+            vault_commands::vault_accept_placement,
+            vault_commands::vault_backfill_embeddings,
+            vault_commands::vault_pending_embeddings_count,
+            vault_commands::vault_log_classifier_correction,
+            vault_commands::vault_unsorted_count,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
