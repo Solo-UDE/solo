@@ -1,23 +1,22 @@
 /**
  * MosaicLayout - Root component for the panel system
- * Wraps react-mosaic with DnD provider and renders TabbedContainers
+ * Wraps react-mosaic with DnD provider and renders TabbedContainers.
+ * Global keyboard shortcuts are handled in App.tsx so the shortcut registry,
+ * settings UI, and runtime behavior stay aligned.
  */
 
 import { useCallback, useEffect, useMemo } from 'react';
 import { MosaicWithoutDragDropContext, MosaicBranch } from 'react-mosaic-component';
-import { usePanelLayoutStore, useFocusedTileId } from '@/stores/panelLayoutStore';
-import { usePanelTabsStore } from '@/stores/panelTabsStore';
+import { usePanelLayoutStore } from '@/stores/panelLayoutStore';
 import { TabbedContainer } from './TabbedContainer';
 import { usePersistence } from '@/lib/panels/usePersistence';
 import type { TileId, MosaicTree } from '@/lib/panels/types';
-import { DEFAULT_TILES } from '@/lib/panels/constants';
 
 export function MosaicLayout() {
   // Enable layout persistence (load on mount, save on changes)
   usePersistence();
 
   const mosaicTree = usePanelLayoutStore((state) => state.mosaicTree);
-  const focusedTileId = useFocusedTileId();
 
   // Get actions directly from store to avoid selector subscription issues
   const layoutActions = useMemo(() => {
@@ -28,17 +27,7 @@ export function MosaicLayout() {
     };
   }, []);
 
-  const tabActions = useMemo(() => {
-    const state = usePanelTabsStore.getState();
-    return {
-      activateNextTab: state.activateNextTab,
-      activatePrevTab: state.activatePrevTab,
-      activateTabByIndex: state.activateTabByIndex,
-    };
-  }, []);
-
   const { setMosaicTree, initializeDefaultLayout } = layoutActions;
-  const { activateNextTab, activatePrevTab, activateTabByIndex } = tabActions;
 
   // Initialize default layout if no tree exists
   useEffect(() => {
@@ -46,40 +35,6 @@ export function MosaicLayout() {
       initializeDefaultLayout();
     }
   }, [mosaicTree, initializeDefaultLayout]);
-
-  // Keyboard navigation handler
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Determine the target tile (focused or default)
-      const targetTile = focusedTileId || DEFAULT_TILES.editor;
-
-      // Cmd+W is handled globally in App.tsx (supports both terminal + editor tabs)
-
-      // Ctrl+Tab / Ctrl+Shift+Tab - Next/Previous tab
-      if (e.ctrlKey && e.key === 'Tab') {
-        e.preventDefault();
-        if (e.shiftKey) {
-          activatePrevTab(targetTile);
-        } else {
-          activateNextTab(targetTile);
-        }
-        return;
-      }
-
-      // Cmd+1-9 - Switch to tab by index
-      if (e.metaKey && e.key >= '1' && e.key <= '9') {
-        e.preventDefault();
-        const index = parseInt(e.key, 10) - 1; // Convert to 0-based index
-        activateTabByIndex(targetTile, index);
-        return;
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [focusedTileId, activateNextTab, activatePrevTab, activateTabByIndex]);
 
   // Handle tree changes from mosaic (e.g., resize, drag)
   const handleChange = useCallback(
