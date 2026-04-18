@@ -1,25 +1,66 @@
 /**
- * SkillsSection — Vault sub-tab for managing agent skills.
+ * SkillsSection — Vault surface for the skills marketplace.
  *
- * Sessions already read skills via the skills store + the agent-bridge's
- * per-message content blocks (Option D UX). This Vault surface will
- * eventually let the user browse, install, and toggle skills at the
- * project level without opening a settings modal.
+ * Three tabs:
+ *  - Installed   — every skill on disk (Solo + adapter sources)
+ *  - Marketplace — browse and install from `solo/skills-registry`
+ *  - Forks       — installed skills the user has locally tweaked
+ *
+ * The heavy lifting lives in the three tab components — this file is the
+ * navigation shell + layout.
  */
 
 import type { FC } from 'react';
-import { Sparkles } from 'lucide-react';
-import { VaultSectionShell } from './VaultSectionShell';
+import { useState } from 'react';
+import { motion } from 'motion/react';
+import { cn } from '@/lib/utils';
+import { InstalledSkillsTab } from './InstalledSkillsTab';
+import { MarketplaceTab } from './MarketplaceTab';
+import { ForksTab } from './ForksTab';
 
-export const SkillsSection: FC = () => (
-  <VaultSectionShell
-    icon={Sparkles}
-    title="Skills"
-    description="Curate the agent capabilities available to this project. Skills ride along with messages as structured instructions for the model."
-    previewItems={[
-      { label: 'Browse installed skills', hint: 'See everything in .solo/skills/ and ~/.solo/skills/' },
-      { label: 'Toggle per-project', hint: 'Override the global skill set for this repo only' },
-      { label: 'Install from registry', hint: 'Pull vetted skills from community packs' },
-    ]}
-  />
-);
+type Tab = 'installed' | 'marketplace' | 'forks';
+
+const TABS: { readonly id: Tab; readonly label: string }[] = [
+  { id: 'installed', label: 'Installed' },
+  { id: 'marketplace', label: 'Marketplace' },
+  { id: 'forks', label: 'Forks' },
+];
+
+export const SkillsSection: FC = () => {
+  const [active, setActive] = useState<Tab>('installed');
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex items-center gap-1 border-b border-border/60 px-2 py-2 shrink-0">
+        {TABS.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setActive(tab.id)}
+            className={cn(
+              'relative flex-1 rounded-[10px] px-2 py-1 text-[11px] transition-colors',
+              active === tab.id
+                ? 'text-foreground'
+                : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {active === tab.id && (
+              <motion.div
+                layoutId="skills-tab-indicator"
+                className="absolute inset-0 rounded-[10px] border border-border/70 bg-card shadow-[0_8px_16px_-14px_rgba(0,0,0,0.35)]"
+                transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+              />
+            )}
+            <span className="relative font-medium">{tab.label}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {active === 'installed' && <InstalledSkillsTab />}
+        {active === 'marketplace' && <MarketplaceTab />}
+        {active === 'forks' && <ForksTab />}
+      </div>
+    </div>
+  );
+};

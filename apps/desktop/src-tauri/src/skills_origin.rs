@@ -31,6 +31,7 @@ pub async fn write_origin(skill_dir: &Path, meta: &InstalledSkillMeta) -> std::i
 
 /// Flip `modified` to `true` on an installed-from-registry skill the user edited.
 /// No-op if the skill has no origin record (i.e. it was user-authored to begin with).
+#[allow(dead_code)] // Wired by Phase 5 (agent tweak flow).
 pub async fn mark_modified(skill_dir: &Path) -> std::io::Result<()> {
     if let Some(mut meta) = read_origin(skill_dir).await {
         if !meta.modified {
@@ -42,6 +43,7 @@ pub async fn mark_modified(skill_dir: &Path) -> std::io::Result<()> {
 }
 
 /// Convenience: build a `registry`-source meta for a fresh install.
+#[allow(dead_code)] // Wired by Phase 3 (skills_install command).
 pub fn registry_meta(id: &str, version: &str, upstream_sha256: Option<String>) -> InstalledSkillMeta {
     InstalledSkillMeta {
         source: OriginSource::Registry,
