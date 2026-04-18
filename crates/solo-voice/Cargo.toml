@@ -18,7 +18,7 @@ uuid.workspace = true
 sha2.workspace = true
 rusqlite.workspace = true
 ndarray.workspace = true
-ort = { version = "2.0.0-rc", features = ["download-binaries", "ndarray"] }
+ort.workspace = true
 cpal.workspace = true
 sherpa-rs.workspace = true
 ts-rs.workspace = true
