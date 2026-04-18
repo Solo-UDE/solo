@@ -31,14 +31,20 @@ export const SkillsSection: FC = () => {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center gap-1 border-b border-border/60 px-2 py-2 shrink-0">
+      <div
+        role="tablist"
+        aria-label="Skills"
+        className="flex shrink-0 items-center gap-1 border-b border-border/50 px-3 py-2.5"
+      >
         {TABS.map((tab) => (
           <button
             key={tab.id}
             type="button"
+            role="tab"
+            aria-selected={active === tab.id}
             onClick={() => setActive(tab.id)}
             className={cn(
-              'relative flex-1 rounded-[10px] px-2 py-1 text-[11px] transition-colors',
+              'relative flex-1 rounded-[10px] py-1.5 text-[12px] font-medium',
               active === tab.id
                 ? 'text-foreground'
                 : 'text-muted-foreground hover:text-foreground',
@@ -47,11 +53,12 @@ export const SkillsSection: FC = () => {
             {active === tab.id && (
               <motion.div
                 layoutId="skills-tab-indicator"
+                aria-hidden="true"
                 className="absolute inset-0 rounded-[10px] border border-border/70 bg-card shadow-[0_8px_16px_-14px_rgba(0,0,0,0.35)]"
                 transition={{ type: 'spring', stiffness: 500, damping: 35 }}
               />
             )}
-            <span className="relative font-medium">{tab.label}</span>
+            <span className="relative">{tab.label}</span>
           </button>
         ))}
       </div>
