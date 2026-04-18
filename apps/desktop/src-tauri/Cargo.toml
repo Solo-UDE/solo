@@ -34,7 +34,12 @@ uuid = { version = "1.11", features = ["v4"] }
 tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-clipboard-manager = "2"
-tauri-plugin-macos-permissions = "2"
+objc2.workspace = true
+objc2-app-kit.workspace = true
+objc2-foundation.workspace = true
+core-graphics.workspace = true
+core-foundation.workspace = true
+tauri-plugin-macos-permissions.workspace = true
 
 tokio.workspace = true
 serde.workspace = true

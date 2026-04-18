@@ -50,3 +50,11 @@ hound = "3.5"
 
 # Sherpa-ONNX Rust bindings (ships the sherpa-onnx C++ lib as a sub-build)
 sherpa-rs = "0.6"
+
+# macOS platform glue for voice Phase 2
+objc2 = "0.5"
+objc2-app-kit = { version = "0.2", features = ["NSWorkspace", "NSRunningApplication", "NSPasteboard", "NSEvent"] }
+objc2-foundation = { version = "0.2", features = ["NSString", "NSArray", "NSURL"] }
+core-graphics = "0.24"
+core-foundation = "0.10"
+tauri-plugin-macos-permissions = "2"
