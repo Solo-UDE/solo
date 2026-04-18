@@ -33,7 +33,6 @@ mod agent;
 mod agent_commands;
 mod auth_commands;
 mod commands;
-mod elevenlabs_commands;
 mod embedding_commands;
 mod fs_commands;
 mod git_commands;
@@ -47,10 +46,10 @@ mod stats_commands;
 mod terminal_commands;
 mod update_commands;
 mod vault_commands;
+mod voice_commands;
 mod worktree_commands;
 
 use auth_commands::AuthState;
-use elevenlabs_commands::ElevenLabsState;
 use embedding_commands::EmbeddingState;
 use fs_commands::FsState;
 use git_commands::GitState;
@@ -62,6 +61,7 @@ use tauri_plugin_decorum::WebviewWindowExt;
 use terminal_commands::TerminalState;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use vault_commands::VaultState;
+use voice_commands::VoiceState;
 use worktree_commands::WorktreeState;
 
 use std::env;
@@ -74,7 +74,7 @@ pub fn run() {
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "solo_desktop_lib=debug,solo_elevenlabs=debug,tauri=info".into()),
+                .unwrap_or_else(|_| "solo_desktop_lib=debug,solo_voice=debug,tauri=info".into()),
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
@@ -192,8 +192,8 @@ pub fn run() {
         .manage(TerminalState::new())
         .manage(GitState::new())
         .manage(WorktreeState::new())
-        .manage(ElevenLabsState::new())
         .manage(VaultState::new())
+        .manage(VoiceState::new())
         .manage(StatsState::new())
         .invoke_handler(tauri::generate_handler![
             // Core commands
@@ -366,16 +366,15 @@ pub fn run() {
             stats_commands::stats_get_tier,
             stats_commands::stats_get_leaderboard,
             stats_commands::stats_generate_card,
-            // ElevenLabs voice commands
-            elevenlabs_commands::elevenlabs_set_api_key,
-            elevenlabs_commands::elevenlabs_has_api_key,
-            elevenlabs_commands::elevenlabs_clear_api_key,
-            elevenlabs_commands::elevenlabs_stt_start,
-            elevenlabs_commands::elevenlabs_stt_send_audio,
-            elevenlabs_commands::elevenlabs_stt_commit,
-            elevenlabs_commands::elevenlabs_stt_stop,
-            elevenlabs_commands::elevenlabs_tts_speak,
-            elevenlabs_commands::elevenlabs_tts_stop,
+            // Voice commands
+            voice_commands::voice_enable,
+            voice_commands::voice_download_parakeet,
+            voice_commands::voice_begin,
+            voice_commands::voice_end,
+            voice_commands::voice_cancel,
+            voice_commands::voice_history_list,
+            voice_commands::voice_history_delete,
+            voice_commands::voice_parakeet_installed,
             // Update commands
             update_commands::check_for_update,
             update_commands::install_update,
