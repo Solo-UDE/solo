@@ -1,10 +1,10 @@
 /**
- * Voice input button for ElevenLabs STT integration.
+ * Voice input button wired to the solo-voice pipeline via `useVoiceInput`.
  *
- * Idle: 30x30 icon button with Waveform icon.
- * Recording: Expands into a pill with live waveform + red stop button.
+ * Idle: 30x30 icon button with AudioLines icon.
+ * Recording: Expands into a pill with a "Recording…" label + stop button.
  * When showSuggestion is true, the idle button expands into a pill
- * that reveals "Try speaking" text, then auto-dismisses.
+ * that reveals "Try speaking" text, then auto-dismisses after 5s.
  */
 
 import React, { useCallback, useEffect } from 'react';
