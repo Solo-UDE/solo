@@ -350,7 +350,7 @@ function ChatInputContainerInner(
                       disabled={isAgentRunning}
                     >
                       <SelectTrigger
-                        className="h-[30px] min-w-0 w-full rounded-full border-0 bg-transparent px-2.5 text-xs font-medium text-muted-foreground hover:bg-muted/60 hover:text-foreground focus:ring-0 focus:ring-offset-0 [&>span]:min-w-0 [&>span]:truncate"
+                        className="h-[30px] min-w-0 w-full rounded-full border-0 bg-transparent px-2.5 text-xs font-medium text-muted-foreground hover:bg-muted/60 hover:text-foreground ring-0 dark:ring-0 focus:outline-none focus:ring-0 focus:ring-offset-0 [&>span]:min-w-0 [&>span]:truncate"
                         title="Worktree"
                       >
                         <SelectValue />
