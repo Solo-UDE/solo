@@ -190,7 +190,7 @@ export const PluginsTab: FC = () => {
       {/* Grid — installed plugins first, then adapter plugins */}
       {installed.length > 0 && (
         <section>
-          <h3 className="text-xs font-semibold text-muted-foreground mb-3">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-4">
             Installed ({installed.length})
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -210,7 +210,7 @@ export const PluginsTab: FC = () => {
 
       {adapter.length > 0 && (
         <section>
-          <h3 className="text-xs font-semibold text-muted-foreground mb-3">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-4">
             Discovered ({adapter.length})
           </h3>
           <p className="text-xs text-muted-foreground/80 -mt-2 mb-3">
