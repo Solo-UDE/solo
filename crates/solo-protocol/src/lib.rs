@@ -1305,6 +1305,8 @@ pub struct SoloSettings {
     pub modes: ModesConfig,
     #[serde(default)]
     pub skills: SkillsConfig,
+    #[serde(default)]
+    pub plugins: PluginsConfig,
 }
 
 /// Outcome of a permission check. Mirrors Claude Code's `PermissionResult`.
@@ -1534,6 +1536,115 @@ pub struct TierInfo {
     pub score: f64,
     pub tier_name: String,
     pub names: Vec<String>,
+}
+
+// =============================================================================
+// Plugins Protocol
+// =============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, Hash, PartialEq, Eq)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct PluginId {
+    pub marketplace: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, TS, PartialEq, Eq)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "snake_case")]
+pub enum PluginSource {
+    Local,
+    Marketplace,
+    ClaudeAdapter,
+    CodexAdapter,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct PluginSummary {
+    pub id: PluginId,
+    pub version: String,
+    pub display_name: String,
+    pub short_description: Option<String>,
+    pub logo: Option<String>,
+    pub brand_color: Option<String>,
+    pub enabled: bool,
+    pub source: PluginSource,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct PluginDetail {
+    pub id: PluginId,
+    pub version: String,
+    pub source: PluginSource,
+    pub enabled: bool,
+    pub root_path: String,
+    pub description: Option<String>,
+    pub interface: Option<PluginInterface>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct PluginInterface {
+    pub display_name: Option<String>,
+    pub short_description: Option<String>,
+    pub long_description: Option<String>,
+    pub developer_name: Option<String>,
+    pub category: Option<String>,
+    pub capabilities: Vec<String>,
+    pub website_url: Option<String>,
+    pub privacy_policy_url: Option<String>,
+    pub terms_of_service_url: Option<String>,
+    pub default_prompts: Vec<String>,
+    pub brand_color: Option<String>,
+    pub composer_icon: Option<String>,
+    pub logo: Option<String>,
+    pub screenshots: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct PluginInstallResult {
+    pub id: PluginId,
+    pub version: String,
+    pub root_path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct PluginListOutcome {
+    pub plugins: Vec<PluginSummary>,
+    pub errors: Vec<PluginLoadError>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct PluginLoadError {
+    pub path: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct PluginsConfig {
+    #[serde(default = "default_true_plugins")]
+    pub adapter_claude_plugins: bool,
+    #[serde(default = "default_true_plugins")]
+    pub adapter_codex_user: bool,
+}
+
+impl Default for PluginsConfig {
+    fn default() -> Self {
+        Self {
+            adapter_claude_plugins: true,
+            adapter_codex_user: true,
+        }
+    }
+}
+
+fn default_true_plugins() -> bool {
+    true
 }
 
 #[cfg(test)]
