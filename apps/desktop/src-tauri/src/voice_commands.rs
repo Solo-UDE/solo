@@ -4,6 +4,7 @@
 //! download, and history ops. No global hotkeys or paste — those
 //! arrive in Phase 2.
 
+use crate::provider_commands::ProviderAuthState;
 use solo_voice::{
     audio::{start_capture, AudioRing, AudioStream},
     formatter::{
@@ -35,10 +36,14 @@ impl ChatClient for ClaudeChatClient {
         system: &str,
         user: &str,
     ) -> solo_voice::error::Result<String> {
-        let _ = (model, system, user, &self.handle);
-        Err(solo_voice::VoiceError::Formatter(
-            "ClaudeChatClient::simple_completion: wire to solo-auth Claude provider".into(),
-        ))
+        let creds = self
+            .handle
+            .state::<ProviderAuthState>()
+            .credentials
+            .clone();
+        solo_auth::claude_simple_completion(&creds, model, system, user)
+            .await
+            .map_err(|e| solo_voice::VoiceError::Formatter(format!("claude: {e}")))
     }
 }
 
