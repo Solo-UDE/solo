@@ -43,6 +43,7 @@ mod plugins_commands;
 mod provider_commands;
 mod session_commands;
 mod settings_commands;
+mod skills_aggregate;
 mod skills_bundled;
 mod skills_commands;
 mod skills_origin;
@@ -402,6 +403,7 @@ pub fn run() {
             skills_commands::skills_onboarding_dismiss,
             skills_commands::skills_onboarding_reset,
             skills_commands::skills_set_imports,
+            skills_aggregate::skills_write_workspace_agents_md,
             // Plugin commands
             plugins_commands::plugins_list,
             plugins_commands::plugins_get_detail,
