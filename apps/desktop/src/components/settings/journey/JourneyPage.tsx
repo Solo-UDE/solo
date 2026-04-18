@@ -16,6 +16,7 @@ import { useTierStats } from '../../../hooks/useTierStats';
 import { useCloudStatsStore } from '../../../stores/cloudStatsStore';
 import { TierLadder } from './TierLadder';
 import { StatsGrid } from './StatsGrid';
+import { ContributionGraph } from './ContributionGraph';
 
 export function JourneyPage() {
 	const stats = useTierStats();
@@ -84,7 +85,7 @@ export function JourneyPage() {
 				<p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground/65">
 					The ladder
 				</p>
-				<TierLadder currentTier={stats.tier} progress={stats.tierProgress} />
+				<TierLadder currentTier={stats.tier} />
 			</div>
 
 			{/* Stats grid */}
@@ -93,6 +94,14 @@ export function JourneyPage() {
 					Your numbers
 				</p>
 				<StatsGrid cumulative={stats.cumulative} />
+			</div>
+
+			{/* Contribution graph */}
+			<div className="rounded-[14px] border border-border/60 bg-background/55 p-5">
+				<p className="mb-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground/65">
+					Activity
+				</p>
+				<ContributionGraph />
 			</div>
 
 			{/* Leaderboard preview */}
