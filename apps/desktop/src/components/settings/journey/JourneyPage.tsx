@@ -96,10 +96,10 @@ export function JourneyPage() {
 				<StatsGrid cumulative={stats.cumulative} />
 			</div>
 
-			{/* Contribution graph */}
+			{/* Usage heatmap */}
 			<div className="rounded-[14px] border border-border/60 bg-background/55 p-5">
 				<p className="mb-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground/65">
-					Activity
+					Usage
 				</p>
 				<ContributionGraph />
 			</div>
