@@ -14,6 +14,7 @@ export type { ContentBlock } from './ContentBlock';
 export type { CreateWorktreeRequest } from './CreateWorktreeRequest';
 export type { CredentialSource } from './CredentialSource';
 export type { CumulativeStats } from './CumulativeStats';
+export type { DailyActivityEntry } from './DailyActivityEntry';
 export type { DebugModeConfig } from './DebugModeConfig';
 export type { DiffHunk } from './DiffHunk';
 export type { DiffLine } from './DiffLine';
