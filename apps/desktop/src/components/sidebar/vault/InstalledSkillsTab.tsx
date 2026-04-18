@@ -6,10 +6,11 @@
  */
 
 import type { FC } from 'react';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useSkillStore } from '@/stores/skillStore';
 import { useMarketplaceStore } from '@/stores/marketplaceStore';
 import { useFileExplorerStore } from '@/stores/fileExplorerStore';
+import { SkillTweakModal } from './SkillTweakModal';
 
 export const InstalledSkillsTab: FC = () => {
   const skills = useSkillStore((s) => s.available);
@@ -17,6 +18,7 @@ export const InstalledSkillsTab: FC = () => {
   const loadSkills = useSkillStore((s) => s.loadSkills);
   const uninstall = useMarketplaceStore((s) => s.uninstall);
   const rootPath = useFileExplorerStore((s) => s.rootPath);
+  const [tweakingSkillId, setTweakingSkillId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!loaded && rootPath) {
@@ -44,6 +46,16 @@ export const InstalledSkillsTab: FC = () => {
   }
 
   return (
+    <>
+    {tweakingSkillId && (
+      <SkillTweakModal
+        skillId={tweakingSkillId}
+        onClose={() => setTweakingSkillId(null)}
+        onSaved={() => {
+          if (rootPath) void loadSkills(rootPath);
+        }}
+      />
+    )}
     <ul className="flex flex-col gap-3 p-3">
       {bySource.map(([source, list]) => (
         <li key={source}>
@@ -58,17 +70,27 @@ export const InstalledSkillsTab: FC = () => {
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-medium text-foreground">{skill.name}</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void uninstall(skill.name).then(() => {
-                        if (rootPath) void loadSkills(rootPath);
-                      });
-                    }}
-                    className="text-[10px] text-muted-foreground hover:text-red-500 transition-colors"
-                  >
-                    Uninstall
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setTweakingSkillId(skill.name)}
+                      className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      Tweak
+                    </button>
+                    <span className="text-muted-foreground/40">·</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void uninstall(skill.name).then(() => {
+                          if (rootPath) void loadSkills(rootPath);
+                        });
+                      }}
+                      className="text-[10px] text-muted-foreground hover:text-red-500 transition-colors"
+                    >
+                      Uninstall
+                    </button>
+                  </div>
                 </div>
                 {skill.description && (
                   <p className="mt-1 line-clamp-2 text-muted-foreground">
@@ -81,5 +103,6 @@ export const InstalledSkillsTab: FC = () => {
         </li>
       ))}
     </ul>
+    </>
   );
 };

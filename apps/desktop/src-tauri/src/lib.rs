@@ -408,6 +408,7 @@ pub fn run() {
             skills_marketplace::skills_search_marketplace,
             skills_marketplace::skills_install,
             skills_marketplace::skills_uninstall,
+            skills_marketplace::skills_read_installed,
             skills_marketplace::skills_write_installed,
             // Plugin commands
             plugins_commands::plugins_list,

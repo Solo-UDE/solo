@@ -38,7 +38,11 @@ export const installSkill = (entry: RegistryEntry) =>
 export const uninstallSkill = (skillId: string) =>
   invoke<void>('skills_uninstall', { skillId });
 
-/** Overwrite the `AGENTS.md` of an installed skill (used by the tweak-with-agent flow). */
+/** Read the current AGENTS.md (or SKILL.md fallback) of an installed skill. */
+export const readInstalledSkill = (skillId: string) =>
+  invoke<string>('skills_read_installed', { skillId });
+
+/** Overwrite the `AGENTS.md` of an installed skill (used by the tweak flow). */
 export const writeInstalledSkill = (skillId: string, content: string) =>
   invoke<void>('skills_write_installed', { skillId, content });
 

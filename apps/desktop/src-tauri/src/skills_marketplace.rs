@@ -6,8 +6,6 @@
 //! `skills/<id>/`, and extract with path-traversal + executable-content
 //! rejection.
 
-use crate::skills_aggregate;
-use crate::skills_commands;
 use crate::skills_origin;
 use solo_protocol::{
     InstalledSkillMeta, OriginSource, Registry, RegistryEntry, SkillSuggestion, SkillsEvent,
@@ -528,6 +526,32 @@ pub async fn skills_search_marketplace(
         .collect())
 }
 
+/// Read the currently-installed AGENTS.md (or SKILL.md fallback) for a given skill.
+#[tauri::command]
+pub async fn skills_read_installed(skill_id: String) -> Result<String, String> {
+    let id = validate_skill_id(&skill_id)?.to_string();
+    let user_dir = user_skills_dir().ok_or_else(|| "could not resolve HOME".to_string())?;
+    let skill_dir = user_dir.join(&id);
+    if !skill_dir.exists() {
+        return Err(format!("skill '{}' is not installed", id));
+    }
+    let agents_md = skill_dir.join("AGENTS.md");
+    let skill_md = skill_dir.join("SKILL.md");
+    let path = if agents_md.exists() {
+        agents_md
+    } else if skill_md.exists() {
+        skill_md
+    } else {
+        return Err(format!("no AGENTS.md or SKILL.md for '{}'", id));
+    };
+    fs::read_to_string(&path)
+        .await
+        .map_err(|e| format!("read {}: {}", path.display(), e))
+}
+
+/// Overwrite an installed skill's `AGENTS.md`. Flips `.solo-origin.json.modified`
+/// so the Forks tab picks it up. If the skill was originally a `SKILL.md`-only
+/// Claude-style skill, we migrate to AGENTS.md on first write.
 #[tauri::command]
 pub async fn skills_write_installed(skill_id: String, content: String) -> Result<(), String> {
     let id = validate_skill_id(&skill_id)?.to_string();
@@ -544,11 +568,6 @@ pub async fn skills_write_installed(skill_id: String, content: String) -> Result
         .await
         .map_err(|e| format!("mark modified: {}", e))?;
 
-    // Regenerate workspace AGENTS.md if we can guess a cwd. Callers
-    // typically also dispatch `skills_write_workspace_agents_md(cwd)`
-    // themselves, so this is best-effort.
-    let _ = skills_aggregate::skills_write_workspace_agents_md; // link
-    let _ = skills_commands::skills_list_available;
     Ok(())
 }
 
