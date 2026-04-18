@@ -129,6 +129,14 @@ export interface OrbitAgentConfig {
   maxThinkingTokens?: number;
   /** Output-token cap per response — set via CLAUDE_CODE_MAX_OUTPUT_TOKENS env var */
   maxTokens?: number;
+  /**
+   * Explicit tool allow-list. When present, the SDK is started with
+   * `options.allowedTools = allowedTools` and every tool call is
+   * constrained to this set. Takes precedence over the permission-prompt
+   * flow — denied tools never reach `canUseTool`. Used by the Git Agent
+   * harness to restrict the model to git + read-only file operations.
+   */
+  allowedTools?: string[];
   planEnabled?: boolean;
   acceptEnabled?: boolean;
   debugEnabled?: boolean;
@@ -254,6 +262,7 @@ export class OrbitAgent {
   private model?: string;
   private _fallbackModel?: string;
   private _maxTokens?: number;
+  private _allowedTools?: string[];
   private _sessionMode: OrbitSessionMode;
 
   // Session resume/fork fields
@@ -309,6 +318,10 @@ export class OrbitAgent {
     }
     if (config.maxTokens !== undefined) {
       this._maxTokens = config.maxTokens;
+    }
+    if (config.allowedTools !== undefined) {
+      // Defensive copy — prevents callers mutating the list post-create.
+      this._allowedTools = [...config.allowedTools];
     }
     this._mcpServers = config.mcpServers ?? {};
     this._outputFormat = config.outputFormat;
@@ -540,8 +553,17 @@ data, screenshots, notes). It functions as your durable memory across sessions.
       logger.info({ thinkingMode: 'off' }, 'Extended thinking DISABLED');
     }
 
-    // Permission handling based on session mode
-    if (this._sessionMode === 'chat') {
+    // Explicit per-session tool allow-list (e.g. Git Agent). Takes precedence
+    // over the chat/agent permission flow — when set, the SDK is constrained
+    // to this exact list and the `canUseTool` callback never sees a denied
+    // tool (the SDK blocks it before invoking the callback).
+    if (this._allowedTools !== undefined) {
+      options.allowedTools = [...this._allowedTools];
+      logger.info(
+        { tools: this._allowedTools, sessionMode: this._sessionMode },
+        'Explicit tool allow-list installed'
+      );
+    } else if (this._sessionMode === 'chat') {
       // Chat mode: Use allowedTools array (no permission prompts)
       const chatTools = getAllowedToolsForMode('chat');
       options.allowedTools = chatTools;

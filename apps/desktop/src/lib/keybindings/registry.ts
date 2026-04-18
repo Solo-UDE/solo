@@ -64,7 +64,7 @@ export const DEFAULT_KEYBINDINGS: KeybindingDefinition[] = [
   { id: 'editor.comment', label: 'Toggle Comment', description: 'Comment/uncomment selection', defaultKey: 'Cmd+/', category: 'editor' },
 
   // View
-  { id: 'view.toggleSidebar', label: 'Toggle Sidebar', description: 'Show/hide the sidebar', defaultKey: 'Cmd+B', category: 'view', implemented: false },
+  { id: 'view.toggleSidebar', label: 'Toggle Sidebar', description: 'Show/hide the sidebar', defaultKey: 'Cmd+B', category: 'view' },
   { id: 'view.toggleTerminal', label: 'Toggle Terminal', description: 'Show/hide the terminal', defaultKey: 'Cmd+J', category: 'view' },
   { id: 'view.zoomIn', label: 'Zoom In', description: 'Increase application zoom', defaultKey: 'Cmd+=', category: 'view' },
   { id: 'view.zoomOut', label: 'Zoom Out', description: 'Decrease application zoom', defaultKey: 'Cmd+-', category: 'view' },

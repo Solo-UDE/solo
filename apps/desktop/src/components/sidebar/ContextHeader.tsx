@@ -2,15 +2,14 @@
  * ContextHeader - Dynamic header showing branch/folder name + view-specific actions
  */
 
-import { useState, useCallback, useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import type { FC } from 'react';
-import { ChevronDownIcon, Cross2Icon, PlusIcon, ReloadIcon } from '@radix-ui/react-icons';
+import { Cross2Icon, PlusIcon, ReloadIcon } from '@radix-ui/react-icons';
 import { GitBranch, FolderOpen, FilePlus, FolderPlus, CloudDownload, CloudUpload, Minimize2, Network } from 'lucide-react';
 import { useUIStore } from '@/stores/uiStore';
 import { useGitStore } from '@/stores/gitStore';
 import { useActiveWorktree } from '@/stores/worktreeStore';
 import { useFileExplorerStore, getParentPath } from '@/stores/fileExplorerStore';
-import { WorktreeSwitcher } from './WorktreeSwitcher';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -20,9 +19,10 @@ interface ContextHeaderProps {
 
 export const ContextHeader: FC<ContextHeaderProps> = ({ onNewSession }) => {
   const activeTab = useUIStore((s) => s.activeTab);
-  const [switcherOpen, setSwitcherOpen] = useState(false);
 
-  // Git state
+  // Git state. Branch switching moved into the per-worktree BranchPicker
+  // inside WorktreeDetailView — this header just surfaces the current branch
+  // name as a read-only identity crumb now.
   const currentBranch = useGitStore((s) => s.currentBranch);
   const repoStatus = useGitStore((s) => s.repoStatus);
   const isPushing = useGitStore((s) => s.isPushing);
@@ -107,34 +107,25 @@ export const ContextHeader: FC<ContextHeaderProps> = ({ onNewSession }) => {
 
   return (
     <div className="relative flex items-center justify-between gap-4 h-9 px-2 shrink-0">
-      {/* Left: Branch/folder name (clickable when git repo) */}
-      <div className="relative flex items-center gap-1.5 min-w-0 flex-1">
-        <button
-          onClick={() => isGitRepo && setSwitcherOpen((v) => !v)}
-          className={cn(
-            'flex items-center gap-1.5 h-7 px-2 rounded-lg overflow-hidden max-w-full',
-            'text-xs text-muted-foreground bg-muted/30',
-            isGitRepo && 'hover:bg-muted/60 hover:text-foreground active:scale-[0.97] transition-[transform,background-color,color] duration-150 cursor-pointer',
-            !isGitRepo && 'cursor-default',
-          )}
-        >
-          {DisplayIcon && (
-            <DisplayIcon
-              className={cn('w-3.5 h-3.5 shrink-0', isGitRepo && 'text-primary')}
-            />
-          )}
-          <span className="truncate">{displayName}</span>
-          {activeWorktree && (
-            <Network className="w-3 h-3 text-primary/60 shrink-0" />
-          )}
-          {isGitRepo && (
-            <ChevronDownIcon className="w-3 h-3 text-muted-foreground/60 shrink-0" />
-          )}
-        </button>
-
-        {/* Branch switcher dropdown */}
-        {switcherOpen && <WorktreeSwitcher onClose={() => setSwitcherOpen(false)} />}
-
+      {/* Left: branch/folder identity crumb (read-only).
+          Branch switching moved into the per-worktree BranchPicker inside
+          WorktreeDetailView so each worktree owns its own branch context. */}
+      <div
+        className={cn(
+          'flex items-center gap-1.5 h-7 px-2 rounded-lg overflow-hidden max-w-full min-w-0 flex-1',
+          'text-xs text-muted-foreground bg-muted/30 cursor-default',
+        )}
+        title={isGitRepo ? 'Switch branches inside the worktree detail view' : undefined}
+      >
+        {DisplayIcon && (
+          <DisplayIcon
+            className={cn('w-3.5 h-3.5 shrink-0', isGitRepo && 'text-primary')}
+          />
+        )}
+        <span className="truncate">{displayName}</span>
+        {activeWorktree && (
+          <Network className="w-3 h-3 text-primary/60 shrink-0" />
+        )}
       </div>
 
       {/* Right: View-specific actions */}

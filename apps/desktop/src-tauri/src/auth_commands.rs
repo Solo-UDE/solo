@@ -11,12 +11,12 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::sync::OnceLock;
 use tauri::State;
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 use url::Url;
 
+use crate::desktop_config::{self, CognitoConfig, REDIRECT_URL, SIGNOUT_URL};
 use crate::provider_commands::ProviderAuthState;
 
 fn now_epoch_secs() -> i64 {
@@ -30,19 +30,10 @@ fn now_epoch_secs() -> i64 {
 // Configuration
 // =============================================================================
 
-const REDIRECT_URL: &str = "soloide://auth/callback";
-const SIGNOUT_URL: &str = "soloide://auth/signout";
-
-const COGNITO_DOMAIN_ENV_KEYS: &[&str] = &["SOLO_COGNITO_DOMAIN"];
-const COGNITO_CLIENT_ID_ENV_KEYS: &[&str] = &["SOLO_COGNITO_CLIENT_ID"];
-const COGNITO_REGION_ENV_KEYS: &[&str] = &["SOLO_AWS_REGION", "AWS_REGION"];
-
 /// Vault keys — `cognito.*` per the Supabase→Cognito migration.
 const VAULT_KEY_ACCESS_TOKEN: &str = "cognito.accessToken";
 const VAULT_KEY_REFRESH_TOKEN: &str = "cognito.refreshToken";
 const VAULT_KEY_ID_TOKEN: &str = "cognito.idToken";
-
-static COGNITO_CONFIG: OnceLock<Result<CognitoConfig, String>> = OnceLock::new();
 
 // =============================================================================
 // Types
@@ -53,22 +44,6 @@ static COGNITO_CONFIG: OnceLock<Result<CognitoConfig, String>> = OnceLock::new()
 struct PkceState {
     verifier: String,
     challenge: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct CognitoConfig {
-    /// Fully-qualified Cognito domain, e.g. `solo-ide-dev.auth.us-east-1.amazoncognito.com`.
-    /// Does NOT include the scheme; scheme is always `https`.
-    domain: String,
-    client_id: String,
-    #[allow(dead_code)]
-    region: String,
-}
-
-impl CognitoConfig {
-    fn base_url(&self) -> String {
-        format!("https://{}", self.domain)
-    }
 }
 
 /// User information — same shape as the Supabase-era struct for frontend
@@ -177,105 +152,6 @@ impl AuthState {
 impl Default for AuthState {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-fn read_env(keys: &[&str]) -> Option<String> {
-    keys.iter().find_map(|key| {
-        std::env::var(key)
-            .ok()
-            .map(|value| value.trim().to_string())
-            .filter(|value| !value.is_empty())
-    })
-}
-
-fn normalize_cognito_domain(raw: &str) -> Result<String, String> {
-    let trimmed = raw.trim().trim_end_matches('/');
-    let candidate = if trimmed.starts_with("https://") {
-        trimmed.trim_start_matches("https://").to_string()
-    } else if trimmed.starts_with("http://") {
-        return Err(format!(
-            "Invalid Cognito domain `{trimmed}`: must be https, not http"
-        ));
-    } else {
-        trimmed.to_string()
-    };
-
-    let probe = format!("https://{}", candidate);
-    let parsed = Url::parse(&probe)
-        .map_err(|err| format!("Invalid Cognito domain `{candidate}`: {err}"))?;
-    if parsed.host_str().is_none() {
-        return Err(format!("Invalid Cognito domain `{candidate}`: missing host"));
-    }
-    if !candidate.contains(".amazoncognito.com") && !candidate.contains(".") {
-        return Err(format!(
-            "Invalid Cognito domain `{candidate}`: expected a fully-qualified hostname"
-        ));
-    }
-    Ok(candidate)
-}
-
-fn resolve_cognito_config(
-    compile_domain: Option<&str>,
-    compile_client_id: Option<&str>,
-    compile_region: Option<&str>,
-    runtime_domain: Option<String>,
-    runtime_client_id: Option<String>,
-    runtime_region: Option<String>,
-) -> Result<CognitoConfig, String> {
-    let domain = compile_domain
-        .map(str::trim)
-        .filter(|v| !v.is_empty())
-        .map(str::to_string)
-        .or(runtime_domain)
-        .ok_or_else(|| {
-            format!(
-                "Desktop auth is not configured. Set {} before building the app.",
-                COGNITO_DOMAIN_ENV_KEYS.join(" or ")
-            )
-        })?;
-
-    let client_id = compile_client_id
-        .map(str::trim)
-        .filter(|v| !v.is_empty())
-        .map(str::to_string)
-        .or(runtime_client_id)
-        .ok_or_else(|| {
-            format!(
-                "Desktop auth is not configured. Set {} before building the app.",
-                COGNITO_CLIENT_ID_ENV_KEYS.join(" or ")
-            )
-        })?;
-
-    let region = compile_region
-        .map(str::trim)
-        .filter(|v| !v.is_empty())
-        .map(str::to_string)
-        .or(runtime_region)
-        .unwrap_or_else(|| "us-east-1".to_string());
-
-    Ok(CognitoConfig {
-        domain: normalize_cognito_domain(&domain)?,
-        client_id,
-        region,
-    })
-}
-
-fn load_cognito_config() -> Result<CognitoConfig, String> {
-    resolve_cognito_config(
-        option_env!("SOLO_COGNITO_DOMAIN"),
-        option_env!("SOLO_COGNITO_CLIENT_ID"),
-        option_env!("SOLO_AWS_REGION"),
-        read_env(COGNITO_DOMAIN_ENV_KEYS),
-        read_env(COGNITO_CLIENT_ID_ENV_KEYS),
-        read_env(COGNITO_REGION_ENV_KEYS),
-    )
-}
-
-fn cognito_config() -> Result<&'static CognitoConfig, String> {
-    match COGNITO_CONFIG.get_or_init(load_cognito_config) {
-        Ok(cfg) => Ok(cfg),
-        Err(error) => Err(error.clone()),
     }
 }
 
@@ -397,7 +273,7 @@ pub async fn auth_start_oauth(
     state: State<'_, AuthState>,
 ) -> Result<String, String> {
     info!(provider = %provider, "Starting OAuth flow");
-    let config = cognito_config()?;
+    let config = desktop_config::cognito_config()?;
     let idp = cognito_identity_provider(&provider)?;
 
     let pkce = AuthState::generate_pkce();
@@ -432,7 +308,7 @@ pub async fn auth_start_magic_link(
     state: State<'_, AuthState>,
 ) -> Result<String, String> {
     info!(email = %email, "Opening email signin (Cognito Hosted UI)");
-    let config = cognito_config()?;
+    let config = desktop_config::cognito_config()?;
     let pkce = AuthState::generate_pkce();
 
     let mut url = Url::parse(&format!("{}/oauth2/authorize", config.base_url()))
@@ -459,7 +335,7 @@ pub async fn auth_exchange_code(
     state: State<'_, AuthState>,
     auth: State<'_, ProviderAuthState>,
 ) -> Result<AuthStateResponse, String> {
-    let config = cognito_config()?;
+    let config = desktop_config::cognito_config()?;
     info!(
         "Exchanging authorization code for tokens, code={}",
         &code[..code.len().min(8)]
@@ -571,7 +447,13 @@ pub async fn auth_get_session(
     };
     let refresh_token = vault_read(&auth, VAULT_KEY_REFRESH_TOKEN).await;
 
-    match fetch_user_info(&state.client, cognito_config()?, &access_token).await {
+    match fetch_user_info(
+        &state.client,
+        desktop_config::cognito_config()?,
+        &access_token,
+    )
+    .await
+    {
         Ok(user) => {
             let session = Session {
                 access_token,
@@ -621,7 +503,7 @@ async fn refresh_session_internal(
     auth: &State<'_, ProviderAuthState>,
     refresh_token: &str,
 ) -> Result<AuthStateResponse, String> {
-    let config = cognito_config()?;
+    let config = desktop_config::cognito_config()?;
     let response = state
         .client
         .post(format!("{}/oauth2/token", config.base_url()))
@@ -728,7 +610,7 @@ pub async fn auth_sign_out(
     // Build the Cognito logout URL when possible. Missing env / bad config
     // is NOT a sign-out failure — local state is already clean. Return an
     // empty URL so the frontend can skip opening a browser.
-    let logout_url = match cognito_config() {
+    let logout_url = match desktop_config::cognito_config() {
         Ok(config) => match Url::parse(&format!("{}/logout", config.base_url())) {
             Ok(mut url) => {
                 url.query_pairs_mut()
@@ -788,51 +670,7 @@ pub async fn auth_get_id_token(
 
 #[cfg(test)]
 mod tests {
-    use super::{cognito_identity_provider, normalize_cognito_domain, resolve_cognito_config};
-
-    #[test]
-    fn uses_compile_time_values_when_present() {
-        let cfg = resolve_cognito_config(
-            Some("solo-ide-dev.auth.us-east-1.amazoncognito.com"),
-            Some("abc123"),
-            Some("us-east-1"),
-            Some("runtime-domain.example".to_string()),
-            Some("runtime-client".to_string()),
-            Some("eu-west-1".to_string()),
-        )
-        .unwrap();
-        assert_eq!(cfg.domain, "solo-ide-dev.auth.us-east-1.amazoncognito.com");
-        assert_eq!(cfg.client_id, "abc123");
-        assert_eq!(cfg.region, "us-east-1");
-    }
-
-    #[test]
-    fn falls_back_to_runtime_values() {
-        let cfg = resolve_cognito_config(
-            None,
-            None,
-            None,
-            Some("runtime.auth.us-east-1.amazoncognito.com".to_string()),
-            Some("runtime-client".to_string()),
-            Some("us-west-2".to_string()),
-        )
-        .unwrap();
-        assert_eq!(cfg.domain, "runtime.auth.us-east-1.amazoncognito.com");
-        assert_eq!(cfg.client_id, "runtime-client");
-        assert_eq!(cfg.region, "us-west-2");
-    }
-
-    #[test]
-    fn rejects_http_domain() {
-        let err = normalize_cognito_domain("http://example.amazoncognito.com").unwrap_err();
-        assert!(err.to_lowercase().contains("https"));
-    }
-
-    #[test]
-    fn accepts_domain_with_scheme_prefix() {
-        let n = normalize_cognito_domain("https://x.auth.us-east-1.amazoncognito.com/").unwrap();
-        assert_eq!(n, "x.auth.us-east-1.amazoncognito.com");
-    }
+    use super::cognito_identity_provider;
 
     #[test]
     fn maps_providers() {

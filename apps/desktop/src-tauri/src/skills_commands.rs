@@ -144,14 +144,6 @@ fn claude_user_skills_dir() -> Option<PathBuf> {
     home_dir().map(|h| h.join(".claude").join("skills"))
 }
 
-fn claude_plugins_manifest() -> Option<PathBuf> {
-    home_dir().map(|h| {
-        h.join(".claude")
-            .join("plugins")
-            .join("installed_plugins.json")
-    })
-}
-
 fn codex_user_skills_dir() -> Option<PathBuf> {
     home_dir().map(|h| h.join(".codex").join("skills"))
 }
@@ -204,44 +196,26 @@ async fn discover_claude_project(cwd: &Path) -> Vec<SkillInfo> {
     skills
 }
 
-/// Parse `~/.claude/plugins/installed_plugins.json` and scan each plugin's
-/// `skills/` subdirectory. Falls back to an empty list if the manifest is
-/// missing or malformed.
+/// Discover skills bundled inside Claude Code plugins, delegating installed-
+/// plugins.json parsing + path resolution to the `solo-plugins` crate.
+///
+/// Falls back to an empty list if `~/.claude/plugins/` does not exist.
 async fn discover_claude_plugins() -> Vec<SkillInfo> {
-    let Some(manifest_path) = claude_plugins_manifest() else {
+    let Some(plugins_dir) = home_dir().map(|h| h.join(".claude").join("plugins")) else {
         return Vec::new();
     };
-    let raw = match fs::read_to_string(&manifest_path).await {
-        Ok(r) => r,
-        Err(_) => return Vec::new(),
-    };
-    let parsed: serde_json::Value = match serde_json::from_str(&raw) {
-        Ok(v) => v,
-        Err(e) => {
-            warn!("claude plugins manifest parse error: {}", e);
-            return Vec::new();
-        }
-    };
-
-    let Some(plugins) = parsed.get("plugins").and_then(|v| v.as_object()) else {
+    if !plugins_dir.exists() {
         return Vec::new();
-    };
+    }
 
+    let adapter_plugins = solo_plugins::discover_claude_adapter(&plugins_dir);
     let mut skills = Vec::new();
-    for installs in plugins.values() {
-        let Some(array) = installs.as_array() else {
+    for plugin in adapter_plugins {
+        let skills_dir = plugin.root.join("skills");
+        if !skills_dir.exists() {
             continue;
-        };
-        for install in array {
-            let Some(install_path) = install.get("installPath").and_then(|v| v.as_str()) else {
-                continue;
-            };
-            let skills_dir = PathBuf::from(install_path).join("skills");
-            if !skills_dir.exists() {
-                continue;
-            }
-            skills.extend(scan_skills_dir(&skills_dir, SkillSource::ClaudePlugin).await);
         }
+        skills.extend(scan_skills_dir(&skills_dir, SkillSource::ClaudePlugin).await);
     }
     skills
 }

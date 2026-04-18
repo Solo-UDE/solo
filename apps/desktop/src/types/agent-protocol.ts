@@ -65,6 +65,13 @@ export interface SessionConfig {
 	maxThinkingTokens?: number;
 	/** Output-token cap per response (forwarded to SDK via env var) */
 	maxTokens?: number;
+	/**
+	 * Explicit per-session tool allow-list. When provided the bridge installs
+	 * `options.allowedTools = allowedTools` on the SDK and no other tools are
+	 * callable. Used by the Git Agent harness to constrain the model to git +
+	 * read-only file operations so a prompt-escape can't run arbitrary code.
+	 */
+	allowedTools?: string[];
 	planEnabled?: boolean;
 	acceptEnabled?: boolean;
 	critiqueEnabled?: boolean;

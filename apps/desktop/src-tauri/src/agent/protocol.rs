@@ -75,6 +75,11 @@ pub struct SessionConfig {
     /// Output-token cap forwarded to the SDK as CLAUDE_CODE_MAX_OUTPUT_TOKENS.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_tokens: Option<u32>,
+    /// Explicit per-session tool allow-list. When present, the bridge installs
+    /// it as `options.allowedTools` and no other tools are callable. Used by
+    /// the Git Agent harness to restrict the model to git operations.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub allowed_tools: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session_mode: Option<SessionMode>,
     #[serde(skip_serializing_if = "Option::is_none")]

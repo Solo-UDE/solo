@@ -1,5 +1,9 @@
 /**
- * MentionDropdown - Floating search dropdown for @-mention file selection
+ * MentionDropdown — Codex-style single-line file picker for @-mentions.
+ *
+ * Shares the same row layout as SlashCommandDropdown: one row per result,
+ * icon + name + inline path description. Blurred translucent popover
+ * surface with subtle ring.
  */
 
 import { FileIcon } from '@react-symbols/icons/utils';
@@ -15,6 +19,13 @@ export interface MentionDropdownProps {
 	position: { bottom: number; left: number };
 }
 
+// Concentric radii (border-radius.md): outer rounded-2xl minus p-1.5 ≈ rounded-xl inner.
+const itemBase =
+	'group flex w-full items-center gap-2 rounded-xl px-3 h-7 text-[13px] text-left ' +
+	'cursor-default select-none outline-none transition-colors';
+const itemIdle = 'text-foreground/90 hover:bg-accent hover:text-accent-foreground';
+const itemActive = 'bg-accent text-accent-foreground';
+
 export const MentionDropdown: FC<MentionDropdownProps> = ({
 	results,
 	selectedIndex,
@@ -24,7 +35,6 @@ export const MentionDropdown: FC<MentionDropdownProps> = ({
 	const listRef = useRef<HTMLDivElement>(null);
 	const selectedRef = useRef<HTMLButtonElement>(null);
 
-	// Scroll selected item into view
 	useEffect(() => {
 		selectedRef.current?.scrollIntoView({ block: 'nearest' });
 	}, [selectedIndex]);
@@ -32,39 +42,41 @@ export const MentionDropdown: FC<MentionDropdownProps> = ({
 	return (
 		<div
 			ref={listRef}
-			className="fixed z-50 w-72 max-h-60 overflow-y-auto rounded-md bg-popover shadow-glass animate-in fade-in slide-in-from-bottom-2 duration-150"
+			className={
+				'fixed z-50 w-[32rem] max-h-80 overflow-y-auto rounded-2xl p-1.5 ' +
+				'bg-popover/90 backdrop-blur-md text-popover-foreground ' +
+				'ring-1 ring-black/10 dark:ring-white/10 shadow-xl ' +
+				'animate-[fade-in-scale_150ms_cubic-bezier(0.16,1,0.3,1)]'
+			}
 			style={{ bottom: position.bottom, left: position.left }}
 		>
 			{results.length === 0 ? (
-				<div className="p-3 text-sm text-muted-foreground text-center">
+				<div className="h-7 flex items-center justify-center text-[13px] text-muted-foreground">
 					No files found
 				</div>
 			) : (
-				results.map((result, i) => (
-					<button
-						key={result.path}
-						ref={i === selectedIndex ? selectedRef : undefined}
-						onClick={() => onSelect(result)}
-						className={`
-							w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left
-							hover:bg-muted transition-colors
-							${i === selectedIndex ? 'bg-muted' : ''}
-						`}
-						type="button"
-					>
-						<span className="shrink-0">
-							<FileIcon fileName={result.name} autoAssign className="w-4 h-4" />
-						</span>
-						<div className="min-w-0 flex-1">
-							<div className="truncate font-medium text-foreground">
+				results.map((result, i) => {
+					const isActive = i === selectedIndex;
+					return (
+						<button
+							key={result.path}
+							ref={isActive ? selectedRef : undefined}
+							onClick={() => onSelect(result)}
+							className={`${itemBase} ${isActive ? itemActive : itemIdle}`}
+							type="button"
+						>
+							<span className="shrink-0">
+								<FileIcon fileName={result.name} autoAssign className="size-4" />
+							</span>
+							<span className="shrink-0 font-medium truncate max-w-[16rem]">
 								{result.name}
-							</div>
-							<div className="truncate text-xs text-muted-foreground">
+							</span>
+							<span className="min-w-0 flex-1 truncate text-muted-foreground/90 group-hover:text-accent-foreground/80">
 								{result.relativePath}
-							</div>
-						</div>
-					</button>
-				))
+							</span>
+						</button>
+					);
+				})
 			)}
 		</div>
 	);

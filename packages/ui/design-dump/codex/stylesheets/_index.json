@@ -1,0 +1,51 @@
+[
+  {
+    "index": 0,
+    "origin": "regular",
+    "href": "app://-/assets/dialog-layout-CyrLYBi9.css",
+    "bytes": 633,
+    "textError": null
+  },
+  {
+    "index": 1,
+    "origin": "regular",
+    "href": "app://-/assets/check-md-D5D_cQD4.css",
+    "bytes": 2696,
+    "textError": null
+  },
+  {
+    "index": 2,
+    "origin": "regular",
+    "href": "app://-/index.html?hostId=local",
+    "bytes": 6012,
+    "textError": null
+  },
+  {
+    "index": 3,
+    "origin": "regular",
+    "href": "app://-/assets/use-personality-D82knaKt.css",
+    "bytes": 135,
+    "textError": null
+  },
+  {
+    "index": 4,
+    "origin": "regular",
+    "href": "app://-/assets/index-BukyxUnw.css",
+    "bytes": 369842,
+    "textError": null
+  },
+  {
+    "index": 5,
+    "origin": "regular",
+    "href": "app://-/assets/use-model-settings-DSYwWnRy.css",
+    "bytes": 9214,
+    "textError": null
+  },
+  {
+    "index": 6,
+    "origin": "regular",
+    "href": "app://-/assets/plugins-cards-grid-DoKhPslE.css",
+    "bytes": 197,
+    "textError": null
+  }
+]

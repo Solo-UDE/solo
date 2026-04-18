@@ -67,17 +67,16 @@ cp .env.example .env.local
 
 - [ ] `.env.local` has every env var from `.env.example` populated with real values
 
-### 0.5 Set up desktop env vars (one-off build)
+### 0.5 Set up desktop auth env
 
-For dev mode, either export before `bun run dev` or bake into `solo/.env`:
+Recommended:
 
 ```bash
-export SOLO_COGNITO_DOMAIN="solo-ide-dev.auth.us-east-1.amazoncognito.com"
-export SOLO_COGNITO_CLIENT_ID="3lvjbkkev35ejmm927rkfn13d3"
-export SOLO_AWS_REGION="us-east-1"
+cd solo
+bun run auth:doctor
 ```
 
-- [ ] `echo $SOLO_COGNITO_DOMAIN` prints the expected value
+- [ ] `bun run auth:doctor` shows `SOLO_COGNITO_DOMAIN`, `SOLO_COGNITO_CLIENT_ID`, `SOLO_AWS_REGION`, and `SOLO_API_ENDPOINT`
 
 ---
 
@@ -126,7 +125,12 @@ PGPASSWORD="$DB_PASSWORD" psql \
 
 ## Section 2 — Auth flows (desktop app)
 
-Assumes Section 0.5 env vars are set. Start the app with `cd solo && bun run dev`.
+Assumes Section 0.5 passes. Start the app with:
+
+```bash
+cd solo
+bun run dev:auth
+```
 
 ### 2.1 Google sign-in (desktop)
 

@@ -1,6 +1,12 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* Design tokens (colors, typography, radii, shadows, motion, chrome) live
+   in @solo/ui/tokens.css which is pulled in via this single import. See
+   `.solo/skills/design/tokens.md` for the token contract, and
+   `packages/ui/src/tokens/` for the source-of-truth TypeScript. */
+@import "@solo/ui/styles";
+
 /* Tailwind v4: scan Streamdown's compiled output so its utility classes survive purging. */
 @source "../../../node_modules/streamdown/dist/*.js";
 @source "../../../node_modules/@streamdown/code/dist/*.js";
@@ -9,460 +15,6 @@
 
 /* CRITICAL: Tell Tailwind v4 how to handle dark mode */
 @custom-variant dark (&:is(.dark *));
-
-/* =============================================================================
-   TAILWIND THEME MAPPING (must come before :root)
-   ============================================================================= */
-@theme inline {
-  /* Collapsible animations */
-  --animate-collapsible-down: collapsible-down 200ms cubic-bezier(0.16, 1, 0.3, 1);
-  --animate-collapsible-up: collapsible-up 150ms cubic-bezier(0.16, 1, 0.3, 1);
-
-  /* Radii */
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-
-  /* Easing curves */
-  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
-  --ease-smooth: cubic-bezier(0.16, 1, 0.3, 1);
-  --ease-snappy: cubic-bezier(0.4, 0, 0.2, 1);
-
-  /* Keyframe animations */
-  --animate-fade-in-scale: fade-in-scale 200ms var(--ease-smooth);
-  --animate-fade-out: fade-out 100ms var(--ease-snappy);
-  --animate-pop-in: pop-in 150ms var(--ease-spring);
-  --animate-slide-up: slide-up 200ms var(--ease-smooth);
-
-  /* Monospace font */
-  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-
-  /* Chat message font */
-  --font-chat: "Atkinson Hyperlegible Next Variable", "Atkinson Hyperlegible Next", sans-serif;
-
-  /* Base colors */
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-
-  /* Card */
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-
-  /* Popover */
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-
-  /* Primary */
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-
-  /* Secondary */
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-
-  /* Muted */
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-
-  /* Accent */
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-
-  /* Destructive */
-  --color-destructive: var(--destructive);
-
-  /* Borders & Input */
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
-
-  /* Semantic colors */
-  --color-status-success: var(--status-success);
-  --color-status-warning: var(--status-warning);
-  --color-status-error: var(--status-error);
-
-  /* Status colors for components */
-  --color-success: var(--success);
-  --color-success-muted: var(--success-muted);
-  --color-success-foreground: var(--success-foreground);
-  --color-warning: var(--warning);
-  --color-warning-muted: var(--warning-muted);
-  --color-warning-foreground: var(--warning-foreground);
-  --color-info: var(--info);
-  --color-info-muted: var(--info-muted);
-  --color-info-foreground: var(--info-foreground);
-  --color-file-folder: var(--file-folder);
-  --color-file-code: var(--file-code);
-  --color-file-config: var(--file-config);
-  --color-file-text: var(--file-text);
-  --color-file-image: var(--file-image);
-
-  /* Sidebar */
-  --color-sidebar: var(--sidebar);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar-border: var(--sidebar-border);
-
-  /* Agent-specific colors */
-  --color-agent-user-bg: var(--agent-user-bg);
-  --color-agent-assistant-bg: var(--agent-assistant-bg);
-  --color-agent-tool-bg: var(--agent-tool-bg);
-  --color-agent-streaming: var(--agent-streaming);
-  --color-chat-area: var(--chat-area);
-  --color-tool-output-bg: var(--tool-output-bg);
-  --color-border-tool: var(--border-tool);
-
-  /* Orbit Geist 10-step neutral scale (ported from Orbit) */
-  --color-orbit-100: var(--orbit-100);
-  --color-orbit-200: var(--orbit-200);
-  --color-orbit-300: var(--orbit-300);
-  --color-orbit-400: var(--orbit-400);
-  --color-orbit-500: var(--orbit-500);
-  --color-orbit-600: var(--orbit-600);
-  --color-orbit-700: var(--orbit-700);
-  --color-orbit-800: var(--orbit-800);
-  --color-orbit-900: var(--orbit-900);
-  --color-orbit-1000: var(--orbit-1000);
-
-  /* Syntax highlighting */
-  --color-syntax-keyword: var(--syntax-keyword);
-  --color-syntax-string: var(--syntax-string);
-  --color-syntax-type: var(--syntax-type);
-  --color-syntax-function: var(--syntax-function);
-  --color-syntax-variable: var(--syntax-variable);
-  --color-syntax-comment: var(--syntax-comment);
-  --color-syntax-number: var(--syntax-number);
-  --color-syntax-control: var(--syntax-control);
-  --color-syntax-operator: var(--syntax-operator);
-  --color-syntax-bracket: var(--syntax-bracket);
-
-  /* Repo identity colors */
-  --color-repo-blue: var(--repo-blue);
-  --color-repo-blue-muted: var(--repo-blue-muted);
-  --color-repo-blue-fg: var(--repo-blue-fg);
-  --color-repo-orange: var(--repo-orange);
-  --color-repo-orange-muted: var(--repo-orange-muted);
-  --color-repo-orange-fg: var(--repo-orange-fg);
-  --color-repo-emerald: var(--repo-emerald);
-  --color-repo-emerald-muted: var(--repo-emerald-muted);
-  --color-repo-emerald-fg: var(--repo-emerald-fg);
-  --color-repo-violet: var(--repo-violet);
-  --color-repo-violet-muted: var(--repo-violet-muted);
-  --color-repo-violet-fg: var(--repo-violet-fg);
-  --color-repo-rose: var(--repo-rose);
-  --color-repo-rose-muted: var(--repo-rose-muted);
-  --color-repo-rose-fg: var(--repo-rose-fg);
-  --color-repo-amber: var(--repo-amber);
-  --color-repo-amber-muted: var(--repo-amber-muted);
-  --color-repo-amber-fg: var(--repo-amber-fg);
-  --color-repo-cyan: var(--repo-cyan);
-  --color-repo-cyan-muted: var(--repo-cyan-muted);
-  --color-repo-cyan-fg: var(--repo-cyan-fg);
-  --color-repo-teal: var(--repo-teal);
-  --color-repo-teal-muted: var(--repo-teal-muted);
-  --color-repo-teal-fg: var(--repo-teal-fg);
-  --color-repo-pink: var(--repo-pink);
-  --color-repo-pink-muted: var(--repo-pink-muted);
-  --color-repo-pink-fg: var(--repo-pink-fg);
-  --color-repo-lime: var(--repo-lime);
-  --color-repo-lime-muted: var(--repo-lime-muted);
-  --color-repo-lime-fg: var(--repo-lime-fg);
-
-}
-
-/* =============================================================================
-   LIGHT MODE (default)
-   ============================================================================= */
-:root {
-  /* Enable system color scheme for proper scrollbar colors */
-  color-scheme: light dark;
-
-  --radius: 0.5rem;
-
-  /* Base */
-  --background: oklch(0.972 0.004 85);
-  --foreground: oklch(0.24 0.008 85);
-
-  /* Card */
-  --card: oklch(0.992 0.003 85);
-  --card-foreground: oklch(0.24 0.008 85);
-
-  /* Popover */
-  --popover: oklch(0.99 0.003 85);
-  --popover-foreground: oklch(0.24 0.008 85);
-
-  /* Primary (Solo Green) */
-  --primary: oklch(0.6 0.11 157);
-  --primary-foreground: oklch(0.99 0.002 85);
-
-  /* Secondary — Codex-style: subtle gray surface (slightly darker than the
-     page bg so it has shape on its own without needing a border), near-black ink */
-  --secondary: oklch(0.945 0.004 85);
-  --secondary-foreground: oklch(0.22 0.006 85);
-
-  /* Muted */
-  --muted: oklch(0.952 0.004 85);
-  --muted-foreground: oklch(0.5 0.008 85);
-
-  /* Accent */
-  --accent: oklch(0.944 0.006 85);
-  --accent-foreground: oklch(0.22 0.006 85);
-
-  /* Destructive */
-  --destructive: oklch(0.55 0.22 25);
-
-  /* Borders & Input */
-  --border: oklch(0.89 0.004 85);
-  --input: oklch(0.955 0.004 85);
-  --ring: oklch(0.62 0.09 160);
-
-  /* Semantic status colors */
-  --status-success: oklch(0.65 0.18 155);
-  --status-warning: oklch(0.75 0.18 85);
-  --status-error: oklch(0.55 0.22 25);
-
-  /* Success colors */
-  --success: oklch(0.65 0.18 155);
-  --success-muted: oklch(0.92 0.06 155);
-  --success-foreground: oklch(0.35 0.10 155);
-
-  /* Warning colors */
-  --warning: oklch(0.75 0.18 85);
-  --warning-muted: oklch(0.92 0.06 85);
-  --warning-foreground: oklch(0.40 0.10 85);
-
-  /* Info colors */
-  --info: oklch(0.60 0.15 240);
-  --info-muted: oklch(0.92 0.06 240);
-  --info-foreground: oklch(0.35 0.10 240);
-
-  /* Semantic file type colors */
-  --file-folder: oklch(0.75 0.15 85);
-  --file-code: oklch(0.60 0.15 240);
-  --file-config: oklch(0.75 0.18 90);
-  --file-text: oklch(0.50 0.03 60);
-  --file-image: oklch(0.65 0.18 300);
-
-  /* Sidebar - chrome layer (slightly darker than content canvas for depth) */
-  --sidebar: oklch(0.955 0.004 85);
-  --sidebar-foreground: oklch(0.22 0.008 85);
-  --sidebar-border: oklch(0.89 0.004 85);
-
-  /* ── Orbit Geist 10-step neutral scale (light) ────────────────────────
-     Ported from Orbit for a disciplined monochromatic chat surface.
-     Chroma = 0 where possible — no warm tint in structural grays. */
-  --orbit-100: #dbdbdb;
-  --orbit-200: #d2d2d2;
-  --orbit-300: #cacaca;
-  --orbit-400: #c1c1c1;
-  --orbit-500: #b5b5b5;
-  --orbit-600: #a1a1a1;
-  --orbit-700: #737373;
-  --orbit-800: #696969;
-  --orbit-900: #4c4c4c;
-  --orbit-1000: #202020;
-
-  /* Chat surface tokens — Codex-flat: tool blocks blend into the page,
-     code/output uses a barely-tinted gray, hairline borders only. */
-  --chat-area: oklch(0.986 0.003 85);
-  --tool-output-bg: oklch(0.968 0.003 85);
-  --border-tool: oklch(0 0 0 / 0.06);
-
-  /* Agent-specific — neutral gray bubble, transparent assistant, distinct tool surface */
-  --agent-user-bg: oklch(0.943 0.004 85);
-  --agent-assistant-bg: transparent;
-  --agent-tool-bg: var(--tool-output-bg);
-  --agent-streaming: oklch(0.54 0.01 80);
-
-  /* Repo identity colors (light mode) */
-  --repo-blue: oklch(0.55 0.18 250);
-  --repo-blue-muted: oklch(0.55 0.18 250 / 12%);
-  --repo-blue-fg: oklch(0.40 0.15 250);
-  --repo-orange: oklch(0.65 0.18 55);
-  --repo-orange-muted: oklch(0.65 0.18 55 / 12%);
-  --repo-orange-fg: oklch(0.48 0.15 55);
-  --repo-emerald: oklch(0.60 0.17 160);
-  --repo-emerald-muted: oklch(0.60 0.17 160 / 12%);
-  --repo-emerald-fg: oklch(0.42 0.14 160);
-  --repo-violet: oklch(0.55 0.20 290);
-  --repo-violet-muted: oklch(0.55 0.20 290 / 12%);
-  --repo-violet-fg: oklch(0.40 0.17 290);
-  --repo-rose: oklch(0.60 0.20 15);
-  --repo-rose-muted: oklch(0.60 0.20 15 / 12%);
-  --repo-rose-fg: oklch(0.45 0.17 15);
-  --repo-amber: oklch(0.70 0.16 80);
-  --repo-amber-muted: oklch(0.70 0.16 80 / 12%);
-  --repo-amber-fg: oklch(0.50 0.14 80);
-  --repo-cyan: oklch(0.60 0.14 210);
-  --repo-cyan-muted: oklch(0.60 0.14 210 / 12%);
-  --repo-cyan-fg: oklch(0.42 0.12 210);
-  --repo-teal: oklch(0.60 0.14 180);
-  --repo-teal-muted: oklch(0.60 0.14 180 / 12%);
-  --repo-teal-fg: oklch(0.42 0.12 180);
-  --repo-pink: oklch(0.62 0.20 340);
-  --repo-pink-muted: oklch(0.62 0.20 340 / 12%);
-  --repo-pink-fg: oklch(0.45 0.17 340);
-  --repo-lime: oklch(0.65 0.18 130);
-  --repo-lime-muted: oklch(0.65 0.18 130 / 12%);
-  --repo-lime-fg: oklch(0.45 0.15 130);
-
-  /* Syntax highlighting tokens (light mode) */
-  --syntax-keyword: oklch(0.48 0.20 240);
-  --syntax-string: oklch(0.52 0.19 35);
-  --syntax-type: oklch(0.48 0.17 175);
-  --syntax-function: oklch(0.50 0.16 80);
-  --syntax-variable: oklch(0.44 0.14 220);
-  --syntax-comment: oklch(0.5 0.1 140);
-  --syntax-number: oklch(0.50 0.16 130);
-  --syntax-control: oklch(0.50 0.19 320);
-  --syntax-operator: oklch(0.35 0.02 60);
-  --syntax-bracket: oklch(0.55 0.18 85);
-
-}
-
-/* =============================================================================
-   DARK MODE
-   ============================================================================= */
-html.dark {
-  /* Force dark color scheme for scrollbars */
-  color-scheme: dark;
-
-  /* Base - warm dark, not pure black */
-  --background: oklch(0.145 0.006 75);
-  --foreground: oklch(0.93 0.008 85);
-
-  /* Syntax highlighting tokens */
-  --syntax-keyword: oklch(0.68 0.18 240);
-  --syntax-string: oklch(0.72 0.18 40);
-  --syntax-type: oklch(0.72 0.18 175);
-  --syntax-function: oklch(0.78 0.16 90);
-  --syntax-variable: oklch(0.74 0.14 220);
-  --syntax-comment: oklch(0.55 0.1 140);
-  --syntax-number: oklch(0.74 0.16 130);
-  --syntax-control: oklch(0.72 0.18 320);
-  --syntax-operator: oklch(0.85 0.02 60);
-  --syntax-bracket: oklch(0.80 0.18 85);
-
-  /* Card - slightly elevated */
-  --card: oklch(0.18 0.006 75);
-  --card-foreground: oklch(0.93 0.008 85);
-
-  /* Popover */
-  --popover: oklch(0.19 0.006 75);
-  --popover-foreground: oklch(0.93 0.008 85);
-
-  /* Primary (Solo Mint) - soft neon green for dark */
-  --primary: oklch(0.77 0.12 158);
-  --primary-foreground: oklch(0.17 0.004 85);
-
-  /* Secondary — neutral mid-dark, lighter than bg so it reads as a button without a border */
-  --secondary: oklch(0.22 0.006 75);
-  --secondary-foreground: oklch(0.9 0.008 85);
-
-  /* Muted */
-  --muted: oklch(0.2 0.006 75);
-  --muted-foreground: oklch(0.7 0.008 82);
-
-  /* Accent */
-  --accent: oklch(0.22 0.007 75);
-  --accent-foreground: oklch(0.92 0.008 85);
-
-  /* Destructive */
-  --destructive: oklch(0.65 0.20 25);
-
-  /* Borders & Input - subtle white overlay */
-  --border: oklch(0.34 0.01 70);
-  --input: oklch(0.23 0.006 75);
-  --ring: oklch(0.72 0.1 160);
-
-  /* Semantic status colors (dark mode) */
-  --status-success: oklch(0.70 0.18 155);
-  --status-warning: oklch(0.80 0.18 85);
-  --status-error: oklch(0.65 0.20 25);
-
-  /* Success colors (dark mode) */
-  --success: oklch(0.70 0.18 155);
-  --success-muted: oklch(0.30 0.08 155);
-  --success-foreground: oklch(0.85 0.10 155);
-
-  /* Warning colors (dark mode) */
-  --warning: oklch(0.80 0.18 85);
-  --warning-muted: oklch(0.30 0.08 85);
-  --warning-foreground: oklch(0.90 0.10 85);
-
-  /* Info colors (dark mode) */
-  --info: oklch(0.70 0.15 240);
-  --info-muted: oklch(0.30 0.08 240);
-  --info-foreground: oklch(0.85 0.10 240);
-
-  /* Semantic file type colors (dark mode) */
-  --file-folder: oklch(0.80 0.18 90);
-  --file-code: oklch(0.65 0.15 240);
-  --file-config: oklch(0.80 0.18 90);
-  --file-text: oklch(0.65 0.03 60);
-  --file-image: oklch(0.60 0.18 300);
-
-  /* Repo identity colors (dark mode) - brighter for dark backgrounds */
-  --repo-blue: oklch(0.70 0.16 250);
-  --repo-blue-muted: oklch(0.70 0.16 250 / 15%);
-  --repo-blue-fg: oklch(0.80 0.12 250);
-  --repo-orange: oklch(0.75 0.16 55);
-  --repo-orange-muted: oklch(0.75 0.16 55 / 15%);
-  --repo-orange-fg: oklch(0.85 0.12 55);
-  --repo-emerald: oklch(0.72 0.15 160);
-  --repo-emerald-muted: oklch(0.72 0.15 160 / 15%);
-  --repo-emerald-fg: oklch(0.82 0.12 160);
-  --repo-violet: oklch(0.70 0.18 290);
-  --repo-violet-muted: oklch(0.70 0.18 290 / 15%);
-  --repo-violet-fg: oklch(0.82 0.14 290);
-  --repo-rose: oklch(0.72 0.18 15);
-  --repo-rose-muted: oklch(0.72 0.18 15 / 15%);
-  --repo-rose-fg: oklch(0.85 0.14 15);
-  --repo-amber: oklch(0.80 0.14 80);
-  --repo-amber-muted: oklch(0.80 0.14 80 / 15%);
-  --repo-amber-fg: oklch(0.88 0.10 80);
-  --repo-cyan: oklch(0.72 0.12 210);
-  --repo-cyan-muted: oklch(0.72 0.12 210 / 15%);
-  --repo-cyan-fg: oklch(0.82 0.10 210);
-  --repo-teal: oklch(0.72 0.12 180);
-  --repo-teal-muted: oklch(0.72 0.12 180 / 15%);
-  --repo-teal-fg: oklch(0.82 0.10 180);
-  --repo-pink: oklch(0.74 0.18 340);
-  --repo-pink-muted: oklch(0.74 0.18 340 / 15%);
-  --repo-pink-fg: oklch(0.85 0.14 340);
-  --repo-lime: oklch(0.76 0.16 130);
-  --repo-lime-muted: oklch(0.76 0.16 130 / 15%);
-  --repo-lime-fg: oklch(0.86 0.12 130);
-
-  /* Sidebar - deeper dark for contrast */
-  --sidebar: oklch(0.165 0.006 75);
-  --sidebar-foreground: oklch(0.92 0.008 85);
-  --sidebar-border: oklch(0.3 0.01 70);
-
-  /* ── Orbit Geist 10-step neutral scale (dark) ──────────────────────── */
-  --orbit-100: #232323;
-  --orbit-200: #2a2a2a;
-  --orbit-300: #313131;
-  --orbit-400: #3a3a3a;
-  --orbit-500: #484848;
-  --orbit-600: #606060;
-  --orbit-700: #6d6d6d;
-  --orbit-800: #7b7b7b;
-  --orbit-900: #b3b3b3;
-  --orbit-1000: #eeeeee;
-
-  /* Chat surface tokens (dark) — Codex-flat: tool blocks blend into the page,
-     code/output uses a barely-tinted gray, hairline borders only. */
-  --chat-area: #181818;
-  --tool-output-bg: oklch(0.19 0.006 75);
-  --border-tool: oklch(0.32 0.01 70);
-
-  /* Agent-specific (dark) — neutral bubble, transparent assistant, distinct tool surface */
-  --agent-user-bg: oklch(0.2 0.006 75);
-  --agent-assistant-bg: transparent;
-  --agent-tool-bg: var(--tool-output-bg);
-  --agent-streaming: oklch(0.72 0.008 85);
-}
 
 /* =============================================================================
    BASE STYLES (Critical for shadcn/ui)
@@ -490,7 +42,12 @@ html.dark {
   }
 }
 
-/* Base titlebar tone - chrome layer matching sidebar for frame effect */
+/* =============================================================================
+   TITLEBAR + VIBRANCY
+   Vibrancy overrides raw tokens (--sidebar, --card, --popover) so the macOS
+   NSVisualEffectView shows through translucent surfaces. Cascade flows to the
+   @theme inline mappings in @solo/ui/tokens.css.
+   ============================================================================= */
 .titlebar-glass {
   background: color-mix(in oklch, var(--card) 96%, transparent);
   backdrop-filter: blur(14px);
@@ -500,9 +57,6 @@ html.dark .titlebar-glass {
   background: color-mix(in oklch, var(--card) 88%, transparent);
 }
 
-/* When native vibrancy is active, make sidebar and root backgrounds
-   transparent so the NSVisualEffectView shows through. The data-vibrancy
-   attribute is set from the Rust setup closure on macOS. */
 html[data-vibrancy] {
   --sidebar: oklch(0.955 0.004 85 / 90%);
   --popover: oklch(0.995 0.002 85 / 95%);
@@ -522,8 +76,6 @@ html[data-vibrancy] .split-divider {
   background-color: var(--background);
 }
 
-/* Dark mode + vibrancy: semi-transparent dark backgrounds
-   prevent light system vibrancy from bleeding through */
 html.dark[data-vibrancy] {
   --sidebar: oklch(0.16 0.004 85 / 88%);
   --popover: oklch(0.23 0.005 85 / 94%);
@@ -581,7 +133,7 @@ html[data-vibrancy] .terminal-panel .xterm-viewport {
   background-color: color-mix(in oklch, var(--border) 92%, transparent);
   border-radius: 9999px;
   opacity: 0.8;
-  transition: opacity 200ms cubic-bezier(0.16, 1, 0.3, 1), background-color 200ms cubic-bezier(0.16, 1, 0.3, 1);
+  transition: opacity 200ms var(--ease-smooth), background-color 200ms var(--ease-smooth);
 }
 
 .split-divider:hover::before {
@@ -606,7 +158,7 @@ html[data-vibrancy] .terminal-panel .xterm-viewport {
     var(--card) 42%,
     var(--card) 100%
   );
-  transition: color 200ms cubic-bezier(0.16, 1, 0.3, 1), background 200ms cubic-bezier(0.16, 1, 0.3, 1);
+  transition: color 200ms var(--ease-smooth), background 200ms var(--ease-smooth);
 }
 
 .sidebar-reopen-sliver:hover {
@@ -635,7 +187,6 @@ body.is-resizing-row *::after {
   cursor: row-resize !important;
   user-select: none !important;
 }
-
 
 /* Disable text selection on UI elements */
 button,
@@ -705,24 +256,18 @@ html.dark ::-webkit-scrollbar-thumb:hover {
 
 /* =============================================================================
    REACT-MOSAIC OVERRIDES
-   Custom theme to match Orbit design system
    ============================================================================= */
-
-/* Import base mosaic styles */
 @import "react-mosaic-component/react-mosaic-component.css";
 
-/* Root mosaic container */
 .mosaic {
   height: 100%;
   background: transparent;
 }
 
-/* Mosaic tile container */
 .mosaic-tile {
   margin: 0;
 }
 
-/* Remove default window chrome since we use our own TabbedContainer */
 .mosaic-window {
   border-radius: 0;
   box-shadow: none;
@@ -745,7 +290,6 @@ html.dark ::-webkit-scrollbar-thumb:hover {
   min-width: 0;
 }
 
-/* Split/resize handles */
 .mosaic-split {
   background: transparent;
   z-index: 2;
@@ -768,7 +312,6 @@ html.dark ::-webkit-scrollbar-thumb:hover {
   cursor: row-resize;
 }
 
-/* Drop target styling */
 .mosaic-drop-target {
   position: relative;
 }
@@ -791,7 +334,6 @@ html.dark ::-webkit-scrollbar-thumb:hover {
   opacity: 0.25;
 }
 
-/* Preview during drag */
 .mosaic-preview {
   position: absolute;
   background: var(--primary);
@@ -801,19 +343,13 @@ html.dark ::-webkit-scrollbar-thumb:hover {
   pointer-events: none;
 }
 
-/* Fix Monaco horizontal overflow in @monaco-editor/react's internal row flex.
-   The library wraps the editor in display:flex (row) — the mount div
-   defaults to min-width:auto, preventing shrink below content width.
-   Keep horizontal clipping for that fix, but let vertical overflow show so
-   the find widget's hover tooltips (which pop UP from their buttons) aren't
-   clipped by the breadcrumb above. */
+/* Fix Monaco horizontal overflow in @monaco-editor/react's internal row flex. */
 .monaco-mount {
   min-width: 0;
   overflow-x: hidden;
   overflow-y: visible;
 }
 
-/* Zero state (no tiles) */
 .mosaic-zero-state {
   display: flex;
   align-items: center;
@@ -823,22 +359,19 @@ html.dark ::-webkit-scrollbar-thumb:hover {
 }
 
 /* =============================================================================
-   GLOW & GLASS UTILITIES
+   GLOW & GLASS UTILITIES (app-specific class utilities, referenced by name)
    ============================================================================= */
 
-/* Inner glow for active toolbar buttons — radial green glow from center */
 .glow-active {
   background: color-mix(in oklch, var(--primary) 12%, transparent);
   color: var(--primary);
 }
 
-/* Text glow for nav items — green text-shadow */
 .glow-active-text {
   color: var(--primary);
   text-shadow: 0 0 8px oklch(from var(--primary) l c h / 40%);
 }
 
-/* Softer floating shadow (replaces shadow-lg on glass elements) */
 .shadow-glass {
   box-shadow:
     0 16px 30px -26px oklch(0% 0 0 / 18%),
@@ -863,7 +396,6 @@ html.dark .shell-shadow {
     0 14px 30px -20px oklch(0% 0 0 / 36%);
 }
 
-/* Primary button hover glow — warm halo around primary actions */
 .glow-primary {
   transition: box-shadow 200ms ease;
 }
@@ -874,7 +406,6 @@ html.dark .shell-shadow {
     0 0 0 1px oklch(from var(--primary) l c h / 8%);
 }
 
-/* Interactive card hover lift — subtle elevation on hover */
 .hover-lift {
   transition: box-shadow 200ms ease, transform 200ms ease;
 }
@@ -909,45 +440,11 @@ html.dark .hover-lift:hover {
 }
 
 /* =============================================================================
-   COLLAPSIBLE ANIMATIONS
+   APP-SPECIFIC KEYFRAMES
+   (Shared keyframes — fade-in-scale, pop-in, slide-up, streaming-dot,
+   collapsible-down/up, dialog-enter, overlay-in, loading-shimmer, shimmer,
+   spring-pop — live in @solo/ui/tokens.css via the @import above.)
    ============================================================================= */
-@keyframes collapsible-down {
-  from { height: 0; opacity: 0; }
-  to { height: var(--radix-collapsible-content-height); opacity: 1; }
-}
-
-@keyframes collapsible-up {
-  from { height: var(--radix-collapsible-content-height); opacity: 1; }
-  to { height: 0; opacity: 0; }
-}
-
-/* =============================================================================
-   UI PRIMITIVE ANIMATIONS
-   ============================================================================= */
-@keyframes fade-in-scale {
-  from { opacity: 0; transform: scale(0.97); }
-  to { opacity: 1; transform: scale(1); }
-}
-
-@keyframes fade-out {
-  from { opacity: 1; }
-  to { opacity: 0; }
-}
-
-@keyframes pop-in {
-  from { opacity: 0; transform: scale(0.9) translateY(4px); }
-  to { opacity: 1; transform: scale(1) translateY(0); }
-}
-
-@keyframes slide-up {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes streaming-dot {
-  0%, 100% { opacity: 0.3; transform: scale(0.85); }
-  50% { opacity: 1; transform: scale(1); }
-}
 
 /* Startup glow intro — fades in and scales up during the 3s decrypt animation */
 @keyframes startup-glow-intro {
@@ -974,18 +471,6 @@ html.dark .hover-lift:hover {
     startup-glow-breathe 4s ease-in-out 3s infinite;
 }
 
-@keyframes shimmer {
-  0% { background-position: 200% center; }
-  100% { background-position: -200% center; }
-}
-
-@keyframes spring-pop {
-  0% { transform: scale(0) rotate(-90deg); opacity: 0; }
-  60% { transform: scale(1.15) rotate(5deg); opacity: 1; }
-  80% { transform: scale(0.95) rotate(-2deg); }
-  100% { transform: scale(1) rotate(0deg); opacity: 1; }
-}
-
 @keyframes draw-down {
   0% { clip-path: inset(0 0 100% 0); }
   100% { clip-path: inset(0 0 0 0); }
@@ -1007,8 +492,6 @@ html.dark .hover-lift:hover {
 
 /* =============================================================================
    AGENT TAB ATTENTION — collapsed pill animations
-   Intrinsic pulse (no external glow) so animation stays inside the pill bounds
-   and never clips against sibling tabs or the scrollable tab bar.
    ============================================================================= */
 
 @keyframes agent-attention-pulse {
@@ -1046,22 +529,14 @@ html.dark .hover-lift:hover {
   opacity: 0.15;
 }
 
-
 /* =============================================================================
-   STREAMDOWN OVERRIDES — exact port from Orbit
-   Claude.ai-style code blocks: hairline border, no header bar, hover-reveal
-   copy button with backdrop blur. Easing: ease-out-quart.
-   Source: Orbit/apps/agent/src/globals.css lines 720-891
+   STREAMDOWN OVERRIDES — Claude.ai-style code blocks
    ============================================================================= */
 
-/* Headings — break unbreakable runs (e.g. "===="/"----" ASCII dividers that
-   markdown keeps inside a setext heading during streaming) so they can't push
-   the flex message row past its allotted width. */
 [data-streamdown^='heading-'] {
   overflow-wrap: anywhere;
 }
 
-/* Inline code — subtle border + tinted background, Claude.ai style */
 [data-streamdown='inline-code'] {
   background: transparent !important;
   border: 0.5px solid color-mix(in oklch, var(--border) 50%, transparent) !important;
@@ -1072,7 +547,6 @@ html.dark .hover-lift:hover {
   white-space: pre-wrap !important;
 }
 
-/* Outer frame — matches tool widget content boxes */
 [data-streamdown='code-block'],
 [data-streamdown='code-block-container'] {
   position: relative !important;
@@ -1089,30 +563,23 @@ html.dark [data-streamdown='code-block-container'] {
   background-color: oklch(23% 0 0) !important;
 }
 
-/* Header — dissolve as layout box so children position in code-block.
-   When no language detected, the header strip collapses to zero height. */
 [data-streamdown='code-block-header'] {
   display: contents !important;
 }
 
-/* Language label — visible only when populated.
-   Left padding matches code-block-body (0.5rem) so the label's x-origin
-   lines up with the first character of the code content below. */
 [data-streamdown='code-block-header'] > span:first-child {
   display: block !important;
   margin-left: 0 !important;
   padding: 0.5rem 0.5rem 0 !important;
-  font-size: 0.6875rem !important; /* 11px */
+  font-size: 0.6875rem !important;
   line-height: 1 !important;
   color: var(--orbit-900) !important;
 }
 
-/* Collapse empty language label — no ghost strip */
 [data-streamdown='code-block-header'] > span:first-child:empty {
   display: none !important;
 }
 
-/* Button tray — anchor top-right of code-block container */
 [data-streamdown='code-block-header'] > div:last-child {
   position: absolute !important;
   top: 0.375rem !important;
@@ -1123,13 +590,10 @@ html.dark [data-streamdown='code-block-container'] {
   gap: 0.25rem !important;
 }
 
-/* Hide download button */
 [data-streamdown='code-block-download-button'] {
   display: none;
 }
 
-/* Copy button — hidden by default, glass effect on reveal.
-   ease-out-quart: cubic-bezier(0.165, 0.85, 0.45, 1) */
 [data-streamdown='code-block-copy-button'] {
   height: 1.75rem !important;
   width: 1.75rem !important;
@@ -1144,13 +608,12 @@ html.dark [data-streamdown='code-block-container'] {
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   transition:
-    opacity 300ms cubic-bezier(0.165, 0.85, 0.45, 1),
-    background-color 150ms cubic-bezier(0.4, 0, 0.2, 1),
-    color 150ms cubic-bezier(0.4, 0, 0.2, 1),
-    transform 80ms cubic-bezier(0.4, 0, 0.2, 1) !important;
+    opacity 300ms var(--ease-out-quart),
+    background-color 150ms var(--ease-snappy),
+    color 150ms var(--ease-snappy),
+    transform 80ms var(--ease-snappy) !important;
 }
 
-/* Reveal on container hover */
 [data-streamdown='code-block']:hover [data-streamdown='code-block-copy-button'] {
   opacity: 1 !important;
 }
@@ -1173,11 +636,10 @@ html.dark [data-streamdown='code-block-copy-button']:hover {
   transform: scale(0.95) !important;
 }
 
-/* Body — no separator, flows from label, wraps long lines */
 [data-streamdown='code-block-body'] {
   margin: 0 !important;
   padding: 0.5rem 0.5rem 0.75rem !important;
-  font-size: 0.75rem !important; /* 12px */
+  font-size: 0.75rem !important;
   line-height: 1.5 !important;
   background-color: transparent !important;
   border-top: none !important;
@@ -1186,31 +648,25 @@ html.dark [data-streamdown='code-block-copy-button']:hover {
   word-break: break-word !important;
 }
 
-/* Line spans — no gutter, no line numbers */
 [data-streamdown='code-block-body'] code > span {
   min-height: 1lh !important;
   padding-left: 0 !important;
 }
 
-/* Hide line numbers — Streamdown bakes counter ::before via Tailwind classes;
-   suppress them entirely so code sits flush-left. */
 [data-streamdown='code-block-body'] code > span::before {
   display: none !important;
 }
 
-/* Trim trailing blank line — Streamdown always appends one empty <span>
-   for the final newline. Removing min-height lets it collapse to zero. */
 [data-streamdown='code-block-body'] code > span:last-child {
   min-height: 0 !important;
 }
 
-/* Force content-visibility: visible to prevent virtualization jank. */
 [data-streamdown="code-block"] {
   content-visibility: visible !important;
   contain-intrinsic-size: none !important;
 }
 
-/* ── Tables (Solo-specific, additive — Orbit doesn't override these) ── */
+/* ── Tables, blockquotes, caret, mermaid, math ────────────────── */
 [data-streamdown="table"] {
   border-radius: 10px;
   overflow: hidden;
@@ -1236,7 +692,6 @@ html.dark [data-streamdown='code-block-copy-button']:hover {
   border-bottom: 1px solid oklch(from var(--border) l c h / 0.1);
 }
 
-/* Blockquotes — left accent, subtle tint */
 [data-streamdown="blockquote"] {
   border-left: 3px solid oklch(from var(--primary) l c h / 0.3);
   background: oklch(from var(--muted) l c h / 0.2);
@@ -1245,13 +700,11 @@ html.dark [data-streamdown='code-block-copy-button']:hover {
   margin: 0.75rem 0;
 }
 
-/* Streaming caret */
 [data-streamdown="caret"] {
   background: var(--primary);
   opacity: 0.8;
 }
 
-/* Mermaid diagrams — rounded container */
 [data-streamdown="mermaid"] {
   border-radius: 10px;
   border: 1px solid oklch(from var(--border) l c h / 0.2);
@@ -1261,7 +714,6 @@ html.dark [data-streamdown='code-block-copy-button']:hover {
   background: oklch(from var(--card) l c h / 0.5);
 }
 
-/* Math blocks */
 [data-streamdown="math"] {
   margin: 0.75rem 0;
   padding: 0.75rem;
@@ -1279,7 +731,7 @@ html.dark [data-streamdown='code-block-copy-button']:hover {
 }
 
 .code-block-content code {
-  font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 0.75rem;
   line-height: 1.5;
 }
@@ -1301,8 +753,7 @@ html.dark [data-streamdown='code-block-copy-button']:hover {
 }
 
 /* =============================================================================
-   ORBIT-STYLE CHAT SURFACE (13px VS-Code scale)
-   Scoped to agent chat only — does not affect sidebar/editor/terminal.
+   CHAT SURFACE (13px VS-Code scale — scoped to agent chat only)
    ============================================================================= */
 .chat-surface {
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
@@ -1314,7 +765,7 @@ html.dark [data-streamdown='code-block-copy-button']:hover {
 .chat-surface code,
 .chat-surface pre,
 .chat-surface .font-mono {
-  font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-family: var(--font-mono);
 }
 
 .chat-surface .chat-markdown {
@@ -1330,7 +781,6 @@ html.dark [data-streamdown='code-block-copy-button']:hover {
   color: color-mix(in oklch, var(--foreground) 97%, white 3%);
 }
 
-/* VS-Code-ish heading scale inside chat markdown */
 .chat-surface .chat-markdown h1 { font-size: 20px; font-weight: 600; line-height: 1.25; margin: 1.25rem 0 0.5rem; }
 .chat-surface .chat-markdown h2 { font-size: 16px; font-weight: 600; line-height: 1.3;  margin: 1.25rem 0 0.375rem; }
 .chat-surface .chat-markdown h3 { font-size: 14px; font-weight: 600; line-height: 1.35; margin: 1rem 0 0.25rem; }
@@ -1339,7 +789,6 @@ html.dark [data-streamdown='code-block-copy-button']:hover {
 .chat-surface .chat-markdown h6 { font-size: 13px; font-weight: 600; margin: 0.875rem 0 0.25rem; }
 .chat-surface .chat-markdown > *:first-child { margin-top: 0; }
 
-/* Inline code — hairline border, muted tint, mono font (matches Orbit) */
 .chat-surface .chat-markdown code:not([class*="language-"]):not([class*="shiki"]) {
   font-family: var(--font-mono);
   font-size: 0.85em;
@@ -1351,18 +800,11 @@ html.dark [data-streamdown='code-block-copy-button']:hover {
 }
 
 /* =============================================================================
-   FLOW-TOKEN STREAMING ANIMATION
-   Per-word fade-in during assistant streaming. Streamdown emits its own
-   animated spans when `isAnimating` is true; this keyframe also catches any
-   span.flow-token we author directly (matches Orbit's approach).
+   FLOW-TOKEN STREAMING — per-word fade-in during assistant streaming
+   (keyframe flow-token-in lives in @solo/ui/tokens.css)
    ============================================================================= */
-@keyframes flow-token-in {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
-
 [data-streaming="true"] .flow-token {
-  animation: flow-token-in 300ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: flow-token-in 300ms var(--ease-smooth) both;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1370,12 +812,8 @@ html.dark [data-streamdown='code-block-copy-button']:hover {
 }
 
 /* =============================================================================
-   ORBIT-STYLE TOOL WIDGET SURFACES
-   Two-layer elevation: outer widget frame on --tool-output-bg,
-   inner output panes on --chat-area. Borders use --border-tool.
+   TOOL WIDGET SURFACES — Codex-flat
    ============================================================================= */
-/* Codex-flat: no card chrome on the outer tool frame. The header is just an
-   inline text row; only expanded output gets a subtle tinted block. */
 .tool-widget-frame {
   background: transparent;
   border: 0;

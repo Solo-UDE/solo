@@ -37,7 +37,7 @@ import { HEIGHTS, SIDEBAR } from "./lib/constants";
 import { cn } from "./lib/utils";
 import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
-import { Toaster } from "sonner";
+import { Toaster } from "@solo/ui";
 import { TitlebarButton } from "./components/titlebar/TitlebarButton";
 import { WelcomeScreen } from "./components/welcome";
 import { KeyboardShortcutsOverlay } from "./components/KeyboardShortcutsOverlay";
@@ -165,23 +165,54 @@ function AppContent() {
     useGitHubAccountsStore.getState().loadToken();
   }, []);
 
-  // Restore active repo on startup (if persisted)
+  // Startup restore: repo + worktree, sessions, then re-open the last-active
+  // chat as a panel tab so users land back in the same place they left.
   useEffect(() => {
-    useRepoStore.getState().restoreActiveRepo().catch((err) => {
-      console.error('Failed to restore active repo:', err);
-    });
-  }, []);
+    let cancelled = false;
+    (async () => {
+      await Promise.all([
+        useRepoStore.getState().restoreActiveRepo(),
+        loadPersistedSessions().then(() => {
+          const days = useSettingsStore.getState().ai.sessionRetentionDays;
+          return useAgentStore.getState().pruneExpiredSessions(days);
+        }),
+      ]);
+      if (cancelled) return;
 
-  // Load persisted agent sessions on startup, then prune expired ones
-  useEffect(() => {
-    loadPersistedSessions()
-      .then(() => {
-        const days = useSettingsStore.getState().ai.sessionRetentionDays;
-        return useAgentStore.getState().pruneExpiredSessions(days);
-      })
-      .catch((err) => {
-        console.error('Failed to load persisted sessions:', err);
+      const activeRepoPath = useRepoStore.getState().activeRepoPath;
+      if (!activeRepoPath) return;
+
+      const { sessions, activeSessionId } = useAgentStore.getState();
+      const activeWorktreeId = useRepoStore.getState().activeWorktreeId;
+
+      // Prefer the per-workspace remembered session, then the store's active,
+      // then the most-recent session on the active worktree.
+      const remembered = localStorage.getItem(`solo-active-session:${activeRepoPath}`);
+      let sessionIdToOpen: string | null = null;
+      if (remembered && sessions.has(remembered)) {
+        sessionIdToOpen = remembered;
+      } else if (activeSessionId && sessions.has(activeSessionId)) {
+        sessionIdToOpen = activeSessionId;
+      } else {
+        let mostRecentTime = 0;
+        for (const session of sessions.values()) {
+          if (session.worktreeId !== (activeWorktreeId ?? undefined)) continue;
+          const t = session.lastActiveAt ? new Date(session.lastActiveAt).getTime() : 0;
+          if (t > mostRecentTime) {
+            mostRecentTime = t;
+            sessionIdToOpen = session.id;
+          }
+        }
+      }
+
+      if (cancelled || !sessionIdToOpen) return;
+      usePanelTabsStore.getState().openPanel(BUILTIN_PANEL_TYPES.AGENT, {
+        sessionId: sessionIdToOpen,
       });
+    })().catch((err) => console.error('Startup session restore failed:', err));
+    return () => {
+      cancelled = true;
+    };
   }, [loadPersistedSessions]);
 
   // Toggle terminal panel, auto-creating a terminal if none exist
@@ -305,7 +336,16 @@ function AppContent() {
         return;
       }
 
-      if (matchAction('nav.prevWorkspace', e)) {
+      // Cmd+B — toggle left sidebar
+      if (e.key === 'b' && e.metaKey && !e.shiftKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        useUIStore.getState().toggleLeftSidebar();
+        return;
+      }
+
+      // Ctrl+Shift+` — new terminal session
+      // Use e.code because Shift+` produces '~' as e.key
+      if (e.code === 'Backquote' && e.ctrlKey && e.shiftKey) {
         e.preventDefault();
         handleCycleWorkspace('prev');
         return;

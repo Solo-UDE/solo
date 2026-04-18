@@ -2,9 +2,9 @@
  * VaultSidebar — project-scoped, shared across all worktrees.
  *
  * Six sections: Skills, Memory, Tasks, Current Vault, Plugins, Connectors.
- * For now most are placeholder shells; Phase 3F wires up Memory against the
- * existing memory store. Sessions moved out of this tab — they're
- * worktree-bound and live under the Dev tab now.
+ * Each section has a dedicated component under `./vault/` that describes
+ * what will live there. When a feature ships, its section component is
+ * swapped for the real implementation without changing the nav shell.
  */
 
 import type { FC } from 'react';
@@ -17,8 +17,12 @@ import {
   Puzzle,
   PlugZap,
 } from 'lucide-react';
-import { VaultPlaceholder } from './vault/VaultPlaceholder';
-import { VaultPanel } from '@/components/vault/VaultPanel';
+import { SkillsSection } from './vault/SkillsSection';
+import { MemorySection } from './vault/MemorySection';
+import { TasksSection } from './vault/TasksSection';
+import { CurrentVaultSection } from './vault/CurrentVaultSection';
+import { PluginsSection } from './vault/PluginsSection';
+import { ConnectorsSection } from './vault/ConnectorsSection';
 import { useUIStore } from '@/stores/uiStore';
 import type { VaultNav } from '@/stores/uiStore';
 import { cn } from '@/lib/utils';
@@ -27,52 +31,30 @@ interface NavItem {
   key: VaultNav;
   label: string;
   icon: FC<{ className?: string }>;
-  badge?: string;
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { key: 'skills', label: 'Skills', icon: Sparkles, badge: 'Soon' },
+  { key: 'skills', label: 'Skills', icon: Sparkles },
   { key: 'memory', label: 'Memory', icon: Brain },
-  { key: 'tasks', label: 'Tasks', icon: ListChecks, badge: 'Soon' },
+  { key: 'tasks', label: 'Tasks', icon: ListChecks },
   { key: 'current-vault', label: 'Current Vault', icon: VaultIcon },
-  { key: 'plugins', label: 'Plugins', icon: Puzzle, badge: 'Soon' },
-  { key: 'connectors', label: 'Connectors', icon: PlugZap, badge: 'Soon' },
+  { key: 'plugins', label: 'Plugins', icon: Puzzle },
+  { key: 'connectors', label: 'Connectors', icon: PlugZap },
 ];
 
-// Placeholder shells until 3F lands per-section components. They all render
-// the same stub copy keyed by section label so the UI reads coherently.
-const PLACEHOLDER_BODY: Record<VaultNav, { title: string; description: string }> = {
-  skills: {
-    title: 'Skills',
-    description: 'Curate the agent capabilities available to this project.',
-  },
-  memory: {
-    title: 'Memory',
-    description: 'Persistent context the agent references across sessions.',
-  },
-  tasks: {
-    title: 'Tasks',
-    description: 'Assignable work items, Linear-style, scoped to this project.',
-  },
-  'current-vault': {
-    title: 'Current Vault',
-    description: 'The active memory bundle the agent is drawing from right now.',
-  },
-  plugins: {
-    title: 'Plugins',
-    description: 'Install and toggle agent plugins for this project.',
-  },
-  connectors: {
-    title: 'Connectors',
-    description: 'External service integrations — Linear, Slack, and more.',
-  },
+const SECTION_MAP: Record<VaultNav, FC> = {
+  skills: SkillsSection,
+  memory: MemorySection,
+  tasks: TasksSection,
+  'current-vault': CurrentVaultSection,
+  plugins: PluginsSection,
+  connectors: ConnectorsSection,
 };
 
 export const VaultSidebar: FC = () => {
   const vaultActiveNav = useUIStore((s) => s.vaultActiveNav);
   const setVaultNav = useUIStore((s) => s.setVaultNav);
-
-  const copy = PLACEHOLDER_BODY[vaultActiveNav];
+  const Section = SECTION_MAP[vaultActiveNav];
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
@@ -86,7 +68,7 @@ export const VaultSidebar: FC = () => {
       </div>
 
       <div className="px-3 pb-2 space-y-1 shrink-0">
-        {NAV_ITEMS.map(({ key, label, icon: Icon, badge }) => (
+        {NAV_ITEMS.map(({ key, label, icon: Icon }) => (
           <button
             key={key}
             onClick={() => setVaultNav(key)}
@@ -106,23 +88,14 @@ export const VaultSidebar: FC = () => {
             )}
             <Icon className="relative w-4 h-4 shrink-0" />
             <span className="relative flex-1 text-left font-medium">{label}</span>
-            {badge && (
-              <span className="relative rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] font-medium text-primary/70">
-                {badge}
-              </span>
-            )}
           </button>
         ))}
       </div>
 
       <div className="mx-4 h-px shrink-0 bg-border/60" />
 
-      <div className="flex-1 min-h-0 overflow-hidden">
-        {vaultActiveNav === 'current-vault' ? (
-          <VaultPanel />
-        ) : (
-          <VaultPlaceholder title={copy.title} description={copy.description} />
-        )}
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        <Section />
       </div>
     </div>
   );

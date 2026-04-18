@@ -12,20 +12,20 @@
 
 import { useMemo, useState, type FC } from 'react';
 import {
-  CaretRight,
+  ChevronRight,
   FileText,
   Code,
   Image as ImageIcon,
-  PaintBrush,
+  Brush,
   Database,
-  GearSix,
+  Settings,
   Globe,
-  NotePencil,
-  MusicNote,
+  FilePen,
+  Music,
   Archive,
   File,
   Check,
-} from '@phosphor-icons/react';
+} from 'lucide-react';
 import type { EntryKind, VaultEntry } from '@/lib/tauri/vault';
 import { vaultMoveBucket } from '@/lib/tauri/vault';
 import { useVaultStore } from '@/stores/vaultStore';
@@ -39,17 +39,17 @@ import { cn } from '@/lib/utils';
 const KIND_META: Array<{
   kind: EntryKind;
   label: string;
-  Icon: FC<{ className?: string; weight?: 'fill' | 'regular' }>;
+  Icon: FC<{ className?: string }>;
 }> = [
   { kind: 'document', label: 'Document', Icon: FileText },
   { kind: 'code', label: 'Code', Icon: Code },
   { kind: 'image', label: 'Image', Icon: ImageIcon },
-  { kind: 'design', label: 'Design', Icon: PaintBrush },
+  { kind: 'design', label: 'Design', Icon: Brush },
   { kind: 'data', label: 'Data', Icon: Database },
-  { kind: 'config', label: 'Config', Icon: GearSix },
+  { kind: 'config', label: 'Config', Icon: Settings },
   { kind: 'web', label: 'Web', Icon: Globe },
-  { kind: 'note', label: 'Note', Icon: NotePencil },
-  { kind: 'audio', label: 'Audio', Icon: MusicNote },
+  { kind: 'note', label: 'Note', Icon: FilePen },
+  { kind: 'audio', label: 'Audio', Icon: Music },
   { kind: 'archive', label: 'Archive', Icon: Archive },
   { kind: 'snippet', label: 'Snippet', Icon: Code },
   { kind: 'keyvalue', label: 'Key/Value', Icon: Database },
@@ -73,13 +73,13 @@ export const VaultUnsortedTray: FC = () => {
   if (unsorted.length === 0) return null;
 
   return (
-    <div className="rounded-[12px] bg-amber-500/[0.06] ring-1 ring-inset ring-amber-500/20">
+    <div className="rounded-lg bg-amber-500/[0.06] ring-1 ring-inset ring-amber-500/20">
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
-        className="w-full px-3 py-2 flex items-center gap-2 text-left hover:bg-amber-500/[0.04] rounded-t-[12px] transition-colors duration-150"
+        className="w-full px-3 py-2 flex items-center gap-2 text-left hover:bg-amber-500/[0.04] rounded-t-lg transition-colors duration-150"
       >
-        <CaretRight
+        <ChevronRight
           className={cn(
             'w-3 h-3 text-amber-600/80 transition-transform duration-200',
             expanded && 'rotate-90',
@@ -180,7 +180,7 @@ const UnsortedRow: FC<RowProps> = ({ entry, menuOpen, onToggleMenu, onMoved }) =
             aria-hidden="true"
           />
           <div
-            className="absolute right-2 top-9 z-20 w-44 rounded-[10px] bg-card shadow-[0_8px_32px_-8px_rgba(0,0,0,0.2)] ring-1 ring-border/40 overflow-hidden"
+            className="absolute right-2 top-9 z-20 w-44 rounded-md bg-card shadow-xl ring-1 ring-border/40 overflow-hidden"
             role="menu"
           >
             <div className="max-h-[280px] overflow-y-auto py-1">

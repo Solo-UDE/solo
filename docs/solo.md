@@ -24,7 +24,7 @@ Three principles define the architecture:
 
 **Rust-native.** The backend is a Cargo workspace of seven crates. File I/O, PTY management, code parsing, embedding search, and AI provider communication all run in Rust with async Tokio. The frontend is a React webview connected over Tauri's typed IPC bridge. Binary size is ~15 MB. Memory at idle is a fraction of Electron-based alternatives.
 
-**Local-first.** Project files never leave the machine unless the developer explicitly sends a message to an AI provider. Credentials are stored in the macOS Keychain. There is no Solo cloud service, no telemetry endpoint, and no account required for local use. Authentication exists solely for optional features (currently GitHub OAuth via Supabase for user identity).
+**Local-first.** Project files never leave the machine unless the developer explicitly sends a message to an AI provider. Credentials are stored in the macOS Keychain. There is no mandatory Solo cloud service or telemetry requirement for local use. Authentication exists only for optional cloud-backed features and uses Cognito Hosted UI with macOS Keychain-backed session persistence.
 
 ## Architecture Overview
 
@@ -138,7 +138,7 @@ The agent request/response cycle passes through a configurable middleware chain:
 | **Terminal** | Complete | Full PTY via `portable-pty`, shell auto-detection (zsh/bash/powershell), resize, signal handling, output streaming |
 | **Parse** | Complete | Tree-sitter for Rust, TypeScript, JavaScript, Python, JSON, HTML, CSS, Markdown; symbol extraction with incremental parsing |
 | **Embeddings** | Complete | OpenAI embedding models (text-embedding-3-small/large, ada-002), in-memory vector index, batch processing, code-specific chunking |
-| **Auth** | Complete | Supabase GitHub OAuth with PKCE, macOS Keychain token storage, session refresh, magic link support |
+| **Auth** | Complete | Cognito Hosted UI with GitHub, Google, and email flows, macOS Keychain token storage, PKCE, deep-link callbacks, and session refresh |
 | **Protocol** | Complete | Exhaustive IPC type definitions for all subsystems, TypeScript generation via ts-rs |
 | **Core** | Minimal | Shared error types, Service trait, configuration. Serves as the cross-crate foundation rather than a feature crate. |
 

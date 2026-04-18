@@ -1,63 +1,6 @@
-/* Solo UI - Shared styles */
-/* Import this file to get design system CSS variables */
-/* NOTE: Uses OKLCH colors for Tailwind v4 opacity modifier support */
+/*
+ * @solo/ui entry stylesheet. Imports the generated design tokens so any
+ * consumer can register the full theme with a single `@import "@solo/ui/styles"`.
+ */
 
-:root {
-  /* Colors - Warm stone palette (OKLCH) */
-  /* Light mode defaults */
-  --solo-background: oklch(1 0 0);
-  --solo-foreground: oklch(0.147 0.004 49.25);
-  --solo-card: oklch(1 0 0);
-  --solo-card-foreground: oklch(0.147 0.004 49.25);
-  --solo-muted: oklch(0.97 0.001 106.424);
-  --solo-muted-foreground: oklch(0.553 0.013 58.071);
-  --solo-border: oklch(0.923 0.003 48.717);
-  --solo-primary: oklch(0.65 0.2 41);
-  --solo-primary-foreground: oklch(0.98 0.01 60);
-  --solo-secondary: oklch(0.97 0.001 106.424);
-  --solo-secondary-foreground: oklch(0.216 0.006 56.043);
-  --solo-destructive: oklch(0.577 0.245 27.325);
-  --solo-destructive-foreground: oklch(0.985 0 0);
-  --solo-ring: oklch(0.65 0.2 41);
-
-  /* Easing curves */
-  --solo-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
-  --solo-ease-smooth: cubic-bezier(0.16, 1, 0.3, 1);
-  --solo-ease-snappy: cubic-bezier(0.4, 0, 0.2, 1);
-
-  /* Shadows */
-  --solo-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --solo-shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-  --solo-shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-  --solo-shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
-
-  /* Radii */
-  --solo-radius-sm: 0.375rem;
-  --solo-radius-md: 0.5rem;
-  --solo-radius-lg: 0.75rem;
-  --solo-radius-xl: 1rem;
-}
-
-/* Dark mode overrides */
-.dark {
-  --solo-background: oklch(0.145 0.004 49.25);
-  --solo-foreground: oklch(0.985 0.001 106.423);
-  --solo-card: oklch(0.205 0.006 56.043);
-  --solo-card-foreground: oklch(0.985 0.001 106.423);
-  --solo-muted: oklch(0.32 0.01 50);
-  --solo-muted-foreground: oklch(0.709 0.01 56.259);
-  --solo-border: oklch(0.38 0.01 50);
-  --solo-primary: oklch(0.7 0.18 41);
-  --solo-primary-foreground: oklch(0.98 0.02 60);
-  --solo-secondary: oklch(0.268 0.007 34.298);
-  --solo-secondary-foreground: oklch(0.985 0.001 106.423);
-  --solo-destructive: oklch(0.704 0.191 22.216);
-  --solo-destructive-foreground: oklch(0.985 0 0);
-  --solo-ring: oklch(0.7 0.18 41);
-
-  /* Shadows (darker for dark mode) */
-  --solo-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
-  --solo-shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.3), 0 2px 4px -2px rgb(0 0 0 / 0.3);
-  --solo-shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.3), 0 4px 6px -4px rgb(0 0 0 / 0.3);
-  --solo-shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.3), 0 8px 10px -6px rgb(0 0 0 / 0.3);
-}
+@import "./tokens.css";

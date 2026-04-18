@@ -5,16 +5,18 @@
 
 import { useState, useCallback, useRef } from 'react';
 import type { FC } from 'react';
-import { ChevronLeftIcon, PlusIcon } from '@radix-ui/react-icons';
+import { ChevronDownIcon, ChevronLeftIcon, PlusIcon } from '@radix-ui/react-icons';
 import { Files, MessageCircle, GitBranch } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { FileExplorer } from '@/components/file-explorer';
 import { SessionList } from '@/components/agent';
 import { WorktreeChangesView } from './WorktreeChangesView';
+import { BranchPicker } from './BranchPicker';
 import { useUIStore } from '@/stores/uiStore';
 import { useWorktreeStore } from '@/stores/worktreeStore';
 import { useGitStore } from '@/stores/gitStore';
 import { useSidebarActions } from '@/hooks/useSidebarActions';
+import { openGitAgentForDirtySwitch } from '@/lib/git-agent/trigger';
 import { cn } from '@/lib/utils';
 
 type WorktreeDetailSection = 'explorer' | 'sessions' | 'changes';
@@ -31,8 +33,10 @@ interface WorktreeDetailViewProps {
 
 export const WorktreeDetailView: FC<WorktreeDetailViewProps> = ({ onFileOpen }) => {
   const [activeSection, setActiveSection] = useState<WorktreeDetailSection>('explorer');
+  const [branchPickerOpen, setBranchPickerOpen] = useState(false);
   const scrollPositions = useRef<Map<string, number>>(new Map());
   const contentRef = useRef<HTMLDivElement>(null);
+  const branchTriggerRef = useRef<HTMLButtonElement>(null);
 
   const devDetailWorktreeId = useUIStore((s) => s.devDetailWorktreeId);
   const drillOut = useUIStore((s) => s.drillOutOfWorktree);
@@ -45,10 +49,24 @@ export const WorktreeDetailView: FC<WorktreeDetailViewProps> = ({ onFileOpen }) 
   const branchLabel = worktree
     ? (worktree.is_main ? 'main' : (worktree.branch ?? worktree.id))
     : 'Worktree';
+  const isDirty = changedFiles.length > 0;
 
   const handleBack = useCallback(() => {
     drillOut();
   }, [drillOut]);
+
+  const handleDirtySwitch = useCallback(
+    (targetBranch: string) => {
+      if (!worktree) return;
+      openGitAgentForDirtySwitch({
+        worktreeId: worktree.id,
+        fromBranch: branchLabel,
+        toBranch: targetBranch,
+        changedFileCount: changedFiles.length,
+      });
+    },
+    [worktree, branchLabel, changedFiles.length],
+  );
 
   const handleSectionChange = useCallback((key: WorktreeDetailSection) => {
     if (key === activeSection) return; // No-op on active tab
@@ -67,24 +85,55 @@ export const WorktreeDetailView: FC<WorktreeDetailViewProps> = ({ onFileOpen }) 
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      {/* Back header with branch label + ahead indicator */}
-      <button
-        onClick={handleBack}
-        className={cn(
-          'flex items-center gap-1.5 h-8 px-2.5 w-full shrink-0',
-          'text-xs font-medium text-muted-foreground',
-          'hover:text-foreground hover:bg-muted/30',
-          'transition-colors duration-150',
+      {/* Back header with branch picker + ahead indicator */}
+      <div className="relative flex items-center gap-0.5 px-1.5 h-8 shrink-0">
+        <button
+          onClick={handleBack}
+          className={cn(
+            'flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px]',
+            'text-muted-foreground hover:text-foreground hover:bg-muted/30',
+            'transition-colors duration-150',
+          )}
+          title="Back"
+        >
+          <ChevronLeftIcon className="w-3.5 h-3.5" />
+        </button>
+        <button
+          ref={branchTriggerRef}
+          onClick={() => setBranchPickerOpen((v) => !v)}
+          className={cn(
+            'flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded-[7px] px-2',
+            'text-[13px] font-medium text-foreground',
+            'hover:bg-muted/30 active:scale-[0.98]',
+            'transition-[transform,background-color] duration-150',
+          )}
+          title="Switch branch"
+        >
+          <GitBranch className="h-3 w-3 shrink-0 text-primary" />
+          <span className="truncate">{branchLabel}</span>
+          {isDirty && (
+            <span
+              title="Uncommitted changes"
+              className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500"
+              aria-label="Uncommitted changes"
+            />
+          )}
+          {commitsAhead != null && commitsAhead > 0 && (
+            <span className="shrink-0 text-[10px] text-primary/70">
+              &uarr;{commitsAhead}
+            </span>
+          )}
+          <ChevronDownIcon className="h-3 w-3 shrink-0 text-muted-foreground/60" />
+        </button>
+        {branchPickerOpen && (
+          <BranchPicker
+            triggerRef={branchTriggerRef}
+            isDirty={isDirty}
+            onDirtySwitch={handleDirtySwitch}
+            onClose={() => setBranchPickerOpen(false)}
+          />
         )}
-      >
-        <ChevronLeftIcon className="w-3.5 h-3.5 shrink-0" />
-        <span className="truncate text-[13px] font-semibold">{branchLabel}</span>
-        {commitsAhead != null && commitsAhead > 0 && (
-          <span className="text-[10px] text-primary/70 shrink-0">
-            &uarr;{commitsAhead}
-          </span>
-        )}
-      </button>
+      </div>
 
       {/* Icon tab bar */}
       <div className="flex items-center px-2 shrink-0 border-b border-white/[0.04]">

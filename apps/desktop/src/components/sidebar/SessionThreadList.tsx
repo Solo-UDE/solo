@@ -114,10 +114,12 @@ export const SessionThreadList: FC<SessionThreadListProps> = ({ onSessionSelect 
   const currentRootPath = useFileExplorerStore((s) => s.rootPath);
   const drillIntoWorktree = useUIStore((s) => s.drillIntoWorktree);
 
-  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+  // Worktree groups are collapsed by default — only groups the user has
+  // explicitly opened are in the set.
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set());
 
   const toggleGroup = useCallback((key: string) => {
-    setCollapsed((prev) => {
+    setExpandedGroups((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
       else next.add(key);
@@ -197,7 +199,7 @@ export const SessionThreadList: FC<SessionThreadListProps> = ({ onSessionSelect 
               ? activeWorktreeId === null
               : activeWorktreeId === worktree.id
             : isMainGroup && activeWorktreeId === null;
-          const expanded = !collapsed.has(group.key);
+          const expanded = expandedGroups.has(group.key);
           const headerWorktree: WorktreeInfo | null =
             worktree ??
             (isMainGroup

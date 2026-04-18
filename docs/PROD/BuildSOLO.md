@@ -1,244 +1,191 @@
 # Building Solo Desktop
 
-This guide covers local development setup, authentication configuration, and important implementation details.
+This guide covers the **current** Solo desktop auth/build flow.
 
-## Prerequisites
+Solo desktop authentication is now **AWS Cognito-based**. Any older Supabase
+desktop-auth instructions are obsolete.
 
-- **Rust** (latest stable)
-- **Bun** (or npm/yarn)
-- **macOS** (for deep link testing and Keychain storage)
-- **Supabase project** with GitHub OAuth configured
+## Desktop auth env contract
 
-## Quick Start
+The desktop app reads these values:
 
-```bash
-# Install dependencies
-bun install
+| Variable | Purpose |
+|---|---|
+| `SOLO_COGNITO_DOMAIN` | Cognito Hosted UI domain, for example `solo-ide-dev.auth.us-east-1.amazoncognito.com` |
+| `SOLO_COGNITO_CLIENT_ID` | Cognito desktop app client ID |
+| `SOLO_AWS_REGION` | AWS region for Cognito and related APIs |
+| `SOLO_API_ENDPOINT` | Solo API Gateway base URL used after sign-in |
 
-# Development mode (hot reload, but deep links won't work)
-bun run dev
+### Build-time vs runtime
 
-# Production build (required for OAuth testing)
-bun run build
+- **Release / bundled builds:** use compile-time embedded values. This matters because Finder-launched macOS apps do not inherit your shell environment.
+- **`tauri dev`:** can use runtime env values. In debug builds Solo also loads local env files automatically from:
+  - `infra/.env.dev`
+  - `infra/.env`
+  - `.env.local`
+  - `.env`
 
-# Install to /Applications for deep link registration
-cp -R target/release/bundle/macos/Solo.app /Applications/
-```
+## Local auth testing
 
-## Authentication Architecture
-
-Solo uses Supabase OAuth with PKCE flow for secure desktop authentication.
-
-### Flow Overview
-
-```
-User clicks "Sign in with GitHub"
-    ↓
-App generates PKCE codes (verifier + challenge)
-    ↓
-Opens browser → Supabase OAuth → GitHub
-    ↓
-User authenticates in browser
-    ↓
-Browser redirects to soloide://auth/callback?code=X
-    ↓
-macOS opens Solo app with deep link
-    ↓
-App exchanges code + verifier for session tokens
-    ↓
-Tokens stored in Keychain → User signed in
-```
-
-### Key Files
-
-| File | Purpose |
-|------|---------|
-| `src-tauri/src/auth_commands.rs` | Rust OAuth logic, PKCE, token exchange, Keychain |
-| `src/lib/auth.ts` | TypeScript wrappers for Tauri auth commands |
-| `src/stores/authStore.ts` | Zustand store for auth state |
-| `src/components/auth/LoginScreen.tsx` | Login UI |
-| `src/components/auth/AuthGuard.tsx` | Auth wrapper component |
-
-## Supabase Configuration
-
-### Required Setup
-
-1. **Supabase Dashboard → Authentication → URL Configuration**
-   - Add `soloide://auth/callback` to **Redirect URLs**
-
-2. **Supabase Dashboard → Authentication → Providers**
-   - Enable GitHub provider with OAuth app credentials
-
-### Build-Time Auth Configuration
-
-The desktop app now reads the Supabase URL and anon key from build-time environment variables:
+### Recommended path
 
 ```bash
-export SOLO_SUPABASE_URL="https://your-project-ref.supabase.co"
-export SOLO_SUPABASE_ANON_KEY="eyJ..."
+cd /Users/sachin/Developer/Orbit_Main/solo
+
+bun run auth:doctor
+bun run dev:auth
 ```
 
-Accepted aliases:
-- `SOLO_SUPABASE_URL` or `SUPABASE_URL`
-- `SOLO_SUPABASE_ANON_KEY` or `SUPABASE_ANON_KEY`
+What this does:
 
-These are **public values** (the anon key is designed for client-side use with Row Level Security), but they must be embedded at build time because Finder-launched macOS apps do not inherit your shell environment.
+- loads the local desktop auth env
+- sets `VITE_AUTH_ENABLED=1`
+- launches `tauri dev` with the real login screen mounted
 
-## Deep Linking
+### Expected behavior
 
-### URL Scheme
+1. Login screen appears with **GitHub**, **Google**, and **Email**.
+2. Clicking GitHub or Google opens the Cognito Hosted UI in your browser.
+3. After successful auth, the browser redirects to:
+   - `soloide://auth/callback?code=...`
+4. Solo exchanges the code for Cognito tokens and stores them in the macOS keychain.
+5. Relaunching the app restores the session until you explicitly sign out.
 
-The app registers the `soloide://` URL scheme for OAuth callbacks.
+### Sign-out test
 
-### Configuration
+- Open **Settings**
+- Click **Log out**
+- Solo should clear local tokens, hit the Cognito logout URL in the browser, and return to the login screen
 
-**tauri.conf.json:**
-```json
-"plugins": {
-  "deep-link": {
-    "desktop": {
-      "schemes": ["soloide"]
-    }
-  }
-}
-```
+### Session persistence test
 
-### Important: Dev Mode vs Production Build
+1. Sign in with any provider
+2. Quit the app fully (`Cmd+Q`)
+3. Relaunch Solo
+4. You should land in the authenticated app without signing in again
 
-| Mode | Deep Links Work? | Notes |
-|------|------------------|-------|
-| `bun run dev` | No | URL scheme not registered with macOS |
-| `bun run build` + install .app | Yes | .app bundle registers the scheme |
+## Deep links
 
-**To test OAuth, you must:**
-1. Run `bun run build`
-2. Install the .app to /Applications (or run it from the bundle location)
+Solo registers the `soloide://` URL scheme.
 
-### Troubleshooting Deep Links
+Quick check:
 
 ```bash
-# Test if deep link scheme is registered
 open "soloide://auth/callback?code=test"
-
-# If multiple versions conflict, reset Launch Services
-/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -kill -r -domain local -domain system -domain user
-
-# Then reinstall the app
-rm -rf /Applications/Solo.app
-cp -R target/release/bundle/macos/Solo.app /Applications/
 ```
 
-## Supabase PKCE Token Exchange
-
-### Critical: Non-Standard API
-
-Supabase GoTrue uses **non-standard parameter names** for PKCE token exchange:
-
-| Standard OAuth2 | Supabase GoTrue |
-|-----------------|-----------------|
-| `code` | `auth_code` |
-| `grant_type=authorization_code` (form) | `?grant_type=pkce` (query param) |
-| `application/x-www-form-urlencoded` | `application/json` |
-
-**Correct request format:**
-```
-POST /auth/v1/token?grant_type=pkce
-Content-Type: application/json
-apikey: <anon-key>
-
-{
-  "auth_code": "<authorization-code>",
-  "code_verifier": "<pkce-verifier>"
-}
-```
-
-Reference: https://github.com/supabase/auth/issues/2306
-
-## Token Storage
-
-Tokens are stored in macOS Keychain:
-
-| Service Name | Content |
-|--------------|---------|
-| `solo.supabase.accessToken` | JWT access token |
-| `solo.supabase.refreshToken` | Refresh token |
+If macOS does not hand this URL to Solo:
 
 ```bash
-# View stored tokens (for debugging)
-security find-generic-password -s "solo.supabase.accessToken" -w
-
-# Delete tokens (to reset auth state)
-security delete-generic-password -s "solo.supabase.accessToken"
-security delete-generic-password -s "solo.supabase.refreshToken"
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f /Applications/Solo.app
 ```
 
-## Local Development Workflow
+Then relaunch the app and try again.
 
-### For UI/Frontend Work (no auth needed)
+### macOS local auth bundle
+
+For macOS OAuth callback testing, `tauri dev` is not enough by itself because
+the `soloide://` deep link must be handled by an installed app bundle in
+`/Applications`.
+
+Use:
 
 ```bash
-bun run dev
+cd /Users/sachin/Developer/Orbit_Main/solo
+
+bun run auth:doctor
+bun run dev:auth:mac
 ```
 
-### For Auth Testing
+What this does:
+
+- loads the local desktop auth env
+- builds a local debug `Solo.app` bundle with updater signing disabled
+- backs up an existing `/Applications/Solo.app` to `/Applications/Solo (Production Backup).app`
+- installs the local debug build into `/Applications/Solo.app`
+- refreshes Launch Services for the `soloide://` scheme
+- opens the installed local app
+
+To restore the previous installed app:
 
 ```bash
-# 1. Build the app
-export SOLO_SUPABASE_URL="https://your-project-ref.supabase.co"
-export SOLO_SUPABASE_ANON_KEY="eyJ..."
-bun run build
-
-# 2. Kill any existing instance
-pkill -9 "Solo"
-
-# 3. Install fresh build
-rm -rf /Applications/Solo.app
-cp -R target/release/bundle/macos/Solo.app /Applications/
-
-# 4. Run with debug logging
-RUST_LOG=debug /Applications/Solo.app/Contents/MacOS/Solo 2>&1 | tee /tmp/solo-auth.log
+bun run dev:auth:mac:restore
 ```
 
-### Debugging Auth Issues
+## Local unsigned build
+
+If you want a local desktop bundle instead of `tauri dev`, export the desktop
+env contract first, then build:
 
 ```bash
-# Watch auth logs in real-time
-tail -f /tmp/solo-auth.log | grep -E "(auth|OAuth|PKCE|token)"
+export SOLO_COGNITO_DOMAIN="solo-ide-dev.auth.us-east-1.amazoncognito.com"
+export SOLO_COGNITO_CLIENT_ID="3lvjbkkev35ejmm927rkfn13d3"
+export SOLO_AWS_REGION="us-east-1"
+export SOLO_API_ENDPOINT="https://vd8wm2yqle.execute-api.us-east-1.amazonaws.com"
+
+cd apps/desktop
+bunx tauri build --bundles app,dmg
 ```
 
-Common issues:
-- **"Desktop auth is not configured"**: Build the app with `SOLO_SUPABASE_URL` and `SOLO_SUPABASE_ANON_KEY` exported
-- **"unsupported_grant_type"**: Check token exchange uses `auth_code` not `code`
-- **"No PKCE state found"**: App was restarted between OAuth start and callback
-- **Deep link not opening app**: Need production build, not dev mode
+For local dev auth testing, `bun run dev:auth` is still the preferred path.
 
-## Dependencies
+## CI / release env mapping
 
-### Cargo (src-tauri/Cargo.toml)
+GitHub Actions maps stage-specific repo variables into the generic desktop env
+contract at build time:
 
-```toml
-# Auth-related
-tauri-plugin-deep-link = "2"
-tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
-reqwest = { version = "0.12", features = ["json"] }
-sha2 = "0.10"
-base64 = "0.22"
-rand = "0.8"
-url = "2"
-urlencoding = "2"
+### Dev workflows
+
+- `.github/workflows/premerge-master.yml`
+- `.github/workflows/build-master-dmg.yml`
+
+These expect:
+
+- `SOLO_DEV_COGNITO_DOMAIN`
+- `SOLO_DEV_COGNITO_CLIENT_ID`
+- `SOLO_DEV_AWS_REGION`
+- `SOLO_DEV_API_ENDPOINT`
+
+### Release workflow
+
+- `.github/workflows/release.yml`
+
+This expects:
+
+- `SOLO_PROD_COGNITO_DOMAIN`
+- `SOLO_PROD_COGNITO_CLIENT_ID`
+- `SOLO_PROD_AWS_REGION`
+- `SOLO_PROD_API_ENDPOINT`
+
+## Troubleshooting
+
+### `Desktop Cognito domain is not configured`
+
+Run:
+
+```bash
+bun run auth:doctor
 ```
 
-### NPM (package.json)
+If values are missing, populate `infra/.env.dev` for local work or the correct
+GitHub Actions variables for CI.
 
-```json
-"@tauri-apps/plugin-deep-link": "^2.0.0"
-```
+### `No pending OAuth flow`
 
-## Checklist for New Developers
+The app lost its PKCE verifier between starting the browser flow and receiving
+the callback. Start sign-in again without restarting the app mid-flow.
 
-- [ ] `SOLO_SUPABASE_URL` and `SOLO_SUPABASE_ANON_KEY` are set before building
-- [ ] `soloide://auth/callback` is in Supabase redirect URLs
-- [ ] GitHub OAuth provider is enabled in Supabase
-- [ ] Using production build (not dev mode) for auth testing
-- [ ] App is installed to /Applications for deep link registration
-- [ ] No conflicting Solo.app versions in Launch Services
+### Sign-in completes in browser but the app does not unlock
+
+Check:
+
+- the app is running
+- the browser redirected to `soloide://auth/callback?...`
+- the `soloide://` scheme is registered on macOS
+- `bun run auth:doctor` shows a valid Cognito domain and client ID
+
+### App relaunch forgets the user
+
+Tokens should live in the shared Solo keychain vault under `cognito.*`.
+If relaunch does not restore the session, inspect keychain state and rerun the
+sign-in flow from a clean app launch.

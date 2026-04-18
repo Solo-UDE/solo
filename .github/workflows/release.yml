@@ -2,39 +2,50 @@ name: Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    tags: ['v*']
   workflow_dispatch:
 
 jobs:
-  build-macos:
-    runs-on: macos-latest
+  build-and-release:
+    runs-on: macos-14
+    timeout-minutes: 45
     permissions:
       contents: write
     env:
-      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-      APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
-      SOLO_SUPABASE_URL: ${{ vars.SOLO_SUPABASE_URL }}
-      SOLO_SUPABASE_ANON_KEY: ${{ vars.SOLO_SUPABASE_ANON_KEY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_SIGN_IDENTITY: ${{ secrets.APPLE_SIGN_IDENTITY }}
+      APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      RELEASE_PAT: ${{ secrets.RELEASE_PAT }}
+      SOLO_COGNITO_DOMAIN: ${{ vars.SOLO_PROD_COGNITO_DOMAIN }}
+      SOLO_COGNITO_CLIENT_ID: ${{ vars.SOLO_PROD_COGNITO_CLIENT_ID }}
+      SOLO_AWS_REGION: ${{ vars.SOLO_PROD_AWS_REGION }}
+      SOLO_API_ENDPOINT: ${{ vars.SOLO_PROD_API_ENDPOINT }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-darwin
 
-      - name: Rust cache
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: . -> target
-
       - name: Install bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
 
       - name: Install frontend dependencies
         run: bun install
@@ -47,85 +58,176 @@ jobs:
 
       - name: Validate desktop auth config
         run: |
-          test -n "$SOLO_SUPABASE_URL" || {
-            echo "Missing GitHub repository variable: SOLO_SUPABASE_URL" >&2
-            exit 1
-          }
-          test -n "$SOLO_SUPABASE_ANON_KEY" || {
-            echo "Missing GitHub repository variable: SOLO_SUPABASE_ANON_KEY" >&2
-            exit 1
-          }
+          test -n "$SOLO_COGNITO_DOMAIN" || { echo "Missing SOLO_PROD_COGNITO_DOMAIN" >&2; exit 1; }
+          test -n "$SOLO_COGNITO_CLIENT_ID" || { echo "Missing SOLO_PROD_COGNITO_CLIENT_ID" >&2; exit 1; }
+          test -n "$SOLO_AWS_REGION" || { echo "Missing SOLO_PROD_AWS_REGION" >&2; exit 1; }
+          test -n "$SOLO_API_ENDPOINT" || { echo "Missing SOLO_PROD_API_ENDPOINT" >&2; exit 1; }
 
       - name: Import Apple certificate
-        if: env.APPLE_CERTIFICATE != ''
-        env:
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         run: |
           CERTIFICATE_PATH=$RUNNER_TEMP/certificate.p12
           KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
           KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
 
-          # Decode certificate
-          echo -n "$APPLE_CERTIFICATE" | base64 --decode -o $CERTIFICATE_PATH
+          echo -n "$APPLE_CERTIFICATE_P12" | base64 --decode -o $CERTIFICATE_PATH
 
-          # Create temporary keychain
           security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
           security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
 
-          # Import certificate
-          security import $CERTIFICATE_PATH -P "$APPLE_CERTIFICATE_PASSWORD" \
-            -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          security import "$CERTIFICATE_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
           security set-key-partition-list -S apple-tool:,apple: \
-            -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-          security list-keychain -d user -s $KEYCHAIN_PATH
+            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
 
-      - name: Write Apple API key
-        if: env.APPLE_API_KEY_CONTENT != ''
-        env:
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+      - name: Build Tauri app (unsigned .app only)
         run: |
-          mkdir -p ~/private_keys
-          echo -n "$APPLE_API_KEY_CONTENT" > ~/private_keys/AuthKey_${APPLE_API_KEY}.p8
+          cd apps/desktop
+          bunx tauri build --target aarch64-apple-darwin --bundles app \
+            --config '{"bundle":{"createUpdaterArtifacts":false}}'
 
-      - name: Build and release (signed)
-        if: env.APPLE_CERTIFICATE != ''
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-          APPLE_API_KEY_PATH: ~/private_keys/AuthKey_${{ secrets.APPLE_API_KEY }}.p8
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          projectPath: apps/desktop
-          tagName: v__VERSION__
-          releaseName: Solo v__VERSION__
-          releaseBody: 'See the assets to download and install this version.'
-          releaseDraft: true
-          prerelease: false
-          args: --target aarch64-apple-darwin
+      - name: Code-sign app (inside-out)
+        run: |
+          APP_PATH="target/aarch64-apple-darwin/release/bundle/macos/Solo.app"
+          test -d "$APP_PATH" || { echo "App bundle not found at $APP_PATH" >&2; exit 1; }
 
-      - name: Build and release (unsigned)
-        if: env.APPLE_CERTIFICATE == ''
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          projectPath: apps/desktop
-          tagName: v__VERSION__
-          releaseName: Solo v__VERSION__
-          releaseBody: 'See the assets to download and install this version.'
-          releaseDraft: true
-          prerelease: false
-          args: --target aarch64-apple-darwin
+          FRAMEWORKS="$APP_PATH/Contents/Frameworks"
+          if [ -d "$FRAMEWORKS" ]; then
+            find "$FRAMEWORKS" -type f \( -name "*.dylib" -o -name "*.so" \) -print0 | \
+              xargs -0 -I {} codesign --force --sign "$APPLE_SIGN_IDENTITY" \
+                --options runtime --timestamp "{}"
+            find "$FRAMEWORKS" -type d -name "*.framework" -print0 | \
+              xargs -0 -I {} codesign --force --sign "$APPLE_SIGN_IDENTITY" \
+                --options runtime --timestamp "{}"
+          fi
+
+          codesign --force --deep --sign "$APPLE_SIGN_IDENTITY" \
+            --options runtime --timestamp \
+            --entitlements apps/desktop/src-tauri/Entitlements.plist \
+            "$APP_PATH"
+
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+
+      - name: Notarize and staple
+        run: |
+          APP_PATH="target/aarch64-apple-darwin/release/bundle/macos/Solo.app"
+          ZIP_PATH="$RUNNER_TEMP/Solo.zip"
+
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$ZIP_PATH"
+
+          xcrun notarytool submit "$ZIP_PATH" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+
+          xcrun stapler staple "$APP_PATH"
+          spctl --assess --type execute --verbose=4 "$APP_PATH" || {
+            echo "Gatekeeper assessment failed" >&2
+            exit 1
+          }
+
+      - name: Create DMG
+        run: |
+          VERSION=$(jq -r .version apps/desktop/src-tauri/tauri.conf.json)
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+          APP_PATH="target/aarch64-apple-darwin/release/bundle/macos/Solo.app"
+          STAGING="$RUNNER_TEMP/dmg-staging"
+          DMG_NAME="Solo_${VERSION}_aarch64.dmg"
+          DMG_PATH="$RUNNER_TEMP/$DMG_NAME"
+
+          mkdir -p "$STAGING"
+          cp -R "$APP_PATH" "$STAGING/Solo.app"
+          ln -s /Applications "$STAGING/Applications"
+
+          for attempt in 1 2 3; do
+            if hdiutil create -volname "Solo" -srcfolder "$STAGING" \
+                -ov -format UDZO -imagekey zlib-level=9 "$DMG_PATH"; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "hdiutil failed after 3 attempts" >&2
+              exit 1
+            fi
+            rm -f "$DMG_PATH"
+            sleep 5
+          done
+
+          codesign --force --sign "$APPLE_SIGN_IDENTITY" --timestamp "$DMG_PATH"
+
+          mkdir -p dist
+          mv "$DMG_PATH" "dist/$DMG_NAME"
+          echo "DMG_NAME=$DMG_NAME" >> $GITHUB_ENV
+
+      - name: Create updater archive and sign
+        run: |
+          APP_PATH="target/aarch64-apple-darwin/release/bundle/macos/Solo.app"
+          TAR_PATH="dist/Solo.app.tar.gz"
+
+          tar -czf "$TAR_PATH" -C "$(dirname "$APP_PATH")" "$(basename "$APP_PATH")"
+
+          cd apps/desktop
+          bunx tauri signer sign \
+            --private-key "$TAURI_SIGNING_PRIVATE_KEY" \
+            --password "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" \
+            "../../$TAR_PATH"
+
+          test -f "../../${TAR_PATH}.sig" || {
+            echo "Expected ../../${TAR_PATH}.sig to exist" >&2
+            exit 1
+          }
+
+      - name: Generate latest.json
+        run: |
+          TAG_NAME="v${VERSION}"
+          SIGNATURE=$(cat dist/Solo.app.tar.gz.sig)
+          PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          NOTES=$(git tag -l --format='%(contents)' "$TAG_NAME")
+          if [ -z "$NOTES" ]; then
+            NOTES="Solo $VERSION"
+          fi
+
+          jq -n \
+            --arg version "$VERSION" \
+            --arg notes "$NOTES" \
+            --arg pub_date "$PUB_DATE" \
+            --arg signature "$SIGNATURE" \
+            --arg url "https://github.com/Solo-UDE/solo-releases/releases/download/${TAG_NAME}/Solo.app.tar.gz" \
+            '{
+              version: $version,
+              notes: $notes,
+              pub_date: $pub_date,
+              platforms: {
+                "darwin-aarch64": {
+                  signature: $signature,
+                  url: $url
+                }
+              }
+            }' > dist/latest.json
+
+          cat dist/latest.json
+
+      - name: Publish release to solo-releases
+        run: |
+          TAG_NAME="v${VERSION}"
+          NOTES=$(git tag -l --format='%(contents)' "$TAG_NAME")
+          if [ -z "$NOTES" ]; then
+            NOTES="Solo $VERSION"
+          fi
+
+          GH_TOKEN="$RELEASE_PAT" gh release create "$TAG_NAME" \
+            --repo Solo-UDE/solo-releases \
+            --title "Solo v$VERSION" \
+            --notes "$NOTES" \
+            "dist/$DMG_NAME" \
+            dist/Solo.app.tar.gz \
+            dist/Solo.app.tar.gz.sig \
+            dist/latest.json
 
       - name: Cleanup keychain
-        if: always() && env.APPLE_CERTIFICATE != ''
+        if: always()
         run: |
-          security delete-keychain $RUNNER_TEMP/app-signing.keychain-db || true
+          security delete-keychain "$RUNNER_TEMP/app-signing.keychain-db" 2>/dev/null || true

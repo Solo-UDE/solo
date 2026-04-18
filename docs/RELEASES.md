@@ -7,174 +7,218 @@ Solo IDE's auto-update and DMG distribution pipeline.
 ## Architecture
 
 ```
-Developer pushes v* tag
+Solo-UDE/solo  (private source)              Solo-UDE/solo-releases  (public downloads)
+───────────────────────────                  ────────────────────────────────────────
+  push tag v*
         │
         ▼
-GitHub Actions (release.yml)
+  .github/workflows/release.yml
         │
-        ├── Build aarch64 macOS app
-        ├── (Phase 2) Sign with Developer ID certificate
-        ├── (Phase 2) Notarize with Apple
-        ├── Sign update artifacts with Tauri key
+        ├── build .app (Tauri, aarch64-apple-darwin)
+        ├── code-sign with Developer ID Application (inside-out)
+        ├── notarize via xcrun notarytool (blocking)
+        ├── staple ticket + spctl assess
+        ├── create DMG, code-sign DMG
+        ├── create Solo.app.tar.gz, minisign with Tauri key
+        ├── generate latest.json
         │
-        ▼
-Draft GitHub Release
-        │
-        ├── Solo_x.x.x_aarch64.dmg
-        ├── Solo.app.tar.gz        (updater payload)
-        ├── Solo.app.tar.gz.sig    (updater signature)
-        └── latest.json            (updater manifest)
-        │
-        ▼
-Developer reviews draft, publishes
-        │
-        ▼
-Existing installations detect update on next launch
-        │
-        ▼
-User sees toast → clicks "Restart" → app updates
+        └──────► publish via RELEASE_PAT ─────►  GitHub Release
+                                                    - Solo_X.Y.Z_aarch64.dmg
+                                                    - Solo.app.tar.gz
+                                                    - Solo.app.tar.gz.sig
+                                                    - latest.json
+                                                        ▲
+                                                        │ anonymous HTTPS GET
+                                                        │
+                                                Installed Solo checks
+                                                `/releases/latest/download/latest.json`
+                                                on next launch → toast → update
 ```
 
----
-
-## Phases
-
-### Phase 1 — Personal Use (no Apple Developer account)
-
-- Unsigned DMG builds via GitHub Actions
-- Auto-update works via Tauri RSA signing (independent of Apple)
-- Bypass Gatekeeper: right-click → Open (once per install)
-- Requires only 2 GitHub secrets
-
-### Phase 2 — Public Distribution (Apple Developer account)
-
-- Code-signed and notarized builds
-- No Gatekeeper warnings for end users
-- Zero code changes — just add Apple secrets to GitHub
-- The workflow conditionally enables Apple signing when secrets are present
+Why the two-repo split: Tauri's updater does an anonymous `GET` for `latest.json`. GitHub blocks anonymous downloads from private-repo release assets, so the source repo stays private while a public sibling hosts the downloads.
 
 ---
 
-## GitHub Secrets
+## GitHub Secrets (on Solo-UDE/solo, repo-level)
 
-### Phase 1 (required now)
+| Secret | Value | Source |
+|---|---|---|
+| `APPLE_CERTIFICATE_P12` | base64-encoded `.p12` | `base64 -i cert.p12 \| pbcopy` |
+| `APPLE_CERTIFICATE_PASSWORD` | `.p12` export password | set during Keychain export |
+| `APPLE_ID` | Apple ID email | — |
+| `APPLE_APP_PASSWORD` | app-specific password | appleid.apple.com → Sign-In and Security |
+| `APPLE_TEAM_ID` | Apple team identifier | developer.apple.com → Membership |
+| `APPLE_SIGN_IDENTITY` | `Developer ID Application: Name (TEAM)` | `security find-identity -v -p codesigning` |
+| `TAURI_SIGNING_PRIVATE_KEY` | contents of `~/.tauri/solo-ide.key` | `cat ~/.tauri/solo-ide.key` |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | empty string | (key generated without password) |
+| `RELEASE_PAT` | fine-grained PAT with `Contents: write` on Solo-UDE/solo-releases | github.com/settings/personal-access-tokens/new |
 
-| Secret | Value |
-|--------|-------|
-| `TAURI_SIGNING_PRIVATE_KEY` | Contents of `~/.tauri/solo-ide.key` |
-| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Empty string |
+## GitHub Variables (on Solo-UDE/solo, repo-level)
 
-## GitHub Variables
+The workflows map **stage-specific** GitHub variables into the generic desktop
+env contract used by the Tauri build:
 
-These public values are required for desktop authentication builds:
+### Dev workflows (`premerge-master.yml`, `build-master-dmg.yml`)
 
 | Variable | Value |
-|----------|-------|
-| `SOLO_SUPABASE_URL` | `https://<project-ref>.supabase.co` |
-| `SOLO_SUPABASE_ANON_KEY` | Supabase anon/public key for that project |
+|---|---|
+| `SOLO_DEV_COGNITO_DOMAIN` | `solo-ide-dev.auth.us-east-1.amazoncognito.com` |
+| `SOLO_DEV_COGNITO_CLIENT_ID` | dev Cognito desktop client ID |
+| `SOLO_DEV_AWS_REGION` | `us-east-1` |
+| `SOLO_DEV_API_ENDPOINT` | dev Solo API endpoint |
 
-### Phase 2 (add later)
+### Release workflow (`release.yml`)
 
-| Secret | Value | How to Get |
-|--------|-------|-----------|
-| `APPLE_CERTIFICATE` | Base64 `.p12` | `base64 -i cert.p12 \| pbcopy` |
-| `APPLE_CERTIFICATE_PASSWORD` | `.p12` export password | Set during export |
-| `APPLE_SIGNING_IDENTITY` | `Developer ID Application: Name (TEAM)` | Keychain Access |
-| `APPLE_API_ISSUER` | Issuer ID | App Store Connect |
-| `APPLE_API_KEY` | Key ID | App Store Connect |
-| `APPLE_API_KEY_CONTENT` | Contents of `.p8` file | `cat AuthKey_XXXX.p8` |
+| Variable | Value |
+|---|---|
+| `SOLO_PROD_COGNITO_DOMAIN` | `solo-ide-prod.auth.us-east-1.amazoncognito.com` |
+| `SOLO_PROD_COGNITO_CLIENT_ID` | prod Cognito desktop client ID |
+| `SOLO_PROD_AWS_REGION` | `us-east-1` |
+| `SOLO_PROD_API_ENDPOINT` | prod Solo API endpoint |
 
 ---
 
-## Signing Keys
+## Tauri signing keys
 
-Generated with `bun tauri signer generate -w ~/.tauri/solo-ide.key --ci`.
+Private key `~/.tauri/solo-ide.key` is the minisign key that signs `Solo.app.tar.gz`. Its public half is base64-embedded in `apps/desktop/src-tauri/tauri.conf.json` under `plugins.updater.pubkey` — every installed Solo verifies updates against that pubkey.
 
-| File | Purpose | Location |
-|------|---------|----------|
-| `solo-ide.key` | Private key (signs updates) | `~/.tauri/solo-ide.key` (never commit) |
-| `solo-ide.key.pub` | Public key (verifies updates) | `~/.tauri/solo-ide.key.pub` + `tauri.conf.json` |
+**Never regenerate this key.** Changing it would strand every existing install (they would reject every future update as "invalid signature") with no in-app recovery path.
 
-To regenerate with a password:
+Back up `~/.tauri/solo-ide.key` to a password manager or encrypted archive.
+
+---
+
+## How to release
+
 ```bash
-bun tauri signer generate -w ~/.tauri/solo-ide.key -f -p "your-password"
+# 1. Bump version across Cargo.toml, tauri.conf.json, apps/desktop/package.json
+bun run version:bump 0.3.0           # or 0.3.0-beta.1 for a beta
+
+# 2. Commit the 3-file bump (one commit per file is the project convention)
+git add Cargo.toml
+git commit -m "release: bump workspace version to 0.3.0"
+git add apps/desktop/src-tauri/tauri.conf.json
+git commit -m "release: bump tauri.conf.json version to 0.3.0"
+git add apps/desktop/package.json
+git commit -m "release: bump desktop app version to 0.3.0"
+
+# 3. Draft a changelog and annotate the tag with it
+git tag -a v0.3.0 -m "$(cat <<'EOF'
+Solo v0.3.0
+
+- Feature X
+- Fix Y
+EOF
+)"
+
+# 4. Push master and the tag (tag push triggers release.yml)
+git push origin master
+git push origin v0.3.0
+
+# 5. Monitor the build
+gh run watch --repo Solo-UDE/solo
+
+# 6. Verify the release on solo-releases
+gh release view v0.3.0 --repo Solo-UDE/solo-releases
 ```
-Then update the public key in `tauri.conf.json` and the `TAURI_SIGNING_PRIVATE_KEY` GitHub secret.
 
 ---
 
-## How to Release
+## Pre-release (beta) versions
 
-```bash
-# 1. Bump version everywhere
-bun run version:bump 0.2.0
+Semver pre-release suffixes work: `0.3.0-beta.1`, `0.3.0-rc.2`, etc. Semver ordering is `0.2.0 < 0.3.0-beta.1 < 0.3.0`, so existing stable installs will auto-update to betas as long as:
 
-# 2. Commit and tag
-git add Cargo.toml apps/desktop/src-tauri/tauri.conf.json apps/desktop/package.json
-git commit -m "Release v0.2.0"
-git tag v0.2.0
+- The GitHub "Set as a pre-release" checkbox on the Release is **unchecked** (the workflow leaves it unchecked by default).
 
-# 3. Push (triggers CI)
-git push origin master --tags
-
-# 4. Review draft release on GitHub → add changelog → Publish
-```
+If you want a gated beta channel where only opted-in users see betas, that is a larger design change — a dual-channel `latest-stable.json` / `latest-beta.json` split with channel-selector UI. Not implemented.
 
 ---
 
-## Local Development Build
+## Update flow (end user)
+
+1. User launches Solo.
+2. 5 s after launch, `useUpdateStream` calls `check_for_update()`.
+3. Rust fetches `https://github.com/Solo-UDE/solo-releases/releases/latest/download/latest.json`.
+4. If `latest.json.version > installed-version`, emits `BackendEvent::UpdateAvailable`.
+5. Frontend shows persistent toast: "New update available".
+6. User clicks "Restart" → Tauri downloads `.tar.gz`, verifies `.sig` against pubkey, swaps app, restarts.
+7. User clicks "See changes" → opens GitHub Release page in browser.
+
+---
+
+## Local development build (unsigned)
 
 ```bash
-# Unsigned build (no signing needed)
-bun tauri build
-
-# With updater artifacts (needs Tauri key)
 export TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/solo-ide.key)"
+export SOLO_COGNITO_DOMAIN="solo-ide-dev.auth.us-east-1.amazoncognito.com"
+export SOLO_COGNITO_CLIENT_ID="3lvjbkkev35ejmm927rkfn13d3"
+export SOLO_AWS_REGION="us-east-1"
+export SOLO_API_ENDPOINT="https://vd8wm2yqle.execute-api.us-east-1.amazonaws.com"
+
 bun tauri build
 
 # Output:
 #   target/release/bundle/macos/Solo.app
-#   target/release/bundle/dmg/Solo_0.1.0_aarch64.dmg
-#   target/release/bundle/macos/Solo.app.tar.gz      (updater payload)
-#   target/release/bundle/macos/Solo.app.tar.gz.sig   (updater signature)
+#   target/release/bundle/dmg/Solo_X.Y.Z_aarch64.dmg      (unsigned, right-click-open)
+#   target/release/bundle/macos/Solo.app.tar.gz           (updater payload)
+#   target/release/bundle/macos/Solo.app.tar.gz.sig       (updater signature)
 ```
 
----
-
-## Update Flow
-
-1. User launches Solo IDE
-2. After 5 seconds, `useUpdateStream` calls `checkForUpdate()`
-3. Rust fetches `latest.json` from GitHub Releases
-4. If newer version found → emits `BackendEvent::UpdateAvailable`
-5. Frontend shows persistent toast: "New update available"
-6. User clicks "Restart" → downloads `.tar.gz`, verifies `.sig`, installs, restarts
-7. User clicks "See changes" → opens GitHub Release page in browser
+Use this to sanity-check changes locally before tagging. For auth-flow testing in
+dev, prefer `bun run auth:doctor` and `bun run dev:auth`. For Apple-signed
+builds, only CI produces them (requires the keychain dance in `release.yml`).
 
 ---
 
-## File Reference
+## File reference
 
 | File | Role |
-|------|------|
+|---|---|
 | `apps/desktop/src-tauri/src/update_commands.rs` | Rust update commands |
-| `apps/desktop/src-tauri/tauri.conf.json` | Updater config, public key, endpoints |
+| `apps/desktop/src-tauri/tauri.conf.json` | Updater endpoint, pubkey, version |
 | `apps/desktop/src-tauri/Entitlements.plist` | macOS entitlements for code signing |
 | `apps/desktop/src-tauri/capabilities/default.json` | Updater + process permissions |
 | `apps/desktop/src-tauri/Cargo.toml` | Plugin dependencies |
-| `apps/desktop/src/hooks/useUpdateStream.ts` | Frontend update check + toast |
+| `apps/desktop/src/hooks/useUpdateStream.ts` | Frontend update toast |
 | `apps/desktop/src/lib/tauri/update.ts` | TypeScript IPC wrappers |
 | `apps/desktop/src/App.tsx` | Mounts `useUpdateStream()` |
 | `.github/workflows/release.yml` | CI/CD release pipeline |
 | `scripts/bump-version.mjs` | Version bump across all manifests |
 | `~/.tauri/solo-ide.key` | Private signing key (local, never committed) |
+| `docs/superpowers/specs/2026-04-17-solo-dmg-autoupdate-design.md` | Design rationale |
+| `docs/superpowers/plans/2026-04-17-solo-dmg-autoupdate.md` | Implementation plan |
 
 ---
 
-## Apple Developer Setup (Phase 2)
+## Failure recovery
 
-1. Enroll at https://developer.apple.com/programs/ ($99/year, up to 48h approval)
-2. Create "Developer ID Application" certificate in Certificates, Identifiers & Profiles
-3. Export as `.p12` from Keychain Access
-4. Create App Store Connect API key (Users & Access → Integrations)
-5. Add all Phase 2 secrets to GitHub
+### Workflow fails before release is published
+
+Delete the tag, fix, re-tag:
+
+```bash
+git tag -d v0.X.Y
+git push origin :refs/tags/v0.X.Y
+# fix, commit
+git tag -a v0.X.Y -m "..."
+git push origin v0.X.Y
+```
+
+### Workflow succeeded but release is broken (DMG bad, latest.json malformed, etc.)
+
+**Never re-tag a public release.** Bump the patch (e.g., `v0.X.Y+1`), cut a new release. Delete the broken GitHub Release from solo-releases so the updater does not see it:
+
+```bash
+gh release delete vX.Y.Z --repo Solo-UDE/solo-releases --yes
+```
+
+### Notarization fails
+
+Read the submission log for the specific rejection:
+
+```bash
+xcrun notarytool log <submission-id> \
+  --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" --team-id "$APPLE_TEAM_ID"
+```
+
+Common causes: unsigned `.dylib` inside Frameworks (workflow should have caught it), entitlements mismatch, expired cert.
