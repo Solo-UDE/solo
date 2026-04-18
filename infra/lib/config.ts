@@ -33,7 +33,7 @@ const PROD: SoloStageConfig = {
   cognitoDomainPrefix: "solo-ide-prod",
   removalPolicy: RemovalPolicy.RETAIN,
   pointInTimeRecovery: true,
-  githubOidcEnabled: false,
+  githubOidcEnabled: true,
   googleOidcEnabled: true,
   apiThrottling: { rateLimit: 50, burstLimit: 500 },
 };
