@@ -15,7 +15,11 @@ Tauri 2 desktop IDE — Rust backend, React 19 frontend, monorepo with Cargo + B
 Always use `bun` (not npm/yarn/pnpm). The lockfile is `bun.lock`.
 
 ## Monorepo Layout
-- `crates/` — Rust libraries (solo-core, solo-protocol, solo-fs, solo-agent, solo-parse, solo-embeddings)
+- `crates/` — Rust libraries (solo-core, solo-protocol, solo-fs, solo-agent, solo-parse, solo-embeddings, solo-voice)
+  - `solo-voice` — voice input pipeline: cpal audio capture, Silero VAD,
+    Sherpa-ONNX Parakeet STT, cloud formatter (Claude Haiku / GPT-5 nano).
+    Phase 1 drives the chat mic only; global dictation and agent dispatch
+    arrive in Phases 2 and 3.
 - `apps/desktop/src-tauri/src/` — Tauri Rust commands (*_commands.rs)
 - `apps/desktop/src/` — React frontend
 - `packages/ui/` — Shared React component library (@solo/ui)
