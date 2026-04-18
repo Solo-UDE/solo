@@ -76,6 +76,10 @@ export const ModeSelector: React.FC<ModeSelectorProps> = ({
       title={`${config.label} — click to cycle (⇧⇥)`}
       className={cn(
         toolbarButtonBase,
+        // Reserve a consistent width so cycling between modes
+        // (Default / Plan / Accept / Debug) doesn't push neighboring
+        // toolbar buttons around.
+        'min-w-[92px] justify-center',
         config.tone,
         disabled && 'opacity-50 cursor-not-allowed',
       )}
