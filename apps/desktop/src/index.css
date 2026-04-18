@@ -108,37 +108,20 @@ html[data-vibrancy] .terminal-panel .xterm-viewport {
    ============================================================================= */
 .split-divider {
   flex-shrink: 0;
-  width: 8px;
+  width: 1px;
   cursor: col-resize;
   position: relative;
-  background: linear-gradient(
-    to right,
-    var(--sidebar) 0,
-    var(--sidebar) calc(50% - 0.5px),
-    color-mix(in oklch, var(--border) 90%, transparent) calc(50% - 0.5px),
-    color-mix(in oklch, var(--border) 90%, transparent) calc(50% + 0.5px),
-    var(--card) calc(50% + 0.5px),
-    var(--card) 100%
-  );
+  background-color: var(--sidebar);
 }
 
+/* Invisible hit-area extension so the 1px line stays easy to grab. */
 .split-divider::before {
   content: '';
   position: absolute;
-  left: 50%;
   top: 0;
   bottom: 0;
-  width: 1px;
-  transform: translateX(-50%);
-  background-color: color-mix(in oklch, var(--border) 92%, transparent);
-  border-radius: 9999px;
-  opacity: 0.8;
-  transition: opacity 200ms var(--ease-smooth), background-color 200ms var(--ease-smooth);
-}
-
-.split-divider:hover::before {
-  opacity: 1;
-  background-color: color-mix(in oklch, var(--primary) 30%, var(--border));
+  left: -4px;
+  right: -4px;
 }
 
 .sidebar-reopen-sliver {
