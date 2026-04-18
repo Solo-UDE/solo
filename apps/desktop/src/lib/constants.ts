@@ -42,9 +42,9 @@ export const CLAUDE_SONNET_4_6 = 'claude-sonnet-4-6';
 export const CLAUDE_HAIKU_4_5 = 'claude-haiku-4-5-20251001';
 
 // OpenAI
-export const GPT_5_2_HIGH = 'gpt-5.2-high';
-export const GPT_5_2_MEDIUM = 'gpt-5.2-medium';
-export const GPT_5_2_LOW = 'gpt-5.2-low';
+export const GPT_5_4 = 'gpt-5.4';
+export const GPT_5_3_CODEX_SPARK = 'gpt-5.3-codex-spark';
+export const GPT_5_4_MINI = 'gpt-5.4-mini';
 
 // Google
 export const GEMINI_3_PRO = 'gemini-3-pro';
@@ -117,24 +117,24 @@ export const MODEL_OPTIONS: ModelOptionConfig[] = [
   },
   // OpenAI models
   {
-    value: GPT_5_2_HIGH,
-    label: '5.2 High',
-    description: 'Most capable reasoning',
+    value: GPT_5_4,
+    label: 'GPT-5.4',
+    description: 'Flagship reasoning model',
     provider: 'openai',
     iconType: 'openai',
     textOnly: true,
   },
   {
-    value: GPT_5_2_MEDIUM,
-    label: '5.2 Medium',
-    description: 'Balanced performance',
+    value: GPT_5_3_CODEX_SPARK,
+    label: 'Codex Spark',
+    description: 'Coding-tuned on GPT-5.3',
     provider: 'openai',
     iconType: 'openai',
     textOnly: true,
   },
   {
-    value: GPT_5_2_LOW,
-    label: '5.2 Low',
+    value: GPT_5_4_MINI,
+    label: 'GPT-5.4 Mini',
     description: 'Fast and cost-effective',
     provider: 'openai',
     iconType: 'openai',
