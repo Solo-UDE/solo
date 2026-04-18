@@ -8,7 +8,7 @@ import SoloDecryptAnimation from '../agent/SoloDecryptAnimation';
 import { openFolderDialog } from '@/lib/tauri/fs';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
 import { useRepoStore } from '@/stores/repoStore';
-import { useStartupSound } from '@/hooks/useStartupSound';
+import { useStartupSound, stopStartupSound } from '@/hooks/useStartupSound';
 
 const dirName = (p: string) => {
   const sep = p.includes('\\') ? '\\' : '/';
@@ -63,12 +63,14 @@ export function WelcomeScreen({ onProjectOpen }: WelcomeScreenProps = {}) {
   const handleOpenProject = useCallback(async () => {
     const path = await openFolderDialog();
     if (!path) return;
+    stopStartupSound();
     onProjectOpen?.();
     await openOrSelectRepo(path);
   }, [onProjectOpen, openOrSelectRepo]);
 
   const handleSwitchTo = useCallback(
     async (path: string) => {
+      stopStartupSound();
       onProjectOpen?.();
       await openOrSelectRepo(path);
     },
