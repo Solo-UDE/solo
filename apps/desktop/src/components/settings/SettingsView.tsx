@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useUIStore, type SettingsTabId } from '../../stores/uiStore';
 import { SettingsSidebar } from './SettingsSidebar';
+import { AccountTab } from './tabs/AccountTab';
 import { GeneralTab } from './tabs/GeneralTab';
 import { EditorTab } from './tabs/EditorTab';
 import { TerminalTab } from './tabs/TerminalTab';
@@ -14,11 +15,12 @@ import { PluginsTab } from './tabs/PluginsTab';
 import { JourneyPage } from './journey/JourneyPage';
 import { LeaderboardPage } from './leaderboard/LeaderboardPage';
 
-const TAB_ORDER: SettingsTabId[] = ['journey', 'leaderboard', 'general', 'editor', 'terminal', 'files', 'shortcuts', 'ai', 'voice', 'skills', 'plugins'];
+const TAB_ORDER: SettingsTabId[] = ['journey', 'leaderboard', 'account', 'general', 'editor', 'terminal', 'files', 'shortcuts', 'ai', 'voice', 'skills', 'plugins'];
 
 const TAB_LABELS: Record<SettingsTabId, string> = {
   journey: 'Your Journey',
   leaderboard: 'Leaderboard',
+  account: 'Account',
   general: 'General',
   editor: 'Editor',
   terminal: 'Terminal',
@@ -33,6 +35,7 @@ const TAB_LABELS: Record<SettingsTabId, string> = {
 const TAB_DESCRIPTIONS: Record<SettingsTabId, string> = {
   journey: 'Your tier, stats, and progress through Solo.',
   leaderboard: 'Top climbers across Solo, filterable by tier.',
+  account: 'See which Solo account is signed in and which GitHub account is connected.',
   general: 'Global desktop behavior, appearance, and app defaults.',
   editor: 'Code editing preferences and panel ergonomics.',
   terminal: 'Terminal session behavior and shell integration.',
@@ -56,6 +59,8 @@ export function SettingsView() {
         return <JourneyPage />;
       case 'leaderboard':
         return <LeaderboardPage />;
+      case 'account':
+        return <AccountTab />;
       case 'general':
         return <GeneralTab />;
       case 'editor':

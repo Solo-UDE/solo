@@ -5,6 +5,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { open } from "@tauri-apps/plugin-shell";
 
 // =============================================================================
@@ -24,6 +25,28 @@ export interface AuthState {
 }
 
 export type OAuthProvider = "github" | "google" | "email";
+
+export type AuthCallbackPayload =
+  | {
+      kind: "success";
+      url: string;
+      code: string;
+    }
+  | {
+      kind: "oauth_error";
+      url: string;
+      error: string;
+      errorDescription: string | null;
+    }
+  | {
+      kind: "signout";
+      url: string;
+    }
+  | {
+      kind: "invalid";
+      url: string;
+      message: string;
+    };
 
 // =============================================================================
 // Auth Functions
@@ -138,28 +161,146 @@ export async function getIdToken(): Promise<string | null> {
 // Event Listeners
 // =============================================================================
 
+function callbackParams(url: URL): URLSearchParams {
+  if (url.search.length > 1) {
+    return url.searchParams;
+  }
+
+  if (url.hash.startsWith("#") && url.hash.length > 1) {
+    return new URLSearchParams(url.hash.slice(1));
+  }
+
+  return new URLSearchParams();
+}
+
+export function parseAuthCallbackPayload(rawUrl: string): AuthCallbackPayload {
+  const url = new URL(rawUrl);
+  const pathname = url.pathname.replace(/\/+$/, "") || "/";
+
+  if (url.protocol !== "soloide:") {
+    return {
+      kind: "invalid",
+      url: rawUrl,
+      message: `Unexpected auth callback protocol: ${url.protocol}`,
+    };
+  }
+
+  if (url.hostname === "auth" && pathname === "/signout") {
+    return {
+      kind: "signout",
+      url: rawUrl,
+    };
+  }
+
+  const params = callbackParams(url);
+  const code = params.get("code");
+  if (code) {
+    return {
+      kind: "success",
+      url: rawUrl,
+      code,
+    };
+  }
+
+  const error = params.get("error");
+  if (error) {
+    return {
+      kind: "oauth_error",
+      url: rawUrl,
+      error,
+      errorDescription: params.get("error_description"),
+    };
+  }
+
+  if (url.hostname === "auth" && pathname === "/callback") {
+    return {
+      kind: "invalid",
+      url: rawUrl,
+      message: "OAuth callback did not include an authorization code.",
+    };
+  }
+
+  return {
+    kind: "invalid",
+    url: rawUrl,
+    message: `Unhandled authentication deep link: ${rawUrl}`,
+  };
+}
+
 /**
  * Listen for auth callback deep links
  * Returns an unlisten function to clean up the listener
  */
 export async function onAuthCallback(
-  callback: (code: string) => void
+  callback: (payload: AuthCallbackPayload) => void
 ): Promise<UnlistenFn> {
   console.log("Setting up auth-callback listener...");
-  return listen<string>("auth-callback", (event) => {
-    console.log("Received auth-callback event:", event.payload);
-    try {
-      const url = new URL(event.payload);
-      const code = url.searchParams.get("code");
-      console.log("Extracted code:", code);
+  const seenUrls = new Set<string>();
 
-      if (code) {
-        callback(code);
-      } else {
-        console.error("No code in callback URL");
+  const handleUrl = (rawUrl: string) => {
+    if (!rawUrl || seenUrls.has(rawUrl)) {
+      return;
+    }
+    seenUrls.add(rawUrl);
+
+    console.log("Received auth callback URL:", rawUrl);
+    try {
+      const payload = parseAuthCallbackPayload(rawUrl);
+
+      switch (payload.kind) {
+        case "success":
+          console.log("Received OAuth authorization code");
+          break;
+        case "oauth_error":
+          console.error("OAuth provider returned an error", payload);
+          break;
+        case "signout":
+          console.info("Received sign-out callback");
+          break;
+        case "invalid":
+          console.error(payload.message, { url: payload.url });
+          break;
       }
+
+      callback(payload);
     } catch (error) {
       console.error("Failed to parse callback URL:", error);
+      callback({
+        kind: "invalid",
+        url: rawUrl,
+        message:
+          error instanceof Error
+            ? error.message
+            : "Failed to parse callback URL",
+      });
+    }
+  };
+
+  try {
+    const startUrls = await getCurrent();
+    if (startUrls?.length) {
+      console.log("Found startup deep links:", startUrls);
+      for (const url of startUrls) {
+        handleUrl(url);
+      }
+    }
+  } catch (error) {
+    console.warn("Failed to read current deep link URLs:", error);
+  }
+
+  const unlistenEvent = await listen<string>("auth-callback", (event) => {
+    handleUrl(event.payload);
+  });
+
+  const unlistenDeepLink = await onOpenUrl((urls) => {
+    console.log("Received plugin deep-link event:", urls);
+    for (const url of urls) {
+      handleUrl(url);
     }
   });
+
+  return () => {
+    unlistenEvent();
+    unlistenDeepLink();
+  };
 }

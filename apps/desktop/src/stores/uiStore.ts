@@ -10,7 +10,19 @@ import { SIDEBAR, TERMINAL_SECTION } from '@/lib/constants';
 export type SidebarTab = 'explorer' | 'sessions' | 'source-control';
 
 // Settings tab types
-export type SettingsTabId = 'journey' | 'leaderboard' | 'general' | 'editor' | 'terminal' | 'files' | 'shortcuts' | 'ai' | 'voice' | 'skills' | 'plugins';
+export type SettingsTabId =
+  | 'journey'
+  | 'leaderboard'
+  | 'account'
+  | 'general'
+  | 'editor'
+  | 'terminal'
+  | 'files'
+  | 'shortcuts'
+  | 'ai'
+  | 'voice'
+  | 'skills'
+  | 'plugins';
 
 // Dev/Vault sidebar mode.
 // Sessions moved out of the Vault tab (they're worktree-bound and live under Dev now).
