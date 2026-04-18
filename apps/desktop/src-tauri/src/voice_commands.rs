@@ -223,6 +223,25 @@ pub async fn voice_end(
         .await
         .map_err(|e| e.to_string())?;
 
+    use crate::voice::injection::{inject_text, InjectionOutcome};
+
+    let paste_outcome = match target {
+        PipelineTarget::FocusedApp => {
+            match inject_text(&out.formatted) {
+                Ok(InjectionOutcome::Pasted) => Some(Ok(())),
+                Ok(InjectionOutcome::ClipboardOnly) => Some(Err(
+                    "Paste failed — text copied to clipboard, paste manually".to_string(),
+                )),
+                Err(e) => Some(Err(format!("Paste failed: {}", e.0))),
+            }
+        }
+        _ => None,
+    };
+
+    if let Some(Err(msg)) = &paste_outcome {
+        let _ = app.emit("voice:error", serde_json::json!({ "message": msg }));
+    }
+
     if let Some(h) = voice.history.lock().await.as_ref() {
         let row = HistoryRow {
             id: out.id.clone(),
