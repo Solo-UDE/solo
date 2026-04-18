@@ -20,3 +20,7 @@ pub use path::AbsolutePathBuf;
 pub use store::{PluginInstallResult, PluginStore, PluginStoreError};
 pub use toggles::{PluginToggleEntry, PluginToggles};
 pub use adapters::{AdapterPlugin, AdapterSource, discover_claude_adapter, discover_codex_adapter};
+pub use loader::{
+    LoaderConfig, PluginListOutcome, PluginLoadError, PluginRecord, PluginSource,
+    get_plugin_detail, list_plugins,
+};
