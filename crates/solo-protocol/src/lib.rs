@@ -1106,6 +1106,57 @@ pub struct ElevenLabsTtsStatusEvent {
 }
 
 // =============================================================================
+// Voice Pipeline Protocol
+// =============================================================================
+
+/// Voice mode: Dictation (to chat) or Dispatch (to focused app)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "PascalCase")]
+pub enum VoiceMode {
+    Dictation,
+    Dispatch,
+}
+
+/// State of the voice pipeline
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(tag = "kind", content = "data")]
+pub enum VoicePipelineState {
+    Idle,
+    Arming,
+    Recording,
+    Transcribing,
+    Formatting,
+    Emitting,
+    Error(String),
+}
+
+/// A transcript result from the voice pipeline
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct VoiceTranscriptResult {
+    pub id: String,
+    pub mode: VoiceMode,
+    pub raw_transcript: String,
+    pub formatted: String,
+    pub target_app_bundle_id: Option<String>,
+    pub target_app_name: Option<String>,
+    pub duration_ms: u32,
+    pub linked_session_id: Option<String>,
+    pub created_at: i64,
+}
+
+/// Progress of a model download
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct VoiceModelProgress {
+    pub model_id: String,
+    pub bytes: u64,
+    pub total: u64,
+}
+
+// =============================================================================
 // Claude CLI Setup
 // =============================================================================
 
