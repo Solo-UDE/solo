@@ -38,10 +38,15 @@ export const InstalledSkillsTab: FC = () => {
 
   if (!skills.length) {
     return (
-      <p className="px-4 py-6 text-xs text-muted-foreground">
-        No skills installed yet. The <span className="font-medium">ui</span> skill ships
-        with Solo and will appear here after the first launch.
-      </p>
+      <div className="p-5">
+        <div className="rounded-[12px] border border-border/60 bg-background/55 p-5">
+          <p className="text-[13px] leading-5 text-muted-foreground text-pretty max-w-[58ch]">
+            No skills installed yet. The{' '}
+            <span className="font-medium text-foreground">ui</span> skill ships with Solo
+            and will appear here after the first launch.
+          </p>
+        </div>
+      </div>
     );
   }
 
@@ -56,29 +61,38 @@ export const InstalledSkillsTab: FC = () => {
         }}
       />
     )}
-    <ul className="flex flex-col gap-3 p-3">
+    <ul role="list" className="flex flex-col gap-5 p-5">
       {bySource.map(([source, list]) => (
         <li key={source}>
-          <p className="mb-1 px-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/60">
+          <p className="mb-2 px-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground/65">
             {source.replace('_', ' ')}
           </p>
-          <ul className="space-y-1">
+          <ul
+            role="list"
+            className="divide-y divide-border/50 overflow-hidden rounded-[12px] border border-border/60 bg-background/35"
+          >
             {list.map((skill) => (
-              <li
-                key={`${source}:${skill.name}`}
-                className="rounded-[10px] border border-border/60 bg-card/40 px-2.5 py-2 text-xs"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-medium text-foreground">{skill.name}</span>
-                  <div className="flex items-center gap-1">
+              <li key={`${source}:${skill.name}`} className="px-3.5 py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[13px] font-medium text-foreground">
+                      {skill.name}
+                    </p>
+                    {skill.description && (
+                      <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground text-pretty">
+                        {skill.description}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-3 pt-0.5">
                     <button
                       type="button"
                       onClick={() => setTweakingSkillId(skill.name)}
-                      className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+                      className="text-[11px] font-medium text-muted-foreground hover:text-foreground"
                     >
                       Tweak
                     </button>
-                    <span className="text-muted-foreground/40">·</span>
+                    <span aria-hidden="true" className="size-1 rounded-full bg-muted-foreground/30" />
                     <button
                       type="button"
                       onClick={() => {
@@ -86,17 +100,12 @@ export const InstalledSkillsTab: FC = () => {
                           if (rootPath) void loadSkills(rootPath);
                         });
                       }}
-                      className="text-[10px] text-muted-foreground hover:text-red-500 transition-colors"
+                      className="text-[11px] font-medium text-muted-foreground hover:text-red-500"
                     >
                       Uninstall
                     </button>
                   </div>
                 </div>
-                {skill.description && (
-                  <p className="mt-1 line-clamp-2 text-muted-foreground">
-                    {skill.description}
-                  </p>
-                )}
               </li>
             ))}
           </ul>
