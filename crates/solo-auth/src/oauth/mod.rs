@@ -18,7 +18,7 @@ pub use types::{
     TokenResponse, OpenAITokenResponse, OpenAIOAuthToken,
 };
 pub use pkce::{generate_code_challenge, generate_code_verifier, generate_state};
-pub use callback_server::{start_callback_server, get_callback_url, CallbackError, CallbackResult, CALLBACK_PORT};
+pub use callback_server::{start_callback_server, start_callback_server_on, get_callback_url, CallbackError, CallbackResult, CALLBACK_PORT};
 pub use providers::AnthropicOAuthConfig;
 pub use providers::{GitHubOAuthConfig, DeviceCodeResponse, DevicePollResult};
 pub use providers::OpenAIOAuthConfig;

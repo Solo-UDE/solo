@@ -8,7 +8,7 @@ use solo_auth::{
     oauth::{
         AuthMethodInfo, OAuthFlowResult, OAuthMethod, OAuthState,
         AnthropicOAuthConfig, OpenAIOAuthConfig,
-        start_callback_server,
+        start_callback_server, start_callback_server_on,
     },
     CredentialManager, ProviderType,
 };
@@ -387,14 +387,26 @@ pub async fn complete_oauth_flow(
 
 /// Wait for OAuth callback from browser (starts a local HTTP server).
 /// The expected_state parameter is validated against the callback's state
-/// to prevent CSRF attacks.
+/// to prevent CSRF attacks. The provider argument selects the port the
+/// server binds to — some providers (OpenAI/Codex) have their OAuth app
+/// registered against a specific localhost port, so we must match it
+/// exactly or auth.openai.com returns "unknown_error".
 #[tauri::command]
-pub async fn wait_for_oauth_callback(expected_state: String) -> Result<(String, String), String> {
-    info!("Waiting for OAuth callback");
+pub async fn wait_for_oauth_callback(
+    expected_state: String,
+    provider: Option<String>,
+) -> Result<(String, String), String> {
+    let provider_str = provider.as_deref().unwrap_or("");
+    info!(provider = %provider_str, "Waiting for OAuth callback");
 
-    let result = start_callback_server(&expected_state, None)
-        .await
-        .map_err(|e| format!("OAuth callback failed: {:?}", e))?;
+    let result = match provider_str {
+        "openai" => {
+            start_callback_server_on(&expected_state, None, OpenAIOAuthConfig::CALLBACK_PORT)
+                .await
+        }
+        _ => start_callback_server(&expected_state, None).await,
+    }
+    .map_err(|e| format!("OAuth callback failed: {:?}", e))?;
 
     Ok((result.code, result.state))
 }

@@ -258,9 +258,11 @@ export const useProviderStore = create<ProviderStore>()((set, get) => ({
 			await open(flow.auth_url);
 
 			// 3. Block until the browser redirects to our local callback
-			//    server on port 1455. The backend validates the state matches
-			//    what was passed in and returns the authorization code.
-			const { code } = await waitForOAuthCallback(flow.state);
+			//    server. The port the server binds to depends on the
+			//    provider (OpenAI/Codex requires :1455 to match OpenAI's
+			//    app registration). The backend validates the state
+			//    matches what was passed in and returns the auth code.
+			const { code } = await waitForOAuthCallback(flow.state, provider);
 
 			// 4. Exchange the code for tokens; the backend persists them.
 			await completeOAuthFlow(code, flow.state);

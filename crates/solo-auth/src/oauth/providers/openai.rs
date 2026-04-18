@@ -3,7 +3,6 @@
 //! OAuth 2.0 configuration for OpenAI/ChatGPT authentication using the Codex CLI flow.
 //! This allows ChatGPT Pro/Plus subscribers to use the free Codex API without an API key.
 
-use crate::oauth::callback_server::get_callback_url;
 use crate::oauth::pkce::{generate_code_challenge, generate_code_verifier, generate_state};
 use crate::oauth::types::{OAuthFlowResult, OAuthState, OpenAIOAuthToken, OpenAITokenResponse};
 use crate::provider::ProviderError;
@@ -25,12 +24,21 @@ impl OpenAIOAuthConfig {
     /// Required scopes for ChatGPT API access
     pub const SCOPES: &'static [&'static str] = &["openid", "profile", "email", "offline_access"];
 
+    /// Callback port that the Codex client_id is registered against.
+    /// Must match OpenAI's server-side app registration exactly — any
+    /// deviation in host, port, or path produces a generic "unknown_error"
+    /// from auth.openai.com.
+    pub const CALLBACK_PORT: u16 = 1455;
+
+    /// Redirect URI that the Codex client_id is registered against.
+    pub const REDIRECT_URI: &'static str = "http://localhost:1455/auth/callback";
+
     /// Build the authorization URL for browser redirect
     pub fn build_auth_url() -> Result<(OAuthFlowResult, OAuthState), ProviderError> {
         let state = generate_state();
         let code_verifier = generate_code_verifier();
         let code_challenge = generate_code_challenge(&code_verifier);
-        let redirect_uri = get_callback_url();
+        let redirect_uri = Self::REDIRECT_URI.to_string();
 
         let mut url = Url::parse(Self::AUTHORIZATION_URL)
             .map_err(|e| ProviderError::AuthError(format!("Invalid auth URL: {}", e)))?;
@@ -68,7 +76,7 @@ impl OpenAIOAuthConfig {
         code: &str,
         code_verifier: &str,
     ) -> Result<OpenAIOAuthToken, ProviderError> {
-        let redirect_uri = get_callback_url();
+        let redirect_uri = Self::REDIRECT_URI.to_string();
 
         let client = reqwest::Client::new();
         let response = client

@@ -322,9 +322,21 @@ pub async fn start_callback_server(
     expected_state: &str,
     timeout: Option<Duration>,
 ) -> Result<CallbackResult, CallbackError> {
+    start_callback_server_on(expected_state, timeout, CALLBACK_PORT).await
+}
+
+/// Same as `start_callback_server` but binds to a caller-supplied port.
+///
+/// Used by providers whose OAuth app registration expects a specific
+/// localhost port (e.g. OpenAI/Codex requires :1455).
+pub async fn start_callback_server_on(
+    expected_state: &str,
+    timeout: Option<Duration>,
+    port: u16,
+) -> Result<CallbackResult, CallbackError> {
     let timeout = timeout.unwrap_or(Duration::from_secs(300)); // 5 minutes default
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], CALLBACK_PORT));
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let listener = TcpListener::bind(addr)
         .await
         .map_err(|e| CallbackError::BindError(e.to_string()))?;
