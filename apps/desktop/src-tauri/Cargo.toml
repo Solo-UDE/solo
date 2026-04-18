@@ -59,7 +59,6 @@ tauri-plugin-decorum = "1.1.1"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 git2.workspace = true
-tokio-tungstenite.workspace = true
 futures-util.workspace = true
 
 # Agent bridge dependencies

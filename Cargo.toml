@@ -35,8 +35,6 @@ git2 = "0.20.4"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
-# WebSocket
-tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
 futures-util = "0.3"
 
 # Audio + ML for solo-voice
