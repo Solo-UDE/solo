@@ -99,11 +99,13 @@ impl OpenAIOAuthConfig {
             .await
             .map_err(|e| ProviderError::AuthError(format!("Failed to parse token response: {}", e)))?;
 
-        // Extract account_id from id_token JWT
+        // Extract account_id and email from id_token JWT
         let account_id = token_response.id_token.as_ref()
             .and_then(|id_token| extract_account_id_from_jwt(id_token));
+        let email = token_response.id_token.as_ref()
+            .and_then(|id_token| extract_email_from_jwt(id_token));
 
-        Ok(OpenAIOAuthToken::from_response(token_response, account_id))
+        Ok(OpenAIOAuthToken::from_response(token_response, account_id, email))
     }
 
     /// Refresh an expired access token
@@ -135,11 +137,13 @@ impl OpenAIOAuthConfig {
             .await
             .map_err(|e| ProviderError::AuthError(format!("Failed to parse refresh token response: {}", e)))?;
 
-        // Extract account_id from id_token JWT (may be present in refresh response)
+        // Extract account_id and email from id_token JWT (may be present in refresh response)
         let account_id = token_response.id_token.as_ref()
             .and_then(|id_token| extract_account_id_from_jwt(id_token));
+        let email = token_response.id_token.as_ref()
+            .and_then(|id_token| extract_email_from_jwt(id_token));
 
-        Ok(OpenAIOAuthToken::from_response(token_response, account_id))
+        Ok(OpenAIOAuthToken::from_response(token_response, account_id, email))
     }
 }
 
@@ -233,6 +237,37 @@ fn extract_account_id_from_jwt(id_token: &str) -> Option<String> {
 
     tracing::debug!("No chatgpt_account_id found in JWT claims");
     None
+}
+
+/// Extract the account email from an OpenAI id_token JWT.
+///
+/// Validates `iss` matches OpenAI's auth domain before trusting the `email`
+/// claim. Returns `None` on any parse failure or issuer mismatch. The caller
+/// should treat `None` as "unknown email" rather than "email is genuinely
+/// absent" — both cases land in the same code path (empty label in UI).
+fn extract_email_from_jwt(id_token: &str) -> Option<String> {
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    use base64::Engine;
+
+    let parts: Vec<&str> = id_token.split('.').collect();
+    if parts.len() != 3 {
+        return None;
+    }
+
+    let decoded = URL_SAFE_NO_PAD.decode(parts[1]).ok()?;
+    let json_str = String::from_utf8(decoded).ok()?;
+    let claims: serde_json::Value = serde_json::from_str(&json_str).ok()?;
+
+    // Same issuer check as extract_account_id_from_jwt.
+    match claims.get("iss").and_then(|v| v.as_str()) {
+        Some(iss) if iss == OPENAI_JWT_ISSUER => {}
+        _ => return None,
+    }
+
+    claims
+        .get("email")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
 }
 
 #[cfg(test)]
@@ -340,5 +375,44 @@ mod tests {
 
         let result = extract_account_id_from_jwt("invalid");
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_extract_email_from_jwt() {
+        let header = URL_SAFE_NO_PAD.encode(r#"{"alg":"none","typ":"JWT"}"#);
+        let payload = URL_SAFE_NO_PAD.encode(
+            r#"{"iss":"https://auth.openai.com/","email":"alice@example.com","sub":"user"}"#,
+        );
+        let test_jwt = format!("{}.{}.", header, payload);
+        assert_eq!(
+            extract_email_from_jwt(&test_jwt),
+            Some("alice@example.com".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_email_wrong_issuer_rejected() {
+        let header = URL_SAFE_NO_PAD.encode(r#"{"alg":"none","typ":"JWT"}"#);
+        let payload = URL_SAFE_NO_PAD.encode(
+            r#"{"iss":"https://evil.example.com/","email":"phish@evil.com"}"#,
+        );
+        let test_jwt = format!("{}.{}.", header, payload);
+        assert!(extract_email_from_jwt(&test_jwt).is_none());
+    }
+
+    #[test]
+    fn test_extract_email_missing_returns_none() {
+        let header = URL_SAFE_NO_PAD.encode(r#"{"alg":"none","typ":"JWT"}"#);
+        let payload = URL_SAFE_NO_PAD.encode(
+            r#"{"iss":"https://auth.openai.com/","sub":"user"}"#,
+        );
+        let test_jwt = format!("{}.{}.", header, payload);
+        assert!(extract_email_from_jwt(&test_jwt).is_none());
+    }
+
+    #[test]
+    fn test_extract_email_invalid_jwt_returns_none() {
+        assert!(extract_email_from_jwt("not.a.jwt").is_none());
+        assert!(extract_email_from_jwt("").is_none());
     }
 }

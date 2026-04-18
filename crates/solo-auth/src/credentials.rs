@@ -1224,10 +1224,15 @@ impl CredentialManager {
             id_token,
             expires_at: i64::try_from(token.expires_at).unwrap_or(i64::MAX),
             last_refresh: existing.as_ref().map(|e| e.last_refresh).unwrap_or(0),
-            email: existing
-                .as_ref()
-                .map(|e| e.email.clone())
-                .unwrap_or_default(),
+            // Prefer the email from the newly-issued token; fall back to whatever
+            // was already on the profile (preserves identity through refresh
+            // cycles that don't re-issue an id_token); fall back to "" as last resort.
+            email: token.email.clone().unwrap_or_else(|| {
+                existing
+                    .as_ref()
+                    .map(|e| e.email.clone())
+                    .unwrap_or_default()
+            }),
             account_id,
             plan_type: existing.as_ref().and_then(|e| e.plan_type.clone()),
         };
@@ -1252,6 +1257,7 @@ impl CredentialManager {
                 scope: None,
                 id_token: p.id_token.clone(),
                 account_id: p.account_id.clone(),
+                email: if p.email.is_empty() { None } else { Some(p.email.clone()) },
             },
             None => token, // shouldn't happen — we just upserted
         };
@@ -1327,6 +1333,7 @@ impl CredentialManager {
             scope: None,
             id_token: active.id_token.clone(),
             account_id: active.account_id.clone(),
+            email: if active.email.is_empty() { None } else { Some(active.email.clone()) },
         };
 
         *self.openai_oauth_cache.write().await = Some(OpenAIOAuthCredentialInfo {
@@ -1864,6 +1871,7 @@ mod profile_tests {
             scope: None,
             id_token: Some("jwt".into()),
             account_id: Some("acct-fresh".into()),
+            email: None,
         };
         m.set_openai_oauth_token(token).await.unwrap();
 
@@ -1906,6 +1914,7 @@ mod profile_tests {
             scope: None,
             id_token: None,              // new token has no id_token
             account_id: None,            // new token has no account_id
+            email: None,
         };
         m.set_openai_oauth_token(new_token).await.unwrap();
 
@@ -1952,6 +1961,7 @@ mod profile_tests {
             scope: None,
             id_token: Some("NEW.jwt".into()),
             account_id: Some("acct-new".into()),
+            email: None,
         };
         m.set_openai_oauth_token(new_token).await.unwrap();
 
@@ -1963,5 +1973,72 @@ mod profile_tests {
         // email and plan_type stay put — the token carries no such info.
         assert_eq!(saved_active.email, "me@openai.com");
         assert_eq!(saved_active.plan_type.as_deref(), Some("pro"));
+    }
+
+    #[tokio::test]
+    async fn set_openai_oauth_token_persists_email_from_token() {
+        let m = manager_with_vault(HashMap::new()).await;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let token = crate::oauth::OpenAIOAuthToken {
+            access_token: "ak".into(),
+            refresh_token: Some("rk".into()),
+            expires_at: now + 3600,
+            token_type: "Bearer".into(),
+            scope: None,
+            id_token: Some("jwt".into()),
+            account_id: Some("acct".into()),
+            email: Some("user@example.com".into()),
+        };
+        m.set_openai_oauth_token(token).await.unwrap();
+
+        let raw = m.vault_get_raw("openai.oauth").await.unwrap().unwrap();
+        let saved: ProviderOAuthStore = serde_json::from_str(&raw).unwrap();
+        let saved_active = saved.active().expect("active profile");
+        assert_eq!(saved_active.email, "user@example.com");
+    }
+
+    #[tokio::test]
+    async fn set_openai_oauth_token_preserves_email_when_token_has_none() {
+        // Seed an existing profile with an email.
+        let mut store = ProviderOAuthStore::empty();
+        store.upsert_profile(
+            "default",
+            OAuthProfile {
+                access_token: "old-ak".into(),
+                refresh_token: "old-rk".into(),
+                id_token: None,
+                expires_at: 1_000_000,
+                last_refresh: 0,
+                email: "kept@example.com".into(),
+                account_id: None,
+                plan_type: None,
+            },
+        );
+        let mut vault = HashMap::new();
+        vault.insert(
+            "openai.oauth".into(),
+            serde_json::to_string(&store).unwrap(),
+        );
+
+        let m = manager_with_vault(vault).await;
+        // New token has email: None — should keep the existing email.
+        let token = crate::oauth::OpenAIOAuthToken {
+            access_token: "new-ak".into(),
+            refresh_token: Some("new-rk".into()),
+            expires_at: 9_999_999_999,
+            token_type: "Bearer".into(),
+            scope: None,
+            id_token: None,
+            account_id: None,
+            email: None,
+        };
+        m.set_openai_oauth_token(token).await.unwrap();
+
+        let raw = m.vault_get_raw("openai.oauth").await.unwrap().unwrap();
+        let saved: ProviderOAuthStore = serde_json::from_str(&raw).unwrap();
+        assert_eq!(saved.active().unwrap().email, "kept@example.com");
     }
 }
