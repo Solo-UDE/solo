@@ -18,10 +18,10 @@ export function TitlebarButton({
     <button
       data-tauri-drag-region={false}
       className={cn(
-        'group inline-flex h-8 items-center rounded-[9px] border border-transparent px-2',
-        'bg-transparent text-muted-foreground hover:border-border/55 hover:bg-background/60 hover:text-foreground',
-        'transition-[background-color,border-color,color,transform] duration-150 active:scale-[0.97]',
-        active && 'glow-active border-border/40',
+        'group inline-flex h-8 items-center rounded-full px-2',
+        'bg-transparent text-muted-foreground hover:bg-background/60 hover:text-foreground',
+        'transition-[background-color,color,transform] duration-150 active:scale-[0.97]',
+        active && 'bg-background/50',
         className,
       )}
       {...props}
