@@ -312,8 +312,10 @@ mod tests {
 
     #[test]
     fn saturating_arithmetic_prevents_overflow() {
-        let mut d = StatsDelta::default();
-        d.tokens = u64::MAX - 10;
+        let mut d = StatsDelta {
+            tokens: u64::MAX - 10,
+            ..StatsDelta::default()
+        };
         d.apply(&StatsEvent::TokensConsumed { count: 100 });
         assert_eq!(d.tokens, u64::MAX);
     }

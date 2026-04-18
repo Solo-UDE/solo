@@ -73,7 +73,7 @@ impl Point {
     #[test]
     fn test_parse_typescript_file() {
         let parser = Parser::new();
-        let code = r#"
+        let code = r"
 interface User {
     name: string;
     age: number;
@@ -90,7 +90,7 @@ class UserService {
         this.users.push(user);
     }
 }
-"#;
+";
 
         let result = parser.parse("test.ts", code).unwrap();
         assert!(!result.symbols.is_empty());

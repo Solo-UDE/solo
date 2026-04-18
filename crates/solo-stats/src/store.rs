@@ -97,13 +97,15 @@ mod tests {
     async fn roundtrip_preserves_counters() {
         let tmp = tempfile::tempdir().unwrap();
         let store = StatsStore::new(tmp.path().join("stats.json")).await.unwrap();
-        let mut snap = StatsSnapshot::default();
-        snap.pending = StatsDelta {
-            commits: 7,
-            tokens: 12345,
-            worktrees: 2,
-            sessions: 3,
-            messages: 8,
+        let snap = StatsSnapshot {
+            pending: StatsDelta {
+                commits: 7,
+                tokens: 12345,
+                worktrees: 2,
+                sessions: 3,
+                messages: 8,
+            },
+            ..StatsSnapshot::default()
         };
         store.save(&snap).await.unwrap();
         let loaded = store.load().await.unwrap();

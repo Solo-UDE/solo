@@ -23,7 +23,7 @@ use crate::{Result, VaultError};
 /// Max bytes the pipeline will accept for a single entry.
 const MAX_BYTES: u64 = 50 * 1024 * 1024;
 
-/// Words per chunk. ~500 words ≈ 650 tokens for the OpenAI embedder, so this
+/// Words per chunk. ~500 words ≈ 650 tokens for the `OpenAI` embedder, so this
 /// stays well under the context limit with room for overlap.
 const CHUNK_WORDS: usize = 500;
 const CHUNK_OVERLAP_WORDS: usize = 50;
@@ -95,11 +95,7 @@ pub fn ingest_file(
         tags: Vec::new(),
         mime: classification.mime.clone(),
         size_bytes: Some(meta.len()),
-        index_status: if chunks.is_empty() {
-            IndexStatus::Indexed
-        } else {
-            IndexStatus::Indexed
-        },
+        index_status: IndexStatus::Indexed,
         cloud_sync_state: CloudSyncState::Offline,
         classifier_confidence: classification.confidence,
         retrieval_stats: RetrievalStats::default(),
@@ -222,7 +218,7 @@ pub struct EmbedStats {
 /// Per-batch errors are logged with enough context to triage. The function
 /// never panics and never returns Err — it embeds what it can and reports.
 ///
-/// Tunables: `BATCH_SIZE` = 64 (OpenAI can handle 2048 texts but 64 keeps
+/// Tunables: `BATCH_SIZE` = 64 (`OpenAI` can handle 2048 texts but 64 keeps
 /// per-request latency low and lets backoff be useful); `MAX_RETRIES` = 3
 /// with wait = `retry_after * 2^attempt` seconds (capped at 60s).
 pub async fn embed_chunks(
@@ -250,7 +246,7 @@ pub async fn embed_chunks(
                 Ok(embs) => {
                     let latency_ms = batch_start.elapsed().as_millis() as u64;
                     if stats.dim == 0 {
-                        stats.dim = embs.first().map(|e| e.dimensions).unwrap_or(0);
+                        stats.dim = embs.first().map_or(0, |e| e.dimensions);
                     }
                     let received = embs.len();
                     for (chunk, emb) in batch.iter().zip(embs.into_iter()) {
@@ -269,7 +265,7 @@ pub async fn embed_chunks(
                 Err(EmbeddingError::RateLimited(retry_after_s))
                     if attempt < MAX_RETRIES =>
                 {
-                    let base = retry_after_s.max(1).min(60) as u64;
+                    let base = u64::from(retry_after_s.clamp(1, 60));
                     let wait_s = (base * (1u64 << attempt)).min(60);
                     warn!(
                         batch_i,

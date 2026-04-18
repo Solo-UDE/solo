@@ -129,12 +129,12 @@ impl FileWatcher {
                                             // Deleted wins over everything else
                                             (_, FileEventType::Deleted) => {
                                                 *existing_type = FileEventType::Deleted;
-                                                *existing_new = new_path.clone();
+                                                existing_new.clone_from(&new_path);
                                             }
                                             // All other transitions: take the newer event
                                             _ => {
                                                 *existing_type = event_type.clone();
-                                                *existing_new = new_path.clone();
+                                                existing_new.clone_from(&new_path);
                                             }
                                         }
                                         *timestamp = Instant::now();

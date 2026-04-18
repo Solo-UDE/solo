@@ -75,11 +75,7 @@ impl OAuthToken {
             .unwrap_or(Duration::ZERO)
             .as_secs();
 
-        if now >= self.expires_at {
-            0
-        } else {
-            self.expires_at - now
-        }
+        self.expires_at.saturating_sub(now)
     }
 
     /// Check if token can be refreshed
@@ -328,11 +324,7 @@ impl OpenAIOAuthToken {
             .unwrap_or(std::time::Duration::ZERO)
             .as_secs();
 
-        if now >= self.expires_at {
-            0
-        } else {
-            self.expires_at - now
-        }
+        self.expires_at.saturating_sub(now)
     }
 
     /// Check if token can be refreshed
