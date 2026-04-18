@@ -11,12 +11,17 @@ import {
 	getAuthMethod,
 	startOAuthFlow as startOAuthFlowBackend,
 	disconnectOAuth as disconnectOAuthBackend,
+	listProfiles as listProfilesBackend,
+	setActiveProfile as setActiveProfileBackend,
+	removeProfile as removeProfileBackend,
+	signOutProfile as signOutProfileBackend,
 } from "../lib/backend";
 import type {
 	ProviderType,
 	ProviderStatus,
 	ModelInfo,
 	AuthMethodInfo,
+	ProfileSummary,
 } from "../lib/backend";
 
 interface ProviderState {
@@ -40,6 +45,10 @@ interface ProviderState {
 	isInitialized: boolean;
 	// OAuth pending state per provider
 	oauthPending: Record<string, boolean>;
+	// Profiles per provider.
+	profiles: Record<string, ProfileSummary[]>;
+	// Currently-active profile name per provider (empty string if none).
+	activeProfile: Record<string, string>;
 }
 
 interface ProviderActions {
@@ -53,6 +62,10 @@ interface ProviderActions {
 	clearCredentials: (provider: string) => Promise<void>;
 	startOAuthFlow: (provider: string, method: string) => Promise<void>;
 	disconnectOAuth: (provider: string) => Promise<void>;
+	refreshProfiles: (provider: string) => Promise<void>;
+	setActiveProfile: (provider: string, profileName: string) => Promise<void>;
+	removeProfile: (provider: string, profileName: string) => Promise<void>;
+	signOutProfile: (provider: string, profileName?: string) => Promise<void>;
 }
 
 type ProviderStore = ProviderState & ProviderActions;
@@ -68,6 +81,8 @@ export const useProviderStore = create<ProviderStore>()((set, get) => ({
 	error: null,
 	isInitialized: false,
 	oauthPending: {},
+	profiles: {},
+	activeProfile: {},
 
 	initialize: async () => {
 		if (get().isInitialized) return;
@@ -82,9 +97,22 @@ export const useProviderStore = create<ProviderStore>()((set, get) => ({
 
 			// Fetch provider statuses
 			const statusMap: Record<string, ProviderStatus> = {};
+			const profileMap: Record<string, ProfileSummary[]> = {};
+			const activeProfileMap: Record<string, string> = {};
 			for (const provider of providers) {
 				const status = await getProviderStatus(provider);
 				statusMap[provider] = status;
+
+				// Load profiles (empty array is fine if none exist).
+				try {
+					const profs = await listProfilesBackend(provider);
+					profileMap[provider] = profs;
+					activeProfileMap[provider] = profs.find((p) => p.isActive)?.name ?? "";
+				} catch (e) {
+					console.warn(`listProfiles failed for ${provider}:`, e);
+					profileMap[provider] = [];
+					activeProfileMap[provider] = "";
+				}
 			}
 
 			// Fetch all models
@@ -101,6 +129,8 @@ export const useProviderStore = create<ProviderStore>()((set, get) => ({
 				providers,
 				activeProvider,
 				providerStatus: statusMap,
+				profiles: profileMap,
+				activeProfile: activeProfileMap,
 				models,
 				selectedModel: defaultModel?.id ?? null,
 				isLoading: false,
@@ -238,6 +268,58 @@ export const useProviderStore = create<ProviderStore>()((set, get) => ({
 			});
 		}
 	},
+
+	refreshProfiles: async (provider: string) => {
+		try {
+			const profiles = await listProfilesBackend(provider);
+			const active = profiles.find((p) => p.isActive)?.name ?? "";
+			set((state) => ({
+				profiles: { ...state.profiles, [provider]: profiles },
+				activeProfile: { ...state.activeProfile, [provider]: active },
+			}));
+		} catch (error) {
+			console.error(`Failed to refresh profiles for ${provider}:`, error);
+		}
+	},
+
+	setActiveProfile: async (provider: string, profileName: string) => {
+		try {
+			await setActiveProfileBackend(provider, profileName);
+			await get().refreshProfiles(provider);
+			await get().refreshProviderStatus(provider);
+		} catch (error) {
+			set({
+				error: error instanceof Error ? error.message : String(error),
+			});
+			throw error;
+		}
+	},
+
+	removeProfile: async (provider: string, profileName: string) => {
+		try {
+			await removeProfileBackend(provider, profileName);
+			await get().refreshProfiles(provider);
+			await get().refreshProviderStatus(provider);
+		} catch (error) {
+			set({
+				error: error instanceof Error ? error.message : String(error),
+			});
+			throw error;
+		}
+	},
+
+	signOutProfile: async (provider: string, profileName?: string) => {
+		try {
+			await signOutProfileBackend(provider, profileName);
+			await get().refreshProfiles(provider);
+			await get().refreshProviderStatus(provider);
+			await get().refreshAuthMethod(provider);
+		} catch (error) {
+			set({
+				error: error instanceof Error ? error.message : String(error),
+			});
+		}
+	},
 }));
 
 // Selector hooks
@@ -293,4 +375,12 @@ export const useOAuthPending = (provider: string): boolean => {
 	return useProviderStore(
 		(state) => state.oauthPending[provider] ?? false
 	);
+};
+
+export const useProviderProfiles = (provider: string): ProfileSummary[] => {
+	return useProviderStore((state) => state.profiles[provider] ?? []);
+};
+
+export const useActiveProfile = (provider: string): string => {
+	return useProviderStore((state) => state.activeProfile[provider] ?? "");
 };
