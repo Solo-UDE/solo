@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback, useEffect, useImperativeHandle, forwardRef, lazy, Suspense } from 'react';
+import React, { useRef, useState, useCallback, useEffect, useMemo, useImperativeHandle, forwardRef, lazy, Suspense } from 'react';
 import { StopIcon } from '@radix-ui/react-icons';
 import { Paintbrush } from 'lucide-react';
 
