@@ -15,8 +15,10 @@
     "synth:prod": "cdk synth --context stage=prod",
     "diff:dev": "cdk diff --context stage=dev --profile solo",
     "diff:prod": "cdk diff --context stage=prod --profile solo",
-    "deploy:dev": "cdk deploy --all --context stage=dev --profile solo --require-approval never",
-    "deploy:prod": "cdk deploy --all --context stage=prod --profile solo --require-approval any-change",
+    "deploy:dev": "cdk deploy --all --context stage=dev --profile solo --require-approval never && bun run sync-env:dev",
+    "deploy:prod": "cdk deploy --all --context stage=prod --profile solo --require-approval any-change && bun run sync-env:prod",
+    "sync-env:dev": "bun scripts/sync-env.mjs dev",
+    "sync-env:prod": "bun scripts/sync-env.mjs prod",
     "destroy:dev": "cdk destroy --all --context stage=dev --profile solo",
     "bootstrap:dev": "cdk bootstrap --context stage=dev --profile solo",
     "typecheck": "tsc --noEmit"
@@ -29,6 +31,7 @@
     "typescript": "^5.7.3"
   },
   "dependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.699.0",
     "@aws-sdk/client-dynamodb": "^3.699.0",
     "@aws-sdk/client-kms": "^3.699.0",
     "@aws-sdk/client-s3": "^3.699.0",
