@@ -8,9 +8,17 @@ import type { PluginDetail } from '../../bindings/PluginDetail';
 import type { PluginId } from '../../bindings/PluginId';
 import type { PluginInstallResult } from '../../bindings/PluginInstallResult';
 import type { PluginListOutcome } from '../../bindings/PluginListOutcome';
+import type { PluginLoadError } from '../../bindings/PluginLoadError';
 import type { PluginSummary } from '../../bindings/PluginSummary';
 
-export type { PluginDetail, PluginId, PluginInstallResult, PluginListOutcome, PluginSummary };
+export type {
+  PluginDetail,
+  PluginId,
+  PluginInstallResult,
+  PluginListOutcome,
+  PluginLoadError,
+  PluginSummary,
+};
 
 export const pluginsApi = {
   list: (cwd: string): Promise<PluginListOutcome> =>
