@@ -51,7 +51,7 @@ const EASE_SMOOTH: [number, number, number, number] = [0.16, 1, 0.3, 1];
 registerBuiltinPanels();
 
 function AppContent() {
-  const [backendStatus, setBackendStatus] = useState<string>("Connecting...");
+  const [, setBackendStatus] = useState<string>("Connecting...");
   const sidebarRef = useRef<HTMLElement>(null);
   const dragStartX = useRef<number>(0);
   const dragStartWidth = useRef<number>(0);
@@ -495,10 +495,10 @@ function AppContent() {
               onClick={toggleLeftSidebar}
               data-tauri-drag-region="false"
               className={cn(
-                'inline-flex h-8 w-8 items-center justify-center rounded-[9px]',
+                'inline-flex h-8 w-8 items-center justify-center rounded-full',
                 'text-sidebar-foreground transition-[background-color,color,transform] duration-150',
                 'hover:bg-background/65 hover:text-foreground active:scale-[0.96]',
-                !isCollapsed && 'glow-active',
+                !isCollapsed && 'bg-background/50',
               )}
               title={isCollapsed ? 'Open Sidebar (⌘B)' : 'Collapse Sidebar (⌘B)'}
               aria-label={isCollapsed ? 'Open Sidebar' : 'Collapse Sidebar'}
@@ -511,18 +511,6 @@ function AppContent() {
         <div className="flex-1" data-tauri-drag-region />
 
         <div className="flex min-w-0 items-center justify-end gap-1.5" data-tauri-drag-region="false">
-            <div className="hidden items-center gap-2 px-1 text-[11px] text-muted-foreground md:flex">
-              <div
-                className={`h-2 w-2 rounded-full ${
-                  backendStatus.includes('connected')
-                    ? 'bg-status-success'
-                    : backendStatus.includes('error')
-                      ? 'bg-status-error'
-                      : 'bg-status-warning animate-pulse'
-                }`}
-              />
-              <span>{backendStatus.includes('connected') ? 'Ready' : backendStatus}</span>
-            </div>
             {user?.email && (
               <span className="max-w-32 truncate px-1 text-xs text-muted-foreground/70">
                 {user.email}
