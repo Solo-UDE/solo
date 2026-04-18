@@ -16,4 +16,4 @@ pub mod vad;
 // Re-exports (added as types land in later tasks):
 pub use error::VoiceError;
 pub use mode::{PipelineTarget, VoiceMode};
-// pub use pipeline::VoicePipeline;
+pub use pipeline::VoicePipeline;
