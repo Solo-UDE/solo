@@ -9,12 +9,23 @@ import * as lambdaNodejs from "aws-cdk-lib/aws-lambda-nodejs";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import { Construct } from "constructs";
+import { existsSync } from "node:fs";
 import * as path from "node:path";
 import * as url from "node:url";
 import type { SoloStageConfig } from "./config.js";
 
 const __filename = url.fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+function resolveEntryPath(entryPath: string): string {
+  const abs = path.resolve(__dirname, "..", entryPath);
+  if (existsSync(abs)) return abs;
+  if (entryPath.endsWith(".ts")) {
+    const compiled = abs.replace(/\.ts$/, ".js");
+    if (existsSync(compiled)) return compiled;
+  }
+  return abs;
+}
 
 export interface SoloGitHubStackProps extends cdk.StackProps {
   readonly config: SoloStageConfig;
@@ -106,7 +117,7 @@ export class SoloGitHubStack extends cdk.Stack {
         functionName,
         runtime: lambda.Runtime.NODEJS_20_X,
         architecture: lambda.Architecture.ARM_64,
-        entry: path.resolve(__dirname, "..", entryPath),
+        entry: resolveEntryPath(entryPath),
         handler: "handler",
         timeout: cdk.Duration.seconds(10),
         memorySize: 256,

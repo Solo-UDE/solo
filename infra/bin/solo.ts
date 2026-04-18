@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import "source-map-support/register";
+import "source-map-support/register.js";
 import * as cdk from "aws-cdk-lib";
 import { resolveStageConfig } from "../lib/config.js";
 import { SoloAuthStack } from "../lib/auth-stack.js";
