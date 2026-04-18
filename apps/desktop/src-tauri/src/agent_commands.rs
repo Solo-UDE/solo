@@ -125,7 +125,7 @@ pub async fn agent_create_session(
                 // has its own ClaudeCredentials resolver (file, keychain,
                 // env) that works well and we don't want to break it.
             }
-            ProviderType::Gemini | ProviderType::ElevenLabs => {
+            ProviderType::Gemini => {
                 return Err(format!(
                     "{} is not supported by the chat agent",
                     provider_type.as_str()
