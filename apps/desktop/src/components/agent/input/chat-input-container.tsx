@@ -363,8 +363,6 @@ function ChatInputContainerInner(
                   onTranscript={handleVoiceTranscript}
                   showSuggestion={showVoiceSuggestion}
                   onSuggestionDismiss={handleDismissVoiceSuggestion}
-                  previousText={voiceContext}
-                  chatContext={voiceContext}
                 />
 
                 <button
