@@ -103,6 +103,19 @@ export interface SessionConfig {
   sessionMode?: 'chat' | 'agent';
   resumeSessionId?: string;
   forkSession?: boolean;
+  /**
+   * Provider for this session. When absent, defaults to 'anthropic'.
+   */
+  provider?: 'anthropic' | 'openai';
+
+  /**
+   * Credentials handed from Rust. When absent, the Anthropic adapter falls
+   * back to ClaudeCredentials.getCredentials(). The OpenAI adapter errors
+   * if this is missing.
+   */
+  credentials?:
+    | { kind: 'oauth'; token: string; accountId?: string }
+    | { kind: 'api_key'; token: string };
 }
 
 /**
