@@ -1,143 +1,14 @@
 #!/usr/bin/env node
-var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
-  get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
-}) : x)(function(x) {
-  if (typeof require !== "undefined") return require.apply(this, arguments);
-  throw Error('Dynamic require of "' + x + '" is not supported');
-});
+import {
+  __require,
+  configureFileLogging,
+  createLogger,
+  setCorrelationId,
+  shutdownFileLogging
+} from "./chunk-CLAVTT35.js";
 
 // src/index.ts
 import * as readline from "readline";
-
-// src/logger.ts
-import * as fs from "fs";
-import * as path from "path";
-import * as os from "os";
-var LOG_LEVEL_ORDER = {
-  debug: 0,
-  info: 1,
-  warn: 2,
-  error: 3
-};
-var stderrLevel = "info";
-var fileLevel = "debug";
-var logFilePath = null;
-var logFileStream = null;
-var MAX_FILE_SIZE = 10 * 1024 * 1024;
-var MAX_ROTATED_FILES = 5;
-var debugCallback = null;
-var activeCorrelationId;
-function configureFileLogging(logDir) {
-  const dir = logDir ?? path.join(os.homedir(), ".solo", "logs");
-  try {
-    fs.mkdirSync(dir, { recursive: true });
-  } catch {
-  }
-  logFilePath = path.join(dir, "agent-bridge.log");
-  rotateIfNeeded();
-  logFileStream = fs.createWriteStream(logFilePath, { flags: "a" });
-  logFileStream.on("error", (err) => {
-    process.stderr.write(`[logger] File write error: ${err.message}
-`);
-    logFileStream = null;
-  });
-}
-function setCorrelationId(id) {
-  activeCorrelationId = id;
-}
-function rotateIfNeeded() {
-  if (!logFilePath) return;
-  let stat;
-  try {
-    stat = fs.statSync(logFilePath);
-  } catch {
-    return;
-  }
-  if (stat.size < MAX_FILE_SIZE) return;
-  if (logFileStream) {
-    logFileStream.end();
-    logFileStream = null;
-  }
-  for (let i = MAX_ROTATED_FILES; i >= 1; i--) {
-    const from = i === 1 ? logFilePath : `${logFilePath}.${i - 1}`;
-    const to = `${logFilePath}.${i}`;
-    try {
-      if (i === MAX_ROTATED_FILES) {
-        fs.unlinkSync(to);
-      }
-    } catch {
-    }
-    try {
-      fs.renameSync(from, to);
-    } catch {
-    }
-  }
-}
-function shouldLog(entryLevel, minLevel) {
-  return LOG_LEVEL_ORDER[entryLevel] >= LOG_LEVEL_ORDER[minLevel];
-}
-function writeEntry(entry) {
-  if (shouldLog(entry.level, stderrLevel)) {
-    const contextStr = entry.context ? ` ${JSON.stringify(entry.context)}` : "";
-    const correlStr = entry.correlationId ? ` [${entry.correlationId.slice(0, 8)}]` : "";
-    const durationStr = entry.durationMs !== void 0 ? ` (${entry.durationMs}ms)` : "";
-    const formatted = `[${entry.timestamp}] [${entry.prefix}] [${entry.level.toUpperCase()}]${correlStr}${contextStr} ${entry.message}${durationStr}`;
-    process.stderr.write(formatted + "\n");
-  }
-  if (logFileStream && shouldLog(entry.level, fileLevel)) {
-    const jsonLine = JSON.stringify(entry) + "\n";
-    logFileStream.write(jsonLine);
-    if (logFilePath) {
-      try {
-        const stat = fs.statSync(logFilePath);
-        if (stat.size >= MAX_FILE_SIZE) {
-          rotateIfNeeded();
-          logFileStream = fs.createWriteStream(logFilePath, { flags: "a" });
-        }
-      } catch {
-      }
-    }
-  }
-  if (debugCallback) {
-    try {
-      debugCallback(entry);
-    } catch {
-    }
-  }
-}
-function createLogger(prefix) {
-  const buildEntry = (level, contextOrMessage, message) => {
-    const isContextOverload = typeof contextOrMessage !== "string";
-    return {
-      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-      level,
-      prefix,
-      message: isContextOverload ? message ?? "" : contextOrMessage,
-      context: isContextOverload ? contextOrMessage : void 0,
-      correlationId: activeCorrelationId
-    };
-  };
-  return {
-    debug(contextOrMessage, message) {
-      writeEntry(buildEntry("debug", contextOrMessage, message));
-    },
-    info(contextOrMessage, message) {
-      writeEntry(buildEntry("info", contextOrMessage, message));
-    },
-    warn(contextOrMessage, message) {
-      writeEntry(buildEntry("warn", contextOrMessage, message));
-    },
-    error(contextOrMessage, message) {
-      writeEntry(buildEntry("error", contextOrMessage, message));
-    }
-  };
-}
-function shutdownFileLogging() {
-  if (logFileStream) {
-    logFileStream.end();
-    logFileStream = null;
-  }
-}
 
 // src/session-manager.ts
 import { randomUUID } from "crypto";
@@ -147,13 +18,13 @@ import { query, createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
 
 // src/vault.ts
 import { Database } from "bun:sqlite";
-import { homedir as homedir2 } from "os";
-import { join as join2 } from "path";
+import { homedir } from "os";
+import { join } from "path";
 import { existsSync } from "fs";
 import { tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 var logger = createLogger("vault");
-var VAULT_DB = join2(homedir2(), ".solo", "vault", "index.sqlite");
+var VAULT_DB = join(homedir(), ".solo", "vault", "index.sqlite");
 var EMBEDDING_DIM = 384;
 var VAULT_DEBUG = process.env.VAULT_DEBUG === "1" || process.env.VAULT_DEBUG === "true";
 function openDb() {
@@ -619,13 +490,13 @@ ${hits.map((h) => `  ${h.entryTitle} \u2192 ${h.score.toFixed(4)}`).join("\n")}
 );
 
 // src/agent.ts
-import * as fs5 from "fs";
+import * as fs4 from "fs";
 
 // src/credentials.ts
 import { execFileSync } from "child_process";
 import { readFileSync } from "fs";
-import { join as join3 } from "path";
-import { homedir as homedir3 } from "os";
+import { join as join2 } from "path";
+import { homedir as homedir2 } from "os";
 var logger2 = createLogger("ClaudeCredentials");
 var CLAUDE_CODE_OAUTH_CLIENT_ID = "claude-desktop";
 var CLAUDE_CODE_TOKEN_ENDPOINT = "https://api.anthropic.com/v1/oauth/token";
@@ -710,7 +581,7 @@ async function resolveOAuthFromParsed(parsed, source) {
 }
 async function getOAuthTokenFromFile() {
   try {
-    const credPath = join3(homedir3(), ".claude", ".credentials.json");
+    const credPath = join2(homedir2(), ".claude", ".credentials.json");
     const content = readFileSync(credPath, "utf-8");
     const parsed = JSON.parse(content);
     if (!isClaudeCredentialsFile(parsed)) {
@@ -780,9 +651,9 @@ var ClaudeCredentials = {
 };
 
 // src/permission-pipeline.ts
-import * as fs2 from "fs";
-import * as os2 from "os";
-import * as path2 from "path";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
 var logger3 = createLogger("PermissionPipeline");
 var DEFAULT_TOOL_TIERS = /* @__PURE__ */ new Map([
   // Read-only
@@ -963,8 +834,8 @@ var EMPTY_SETTINGS = Object.freeze({
 });
 function readJsonOr(file, fallback) {
   try {
-    if (!fs2.existsSync(file)) return fallback;
-    const raw = fs2.readFileSync(file, "utf-8").trim();
+    if (!fs.existsSync(file)) return fallback;
+    const raw = fs.readFileSync(file, "utf-8").trim();
     if (raw.length === 0) return fallback;
     return JSON.parse(raw);
   } catch (err) {
@@ -1015,9 +886,9 @@ function mergeInto(dst, src) {
   }
 }
 function loadMergedSettings(workspace) {
-  const userPath = path2.join(os2.homedir(), SETTINGS_DIR, SETTINGS_FILE);
-  const projectPath = path2.join(workspace, SETTINGS_DIR, SETTINGS_FILE);
-  const localPath = path2.join(workspace, SETTINGS_DIR, LOCAL_SETTINGS_FILE);
+  const userPath = path.join(os.homedir(), SETTINGS_DIR, SETTINGS_FILE);
+  const projectPath = path.join(workspace, SETTINGS_DIR, SETTINGS_FILE);
+  const localPath = path.join(workspace, SETTINGS_DIR, LOCAL_SETTINGS_FILE);
   const merged = JSON.parse(JSON.stringify(EMPTY_SETTINGS));
   mergeInto(merged, readJsonOr(userPath, {}));
   mergeInto(merged, readJsonOr(projectPath, {}));
@@ -1104,18 +975,18 @@ var PermissionManager = class _PermissionManager {
     const ws = this.workspaceGetter?.();
     if (!ws) return null;
     try {
-      const fs6 = __require("fs");
-      const path5 = __require("path");
-      const os3 = __require("os");
+      const fs5 = __require("fs");
+      const path4 = __require("path");
+      const os2 = __require("os");
       const paths = [
-        path5.join(os3.homedir(), ".solo", "settings.json"),
-        path5.join(ws, ".solo", "settings.json"),
-        path5.join(ws, ".solo", "settings.local.json")
+        path4.join(os2.homedir(), ".solo", "settings.json"),
+        path4.join(ws, ".solo", "settings.json"),
+        path4.join(ws, ".solo", "settings.local.json")
       ];
       let combinedMtime = 0;
       for (const p of paths) {
         try {
-          const stat = fs6.statSync(p);
+          const stat = fs5.statSync(p);
           combinedMtime = Math.max(combinedMtime, stat.mtimeMs);
         } catch {
         }
@@ -1338,8 +1209,8 @@ var PermissionManager = class _PermissionManager {
 };
 
 // src/plan-names.ts
-import * as fs3 from "fs";
-import * as path3 from "path";
+import * as fs2 from "fs";
+import * as path2 from "path";
 var ADJECTIVES = [
   "cozy",
   "woolly",
@@ -1497,16 +1368,16 @@ function generatePlanName() {
 }
 function plansDir(workspace) {
   if (workspace && workspace.length > 0) {
-    return path3.join(workspace, ".solo", "plans");
+    return path2.join(workspace, ".solo", "plans");
   }
-  const os3 = __require("os");
-  return path3.join(os3.homedir(), ".solo", "plans");
+  const os2 = __require("os");
+  return path2.join(os2.homedir(), ".solo", "plans");
 }
 function getPlanFilePath(name, workspace) {
-  return path3.join(plansDir(workspace), `${name}.md`);
+  return path2.join(plansDir(workspace), `${name}.md`);
 }
 function ensurePlanDirectory(workspace) {
-  fs3.mkdirSync(plansDir(workspace), { recursive: true });
+  fs2.mkdirSync(plansDir(workspace), { recursive: true });
 }
 
 // src/session-mode.ts
@@ -1595,8 +1466,8 @@ Today's date is ${today}.`;
 }
 
 // src/utils/content.ts
-import * as fs4 from "fs";
-import * as path4 from "path";
+import * as fs3 from "fs";
+import * as path3 from "path";
 var MAX_IMAGE_SIZE = 20 * 1024 * 1024;
 var MAX_DOCUMENT_SIZE = 30 * 1024 * 1024;
 var MAX_TEXT_SIZE = 1 * 1024 * 1024;
@@ -1634,7 +1505,7 @@ function buildContentBlocks(message, attachments) {
       } else {
         const fileContent = readTextFromPath(attachment.filePath);
         if (fileContent !== null) {
-          const name = attachment.name ?? path4.basename(attachment.filePath);
+          const name = attachment.name ?? path3.basename(attachment.filePath);
           const languageHint = getLanguageHint(name);
           contentBlocks.push({
             type: "text",
@@ -1667,7 +1538,7 @@ ${attachment.text}
       } else if (attachment.filePath && !attachment.text) {
         const fileContent = readTextFromPath(attachment.filePath);
         if (fileContent !== null) {
-          const name = attachment.name ?? path4.basename(attachment.filePath);
+          const name = attachment.name ?? path3.basename(attachment.filePath);
           const languageHint = getLanguageHint(name);
           textContent = `File: ${name}
 \`\`\`${languageHint}
@@ -1708,15 +1579,15 @@ function getDocumentMimeType(filename) {
   return null;
 }
 function readImageFromPath(filePath) {
-  const mimeType = getImageMimeType(path4.basename(filePath));
+  const mimeType = getImageMimeType(path3.basename(filePath));
   if (!mimeType) return null;
   try {
-    const stat = fs4.statSync(filePath);
+    const stat = fs3.statSync(filePath);
     if (stat.size > MAX_IMAGE_SIZE) {
       console.warn(`Skipping image attachment: file too large (${stat.size} bytes): ${filePath}`);
       return null;
     }
-    const data = fs4.readFileSync(filePath).toString("base64");
+    const data = fs3.readFileSync(filePath).toString("base64");
     return {
       type: "image",
       source: { type: "base64", media_type: mimeType, data }
@@ -1727,15 +1598,15 @@ function readImageFromPath(filePath) {
   }
 }
 function readDocumentFromPath(filePath) {
-  const mimeType = getDocumentMimeType(path4.basename(filePath));
+  const mimeType = getDocumentMimeType(path3.basename(filePath));
   if (!mimeType) return null;
   try {
-    const stat = fs4.statSync(filePath);
+    const stat = fs3.statSync(filePath);
     if (stat.size > MAX_DOCUMENT_SIZE) {
       console.warn(`Skipping document attachment: file too large (${stat.size} bytes): ${filePath}`);
       return null;
     }
-    const data = fs4.readFileSync(filePath).toString("base64");
+    const data = fs3.readFileSync(filePath).toString("base64");
     return {
       type: "document",
       source: { type: "base64", media_type: mimeType, data }
@@ -1747,12 +1618,12 @@ function readDocumentFromPath(filePath) {
 }
 function readTextFromPath(filePath) {
   try {
-    const stat = fs4.statSync(filePath);
+    const stat = fs3.statSync(filePath);
     if (stat.size > MAX_TEXT_SIZE) {
       console.warn(`Skipping text attachment: file too large (${stat.size} bytes): ${filePath}`);
       return null;
     }
-    return fs4.readFileSync(filePath, "utf-8");
+    return fs3.readFileSync(filePath, "utf-8");
   } catch (err) {
     console.warn(`Failed to read text attachment: ${filePath}`, err);
     return null;
@@ -2598,7 +2469,7 @@ data, screenshots, notes). It functions as your durable memory across sessions.
               (input) => {
                 const parts = [];
                 if (this._planMode && this._planFilePath) {
-                  const planExists = fs5.existsSync(this._planFilePath);
+                  const planExists = fs4.existsSync(this._planFilePath);
                   parts.push(
                     `Plan mode is active. The user indicated that they do not want you to execute yet -- you MUST NOT make any edits (with the exception of the plan file mentioned below), run any non-readonly tools (including changing configs or making commits), or otherwise make any changes to the system. This supercedes any other instructions you have received.
 
@@ -3130,6 +3001,12 @@ var SessionManager = class extends Disposable {
   onSessionInit = this._onSessionInit.event;
   // Session tracking
   activeSessions = /* @__PURE__ */ new Map();
+  /**
+   * Parallel map of OpenAI provider sessions, keyed by sessionId. These
+   * do NOT share state with the Anthropic `activeSessions` map —
+   * every lookup in the manager checks both and dispatches accordingly.
+   */
+  openAISessions = /* @__PURE__ */ new Map();
   sessionConsumers = /* @__PURE__ */ new Map();
   permissionResolvers = /* @__PURE__ */ new Map();
   /**
@@ -3161,7 +3038,34 @@ var SessionManager = class extends Disposable {
    * Create a new agent session
    */
   async createSession(sessionId, config) {
-    if (this.activeSessions.has(sessionId)) {
+    if (this.activeSessions.has(sessionId) || this.openAISessions.has(sessionId)) {
+      return;
+    }
+    const provider = config?.provider ?? "anthropic";
+    if (provider === "openai") {
+      if (!config?.credentials) {
+        throw new Error(
+          "OpenAI session requires credentials \u2014 Rust side must pass them via SessionConfig.credentials"
+        );
+      }
+      if (!config?.model) {
+        throw new Error("OpenAI session requires a model");
+      }
+      const { createOpenAISession } = await import("./openai-D5ADTANL.js");
+      const openaiSession = await createOpenAISession({
+        model: config.model,
+        credentials: config.credentials,
+        maxTokens: config.maxTokens,
+        thinkingEnabled: config.thinkingEnabled
+      });
+      this.openAISessions.set(sessionId, openaiSession);
+      this._onSessionInit.fire({
+        sessionId,
+        sdkSessionId: sessionId,
+        // no separate SDK id for OpenAI
+        isResumed: false,
+        isForked: false
+      });
       return;
     }
     const toolUseMap = /* @__PURE__ */ new Map();
@@ -3446,6 +3350,12 @@ var SessionManager = class extends Disposable {
    * Delete a session
    */
   async deleteSession(sessionId) {
+    const openaiSession = this.openAISessions.get(sessionId);
+    if (openaiSession) {
+      await openaiSession.close();
+      this.openAISessions.delete(sessionId);
+      return;
+    }
     const consumer = this.sessionConsumers.get(sessionId);
     if (consumer) {
       consumer.cancel();
@@ -3464,6 +3374,7 @@ var SessionManager = class extends Disposable {
    * Check if a session is ready
    */
   isSessionReady(sessionId) {
+    if (this.openAISessions.has(sessionId)) return true;
     const agent = this.activeSessions.get(sessionId);
     return agent?.isSessionReady() ?? false;
   }
@@ -3471,6 +3382,11 @@ var SessionManager = class extends Disposable {
    * Interrupt a session
    */
   async interrupt(sessionId) {
+    const openaiSession = this.openAISessions.get(sessionId);
+    if (openaiSession) {
+      await openaiSession.interrupt();
+      return;
+    }
     const agent = this.activeSessions.get(sessionId);
     if (!agent) {
       throw new Error(`Session ${sessionId} not found`);
@@ -3481,6 +3397,7 @@ var SessionManager = class extends Disposable {
    * Get the SDK session ID for a session
    */
   getSDKSessionId(sessionId) {
+    if (this.openAISessions.has(sessionId)) return sessionId;
     const agent = this.activeSessions.get(sessionId);
     return agent?.getCurrentSessionId();
   }
@@ -3488,6 +3405,12 @@ var SessionManager = class extends Disposable {
    * Send a message to a session
    */
   sendMessage(message, sessionId, attachments) {
+    const openaiSession = this.openAISessions.get(sessionId);
+    if (openaiSession) {
+      openaiSession.sendMessage(message, attachments);
+      void this.runOpenAILoop(sessionId, openaiSession);
+      return;
+    }
     const agent = this.activeSessions.get(sessionId);
     if (agent === void 0) {
       throw new Error(`Session ${sessionId} not found. Call createSession() first.`);
@@ -3526,6 +3449,10 @@ var SessionManager = class extends Disposable {
    * Set thinking mode for a session
    */
   async setThinkingMode(sessionId, enabled, maxTokens) {
+    if (this.openAISessions.has(sessionId)) {
+      logger6.warn({ sessionId, method: "setThinkingMode" }, "not supported on OpenAI sessions");
+      return;
+    }
     const agent = this.activeSessions.get(sessionId);
     if (!agent) {
       const prefs2 = this.modePreferences.get(sessionId) ?? {};
@@ -3544,6 +3471,7 @@ var SessionManager = class extends Disposable {
    * Get thinking mode for a session
    */
   getThinkingMode(sessionId) {
+    if (this.openAISessions.has(sessionId)) return false;
     const agent = this.activeSessions.get(sessionId);
     if (agent === void 0) {
       const prefs = this.modePreferences.get(sessionId);
@@ -3555,6 +3483,10 @@ var SessionManager = class extends Disposable {
    * Set model for a session
    */
   async setModel(sessionId, model) {
+    if (this.openAISessions.has(sessionId)) {
+      logger6.warn({ sessionId, method: "setModel" }, "not supported on OpenAI sessions");
+      return;
+    }
     const agent = this.activeSessions.get(sessionId);
     if (!agent) {
       const prefs2 = this.modePreferences.get(sessionId) ?? {};
@@ -3616,6 +3548,10 @@ var SessionManager = class extends Disposable {
    * Set plan mode for a session
    */
   setPlanMode(sessionId, enabled) {
+    if (this.openAISessions.has(sessionId)) {
+      logger6.warn({ sessionId, method: "setPlanMode" }, "not supported on OpenAI sessions");
+      return;
+    }
     const agent = this.activeSessions.get(sessionId);
     if (agent === void 0) {
       const prefs2 = this.modePreferences.get(sessionId) ?? {};
@@ -3636,6 +3572,7 @@ var SessionManager = class extends Disposable {
    * Get plan mode for a session
    */
   getPlanMode(sessionId) {
+    if (this.openAISessions.has(sessionId)) return false;
     const agent = this.activeSessions.get(sessionId);
     if (agent === void 0) {
       const prefs = this.modePreferences.get(sessionId);
@@ -3647,6 +3584,10 @@ var SessionManager = class extends Disposable {
    * Set accept mode for a session
    */
   setAcceptMode(sessionId, enabled) {
+    if (this.openAISessions.has(sessionId)) {
+      logger6.warn({ sessionId, method: "setAcceptMode" }, "not supported on OpenAI sessions");
+      return;
+    }
     const agent = this.activeSessions.get(sessionId);
     if (!agent) {
       const prefs2 = this.modePreferences.get(sessionId) ?? {};
@@ -3666,6 +3607,7 @@ var SessionManager = class extends Disposable {
    * Get accept mode for a session
    */
   getAcceptMode(sessionId) {
+    if (this.openAISessions.has(sessionId)) return false;
     const agent = this.activeSessions.get(sessionId);
     if (agent === void 0) {
       const prefs = this.modePreferences.get(sessionId);
@@ -3679,6 +3621,10 @@ var SessionManager = class extends Disposable {
    * is emitted so the UI can pin the goal.
    */
   setDebugMode(sessionId, enabled) {
+    if (this.openAISessions.has(sessionId)) {
+      logger6.warn({ sessionId, method: "setDebugMode" }, "not supported on OpenAI sessions");
+      return;
+    }
     const agent = this.activeSessions.get(sessionId);
     if (!agent) {
       const prefs2 = this.modePreferences.get(sessionId) ?? {};
@@ -3732,6 +3678,7 @@ var SessionManager = class extends Disposable {
   }
   /** Get Debug mode for a session. */
   getDebugMode(sessionId) {
+    if (this.openAISessions.has(sessionId)) return false;
     const agent = this.activeSessions.get(sessionId);
     if (agent === void 0) {
       const prefs = this.modePreferences.get(sessionId);
@@ -3746,6 +3693,10 @@ var SessionManager = class extends Disposable {
    * - 'ask-all': prompt for every tool (default)
    */
   setToolPolicy(sessionId, mode, _isWorktreeSession) {
+    if (this.openAISessions.has(sessionId)) {
+      logger6.warn({ sessionId, method: "setToolPolicy" }, "not supported on OpenAI sessions");
+      return;
+    }
     const agent = this.activeSessions.get(sessionId);
     if (mode === "approve-all") {
       this.setAcceptMode(sessionId, true);
@@ -3772,6 +3723,65 @@ var SessionManager = class extends Disposable {
     }
   }
   /**
+   * Drive an OpenAI session's receiveResponse() loop and emit AgentMessage
+   * events through the same channel the Anthropic path uses.
+   *
+   * Much simpler than the Anthropic path — no tool calls, no permissions,
+   * no hooks. Each event type maps directly to an AgentMessage.
+   */
+  async runOpenAILoop(sessionId, session) {
+    try {
+      for await (const ev of session.receiveResponse()) {
+        switch (ev.type) {
+          case "text_delta":
+            this.emitAgentMessage(sessionId, {
+              type: "text",
+              content: ev.text
+            });
+            break;
+          case "thinking_delta":
+            this.emitAgentMessage(sessionId, {
+              type: "thinking",
+              content: ev.text
+            });
+            break;
+          case "usage":
+            this.emitAgentMessage(sessionId, {
+              type: "text",
+              content: "",
+              usage: {
+                inputTokens: ev.inputTokens,
+                outputTokens: ev.outputTokens
+              }
+            });
+            break;
+          case "done":
+            this.emitAgentMessage(sessionId, {
+              type: "result",
+              content: "",
+              resultSubtype: ev.stopReason,
+              totalCostUsd: ev.totalCostUsd,
+              durationMs: ev.durationMs
+            });
+            break;
+          // v1 doesn't emit tool_call / tool_result from OpenAI.
+          default:
+            break;
+        }
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.emitAgentMessage(sessionId, { type: "error", content: msg });
+    }
+  }
+  /**
+   * Thin helper that centralizes agent message emission for the OpenAI path,
+   * matching the exact emitter pattern used throughout this file.
+   */
+  emitAgentMessage(sessionId, message) {
+    this._onAgentMessage.fire({ sessionId, message });
+  }
+  /**
    * Dispose the session manager
    */
   dispose() {
@@ -3790,6 +3800,12 @@ var SessionManager = class extends Disposable {
     }
     this.activeSessions.clear();
     this.sessionToolUseMaps.clear();
+    for (const [sessionId, session] of this.openAISessions.entries()) {
+      void session.close().catch((err) => {
+        logger6.error({ sessionId, error: err }, "Error closing OpenAI session");
+      });
+    }
+    this.openAISessions.clear();
     super.dispose();
   }
 };
