@@ -20,6 +20,8 @@ import { useAutosave } from "./hooks/useAutosave";
 import { useAppZoom } from "./hooks/useAppZoom";
 import { useColorScheme } from "./hooks/useColorScheme";
 import { useTitlebarStyle } from "./hooks/usePlatform";
+import { useVoiceStore } from "./stores/voiceStore";
+import { voiceApi } from "./lib/tauri/voice";
 import { useAgentStream } from "./hooks/useAgentStream";
 import { useTerminalStream } from "./hooks/useTerminalStream";
 import { useGitStream } from "./hooks/useGitStream";
@@ -99,6 +101,29 @@ function AppContent() {
 
   // Apply persisted zoom level to the webview, react to Cmd+=/Cmd+-/Cmd+0 changes
   useAppZoom();
+
+  // On window focus: if a voice-dispatched agent session is pending, open it in
+  // the agent panel and clear the dock badge. This gives a "no focus-steal"
+  // experience — the session is queued while Solo is in the background and
+  // surfaces automatically the next time the user switches to Solo.
+  useEffect(() => {
+    const handleFocus = () => {
+      const pending = useVoiceStore.getState().pendingDispatch;
+      if (!pending) return;
+      // Open the dispatched session in the agent panel
+      usePanelTabsStore.getState().openPanel(BUILTIN_PANEL_TYPES.AGENT, {
+        sessionId: pending.session_id,
+      });
+      // Clear the pending state so we don't re-open on subsequent focus events
+      useVoiceStore.getState().setPendingDispatch(null);
+      // Clear the macOS dock badge
+      voiceApi.clearBadge().catch((err) =>
+        console.warn('voice_clear_badge failed:', err),
+      );
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, []);
 
   // A2: beforeunload warning for unsaved changes
   useEffect(() => {

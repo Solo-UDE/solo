@@ -492,3 +492,11 @@ pub async fn voice_request_permission(
     };
     voice_check_permissions().await
 }
+
+#[tauri::command]
+pub async fn voice_clear_badge(app: AppHandle) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("main") {
+        win.set_badge_count(None).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}

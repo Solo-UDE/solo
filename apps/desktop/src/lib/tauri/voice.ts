@@ -11,6 +11,7 @@ export type PipelineTarget = 'ChatInput' | 'FocusedApp' | 'NewAgentSession';
 
 export const voiceApi = {
   enable:            () => invoke<void>('voice_enable'),
+  clearBadge:        () => invoke<void>('voice_clear_badge'),
   downloadParakeet:  () => invoke<void>('voice_download_parakeet'),
   parakeetInstalled: () => invoke<boolean>('voice_parakeet_installed'),
   begin:             (mode: VoiceMode) => invoke<void>('voice_begin', { mode }),
