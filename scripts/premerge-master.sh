@@ -7,8 +7,10 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
   exit 1
 fi
 
-: "${SOLO_SUPABASE_URL:?Missing SOLO_SUPABASE_URL}"
-: "${SOLO_SUPABASE_ANON_KEY:?Missing SOLO_SUPABASE_ANON_KEY}"
+: "${SOLO_COGNITO_DOMAIN:?Missing SOLO_COGNITO_DOMAIN}"
+: "${SOLO_COGNITO_CLIENT_ID:?Missing SOLO_COGNITO_CLIENT_ID}"
+: "${SOLO_AWS_REGION:?Missing SOLO_AWS_REGION}"
+: "${SOLO_API_ENDPOINT:?Missing SOLO_API_ENDPOINT}"
 
 # Tauri's config loader requires the desktop dist directory to exist even for cargo check.
 bun run --filter @solo/desktop build:vite
