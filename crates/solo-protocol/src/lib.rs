@@ -1589,6 +1589,9 @@ pub struct VoicePermissions {
     pub microphone: bool,
     pub input_monitoring: bool,
     pub accessibility: bool,
+}
+
+// =============================================================================
 // Plugins Protocol
 // =============================================================================
 

@@ -33,6 +33,7 @@ mod agent;
 mod agent_commands;
 mod auth_commands;
 mod commands;
+mod desktop_config;
 mod embedding_commands;
 mod fs_commands;
 mod git_commands;
