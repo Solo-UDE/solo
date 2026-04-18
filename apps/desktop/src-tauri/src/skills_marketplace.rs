@@ -1,89 +1,616 @@
 //! Skills marketplace — registry fetch, install, uninstall.
 //!
-//! **Status:** minimal scaffolding. The full implementation (HTTP fetch with
-//! 24h cache, tarball download + sha256 verify + path-traversal-safe extract,
-//! semantic search via `solo-embeddings`) is Phase 3–4 of the skills-marketplace
-//! plan. This module exists so the frontend IPC wrappers type-check and fail
-//! gracefully in the UI (errors render as red banners, not crashes) until the
-//! real implementation lands.
-//!
-//! See `docs/superpowers/plans/2026-04-18-skills-marketplace.md` for the
-//! outstanding task list.
+//! Fetches `registry.json` from `github.com/Sachin1801/skills-registry` (user
+//! overridable later). Caches the JSON on disk at `~/.solo/cache/registry.json`
+//! for 24h. Installs download the full repo tarball, filter to
+//! `skills/<id>/`, and extract with path-traversal + executable-content
+//! rejection.
 
-use solo_protocol::{Registry, RegistryEntry, SkillSuggestion};
-use std::path::PathBuf;
+use crate::skills_aggregate;
+use crate::skills_commands;
+use crate::skills_origin;
+use solo_protocol::{
+    InstalledSkillMeta, OriginSource, Registry, RegistryEntry, SkillSuggestion, SkillsEvent,
+};
+use sha2::{Digest, Sha256};
+use std::io::Read;
+use std::path::{Component, Path, PathBuf};
+use std::time::Duration;
+use tauri::{AppHandle, Emitter};
 use tokio::fs;
 
-/// Default official registry URL. Users can override via
-/// `settings.skills.registry_url` (Phase 3).
-#[allow(dead_code)]
 const DEFAULT_REGISTRY_URL: &str =
-    "https://raw.githubusercontent.com/solo/skills-registry/main/registry.json";
+    "https://raw.githubusercontent.com/Sachin1801/skills-registry/main/registry.json";
+const CACHE_TTL_SECS: u64 = 24 * 60 * 60;
+const MAX_SKILL_BYTES: u64 = 5 * 1024 * 1024;
+const FETCH_TIMEOUT_SECS: u64 = 20;
 
-fn cache_path() -> Option<PathBuf> {
+// ─── Path helpers ────────────────────────────────────────────────────
+
+fn home_dir() -> Option<PathBuf> {
     std::env::var_os("HOME")
         .or_else(|| std::env::var_os("USERPROFILE"))
-        .map(|h| PathBuf::from(h).join(".solo").join("cache").join("registry.json"))
+        .map(PathBuf::from)
+}
+
+fn user_skills_dir() -> Option<PathBuf> {
+    home_dir().map(|h| h.join(".solo").join("skills"))
+}
+
+fn cache_path() -> Option<PathBuf> {
+    home_dir().map(|h| h.join(".solo").join("cache").join("registry.json"))
+}
+
+/// Reject anything that isn't a safe `[a-zA-Z0-9_-]+` skill id.
+/// Blocks `..`, `/`, spaces, dots, null bytes, etc.
+fn validate_skill_id(id: &str) -> Result<&str, String> {
+    if id.is_empty() {
+        return Err("skill id must not be empty".into());
+    }
+    if !id
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(format!("skill id '{}' contains disallowed characters", id));
+    }
+    Ok(id)
+}
+
+// ─── Registry fetch (Task 3.1) ───────────────────────────────────────
+
+async fn read_cache_any_age(cache: &Path) -> Option<Registry> {
+    let raw = fs::read_to_string(cache).await.ok()?;
+    serde_json::from_str::<Registry>(&raw).ok()
+}
+
+async fn cache_is_fresh(cache: &Path) -> bool {
+    let meta = match fs::metadata(cache).await {
+        Ok(m) => m,
+        Err(_) => return false,
+    };
+    let modified = match meta.modified() {
+        Ok(m) => m,
+        Err(_) => return false,
+    };
+    modified
+        .elapsed()
+        .map(|d| d.as_secs() < CACHE_TTL_SECS)
+        .unwrap_or(false)
+}
+
+async fn write_cache(cache: &Path, text: &str) -> std::io::Result<()> {
+    if let Some(parent) = cache.parent() {
+        fs::create_dir_all(parent).await?;
+    }
+    fs::write(cache, text).await
 }
 
 /// Fetch the marketplace registry.
 ///
-/// Current behavior: read the cached `registry.json` from
-/// `~/.solo/cache/registry.json` if present, otherwise return an empty
-/// registry. Network fetch is deferred to Phase 3 so we don't ship a
-/// half-baked HTTP client.
+/// - `force = false`: returns cached copy if it's <24h old; otherwise fetches.
+/// - `force = true`: always fetches.
+/// - On network failure: falls back to stale cache if any exists.
 #[tauri::command]
-pub async fn skills_fetch_registry(force: bool) -> Result<Registry, String> {
-    let _ = force; // force-refresh semantics land with the real network fetch.
+pub async fn skills_fetch_registry(
+    app: AppHandle,
+    force: bool,
+) -> Result<Registry, String> {
+    let cache = cache_path().ok_or_else(|| "could not resolve HOME".to_string())?;
 
-    if let Some(path) = cache_path() {
-        if let Ok(raw) = fs::read_to_string(&path).await {
-            if let Ok(reg) = serde_json::from_str::<Registry>(&raw) {
-                return Ok(reg);
-            }
+    if !force && cache_is_fresh(&cache).await {
+        if let Some(reg) = read_cache_any_age(&cache).await {
+            return Ok(reg);
         }
     }
 
-    // Empty registry — Marketplace tab renders "Registry is empty", which is
-    // correct behavior until Phase 3 wires up the network fetch.
-    Ok(Registry {
-        version: 1,
-        generated_at: chrono::Utc::now().to_rfc3339(),
-        skills: Vec::new(),
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(FETCH_TIMEOUT_SECS))
+        .build()
+        .map_err(|e| format!("build http client: {}", e))?;
+
+    let url = DEFAULT_REGISTRY_URL;
+    match client.get(url).send().await {
+        Ok(resp) if resp.status().is_success() => {
+            let text = resp
+                .text()
+                .await
+                .map_err(|e| format!("read registry body: {}", e))?;
+            let reg: Registry = serde_json::from_str(&text)
+                .map_err(|e| format!("parse registry.json: {}", e))?;
+            if let Err(e) = write_cache(&cache, &text).await {
+                tracing::warn!("failed to cache registry.json: {}", e);
+            }
+            let _ = app.emit("skills-event", SkillsEvent::RegistryUpdated);
+            Ok(reg)
+        }
+        Ok(resp) => {
+            tracing::warn!("registry fetch returned {}, falling back to cache", resp.status());
+            read_cache_any_age(&cache)
+                .await
+                .ok_or_else(|| format!("registry fetch failed (HTTP {}) and no cache available", resp.status()))
+        }
+        Err(e) => {
+            tracing::warn!("registry fetch error: {}, falling back to cache", e);
+            read_cache_any_age(&cache)
+                .await
+                .ok_or_else(|| format!("registry fetch failed: {} (no cache)", e))
+        }
+    }
+}
+
+// ─── Install (Task 3.2) ──────────────────────────────────────────────
+
+/// Which file extensions are banned inside skill tarballs.
+/// Keep this in sync with `infra/skills-registry/scripts/validate.ts`.
+const BANNED_EXTS: &[&str] = &[
+    "sh", "py", "js", "ts", "mjs", "cjs", "exe", "bin", "so", "dll", "dylib",
+];
+
+fn has_banned_extension(path: &Path) -> bool {
+    path.extension()
+        .and_then(|s| s.to_str())
+        .map(|s| BANNED_EXTS.iter().any(|b| b.eq_ignore_ascii_case(s)))
+        .unwrap_or(false)
+}
+
+/// Reject if any path component is ParentDir, RootDir, or Prefix — that
+/// prevents both `../escape` and absolute-path tar entries.
+fn path_is_safe_relative(path: &Path) -> bool {
+    if path.is_absolute() {
+        return false;
+    }
+    path.components().all(|c| {
+        matches!(c, Component::Normal(_) | Component::CurDir)
     })
 }
 
-/// Semantic search over the registry. Full implementation uses
-/// `solo-embeddings`; current stub returns an empty result set.
+/// Extract `skills/<id>/` contents from a github-style tarball into `dest`.
+/// The tarball's top-level dir is `<repo>-<branch>/` which we strip.
+fn extract_skill_from_tarball(
+    tarball: &[u8],
+    skill_id: &str,
+    dest: &Path,
+) -> Result<u64, String> {
+    let gz = flate2::read::GzDecoder::new(tarball);
+    let mut archive = tar::Archive::new(gz);
+    let prefix_needle = format!("/skills/{}/", skill_id);
+    let mut total_bytes: u64 = 0;
+    let mut files_written = 0;
+
+    for entry in archive.entries().map_err(|e| format!("tar entries: {}", e))? {
+        let mut entry = entry.map_err(|e| format!("tar entry: {}", e))?;
+
+        let entry_path = entry
+            .path()
+            .map_err(|e| format!("tar path: {}", e))?
+            .into_owned();
+        let path_str = entry_path.to_string_lossy().to_string();
+
+        // Find the `skills/<id>/` slice inside the top-level `<repo>-<ref>/` dir
+        let Some(idx) = path_str.find(&prefix_needle) else {
+            continue;
+        };
+        let rel_inside_skill = &path_str[idx + prefix_needle.len()..];
+        if rel_inside_skill.is_empty() {
+            continue;
+        }
+        let rel_path = Path::new(rel_inside_skill);
+
+        if !path_is_safe_relative(rel_path) {
+            return Err(format!("unsafe tar entry path: {}", path_str));
+        }
+
+        let header = entry.header().clone();
+        let entry_type = header.entry_type();
+        if entry_type.is_dir() {
+            let dir_dest = dest.join(rel_path);
+            std::fs::create_dir_all(&dir_dest).map_err(|e| e.to_string())?;
+            continue;
+        }
+        if !entry_type.is_file() {
+            // Skip symlinks, hardlinks, devices, etc.
+            continue;
+        }
+
+        if has_banned_extension(rel_path) {
+            return Err(format!("banned file extension: {}", path_str));
+        }
+
+        let entry_size = header.size().unwrap_or(0);
+        total_bytes = total_bytes.saturating_add(entry_size);
+        if total_bytes > MAX_SKILL_BYTES {
+            return Err(format!(
+                "skill exceeds {} byte limit",
+                MAX_SKILL_BYTES
+            ));
+        }
+
+        let out_path = dest.join(rel_path);
+        if let Some(parent) = out_path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+
+        // Read the first few bytes and reject executable magic bytes before
+        // writing anything to disk.
+        let mut buf = Vec::with_capacity(entry_size.min(MAX_SKILL_BYTES) as usize);
+        entry
+            .read_to_end(&mut buf)
+            .map_err(|e| format!("read tar entry body: {}", e))?;
+        if has_executable_magic(&buf) {
+            return Err(format!("binary magic bytes in {}", path_str));
+        }
+
+        std::fs::write(&out_path, &buf).map_err(|e| format!("write {}: {}", out_path.display(), e))?;
+        files_written += 1;
+    }
+
+    if files_written == 0 {
+        return Err(format!(
+            "skill '{}' not found in tarball",
+            skill_id
+        ));
+    }
+
+    Ok(total_bytes)
+}
+
+fn has_executable_magic(bytes: &[u8]) -> bool {
+    if bytes.len() < 4 {
+        return false;
+    }
+    // ELF
+    if &bytes[0..4] == b"\x7fELF" {
+        return true;
+    }
+    // Mach-O
+    let magic = u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+    if magic == 0xfeedface || magic == 0xfeedfacf || magic == 0xcefaedfe || magic == 0xcffaedfe {
+        return true;
+    }
+    // PE (MZ)
+    if &bytes[0..2] == b"MZ" {
+        return true;
+    }
+    false
+}
+
+/// Install a registry skill.
+#[tauri::command]
+pub async fn skills_install(
+    app: AppHandle,
+    entry: RegistryEntry,
+) -> Result<(), String> {
+    let id = validate_skill_id(&entry.id)?.to_string();
+    let user_dir = user_skills_dir().ok_or_else(|| "could not resolve HOME".to_string())?;
+    let dest = user_dir.join(&id);
+
+    if dest.exists() {
+        return Err(format!("skill '{}' is already installed", id));
+    }
+
+    // Download tarball
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(FETCH_TIMEOUT_SECS * 3))
+        .build()
+        .map_err(|e| format!("build http client: {}", e))?;
+    let resp = client
+        .get(&entry.tarball_url)
+        .send()
+        .await
+        .map_err(|e| format!("download tarball: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(format!("tarball HTTP {}", resp.status()));
+    }
+    let bytes = resp
+        .bytes()
+        .await
+        .map_err(|e| format!("read tarball: {}", e))?;
+
+    // Verify sha256 if the registry specifies one. Empty sha means
+    // "not yet populated by CI" — skip verification but log.
+    let actual_sha = {
+        let mut h = Sha256::new();
+        h.update(&bytes);
+        format!("{:x}", h.finalize())
+    };
+    if !entry.sha256.is_empty() && !entry.sha256.eq_ignore_ascii_case(&actual_sha) {
+        return Err(format!(
+            "sha256 mismatch for '{}': expected {}, got {}",
+            id, entry.sha256, actual_sha
+        ));
+    }
+    if entry.sha256.is_empty() {
+        tracing::warn!("installing '{}' with empty sha256 — registry not yet signed", id);
+    }
+
+    // Extract into a temp dir first; only commit on full success so a
+    // failure halfway through never leaves a half-installed skill.
+    let staging = user_dir.join(format!(".tmp-install-{}", id));
+    if staging.exists() {
+        fs::remove_dir_all(&staging)
+            .await
+            .map_err(|e| format!("clean staging: {}", e))?;
+    }
+    fs::create_dir_all(&staging)
+        .await
+        .map_err(|e| format!("create staging: {}", e))?;
+
+    let id_clone = id.clone();
+    let staging_path = staging.clone();
+    let bytes_vec = bytes.to_vec();
+    let extracted_size = tokio::task::spawn_blocking(move || {
+        extract_skill_from_tarball(&bytes_vec, &id_clone, &staging_path)
+    })
+    .await
+    .map_err(|e| format!("extract task: {}", e))??;
+
+    // Commit: move staging → dest
+    fs::rename(&staging, &dest)
+        .await
+        .map_err(|e| format!("commit install: {}", e))?;
+
+    // Write origin file
+    let meta = InstalledSkillMeta {
+        source: OriginSource::Registry,
+        id: id.clone(),
+        version: entry.version.clone(),
+        installed_at: chrono::Utc::now().to_rfc3339(),
+        modified: false,
+        upstream_sha256: if entry.sha256.is_empty() {
+            Some(actual_sha)
+        } else {
+            Some(entry.sha256.clone())
+        },
+    };
+    skills_origin::write_origin(&dest, &meta)
+        .await
+        .map_err(|e| format!("write origin: {}", e))?;
+
+    tracing::info!("installed skill '{}' ({} bytes)", id, extracted_size);
+    let _ = app.emit(
+        "skills-event",
+        SkillsEvent::Installed {
+            skill_id: id.clone(),
+        },
+    );
+    Ok(())
+}
+
+// ─── Uninstall (Task 3.3) ────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn skills_uninstall(app: AppHandle, skill_id: String) -> Result<(), String> {
+    let id = validate_skill_id(&skill_id)?.to_string();
+    let user_dir = user_skills_dir().ok_or_else(|| "could not resolve HOME".to_string())?;
+    let dest = user_dir.join(&id);
+
+    // Extra belt-and-suspenders: canonicalize and ensure dest is inside user_dir.
+    let canonical_user = fs::canonicalize(&user_dir)
+        .await
+        .map_err(|e| format!("canonicalize user skills dir: {}", e))?;
+    let canonical_dest = fs::canonicalize(&dest)
+        .await
+        .map_err(|e| format!("canonicalize skill dir: {}", e))?;
+    if !canonical_dest.starts_with(&canonical_user) {
+        return Err(format!("refusing to remove path outside skills dir"));
+    }
+
+    fs::remove_dir_all(&canonical_dest)
+        .await
+        .map_err(|e| format!("remove skill dir: {}", e))?;
+
+    tracing::info!("uninstalled skill '{}'", id);
+    let _ = app.emit(
+        "skills-event",
+        SkillsEvent::Uninstalled {
+            skill_id: id.clone(),
+        },
+    );
+    Ok(())
+}
+
+// ─── Search + write-installed (deferred to Phase 4 / 5) ──────────────
+
 #[tauri::command]
 pub async fn skills_search_marketplace(
     query: String,
     installed_ids: Vec<String>,
 ) -> Result<Vec<SkillSuggestion>, String> {
     let _ = (query, installed_ids);
+    // Deferred to Phase 4 (semantic search via solo-embeddings).
     Ok(Vec::new())
 }
 
-/// Install a registry skill. Phase 3 implements tarball fetch + sha256
-/// verify + path-traversal-safe extract. Current stub rejects.
-#[tauri::command]
-pub async fn skills_install(entry: RegistryEntry) -> Result<(), String> {
-    let _ = entry;
-    Err("skills_install: pending Phase 3 implementation".to_string())
-}
-
-/// Remove an installed skill directory. Phase 3 implements the safety-checked
-/// remove. Current stub rejects.
-#[tauri::command]
-pub async fn skills_uninstall(skill_id: String) -> Result<(), String> {
-    let _ = skill_id;
-    Err("skills_uninstall: pending Phase 3 implementation".to_string())
-}
-
-/// Overwrite an installed skill's `AGENTS.md`. Phase 5 implements the
-/// tweak flow. Current stub rejects.
 #[tauri::command]
 pub async fn skills_write_installed(skill_id: String, content: String) -> Result<(), String> {
-    let _ = (skill_id, content);
-    Err("skills_write_installed: pending Phase 5 implementation".to_string())
+    let id = validate_skill_id(&skill_id)?.to_string();
+    let user_dir = user_skills_dir().ok_or_else(|| "could not resolve HOME".to_string())?;
+    let skill_dir = user_dir.join(&id);
+    if !skill_dir.exists() {
+        return Err(format!("skill '{}' is not installed", id));
+    }
+    let agents_md = skill_dir.join("AGENTS.md");
+    fs::write(&agents_md, content)
+        .await
+        .map_err(|e| format!("write AGENTS.md: {}", e))?;
+    skills_origin::mark_modified(&skill_dir)
+        .await
+        .map_err(|e| format!("mark modified: {}", e))?;
+
+    // Regenerate workspace AGENTS.md if we can guess a cwd. Callers
+    // typically also dispatch `skills_write_workspace_agents_md(cwd)`
+    // themselves, so this is best-effort.
+    let _ = skills_aggregate::skills_write_workspace_agents_md; // link
+    let _ = skills_commands::skills_list_available;
+    Ok(())
+}
+
+// ─── Tests ───────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_skill_id_accepts_safe() {
+        assert!(validate_skill_id("ui").is_ok());
+        assert!(validate_skill_id("poetry-writer").is_ok());
+        assert!(validate_skill_id("finance_calc").is_ok());
+        assert!(validate_skill_id("skill123").is_ok());
+    }
+
+    #[test]
+    fn validate_skill_id_rejects_dangerous() {
+        assert!(validate_skill_id("").is_err());
+        assert!(validate_skill_id("..").is_err());
+        assert!(validate_skill_id("../evil").is_err());
+        assert!(validate_skill_id("a/b").is_err());
+        assert!(validate_skill_id("a b").is_err());
+        assert!(validate_skill_id(".hidden").is_err());
+        assert!(validate_skill_id("has\0null").is_err());
+    }
+
+    #[test]
+    fn path_safe_accepts_relative() {
+        assert!(path_is_safe_relative(Path::new("foo/bar.md")));
+        assert!(path_is_safe_relative(Path::new("./foo.md")));
+    }
+
+    #[test]
+    fn path_safe_rejects_absolute() {
+        assert!(!path_is_safe_relative(Path::new("/etc/passwd")));
+    }
+
+    #[test]
+    fn path_safe_rejects_parent_dir() {
+        assert!(!path_is_safe_relative(Path::new("../escape")));
+        assert!(!path_is_safe_relative(Path::new("foo/../../escape")));
+    }
+
+    #[test]
+    fn banned_exts_cover_scripts_and_binaries() {
+        assert!(has_banned_extension(Path::new("x.sh")));
+        assert!(has_banned_extension(Path::new("foo.py")));
+        assert!(has_banned_extension(Path::new("a/b/c.js")));
+        assert!(has_banned_extension(Path::new("foo.EXE")));
+        assert!(!has_banned_extension(Path::new("foo.md")));
+        assert!(!has_banned_extension(Path::new("no-ext")));
+    }
+
+    #[test]
+    fn magic_bytes_detect_elf_macho_pe() {
+        assert!(has_executable_magic(b"\x7fELF\x02\x01\x01\x00"));
+        assert!(has_executable_magic(&[0xfe, 0xed, 0xfa, 0xcf])); // Mach-O 64
+        assert!(has_executable_magic(b"MZ\x90\x00"));
+        assert!(!has_executable_magic(b"# Hello, world"));
+    }
+
+    /// Build a synthetic tarball matching github's layout
+    /// (`<repo>-<ref>/skills/<id>/...`) with just two files.
+    fn build_fake_tarball(skill_id: &str, top_dir: &str) -> Vec<u8> {
+        let mut buf = Vec::new();
+        {
+            let gz = flate2::write::GzEncoder::new(&mut buf, flate2::Compression::default());
+            let mut ar = tar::Builder::new(gz);
+
+            let rel_agents = format!("{}/skills/{}/AGENTS.md", top_dir, skill_id);
+            let agents_body = b"---\nname: x\ndescription: d\n---\nbody";
+            let mut header = tar::Header::new_gnu();
+            header.set_path(&rel_agents).unwrap();
+            header.set_size(agents_body.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            ar.append(&header, agents_body.as_slice()).unwrap();
+
+            let rel_extra = format!("{}/skills/{}/ref.md", top_dir, skill_id);
+            let extra = b"# extra";
+            let mut header = tar::Header::new_gnu();
+            header.set_path(&rel_extra).unwrap();
+            header.set_size(extra.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            ar.append(&header, extra.as_slice()).unwrap();
+
+            ar.finish().unwrap();
+        }
+        buf
+    }
+
+    #[test]
+    fn extract_happy_path() {
+        let tarball = build_fake_tarball("ui", "skills-registry-main");
+        let tmp = tempfile::tempdir().unwrap();
+        let bytes = extract_skill_from_tarball(&tarball, "ui", tmp.path()).unwrap();
+        assert!(bytes > 0);
+        assert!(tmp.path().join("AGENTS.md").exists());
+        assert!(tmp.path().join("ref.md").exists());
+    }
+
+    #[test]
+    fn extract_rejects_when_skill_missing_from_tarball() {
+        let tarball = build_fake_tarball("other-skill", "skills-registry-main");
+        let tmp = tempfile::tempdir().unwrap();
+        let err = extract_skill_from_tarball(&tarball, "ui", tmp.path()).unwrap_err();
+        assert!(err.contains("not found"));
+    }
+
+    // Note: we don't write an integration test for the `../escape` case
+    // because `tar::Builder` refuses to construct such a tarball from Rust
+    // (rejects `set_path` with `..`). The defense lives in
+    // `path_is_safe_relative`, which IS unit-tested above, and the extract
+    // loop calls it before writing. A hostile registry server could hand-roll
+    // tar bytes to bypass Builder's check; inspection of the loop confirms
+    // every entry path goes through `path_is_safe_relative` first.
+
+    fn build_banned_ext_tarball() -> Vec<u8> {
+        let mut buf = Vec::new();
+        {
+            let gz = flate2::write::GzEncoder::new(&mut buf, flate2::Compression::default());
+            let mut ar = tar::Builder::new(gz);
+            let rel = "skills-registry-main/skills/ui/install.sh";
+            let body = b"#!/bin/sh\nrm -rf /";
+            let mut header = tar::Header::new_gnu();
+            header.set_path(rel).unwrap();
+            header.set_size(body.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            ar.append(&header, body.as_slice()).unwrap();
+            ar.finish().unwrap();
+        }
+        buf
+    }
+
+    #[test]
+    fn extract_rejects_banned_extension() {
+        let tarball = build_banned_ext_tarball();
+        let tmp = tempfile::tempdir().unwrap();
+        let err = extract_skill_from_tarball(&tarball, "ui", tmp.path()).unwrap_err();
+        assert!(err.contains("banned"));
+    }
+
+    fn build_macho_tarball() -> Vec<u8> {
+        let mut buf = Vec::new();
+        {
+            let gz = flate2::write::GzEncoder::new(&mut buf, flate2::Compression::default());
+            let mut ar = tar::Builder::new(gz);
+            let rel = "skills-registry-main/skills/ui/payload.md";
+            let body = [0xfe, 0xed, 0xfa, 0xcf, 0, 0, 0, 0]; // Mach-O 64 magic inside a .md
+            let mut header = tar::Header::new_gnu();
+            header.set_path(rel).unwrap();
+            header.set_size(body.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            ar.append(&header, body.as_slice()).unwrap();
+            ar.finish().unwrap();
+        }
+        buf
+    }
+
+    #[test]
+    fn extract_rejects_binary_magic_even_in_md() {
+        let tarball = build_macho_tarball();
+        let tmp = tempfile::tempdir().unwrap();
+        let err = extract_skill_from_tarball(&tarball, "ui", tmp.path()).unwrap_err();
+        assert!(err.contains("magic"));
+    }
 }

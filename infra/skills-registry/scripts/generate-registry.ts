@@ -107,7 +107,7 @@ for (const entry of readdirSync(SKILLS_DIR)) {
     categories: fm.categories ?? [],
     author: fm.author ?? 'community',
     license: fm.license ?? 'MIT',
-    tarball_url: `https://codeload.github.com/solo/skills-registry/tar.gz/refs/heads/main?path=skills/${entry}`,
+    tarball_url: `https://codeload.github.com/Sachin1801/skills-registry/tar.gz/refs/heads/main`,
     sha256: dirHash(dir),
     tags: fm.tags ?? [],
     updated_at: today,
