@@ -8,7 +8,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use solo_protocol::{PermissionsConfig, SettingsScope, SkillsConfig, SoloSettings};
+use solo_protocol::{PermissionsConfig, PluginsConfig, SettingsScope, SkillsConfig, SoloSettings};
 
 const SETTINGS_DIR: &str = ".solo";
 const SETTINGS_FILE: &str = "settings.json";
@@ -98,6 +98,14 @@ fn merge_into(dst: &mut SoloSettings, src: SoloSettings) {
     // and partial field-merge would make "explicitly disabled" indistinguishable
     // from "left at default".
     dst.skills = src.skills;
+
+    // plugins — higher scope fully overrides when any value differs from default
+    let defaults = PluginsConfig::default();
+    if (src.plugins.adapter_claude_plugins, src.plugins.adapter_codex_user)
+        != (defaults.adapter_claude_plugins, defaults.adapter_codex_user)
+    {
+        dst.plugins = src.plugins;
+    }
 }
 
 /// Shorthand: load only the `skills` section (merged).
@@ -141,6 +149,30 @@ pub fn update_skill_imports(
             s.skills.import_codex = v;
         }
     })
+}
+
+/// Shorthand: load only the `plugins` section (merged).
+pub fn load_plugins_config(workspace: &Path) -> Result<PluginsConfig> {
+    Ok(load_merged(workspace)?.plugins)
+}
+
+/// Toggle adapter flags in the user-scope settings file.
+pub fn update_plugins_adapters(
+    workspace: &Path,
+    claude_plugins: Option<bool>,
+    codex_user: Option<bool>,
+) -> Result<SoloSettings> {
+    let path = settings_path_for_scope(SettingsScope::User, workspace)?;
+    let mut settings = load_scope(SettingsScope::User, workspace)?;
+    if let Some(v) = claude_plugins {
+        settings.plugins.adapter_claude_plugins = v;
+    }
+    if let Some(v) = codex_user {
+        settings.plugins.adapter_codex_user = v;
+    }
+    let serialized = serde_json::to_string_pretty(&settings)?;
+    fs::write(&path, serialized).with_context(|| format!("writing {}", path.display()))?;
+    Ok(settings)
 }
 
 fn union(a: &[String], b: &[String]) -> Vec<String> {
