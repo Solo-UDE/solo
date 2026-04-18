@@ -29,6 +29,7 @@ pub struct PipelineOutput {
     pub raw_transcript: String,
     pub formatted: String,
     pub duration_ms: u32,
+    pub dispatch_task: Option<crate::formatter::DispatchTask>,
 }
 
 pub struct VoicePipeline {
@@ -128,21 +129,21 @@ impl VoicePipeline {
         let raw = self.stt.transcribe(&samples).await?;
 
         self.set(PipelineState::Formatting).await;
-        let formatted = match mode {
+        let (formatted, dispatch_task) = match mode {
             VoiceMode::Dictation => {
-                self.formatter
+                let text = self
+                    .formatter
                     .format_dictation(&raw, context.clone(), options.clone())
-                    .await?
+                    .await?;
+                (text, None)
             }
             VoiceMode::Dispatch => {
-                // Phase 1 does not drive dispatch; returning structured JSON
-                // is handled in Phase 3. Kept here so the state machine is
-                // correct when that phase ships.
                 let task = self
                     .formatter
                     .format_dispatch(&raw, context.clone())
                     .await?;
-                format!("{}\n\n{}", task.title, task.prompt)
+                let formatted = format!("{}\n\n{}", task.title, task.prompt);
+                (formatted, Some(task))
             }
         };
 
@@ -153,6 +154,7 @@ impl VoicePipeline {
             raw_transcript: raw,
             formatted,
             duration_ms: started.elapsed().as_millis() as u32,
+            dispatch_task,
         };
         self.set(PipelineState::Idle).await;
         Ok(output)
@@ -210,6 +212,37 @@ mod tests {
             .unwrap();
         assert_eq!(out.raw_transcript, "hello world");
         assert_eq!(out.formatted, "Hello, world.");
+        assert!(out.dispatch_task.is_none());
+        assert_eq!(p.state().await, PipelineState::Idle);
+    }
+
+    #[tokio::test]
+    async fn happy_path_dispatch_returns_task() {
+        let stt: Arc<dyn SttProvider> = Arc::new(MockStt {
+            canned: "do something".into(),
+        });
+        let formatter: Arc<dyn FormatterProvider> = Arc::new(CloudFormatter {
+            model: "x".into(),
+            client: CannedChat(r#"{"title":"T","prompt":"P"}"#),
+        });
+        let ring = AudioRing::new();
+        let on_state = Arc::new(|_: &PipelineState| {});
+        let on_level = Arc::new(|_: f32| {});
+        let p = VoicePipeline::new(stt, formatter, ring, on_state, on_level);
+        p.begin().await.unwrap();
+        p.ring.push(&vec![0.1f32; 16_000]);
+        let out = p
+            .end(
+                VoiceMode::Dispatch,
+                PipelineTarget::NewAgentSession,
+                AppContext::default(),
+                DictationOptions::default(),
+            )
+            .await
+            .unwrap();
+        let task = out.dispatch_task.expect("dispatch_task should be Some");
+        assert_eq!(task.title, "T");
+        assert_eq!(task.prompt, "P");
         assert_eq!(p.state().await, PipelineState::Idle);
     }
 
