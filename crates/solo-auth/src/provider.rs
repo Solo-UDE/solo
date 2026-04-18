@@ -12,7 +12,6 @@ pub enum ProviderType {
     Anthropic,
     OpenAI,
     Gemini,
-    ElevenLabs,
 }
 
 impl ProviderType {
@@ -22,7 +21,6 @@ impl ProviderType {
             ProviderType::Anthropic => "anthropic",
             ProviderType::OpenAI => "openai",
             ProviderType::Gemini => "gemini",
-            ProviderType::ElevenLabs => "elevenlabs",
         }
     }
 
@@ -32,7 +30,6 @@ impl ProviderType {
             ProviderType::Anthropic => "Anthropic (Claude)",
             ProviderType::OpenAI => "OpenAI",
             ProviderType::Gemini => "Google (Gemini)",
-            ProviderType::ElevenLabs => "ElevenLabs",
         }
     }
 
@@ -42,7 +39,6 @@ impl ProviderType {
             ProviderType::Anthropic => "ANTHROPIC_API_KEY",
             ProviderType::OpenAI => "OPENAI_API_KEY",
             ProviderType::Gemini => "GOOGLE_API_KEY",
-            ProviderType::ElevenLabs => "ELEVENLABS_API_KEY",
         }
     }
 
@@ -53,7 +49,6 @@ impl ProviderType {
             "anthropic" | "claude" => Some(ProviderType::Anthropic),
             "openai" | "gpt" => Some(ProviderType::OpenAI),
             "gemini" | "google" => Some(ProviderType::Gemini),
-            "elevenlabs" | "11labs" => Some(ProviderType::ElevenLabs),
             _ => None,
         }
     }
@@ -164,14 +159,6 @@ mod tests {
         assert_eq!(ProviderType::from_str("gpt"), Some(ProviderType::OpenAI));
         assert_eq!(ProviderType::from_str("gemini"), Some(ProviderType::Gemini));
         assert_eq!(ProviderType::from_str("google"), Some(ProviderType::Gemini));
-        assert_eq!(
-            ProviderType::from_str("elevenlabs"),
-            Some(ProviderType::ElevenLabs)
-        );
-        assert_eq!(
-            ProviderType::from_str("11labs"),
-            Some(ProviderType::ElevenLabs)
-        );
         assert_eq!(ProviderType::from_str("invalid"), None);
     }
 

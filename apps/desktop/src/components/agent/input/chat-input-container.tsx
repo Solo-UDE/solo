@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback, useEffect, useMemo, useImperativeHandle, forwardRef, lazy, Suspense } from 'react';
+import React, { useRef, useState, useCallback, useEffect, useImperativeHandle, forwardRef, lazy, Suspense } from 'react';
 import { StopIcon } from '@radix-ui/react-icons';
 import { Paintbrush } from 'lucide-react';
 
@@ -23,7 +23,6 @@ import {
 
 import type { LexicalEditorHandle } from './lexical-editor';
 import type { FileMention, Attachment, UserContentPart } from '../../../stores/agentStore';
-import { useActiveSessionMessages } from '../../../stores/agentStore';
 import { ModeSelector } from './mode-selector';
 import { ModelPicker } from './model-picker';
 import { SubmitButton } from './submit-button';
@@ -109,7 +108,6 @@ function ChatInputContainerInner(
   const voiceSuggestionDismissedRef = useRef(false);
   const [showVoiceSuggestion, setShowVoiceSuggestion] = useState(false);
   const worktrees = useWorktreeList();
-  const sessionMessages = useActiveSessionMessages();
 
   // Sync mode from store state changes (plan / accept / debug overlays)
   useEffect(() => {
@@ -123,16 +121,6 @@ function ChatInputContainerInner(
       setMode('default');
     }
   }, [planModeActive, acceptModeActive, debugModeActive]);
-
-  // Build context from recent chat messages for STT transcription improvement
-  const voiceContext = useMemo(() => {
-    const recent = sessionMessages.slice(-5);
-    if (recent.length === 0) return undefined;
-    return recent
-      .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
-      .join('\n')
-      .slice(0, 2000);
-  }, [sessionMessages]);
 
   // Map the 4-state PermissionMode to the wire-level MessageMode ('planning' | 'fast')
   // used for the per-message marker. Only 'plan' flips to 'planning'; everything
@@ -363,8 +351,6 @@ function ChatInputContainerInner(
                   onTranscript={handleVoiceTranscript}
                   showSuggestion={showVoiceSuggestion}
                   onSuggestionDismiss={handleDismissVoiceSuggestion}
-                  previousText={voiceContext}
-                  chatContext={voiceContext}
                 />
 
                 <button
