@@ -1450,7 +1450,7 @@ impl CredentialManager {
                     );
                 ("https://api.anthropic.com/v1/messages".to_string(), r)
             }
-            ProviderType::Gemini | ProviderType::ElevenLabs => {
+            ProviderType::Gemini => {
                 return Err(ProviderError::AuthError(format!(
                     "API-key validation not implemented for {}",
                     provider.as_str()
