@@ -43,6 +43,7 @@ mod plugins_commands;
 mod provider_commands;
 mod session_commands;
 mod settings_commands;
+mod skills_bundled;
 mod skills_commands;
 mod skills_origin;
 mod stats_commands;
@@ -181,6 +182,22 @@ pub fn run() {
 
             // Wire up agent event callbacks
             agent_commands::setup_event_callbacks(app.handle(), &session_manager);
+
+            // First-launch: extract the bundled UI skill into ~/.solo/skills/ui/
+            // if not already present. Idempotent — subsequent launches are a no-op.
+            {
+                tauri::async_runtime::spawn(async move {
+                    let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")) else {
+                        return;
+                    };
+                    let user_skills = std::path::PathBuf::from(home).join(".solo").join("skills");
+                    match skills_bundled::extract_bundled_if_missing(&user_skills).await {
+                        Ok(true) => tracing::info!("extracted bundled ui skill to {}", user_skills.display()),
+                        Ok(false) => tracing::debug!("bundled ui skill already present"),
+                        Err(e) => tracing::warn!("failed to extract bundled skill: {}", e),
+                    }
+                });
+            }
 
             // macOS: apply native vibrancy. Traffic-light position is set
             // natively via `trafficLightPosition` in tauri.conf.json — the
