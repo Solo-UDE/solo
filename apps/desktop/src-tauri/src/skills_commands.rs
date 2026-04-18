@@ -82,17 +82,24 @@ async fn scan_skills_dir(dir: &Path, source: SkillSource) -> Vec<SkillInfo> {
                     Err(_) => continue,
                 }
             } else if path.is_dir() {
+                // Prefer AGENTS.md (the open standard) but fall back to SKILL.md
+                // for drop-in compatibility with Claude Code skill folders.
+                let agents_md = path.join("AGENTS.md");
                 let skill_md = path.join("SKILL.md");
-                if !skill_md.exists() {
+                let chosen = if agents_md.exists() {
+                    agents_md
+                } else if skill_md.exists() {
+                    skill_md
+                } else {
                     continue;
-                }
+                };
                 let name = path
                     .file_name()
                     .unwrap_or_default()
                     .to_string_lossy()
                     .into_owned();
-                match fs::read_to_string(&skill_md).await {
-                    Ok(content) => (content, skill_md, name),
+                match fs::read_to_string(&chosen).await {
+                    Ok(content) => (content, chosen, name),
                     Err(_) => continue,
                 }
             } else {
@@ -550,5 +557,55 @@ mod tests {
         let out = format_skill_file("foo", "does a thing", "body content\n");
         assert!(out.starts_with("---\nname: foo\ndescription: does a thing\n---"));
         assert!(out.trim_end().ends_with("body content"));
+    }
+
+    #[tokio::test]
+    async fn prefers_agents_md_over_skill_md() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_dir = tmp.path().join("my-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(
+            skill_dir.join("AGENTS.md"),
+            "---\nname: my-skill\ndescription: from AGENTS\n---\nagents body\n",
+        )
+        .unwrap();
+        std::fs::write(
+            skill_dir.join("SKILL.md"),
+            "---\nname: my-skill\ndescription: from SKILL\n---\nskill body\n",
+        )
+        .unwrap();
+
+        let found = scan_skills_dir(tmp.path(), SkillSource::User).await;
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].description, "from AGENTS");
+        assert!(found[0].content.contains("agents body"));
+    }
+
+    #[tokio::test]
+    async fn falls_back_to_skill_md_when_agents_md_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_dir = tmp.path().join("claude-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(
+            skill_dir.join("SKILL.md"),
+            "---\nname: claude-skill\ndescription: skill md only\n---\nbody\n",
+        )
+        .unwrap();
+
+        let found = scan_skills_dir(tmp.path(), SkillSource::User).await;
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].description, "skill md only");
+    }
+
+    #[tokio::test]
+    async fn scan_returns_empty_for_dir_without_either_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_dir = tmp.path().join("empty-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        // only a stray file, no AGENTS.md or SKILL.md
+        std::fs::write(skill_dir.join("README.md"), "nothing to see").unwrap();
+
+        let found = scan_skills_dir(tmp.path(), SkillSource::User).await;
+        assert!(found.is_empty());
     }
 }

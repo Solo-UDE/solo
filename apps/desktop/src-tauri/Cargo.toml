@@ -74,6 +74,12 @@ hashbrown = { version = "0.15", features = ["serde"] }
 thiserror.workspace = true
 async-trait.workspace = true
 
+# Skills marketplace
+include_dir = "0.7"
+
+[dev-dependencies]
+tempfile = "3"
+
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
