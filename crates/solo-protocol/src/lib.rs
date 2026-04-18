@@ -777,6 +777,52 @@ pub struct PlacementResult {
 }
 
 // =============================================================================
+// Voice Protocol
+// =============================================================================
+
+#[derive(TS, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub enum VoiceMode {
+    Dictation,
+    Dispatch,
+}
+
+#[derive(TS, Serialize, Deserialize, Clone, Debug)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(tag = "kind", content = "data")]
+pub enum VoicePipelineState {
+    Idle,
+    Arming,
+    Recording,
+    Transcribing,
+    Formatting,
+    Emitting,
+    Error(String),
+}
+
+#[derive(TS, Serialize, Deserialize, Clone, Debug)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct VoiceTranscriptResult {
+    pub id: String,
+    pub mode: VoiceMode,
+    pub raw_transcript: String,
+    pub formatted: String,
+    pub target_app_bundle_id: Option<String>,
+    pub target_app_name: Option<String>,
+    pub duration_ms: u32,
+    pub linked_session_id: Option<String>,
+    pub created_at: i64,
+}
+
+#[derive(TS, Serialize, Deserialize, Clone, Debug)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct VoiceModelProgress {
+    pub model_id: String,
+    pub bytes: u64,
+    pub total: u64,
+}
+
+// =============================================================================
 // Backend Events (sent from Rust to TypeScript)
 // =============================================================================
 
@@ -961,6 +1007,32 @@ pub enum BackendEvent {
         session_id: String,
         mode: PermissionMode,
     },
+
+    // =========================================================================
+    // Voice events
+    // =========================================================================
+    /// Voice pipeline state changed
+    #[serde(rename = "voice:state")]
+    VoiceState {
+        mode: VoiceMode,
+        state: VoicePipelineState,
+    },
+
+    /// Voice audio level update
+    #[serde(rename = "voice:level")]
+    VoiceLevel { rms: f32 },
+
+    /// Voice transcript result ready
+    #[serde(rename = "voice:transcript")]
+    VoiceTranscript { result: VoiceTranscriptResult },
+
+    /// Voice error occurred
+    #[serde(rename = "voice:error")]
+    VoiceError { message: String },
+
+    /// Voice model download progress
+    #[serde(rename = "voice:model_progress")]
+    VoiceModelProgress { progress: VoiceModelProgress },
 }
 
 // =============================================================================
