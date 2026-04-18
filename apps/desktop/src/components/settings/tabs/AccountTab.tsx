@@ -210,7 +210,7 @@ export function AccountTab() {
   return (
     <div className="space-y-8">
       <section>
-        <h3 className="mb-2 text-xs font-semibold text-muted-foreground">Solo Sign-In</h3>
+        <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Solo Sign-In</h3>
         <p className="mb-4 text-sm text-muted-foreground">
           This is the account currently signed in to Solo. It controls access to sync,
           stats, and the desktop app session.
@@ -251,7 +251,7 @@ export function AccountTab() {
       </section>
 
       <section>
-        <h3 className="mb-2 text-xs font-semibold text-muted-foreground">GitHub Connection</h3>
+        <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">GitHub Connection</h3>
         <p className="mb-4 text-sm text-muted-foreground">
           This token is used for Git operations like clone, push, pull, and repo setup. It
           can be a different GitHub account from the one used to sign in to Solo.
