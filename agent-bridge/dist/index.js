@@ -4164,4 +4164,3 @@ try {
   logger10.error({ error }, "Fatal error");
   process.exit(1);
 }
-//# sourceMappingURL=index.js.map

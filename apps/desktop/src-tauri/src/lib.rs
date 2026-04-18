@@ -60,8 +60,6 @@ use plugins_commands::PluginsState;
 use provider_commands::ProviderAuthState;
 use stats_commands::StatsState;
 use tauri::Emitter;
-#[cfg(target_os = "macos")]
-use tauri_plugin_decorum::WebviewWindowExt;
 use terminal_commands::TerminalState;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use vault_commands::VaultState;
@@ -108,17 +106,9 @@ pub fn run() {
     let session_manager_for_state = Arc::clone(&session_manager);
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_clipboard_manager::init())
-        .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_macos_permissions::init())
-        .plugin(tauri_plugin_decorum::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_process::init())
-        .plugin(tauri_plugin_deep_link::init())
+        // single_instance MUST be registered before deep_link when the
+        // single-instance plugin's `deep-link` feature is enabled.
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
-            // Handle deep link from single instance
             tracing::debug!("Single instance activated with args: {:?}", args);
             if let Some(url) = args.get(1) {
                 if url.starts_with("soloide://") {
@@ -132,8 +122,8 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_macos_permissions::init())
-        .plugin(tauri_plugin_decorum::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .setup(move |app| {
@@ -190,13 +180,15 @@ pub fn run() {
             // Wire up agent event callbacks
             agent_commands::setup_event_callbacks(app.handle(), &session_manager);
 
-            // macOS: position traffic lights and apply native vibrancy
+            // macOS: apply native vibrancy. Traffic-light position is set
+            // natively via `trafficLightPosition` in tauri.conf.json — the
+            // decorum-based approach crashed on macOS 26 (Tahoe) because the
+            // private NSView hierarchy it traverses changed.
             #[cfg(target_os = "macos")]
             {
                 use tauri::window::{Effect, EffectState, EffectsBuilder};
                 use tauri::Manager;
                 if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.set_traffic_lights_inset(13.0, 13.0);
                     let _ = window.set_effects(
                         EffectsBuilder::new()
                             .effect(Effect::Sidebar)
