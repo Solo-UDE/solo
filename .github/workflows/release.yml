@@ -21,8 +21,10 @@ jobs:
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
       RELEASE_PAT: ${{ secrets.RELEASE_PAT }}
-      SOLO_SUPABASE_URL: ${{ vars.SOLO_SUPABASE_URL }}
-      SOLO_SUPABASE_ANON_KEY: ${{ vars.SOLO_SUPABASE_ANON_KEY }}
+      SOLO_COGNITO_DOMAIN: ${{ vars.SOLO_PROD_COGNITO_DOMAIN }}
+      SOLO_COGNITO_CLIENT_ID: ${{ vars.SOLO_PROD_COGNITO_CLIENT_ID }}
+      SOLO_AWS_REGION: ${{ vars.SOLO_PROD_AWS_REGION }}
+      SOLO_API_ENDPOINT: ${{ vars.SOLO_PROD_API_ENDPOINT }}
 
     steps:
       - name: Checkout
@@ -56,8 +58,10 @@ jobs:
 
       - name: Validate desktop auth config
         run: |
-          test -n "$SOLO_SUPABASE_URL" || { echo "Missing SOLO_SUPABASE_URL" >&2; exit 1; }
-          test -n "$SOLO_SUPABASE_ANON_KEY" || { echo "Missing SOLO_SUPABASE_ANON_KEY" >&2; exit 1; }
+          test -n "$SOLO_COGNITO_DOMAIN" || { echo "Missing SOLO_PROD_COGNITO_DOMAIN" >&2; exit 1; }
+          test -n "$SOLO_COGNITO_CLIENT_ID" || { echo "Missing SOLO_PROD_COGNITO_CLIENT_ID" >&2; exit 1; }
+          test -n "$SOLO_AWS_REGION" || { echo "Missing SOLO_PROD_AWS_REGION" >&2; exit 1; }
+          test -n "$SOLO_API_ENDPOINT" || { echo "Missing SOLO_PROD_API_ENDPOINT" >&2; exit 1; }
 
       - name: Import Apple certificate
         run: |
@@ -123,6 +127,19 @@ jobs:
             echo "Gatekeeper assessment failed" >&2
             exit 1
           }
+
+      - name: Reclaim disk space before DMG
+        run: |
+          df -h /
+          # Keep the release binary/bundle, drop intermediate compile artifacts and node_modules
+          rm -rf target/aarch64-apple-darwin/release/deps
+          rm -rf target/aarch64-apple-darwin/release/build
+          rm -rf target/aarch64-apple-darwin/release/incremental
+          rm -rf target/aarch64-apple-darwin/release/.fingerprint
+          rm -rf node_modules
+          rm -rf apps/desktop/node_modules
+          rm -rf ~/.cargo/registry/src
+          df -h /
 
       - name: Create DMG
         run: |

@@ -1,10 +1,10 @@
 /**
- * Voice input button for ElevenLabs STT integration.
+ * Voice input button wired to the solo-voice pipeline via `useVoiceInput`.
  *
- * Idle: 30x30 icon button with Waveform icon.
- * Recording: Expands into a pill with live waveform + red stop button.
+ * Idle: 30x30 icon button with AudioLines icon.
+ * Recording: Expands into a pill with a "Recording…" label + stop button.
  * When showSuggestion is true, the idle button expands into a pill
- * that reveals "Try speaking" text, then auto-dismisses.
+ * that reveals "Try speaking" text, then auto-dismisses after 5s.
  */
 
 import React, { useCallback, useEffect } from 'react';
@@ -12,7 +12,6 @@ import { StopIcon } from '@radix-ui/react-icons';
 import { AudioLines } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useVoiceInput } from '@/hooks/useVoiceInput';
-import { LiveWaveform } from '@/components/ui/live-waveform';
 import { cn } from '@/lib/utils';
 
 interface VoiceButtonProps {
@@ -20,10 +19,6 @@ interface VoiceButtonProps {
   onTranscript?: (text: string) => void;
   showSuggestion?: boolean;
   onSuggestionDismiss?: () => void;
-  /** Recent chat context for ElevenLabs previous_text transcription improvement */
-  previousText?: string;
-  /** Chat context for LLM-based refinement */
-  chatContext?: string;
 }
 
 export const VoiceButton: React.FC<VoiceButtonProps> = ({
@@ -31,18 +26,13 @@ export const VoiceButton: React.FC<VoiceButtonProps> = ({
   onTranscript,
   showSuggestion = false,
   onSuggestionDismiss,
-  previousText,
-  chatContext,
 }) => {
   const {
     isRecording,
-    isRefining,
-    partialText,
-    error,
-    analyserNode,
-    startRecording,
-    stopRecording,
-  } = useVoiceInput({ onTranscript, previousText, chatContext });
+    start,
+    stop,
+    state,
+  } = useVoiceInput({ onTranscript: onTranscript || (() => {}) });
 
   // Auto-dismiss suggestion after 5 seconds
   useEffect(() => {
@@ -57,55 +47,30 @@ export const VoiceButton: React.FC<VoiceButtonProps> = ({
     if (showSuggestion) {
       onSuggestionDismiss?.();
     }
-    if (!isRecording) await startRecording();
-  }, [isRecording, showSuggestion, startRecording, onSuggestionDismiss]);
+    if (!isRecording) await start();
+  }, [isRecording, showSuggestion, start, onSuggestionDismiss]);
 
   const handleStop = useCallback(async () => {
-    if (isRecording) await stopRecording();
-  }, [isRecording, stopRecording]);
+    if (isRecording) await stop();
+  }, [isRecording, stop]);
 
+  const error = typeof state === 'string' ? state : null;
   const tooltipText = error
     ? `Voice error: ${error}`
-    : isRefining
-      ? 'Refining...'
-      : isRecording
-        ? partialText || 'Listening...'
-        : 'Voice input';
+    : isRecording
+      ? 'Listening...'
+      : 'Voice input';
 
-  const isSuggestionVisible = showSuggestion && !isRecording && !isRefining;
+  const isSuggestionVisible = showSuggestion && !isRecording;
 
-  // Refining state - brief indicator while LLM processes transcript
-  if (isRefining) {
-    return (
-      <div
-        className="flex items-center gap-1.5 h-[30px] rounded-full bg-muted/60 px-2.5 animate-fade-in-scale"
-        title="Refining transcript..."
-      >
-        <div className="h-3 w-3 rounded-full border-2 border-foreground/30 border-t-foreground/80 animate-spin" />
-        <span className="text-xs font-medium text-muted-foreground">Refining…</span>
-      </div>
-    );
-  }
-
-  // Recording state - expanded pill with waveform + stop button
+  // Recording state - expanded pill with stop button
   if (isRecording) {
     return (
       <div
-        className="flex items-center gap-1 h-[30px] rounded-full bg-destructive/10 px-1.5 animate-fade-in-scale"
+        className="flex items-center gap-1.5 h-[30px] rounded-full bg-destructive/10 px-2.5 animate-fade-in-scale"
         title={tooltipText}
       >
-        <div className="w-[72px] flex items-center">
-          <LiveWaveform
-            analyserNode={analyserNode}
-            active={isRecording}
-            height={22}
-            barWidth={2.5}
-            barGap={1.5}
-            barRadius={1.5}
-            sensitivity={1.8}
-            className="text-destructive"
-          />
-        </div>
+        <span className="text-xs font-medium text-muted-foreground">Recording…</span>
         <button
           type="button"
           onClick={handleStop}

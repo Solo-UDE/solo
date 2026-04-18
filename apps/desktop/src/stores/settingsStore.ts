@@ -6,6 +6,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
+import type { ShortcutsConfig } from '@/bindings/ShortcutsConfig';
 
 // Type definitions
 export type ColorScheme = 'system' | 'light' | 'dark';
@@ -120,6 +121,7 @@ interface SettingsState {
   files: FilesSettings;
   shortcuts: ShortcutsSettings;
   ai: AISettings;
+  voiceShortcuts: ShortcutsConfig;
 }
 
 // Default values
@@ -166,6 +168,11 @@ const DEFAULT_SETTINGS: SettingsState = {
     maxTokens: 4096,
     customApiUrl: '',
     sessionRetentionDays: 30,
+  },
+  voiceShortcuts: {
+    dictation_ptt: 'fn',
+    dispatch_ptt: 'ctrl+alt+space',
+    cancel: 'escape',
   },
 };
 
@@ -214,6 +221,9 @@ interface SettingsActions {
   setMaxTokens: (tokens: number) => void;
   setCustomApiUrl: (url: string) => void;
 
+  // Voice
+  setVoiceShortcuts: (s: ShortcutsConfig) => void;
+
   // Global
   resetToDefaults: () => void;
 }
@@ -235,6 +245,18 @@ function migrateV1ToV2(persistedState: unknown): SettingsState {
   }
 
   return newState;
+}
+
+// Drop legacy elevenlabs keys on load (safe no-op if absent)
+const raw = localStorage.getItem('solo-settings');
+if (raw) {
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed?.state && 'elevenlabs' in parsed.state) {
+      delete parsed.state.elevenlabs;
+      localStorage.setItem('solo-settings', JSON.stringify(parsed));
+    }
+  } catch { /* ignore */ }
 }
 
 export const useSettingsStore = create<SettingsStore>()(
@@ -411,6 +433,12 @@ export const useSettingsStore = create<SettingsStore>()(
           s.ai.customApiUrl = url;
         }),
 
+      // Voice actions
+      setVoiceShortcuts: (shortcuts) =>
+        set((s) => {
+          s.voiceShortcuts = shortcuts;
+        }),
+
       // Global actions
       resetToDefaults: () =>
         set(() => ({ ...DEFAULT_SETTINGS })),
@@ -431,6 +459,7 @@ export const useSettingsStore = create<SettingsStore>()(
           shortcuts: persisted.shortcuts ?? (currentState as SettingsStore).shortcuts,
           ai: { ...(currentState as SettingsStore).ai, ...persisted.ai },
           terminal: { ...(currentState as SettingsStore).terminal, ...persisted.terminal },
+          voiceShortcuts: persisted.voiceShortcuts ?? (currentState as SettingsStore).voiceShortcuts,
         } as SettingsStore;
       },
       migrate: (persistedState, version) => {
@@ -447,6 +476,7 @@ export const useSettingsStore = create<SettingsStore>()(
             files: { ...DEFAULT_SETTINGS.files, ...v2.files },
             shortcuts: v2.shortcuts ?? DEFAULT_SETTINGS.shortcuts,
             ai: { ...DEFAULT_SETTINGS.ai, ...v2.ai },
+            voiceShortcuts: v2.voiceShortcuts ?? DEFAULT_SETTINGS.voiceShortcuts,
           };
         }
         return persistedState as SettingsState;

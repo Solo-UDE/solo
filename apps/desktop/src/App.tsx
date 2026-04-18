@@ -9,6 +9,7 @@ import { SidebarTerminal } from "./components/sidebar";
 import { MosaicLayout } from "./components/panels";
 import { AuthGuard } from "./components/auth";
 import { useUIStore, useIsLeftSidebarCollapsed } from "./stores/uiStore";
+import { usePanelLayoutStore } from "./stores/panelLayoutStore";
 import { usePanelTabsStore } from "./stores/panelTabsStore";
 import { useProviderStore } from "./stores/provider-store";
 import { useAgentStore } from "./stores/agentStore";
@@ -20,11 +21,12 @@ import { useAutosave } from "./hooks/useAutosave";
 import { useAppZoom } from "./hooks/useAppZoom";
 import { useColorScheme } from "./hooks/useColorScheme";
 import { useTitlebarStyle } from "./hooks/usePlatform";
+import { useVoiceStore } from "./stores/voiceStore";
+import { voiceApi } from "./lib/tauri/voice";
 import { useAgentStream } from "./hooks/useAgentStream";
 import { useTerminalStream } from "./hooks/useTerminalStream";
 import { useGitStream } from "./hooks/useGitStream";
 import { useWorktreeStream } from "./hooks/useWorktreeStream";
-import { useElevenLabsStream } from "./hooks/useElevenLabsStream";
 import { useUpdateStream } from "./hooks/useUpdateStream";
 import { useVaultStream } from "./hooks/useVaultStream";
 import { useTerminalStore, clearActiveTerminal, findInActiveTerminal } from "./stores/terminalStore";
@@ -43,6 +45,7 @@ import { KeyboardShortcutsOverlay } from "./components/KeyboardShortcutsOverlay"
 import { BugReportDialog } from "./components/bug-report/BugReportDialog";
 import { TabSwitcher } from "./components/panels/TabSwitcher";
 import { SkillsOnboardingDialog } from "./components/agent/SkillsOnboardingDialog";
+import { getEffectiveKeybinding, matchesKeybinding } from "./lib/keybindings";
 
 // Shared easing curve matching --ease-smooth
 const EASE_SMOOTH: [number, number, number, number] = [0.16, 1, 0.3, 1];
@@ -91,6 +94,7 @@ function AppContent() {
   const rootPath = useFileExplorerStore((s) => s.rootPath);
   const hasRepos = useRepoStore((s) => s.repos.size > 0);
   const sidebarMode = useUIStore((s) => s.sidebarMode);
+  const customKeybindings = useSettingsStore((s) => s.shortcuts.keybindings);
 
   // Get openPanel action directly from store to avoid selector subscription issues
   const openPanel = useMemo(() => usePanelTabsStore.getState().openPanel, []);
@@ -100,6 +104,29 @@ function AppContent() {
 
   // Apply persisted zoom level to the webview, react to Cmd+=/Cmd+-/Cmd+0 changes
   useAppZoom();
+
+  // On window focus: if a voice-dispatched agent session is pending, open it in
+  // the agent panel and clear the dock badge. This gives a "no focus-steal"
+  // experience — the session is queued while Solo is in the background and
+  // surfaces automatically the next time the user switches to Solo.
+  useEffect(() => {
+    const handleFocus = () => {
+      const pending = useVoiceStore.getState().pendingDispatch;
+      if (!pending) return;
+      // Open the dispatched session in the agent panel
+      usePanelTabsStore.getState().openPanel(BUILTIN_PANEL_TYPES.AGENT, {
+        sessionId: pending.session_id,
+      });
+      // Clear the pending state so we don't re-open on subsequent focus events
+      useVoiceStore.getState().setPendingDispatch(null);
+      // Clear the macOS dock badge
+      voiceApi.clearBadge().catch((err) =>
+        console.warn('voice_clear_badge failed:', err),
+      );
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, []);
 
   // A2: beforeunload warning for unsaved changes
   useEffect(() => {
@@ -153,7 +180,6 @@ function AppContent() {
   useTerminalStream();
   useGitStream();
   useWorktreeStream();
-  useElevenLabsStream();
   useUpdateStream();
   useVaultStream();
 
@@ -233,32 +259,103 @@ function AppContent() {
     uiState.toggleTerminalPanel();
   }, []);
 
+  const handleCreateTerminal = useCallback(() => {
+    const cwd = useFileExplorerStore.getState().rootPath ?? undefined;
+
+    if (!useUIStore.getState().terminalPanelOpen) {
+      useUIStore.getState().toggleTerminalPanel();
+    }
+
+    createTerminal(cwd)
+      .then(({ id, shell }) => {
+        useTerminalStore.getState().addTerminal(id, cwd, shell);
+      })
+      .catch((err) => console.error('Failed to create terminal:', err));
+  }, []);
+
+  const handleCycleWorkspace = useCallback((direction: 'next' | 'prev') => {
+    const { repos, activeRepoPath } = useRepoStore.getState();
+    const repoList = Array.from(repos.values());
+
+    if (repoList.length < 2) return;
+
+    const currentIndex = activeRepoPath
+      ? repoList.findIndex((repo) => repo.path === activeRepoPath)
+      : -1;
+
+    const nextIndex = currentIndex === -1
+      ? 0
+      : direction === 'next'
+        ? (currentIndex + 1) % repoList.length
+        : (currentIndex - 1 + repoList.length) % repoList.length;
+
+    const targetRepo = repoList[nextIndex];
+    if (!targetRepo) return;
+
+    void useRepoStore.getState().selectWorktree(targetRepo.path, null);
+  }, []);
+
+  const handleSwitchWorktreeSlot = useCallback(async (slotIndex: number) => {
+    const repoStore = useRepoStore.getState();
+    const activeRepoPath = repoStore.activeRepoPath;
+    if (!activeRepoPath) return;
+
+    let repo = repoStore.repos.get(activeRepoPath);
+    if (!repo) return;
+
+    if (!repo._worktreesLoaded) {
+      await repoStore.refreshWorktrees(activeRepoPath);
+      repo = useRepoStore.getState().repos.get(activeRepoPath);
+      if (!repo) return;
+    }
+
+    const orderedWorktreeIds = [
+      null,
+      ...repo.worktrees.filter((worktree) => !worktree.is_main).map((worktree) => worktree.id),
+    ];
+
+    const targetWorktreeId = orderedWorktreeIds[slotIndex];
+    if (targetWorktreeId === undefined) return;
+
+    await repoStore.selectWorktree(activeRepoPath, targetWorktreeId);
+  }, []);
+
+  const matchAction = useCallback(
+    (actionId: string, e: KeyboardEvent) => {
+      const keybinding = getEffectiveKeybinding(actionId, customKeybindings);
+      return Boolean(keybinding) && matchesKeybinding(keybinding, e);
+    },
+    [customKeybindings]
+  );
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Cmd+= / Cmd++ — zoom in (accept both the unshifted '=' and shifted '+')
-      if ((e.key === '=' || e.key === '+') && e.metaKey && !e.ctrlKey && !e.altKey) {
+      const isEditorFocused = Boolean(document.activeElement?.closest('.monaco-editor'));
+      const isTerminalOpen = useUIStore.getState().terminalPanelOpen;
+      const targetTileId = usePanelLayoutStore.getState().focusedTileId || DEFAULT_TILES.editor;
+
+      if (matchAction('view.zoomIn', e)) {
         e.preventDefault();
         useUIStore.getState().zoomIn();
         return;
       }
-      // Cmd+- — zoom out
-      if (e.key === '-' && e.metaKey && !e.ctrlKey && !e.altKey) {
+
+      if (matchAction('view.zoomOut', e)) {
         e.preventDefault();
         useUIStore.getState().zoomOut();
         return;
       }
-      // Cmd+0 — reset zoom
-      if (e.key === '0' && e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+
+      if (matchAction('view.resetZoom', e)) {
         e.preventDefault();
         useUIStore.getState().resetZoom();
         return;
       }
 
-      // Cmd+J — toggle terminal
-      if (e.key === 'j' && e.metaKey && !e.shiftKey && !e.ctrlKey) {
+      if (matchAction('nav.nextWorkspace', e)) {
         e.preventDefault();
-        handleToggleTerminal();
+        handleCycleWorkspace('next');
         return;
       }
 
@@ -273,20 +370,45 @@ function AppContent() {
       // Use e.code because Shift+` produces '~' as e.key
       if (e.code === 'Backquote' && e.ctrlKey && e.shiftKey) {
         e.preventDefault();
-        const cwd = useFileExplorerStore.getState().rootPath ?? undefined;
-        // Open terminal panel if closed, then create new terminal
-        if (!useUIStore.getState().terminalPanelOpen) {
-          useUIStore.getState().toggleTerminalPanel();
-        }
-        createTerminal(cwd)
-          .then(({ id, shell }) => {
-            useTerminalStore.getState().addTerminal(id, cwd, shell);
-          })
-          .catch((err) => console.error('Failed to create terminal:', err));
+        handleCycleWorkspace('prev');
         return;
       }
-      // Cmd+, — toggle settings
-      if (e.key === ',' && e.metaKey) {
+
+      for (let slot = 1; slot <= 9; slot += 1) {
+        if (matchAction(`nav.focusWorktree${slot}`, e)) {
+          e.preventDefault();
+          void handleSwitchWorktreeSlot(slot - 1);
+          return;
+        }
+      }
+
+      for (let slot = 1; slot <= 9; slot += 1) {
+        if (matchAction(`nav.focusTab${slot}`, e)) {
+          e.preventDefault();
+          usePanelTabsStore.getState().activateTabByIndex(targetTileId, slot - 1);
+          return;
+        }
+      }
+
+      if (matchAction('view.toggleTerminal', e)) {
+        e.preventDefault();
+        handleToggleTerminal();
+        return;
+      }
+
+      if (matchAction('view.toggleSidebar', e)) {
+        e.preventDefault();
+        useUIStore.getState().toggleLeftSidebar();
+        return;
+      }
+
+      if (matchAction('terminal.newSession', e)) {
+        e.preventDefault();
+        handleCreateTerminal();
+        return;
+      }
+
+      if (matchAction('settings.open', e)) {
         e.preventDefault();
         if (settingsOpen) {
           closeSettings();
@@ -296,8 +418,7 @@ function AppContent() {
         return;
       }
 
-      // Cmd+N — new agent session
-      if (e.key === 'n' && e.metaKey && !e.shiftKey && !e.ctrlKey) {
+      if (matchAction('agent.newSession', e)) {
         e.preventDefault();
         // Don't create sessions when workspace layout isn't visible
         const currentRootPath = useFileExplorerStore.getState().rootPath;
@@ -313,27 +434,21 @@ function AppContent() {
         return;
       }
 
-      // Cmd+? (Cmd+Shift+/) -- toggle keyboard shortcuts overlay
-      if (e.key === '?' && e.metaKey) {
+      if (matchAction('view.showShortcuts', e)) {
         e.preventDefault();
         setShortcutsOverlayOpen((prev) => !prev);
         return;
       }
 
-      // Cmd+Shift+T -- toggle tab switcher
-      if (e.key === 'T' && e.metaKey && e.shiftKey) {
+      if (matchAction('nav.tabSwitcher', e)) {
         e.preventDefault();
         setTabSwitcherOpen((prev) => !prev);
         return;
       }
 
-      // Cmd+W — close current tab (terminal or panel)
-      if (e.key === 'w' && e.metaKey && !e.shiftKey) {
+      if (matchAction('file.closeTab', e)) {
         e.preventDefault();
-        const isTermOpen = useUIStore.getState().terminalPanelOpen;
-        const isEditorActive = document.activeElement?.closest('.monaco-editor');
-
-        if (isTermOpen && !isEditorActive) {
+        if (isTerminalOpen && !isEditorFocused) {
           // Terminal is open and editor is NOT focused → close terminal tab
           const { activeTerminalId: aid } = useTerminalStore.getState();
           if (aid) {
@@ -344,53 +459,47 @@ function AppContent() {
             }
           }
         } else {
-          // Close the active panel tab in the editor tile
-          usePanelTabsStore.getState().closeActiveTab(DEFAULT_TILES.editor);
+          // Close the active panel tab in the focused tile
+          usePanelTabsStore.getState().closeActiveTab(targetTileId);
         }
         return;
       }
 
-      // Terminal-specific shortcuts (only when terminal panel is open)
-      const isTerminalOpen = useUIStore.getState().terminalPanelOpen;
-      if (!isTerminalOpen) return;
-
-      // A6: Don't intercept shortcuts when Monaco editor is focused
-      const isEditorFocused = document.activeElement?.closest('.monaco-editor');
-      if (isEditorFocused) return;
-
-      // Cmd+T — new terminal
-      if (e.key === 't' && e.metaKey && !e.shiftKey) {
+      if (matchAction('nav.prevTab', e)) {
         e.preventDefault();
-        const cwd = useFileExplorerStore.getState().rootPath ?? undefined;
-        createTerminal(cwd)
-          .then(({ id, shell }) => {
-            useTerminalStore.getState().addTerminal(id, cwd, shell);
-          })
-          .catch((err) => console.error('Failed to create terminal:', err));
+        if (isTerminalOpen && !isEditorFocused) {
+          useTerminalStore.getState().cycleTerminal('prev');
+        } else {
+          usePanelTabsStore.getState().activatePrevTab(targetTileId);
+        }
         return;
       }
 
-      // Cmd+Shift+[ or ] — switch terminal tabs
-      if (e.key === '[' && e.metaKey && e.shiftKey) {
+      if (matchAction('nav.nextTab', e)) {
         e.preventDefault();
-        useTerminalStore.getState().cycleTerminal('prev');
-        return;
-      }
-      if (e.key === ']' && e.metaKey && e.shiftKey) {
-        e.preventDefault();
-        useTerminalStore.getState().cycleTerminal('next');
+        if (isTerminalOpen && !isEditorFocused) {
+          useTerminalStore.getState().cycleTerminal('next');
+        } else {
+          usePanelTabsStore.getState().activateNextTab(targetTileId);
+        }
         return;
       }
 
-      // Cmd+K — clear terminal
-      if (e.key === 'k' && e.metaKey && !e.shiftKey) {
+      if (matchAction('terminal.new', e)) {
+        e.preventDefault();
+        handleCreateTerminal();
+        return;
+      }
+
+      if (!isTerminalOpen || isEditorFocused) return;
+
+      if (matchAction('terminal.clear', e)) {
         e.preventDefault();
         clearActiveTerminal();
         return;
       }
 
-      // Cmd+F — find in terminal
-      if (e.key === 'f' && e.metaKey && !e.shiftKey) {
+      if (matchAction('editor.find', e)) {
         e.preventDefault();
         findInActiveTerminal();
         return;
@@ -398,7 +507,16 @@ function AppContent() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleToggleTerminal, settingsOpen, openSettings, closeSettings]);
+  }, [
+    closeSettings,
+    handleCreateTerminal,
+    handleCycleWorkspace,
+    handleSwitchWorktreeSlot,
+    handleToggleTerminal,
+    matchAction,
+    openSettings,
+    settingsOpen,
+  ]);
 
   // Open a file in the panel system
   const handleFileOpen = useCallback((path: string) => {

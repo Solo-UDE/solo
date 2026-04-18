@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { SunIcon, CodeIcon, ArrowLeftIcon, ExitIcon, ExternalLinkIcon, ReaderIcon, CounterClockwiseClockIcon, StarIcon, RocketIcon } from '@radix-ui/react-icons';
-import { Terminal, FolderOpen, Keyboard, Brain, Mic, Zap } from 'lucide-react';
+import { Terminal, FolderOpen, Keyboard, Brain, Mic, UserRound, Zap, Puzzle } from 'lucide-react';
 import { useUIStore, type SettingsTabId } from '../../stores/uiStore';
 import { useAuthStore } from '../../stores/authStore';
 import { useSettingsStore } from '../../stores/settingsStore';
@@ -15,6 +15,7 @@ interface TabDef {
 const TABS: TabDef[] = [
   { id: 'journey', label: 'Your Journey', icon: RocketIcon },
   { id: 'leaderboard', label: 'Leaderboard', icon: StarIcon },
+  { id: 'account', label: 'Account', icon: UserRound },
   { id: 'general', label: 'General', icon: SunIcon },
   { id: 'editor', label: 'Editor', icon: CodeIcon },
   { id: 'terminal', label: 'Terminal', icon: Terminal },
@@ -23,6 +24,7 @@ const TABS: TabDef[] = [
   { id: 'ai', label: 'Providers', icon: Brain },
   { id: 'voice', label: 'Voice', icon: Mic },
   { id: 'skills', label: 'Skills', icon: Zap },
+  { id: 'plugins', label: 'Plugins', icon: Puzzle },
 ];
 
 export function SettingsSidebar() {

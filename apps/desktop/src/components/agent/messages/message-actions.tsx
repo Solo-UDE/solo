@@ -1,7 +1,6 @@
-import { CheckIcon, CopyIcon, SpeakerLoudIcon, StopIcon } from '@radix-ui/react-icons';
+import { CheckIcon, CopyIcon } from '@radix-ui/react-icons';
 import { IconButton } from '@solo/ui';
 import { useState } from 'react';
-import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 
 import type { FC } from 'react';
 
@@ -13,11 +12,10 @@ interface MessageActionsProps {
 
 export const MessageActions: FC<MessageActionsProps> = ({
   showDisclaimer = false,
-  messageText,
+  messageText: _messageText,
   onCopy,
 }) => {
   const [copied, setCopied] = useState(false);
-  const { isSpeaking, speak, stop } = useTextToSpeech();
 
   const handleCopy = (): void => {
     onCopy?.();
@@ -27,29 +25,9 @@ export const MessageActions: FC<MessageActionsProps> = ({
     }, 2000);
   };
 
-  const handleSpeak = (): void => {
-    if (isSpeaking) {
-      stop();
-    } else if (messageText) {
-      speak(messageText);
-    }
-  };
-
   return (
     <div className="mt-3 flex flex-col gap-2 items-end">
       <div className="flex items-center gap-1">
-        {messageText && (
-          <IconButton
-            variant="ghost"
-            size="sm"
-            className="h-6 w-6"
-            aria-label={isSpeaking ? 'Stop speaking' : 'Read aloud'}
-            title={isSpeaking ? 'Stop speaking' : 'Read aloud'}
-            onClick={handleSpeak}
-          >
-            {isSpeaking ? <StopIcon width={14} height={14} /> : <SpeakerLoudIcon width={14} height={14} />}
-          </IconButton>
-        )}
         <IconButton
           variant="ghost"
           size="sm"

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useUIStore, type SettingsTabId } from '../../stores/uiStore';
 import { SettingsSidebar } from './SettingsSidebar';
+import { AccountTab } from './tabs/AccountTab';
 import { GeneralTab } from './tabs/GeneralTab';
 import { EditorTab } from './tabs/EditorTab';
 import { TerminalTab } from './tabs/TerminalTab';
@@ -10,14 +11,16 @@ import { ShortcutsTab } from './tabs/ShortcutsTab';
 import { AITab } from './tabs/AITab';
 import { VoiceTab } from './tabs/VoiceTab';
 import { SkillsTab } from './tabs/SkillsTab';
+import { PluginsTab } from './tabs/PluginsTab';
 import { JourneyPage } from './journey/JourneyPage';
 import { LeaderboardPage } from './leaderboard/LeaderboardPage';
 
-const TAB_ORDER: SettingsTabId[] = ['journey', 'leaderboard', 'general', 'editor', 'terminal', 'files', 'shortcuts', 'ai', 'voice', 'skills'];
+const TAB_ORDER: SettingsTabId[] = ['journey', 'leaderboard', 'account', 'general', 'editor', 'terminal', 'files', 'shortcuts', 'ai', 'voice', 'skills', 'plugins'];
 
 const TAB_LABELS: Record<SettingsTabId, string> = {
   journey: 'Your Journey',
   leaderboard: 'Leaderboard',
+  account: 'Account',
   general: 'General',
   editor: 'Editor',
   terminal: 'Terminal',
@@ -26,11 +29,13 @@ const TAB_LABELS: Record<SettingsTabId, string> = {
   ai: 'Providers',
   voice: 'Voice',
   skills: 'Skills',
+  plugins: 'Plugins',
 };
 
 const TAB_DESCRIPTIONS: Record<SettingsTabId, string> = {
   journey: 'Your tier, stats, and progress through Solo.',
   leaderboard: 'Top climbers across Solo, filterable by tier.',
+  account: 'See which Solo account is signed in and which GitHub account is connected.',
   general: 'Global desktop behavior, appearance, and app defaults.',
   editor: 'Code editing preferences and panel ergonomics.',
   terminal: 'Terminal session behavior and shell integration.',
@@ -39,6 +44,7 @@ const TAB_DESCRIPTIONS: Record<SettingsTabId, string> = {
   ai: 'Providers, model defaults, and agent execution preferences.',
   voice: 'Speech input behavior and audio capture settings.',
   skills: 'Installed skills and assistant capability controls.',
+  plugins: 'Plugins bundle skills, MCP servers, and connectors you can enable.',
 };
 
 export function SettingsView() {
@@ -53,6 +59,8 @@ export function SettingsView() {
         return <JourneyPage />;
       case 'leaderboard':
         return <LeaderboardPage />;
+      case 'account':
+        return <AccountTab />;
       case 'general':
         return <GeneralTab />;
       case 'editor':
@@ -69,6 +77,8 @@ export function SettingsView() {
         return <VoiceTab />;
       case 'skills':
         return <SkillsTab />;
+      case 'plugins':
+        return <PluginsTab />;
       default:
         return null;
     }

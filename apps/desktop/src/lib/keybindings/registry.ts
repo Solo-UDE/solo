@@ -18,6 +18,31 @@ export interface KeybindingCategory {
   bindings: KeybindingDefinition[];
 }
 
+const TAB_INDEX_KEYBINDINGS: KeybindingDefinition[] = Array.from({ length: 9 }, (_, index) => {
+  const slot = index + 1;
+  return {
+    id: `nav.focusTab${slot}`,
+    label: `Switch to Tab ${slot}`,
+    description: `Activate open tab ${slot}`,
+    defaultKey: `Cmd+${slot}`,
+    category: 'navigation',
+  };
+});
+
+const WORKTREE_SLOT_KEYBINDINGS: KeybindingDefinition[] = Array.from({ length: 9 }, (_, index) => {
+  const slot = index + 1;
+  return {
+    id: `nav.focusWorktree${slot}`,
+    label: `Switch to Worktree ${slot}`,
+    description:
+      slot === 1
+        ? 'Activate the main workspace in the current repository'
+        : `Activate worktree slot ${slot} in the current repository`,
+    defaultKey: `Ctrl+${slot}`,
+    category: 'navigation',
+  };
+});
+
 export const DEFAULT_KEYBINDINGS: KeybindingDefinition[] = [
   // Agent
   { id: 'agent.newSession', label: 'New Agent Session', description: 'Open a new agent session tab', defaultKey: 'Cmd+N', category: 'agent' },
@@ -55,10 +80,15 @@ export const DEFAULT_KEYBINDINGS: KeybindingDefinition[] = [
   { id: 'settings.open', label: 'Open Settings', description: 'Open settings panel', defaultKey: 'Cmd+,', category: 'settings' },
 
   // Navigation
+  { id: 'nav.nextWorkspace', label: 'Next Workspace', description: 'Switch to the next workspace in the repository rail', defaultKey: 'Ctrl+Tab', category: 'navigation' },
+  { id: 'nav.prevWorkspace', label: 'Previous Workspace', description: 'Switch to the previous workspace in the repository rail', defaultKey: 'Ctrl+Shift+Tab', category: 'navigation' },
   { id: 'nav.goToFile', label: 'Go to File', description: 'Quick open file by name', defaultKey: 'Cmd+P', category: 'navigation', implemented: false },
   { id: 'nav.goToLine', label: 'Go to Line', description: 'Jump to a specific line', defaultKey: 'Cmd+G', category: 'navigation', implemented: false },
   { id: 'nav.nextTab', label: 'Next Tab', description: 'Switch to next tab', defaultKey: 'Cmd+Shift+]', category: 'navigation' },
   { id: 'nav.prevTab', label: 'Previous Tab', description: 'Switch to previous tab', defaultKey: 'Cmd+Shift+[', category: 'navigation' },
+  { id: 'nav.tabSwitcher', label: 'Open Tab Switcher', description: 'Search and switch between open tabs', defaultKey: 'Cmd+Shift+T', category: 'navigation' },
+  ...TAB_INDEX_KEYBINDINGS,
+  ...WORKTREE_SLOT_KEYBINDINGS,
   { id: 'nav.goBack', label: 'Go Back', description: 'Navigate back', defaultKey: 'Cmd+Alt+Left', category: 'navigation', implemented: false },
   { id: 'nav.goForward', label: 'Go Forward', description: 'Navigate forward', defaultKey: 'Cmd+Alt+Right', category: 'navigation', implemented: false },
 ];
@@ -155,6 +185,33 @@ export function normalizeKeybinding(key: string): string {
 
   modifiers.sort((a, b) => modifierOrder.indexOf(a) - modifierOrder.indexOf(b));
   return [...modifiers, mainKey].join('+');
+}
+
+export function getKeybindingDefinition(actionId: string): KeybindingDefinition | undefined {
+  return DEFAULT_KEYBINDINGS.find((binding) => binding.id === actionId);
+}
+
+export function getDefaultKeybinding(actionId: string): string {
+  return getKeybindingDefinition(actionId)?.defaultKey ?? '';
+}
+
+export function getEffectiveKeybinding(
+  actionId: string,
+  customKeybindings: Record<string, string>
+): string {
+  return customKeybindings[actionId] ?? getDefaultKeybinding(actionId);
+}
+
+export function buildEffectiveKeybindings(
+  customKeybindings: Record<string, string>
+): Record<string, string> {
+  const result: Record<string, string> = {};
+
+  for (const def of DEFAULT_KEYBINDINGS) {
+    result[def.id] = getEffectiveKeybinding(def.id, customKeybindings);
+  }
+
+  return result;
 }
 
 /**

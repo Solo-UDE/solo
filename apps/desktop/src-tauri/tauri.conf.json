@@ -24,7 +24,22 @@
         "decorations": true,
         "transparent": true,
         "titleBarStyle": "Overlay",
-        "hiddenTitle": true
+        "hiddenTitle": true,
+        "trafficLightPosition": { "x": 13, "y": 13 }
+      },
+      {
+        "label": "voice-hud",
+        "url": "hud.html",
+        "title": "Solo Voice HUD",
+        "width": 220,
+        "height": 48,
+        "resizable": false,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "focus": false,
+        "visible": false
       }
     ],
     "security": {

@@ -7,7 +7,7 @@ import {
 } from './ui/dialog';
 import {
   KEYBINDING_CATEGORIES,
-  DEFAULT_KEYBINDINGS,
+  buildEffectiveKeybindings,
   formatKeybinding,
 } from '@/lib/keybindings/registry';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -27,13 +27,10 @@ export const KeyboardShortcutsOverlay = ({
   const customKeybindings = useSettingsStore((s) => s.shortcuts.keybindings);
 
   // Build effective keybindings (custom overrides merged with defaults)
-  const effectiveKeybindings = useMemo(() => {
-    const result: Record<string, string> = {};
-    for (const def of DEFAULT_KEYBINDINGS) {
-      result[def.id] = customKeybindings[def.id] ?? def.defaultKey;
-    }
-    return result;
-  }, [customKeybindings]);
+  const effectiveKeybindings = useMemo(
+    () => buildEffectiveKeybindings(customKeybindings),
+    [customKeybindings]
+  );
 
   // Filter categories based on search
   const filteredCategories = useMemo(() => {

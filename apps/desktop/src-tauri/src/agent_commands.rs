@@ -37,6 +37,36 @@ fn to_error<E: Display>(e: E) -> String {
 /// attaches them to the SessionConfig before forwarding to the sidecar.
 /// Backward-compatible: if the caller passed provider/credentials in
 /// `config` already, those take precedence.
+/// Internal helper — create a session and send the first prompt.
+///
+/// Generates a fresh UUID for the session, registers it with the bridge,
+/// and immediately sends `prompt` as the opening user message. Returns
+/// the new session id so callers (e.g. the voice dispatch path) can store
+/// it without depending on Tauri `State` extractors.
+pub(crate) async fn create_session_internal(
+    app: &AppHandle,
+    _title: String,
+    prompt: String,
+) -> Result<String> {
+    use tauri::Manager as _;
+    let session_manager = app.state::<Arc<SessionManager>>();
+    let stats = app.state::<crate::stats_commands::StatsState>();
+
+    let session_id = uuid::Uuid::new_v4().to_string();
+    session_manager
+        .create_session(&session_id, None)
+        .map_err(to_error)?;
+    stats.record(solo_stats::StatsEvent::SessionCreated).await;
+
+    session_manager
+        .send_message(&session_id, &prompt, None)
+        .map_err(to_error)?;
+    stats.record(solo_stats::StatsEvent::MessageSent).await;
+
+    Ok(session_id)
+}
+
+/// Create a new agent session
 #[tauri::command]
 pub async fn agent_create_session(
     session_id: String,

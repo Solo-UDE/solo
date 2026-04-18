@@ -777,6 +777,52 @@ pub struct PlacementResult {
 }
 
 // =============================================================================
+// Voice Protocol
+// =============================================================================
+
+#[derive(TS, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub enum VoiceMode {
+    Dictation,
+    Dispatch,
+}
+
+#[derive(TS, Serialize, Deserialize, Clone, Debug)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(tag = "kind", content = "data")]
+pub enum VoicePipelineState {
+    Idle,
+    Arming,
+    Recording,
+    Transcribing,
+    Formatting,
+    Emitting,
+    Error(String),
+}
+
+#[derive(TS, Serialize, Deserialize, Clone, Debug)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct VoiceTranscriptResult {
+    pub id: String,
+    pub mode: VoiceMode,
+    pub raw_transcript: String,
+    pub formatted: String,
+    pub target_app_bundle_id: Option<String>,
+    pub target_app_name: Option<String>,
+    pub duration_ms: u32,
+    pub linked_session_id: Option<String>,
+    pub created_at: i64,
+}
+
+#[derive(TS, Serialize, Deserialize, Clone, Debug)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct VoiceModelProgress {
+    pub model_id: String,
+    pub bytes: u64,
+    pub total: u64,
+}
+
+// =============================================================================
 // Backend Events (sent from Rust to TypeScript)
 // =============================================================================
 
@@ -961,6 +1007,32 @@ pub enum BackendEvent {
         session_id: String,
         mode: PermissionMode,
     },
+
+    // =========================================================================
+    // Voice events
+    // =========================================================================
+    /// Voice pipeline state changed
+    #[serde(rename = "voice:state")]
+    VoiceState {
+        mode: VoiceMode,
+        state: VoicePipelineState,
+    },
+
+    /// Voice audio level update
+    #[serde(rename = "voice:level")]
+    VoiceLevel { rms: f32 },
+
+    /// Voice transcript result ready
+    #[serde(rename = "voice:transcript")]
+    VoiceTranscript { result: VoiceTranscriptResult },
+
+    /// Voice error occurred
+    #[serde(rename = "voice:error")]
+    VoiceError { message: String },
+
+    /// Voice model download progress
+    #[serde(rename = "voice:model_progress")]
+    VoiceModelProgress { progress: VoiceModelProgress },
 }
 
 // =============================================================================
@@ -1056,53 +1128,6 @@ pub struct ParseErrorInfo {
     pub message: String,
     /// Location of the error
     pub range: SymbolRange,
-}
-
-// =============================================================================
-// ElevenLabs Voice Protocol
-// =============================================================================
-
-/// STT partial transcript event (emitted on "elevenlabs:stt_partial" channel)
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../apps/desktop/src/bindings/")]
-pub struct ElevenLabsSttPartialEvent {
-    pub session_id: String,
-    pub text: String,
-}
-
-/// STT committed (final) transcript event (emitted on "elevenlabs:stt_committed" channel)
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../apps/desktop/src/bindings/")]
-pub struct ElevenLabsSttCommittedEvent {
-    pub session_id: String,
-    pub text: String,
-}
-
-/// STT status event (emitted on "elevenlabs:stt_status" channel)
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../apps/desktop/src/bindings/")]
-pub struct ElevenLabsSttStatusEvent {
-    pub session_id: String,
-    pub status: String,
-    pub error: Option<String>,
-}
-
-/// TTS audio chunk event (emitted on "elevenlabs:tts_audio" channel)
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../apps/desktop/src/bindings/")]
-pub struct ElevenLabsTtsAudioEvent {
-    pub session_id: String,
-    pub chunk: String,
-    pub sample_rate: u32,
-}
-
-/// TTS status event (emitted on "elevenlabs:tts_status" channel)
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../apps/desktop/src/bindings/")]
-pub struct ElevenLabsTtsStatusEvent {
-    pub session_id: String,
-    pub status: String,
-    pub error: Option<String>,
 }
 
 // =============================================================================
@@ -1305,6 +1330,8 @@ pub struct SoloSettings {
     pub modes: ModesConfig,
     #[serde(default)]
     pub skills: SkillsConfig,
+    #[serde(default)]
+    pub plugins: PluginsConfig,
 }
 
 /// Outcome of a permission check. Mirrors Claude Code's `PermissionResult`.
@@ -1534,6 +1561,146 @@ pub struct TierInfo {
     pub score: f64,
     pub tier_name: String,
     pub names: Vec<String>,
+}
+
+// =============================================================================
+// Voice Configuration (Phase 2)
+// =============================================================================
+
+/// Keyboard shortcuts configuration for voice activation.
+#[derive(TS, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct ShortcutsConfig {
+    /// Macro-style shortcut spec: e.g. `"fn"`, `"ctrl+alt+space"`, `"escape"`.
+    pub dictation_ptt: String,
+    pub dispatch_ptt: String,
+    pub cancel: String,
+}
+
+impl Default for ShortcutsConfig {
+    fn default() -> Self {
+        Self {
+            dictation_ptt: "fn".into(),
+            dispatch_ptt: "ctrl+alt+space".into(),
+            cancel: "escape".into(),
+        }
+    }
+}
+
+/// Snapshot of voice-related macOS permissions.
+#[derive(TS, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct VoicePermissions {
+    pub microphone: bool,
+    pub input_monitoring: bool,
+    pub accessibility: bool,
+// Plugins Protocol
+// =============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, Hash, PartialEq, Eq)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct PluginId {
+    pub marketplace: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, TS, PartialEq, Eq)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "snake_case")]
+pub enum PluginSource {
+    Local,
+    Marketplace,
+    ClaudeAdapter,
+    CodexAdapter,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct PluginSummary {
+    pub id: PluginId,
+    pub version: String,
+    pub display_name: String,
+    pub short_description: Option<String>,
+    pub logo: Option<String>,
+    pub brand_color: Option<String>,
+    pub enabled: bool,
+    pub source: PluginSource,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct PluginDetail {
+    pub id: PluginId,
+    pub version: String,
+    pub source: PluginSource,
+    pub enabled: bool,
+    pub root_path: String,
+    pub description: Option<String>,
+    pub interface: Option<PluginInterface>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct PluginInterface {
+    pub display_name: Option<String>,
+    pub short_description: Option<String>,
+    pub long_description: Option<String>,
+    pub developer_name: Option<String>,
+    pub category: Option<String>,
+    pub capabilities: Vec<String>,
+    pub website_url: Option<String>,
+    pub privacy_policy_url: Option<String>,
+    pub terms_of_service_url: Option<String>,
+    pub default_prompts: Vec<String>,
+    pub brand_color: Option<String>,
+    pub composer_icon: Option<String>,
+    pub logo: Option<String>,
+    pub screenshots: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct PluginInstallResult {
+    pub id: PluginId,
+    pub version: String,
+    pub root_path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct PluginListOutcome {
+    pub plugins: Vec<PluginSummary>,
+    pub errors: Vec<PluginLoadError>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct PluginLoadError {
+    pub path: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub struct PluginsConfig {
+    #[serde(default = "default_true_plugins")]
+    pub adapter_claude_plugins: bool,
+    #[serde(default = "default_true_plugins")]
+    pub adapter_codex_user: bool,
+}
+
+impl Default for PluginsConfig {
+    fn default() -> Self {
+        Self {
+            adapter_claude_plugins: true,
+            adapter_codex_user: true,
+        }
+    }
+}
+
+fn default_true_plugins() -> bool {
+    true
 }
 
 #[cfg(test)]

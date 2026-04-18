@@ -33,12 +33,12 @@ mod agent;
 mod agent_commands;
 mod auth_commands;
 mod commands;
-mod elevenlabs_commands;
 mod embedding_commands;
 mod fs_commands;
 mod git_commands;
 mod parse_commands;
 mod plan_commands;
+mod plugins_commands;
 mod provider_commands;
 mod session_commands;
 mod settings_commands;
@@ -47,13 +47,15 @@ mod stats_commands;
 mod terminal_commands;
 mod update_commands;
 mod vault_commands;
+mod voice;
+mod voice_commands;
 mod worktree_commands;
 
 use auth_commands::AuthState;
-use elevenlabs_commands::ElevenLabsState;
 use embedding_commands::EmbeddingState;
 use fs_commands::FsState;
 use git_commands::GitState;
+use plugins_commands::PluginsState;
 use provider_commands::ProviderAuthState;
 use stats_commands::StatsState;
 use tauri::Emitter;
@@ -62,6 +64,7 @@ use tauri_plugin_decorum::WebviewWindowExt;
 use terminal_commands::TerminalState;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use vault_commands::VaultState;
+use voice_commands::VoiceState;
 use worktree_commands::WorktreeState;
 
 use std::env;
@@ -70,11 +73,13 @@ use std::sync::Arc;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    desktop_config::maybe_load_local_env();
+
     // Initialize logging
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "solo_desktop_lib=debug,solo_elevenlabs=debug,tauri=info".into()),
+                .unwrap_or_else(|_| "solo_desktop_lib=debug,solo_voice=debug,tauri=info".into()),
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
@@ -105,6 +110,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_macos_permissions::init())
         .plugin(tauri_plugin_decorum::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -121,6 +127,14 @@ pub fn run() {
                 }
             }
         }))
+        .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_macos_permissions::init())
+        .plugin(tauri_plugin_decorum::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .setup(move |app| {
             // Register deep link handler
             #[cfg(any(target_os = "linux", target_os = "windows"))]
@@ -133,6 +147,15 @@ pub fn run() {
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
                 let app_handle = app.handle().clone();
+                match app.deep_link().get_current() {
+                    Ok(Some(urls)) => {
+                        tracing::info!("Initial deep link URLs: {:?}", urls);
+                    }
+                    Ok(None) => {}
+                    Err(error) => {
+                        tracing::warn!("Failed to read initial deep links: {}", error);
+                    }
+                }
                 tracing::info!("Setting up deep link handler...");
                 app.deep_link().on_open_url(move |event| {
                     tracing::info!("Deep link event received!");
@@ -192,9 +215,11 @@ pub fn run() {
         .manage(TerminalState::new())
         .manage(GitState::new())
         .manage(WorktreeState::new())
-        .manage(ElevenLabsState::new())
         .manage(VaultState::new())
+        .manage(VoiceState::new())
+        .manage(std::sync::Arc::new(voice::hud::HudState::new()))
         .manage(StatsState::new())
+        .manage(PluginsState::new())
         .invoke_handler(tauri::generate_handler![
             // Core commands
             commands::ping,
@@ -364,6 +389,12 @@ pub fn run() {
             skills_commands::skills_onboarding_dismiss,
             skills_commands::skills_onboarding_reset,
             skills_commands::skills_set_imports,
+            // Plugin commands
+            plugins_commands::plugins_list,
+            plugins_commands::plugins_get_detail,
+            plugins_commands::plugins_set_enabled,
+            plugins_commands::plugins_install_local,
+            plugins_commands::plugins_uninstall,
             // Stats & tier commands
             stats_commands::stats_initialize,
             stats_commands::stats_current,
@@ -371,16 +402,20 @@ pub fn run() {
             stats_commands::stats_get_tier,
             stats_commands::stats_get_leaderboard,
             stats_commands::stats_generate_card,
-            // ElevenLabs voice commands
-            elevenlabs_commands::elevenlabs_set_api_key,
-            elevenlabs_commands::elevenlabs_has_api_key,
-            elevenlabs_commands::elevenlabs_clear_api_key,
-            elevenlabs_commands::elevenlabs_stt_start,
-            elevenlabs_commands::elevenlabs_stt_send_audio,
-            elevenlabs_commands::elevenlabs_stt_commit,
-            elevenlabs_commands::elevenlabs_stt_stop,
-            elevenlabs_commands::elevenlabs_tts_speak,
-            elevenlabs_commands::elevenlabs_tts_stop,
+            // Voice commands
+            voice_commands::voice_enable,
+            voice_commands::voice_download_parakeet,
+            voice_commands::voice_begin,
+            voice_commands::voice_end,
+            voice_commands::voice_cancel,
+            voice_commands::voice_history_list,
+            voice_commands::voice_history_delete,
+            voice_commands::voice_parakeet_installed,
+            voice_commands::voice_get_shortcuts,
+            voice_commands::voice_set_shortcuts,
+            voice_commands::voice_check_permissions,
+            voice_commands::voice_request_permission,
+            voice_commands::voice_clear_badge,
             // Update commands
             update_commands::check_for_update,
             update_commands::install_update,

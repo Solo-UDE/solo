@@ -6,12 +6,23 @@ import * as lambdaNodejs from "aws-cdk-lib/aws-lambda-nodejs";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import { Construct } from "constructs";
+import { existsSync } from "node:fs";
 import * as path from "node:path";
 import * as url from "node:url";
 import type { SoloStageConfig } from "./config.js";
 
 const __filename = url.fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+function resolveEntryPath(entryPath: string): string {
+  const abs = path.resolve(__dirname, "..", entryPath);
+  if (existsSync(abs)) return abs;
+  if (entryPath.endsWith(".ts")) {
+    const compiled = abs.replace(/\.ts$/, ".js");
+    if (existsSync(compiled)) return compiled;
+  }
+  return abs;
+}
 
 export interface SoloAuthStackProps extends cdk.StackProps {
   readonly config: SoloStageConfig;
@@ -37,7 +48,9 @@ export class SoloAuthStack extends cdk.Stack {
       signInAliases: { email: true },
       autoVerify: { email: true },
       standardAttributes: {
-        email: { required: true, mutable: false },
+        // Cognito must be able to update mapped IdP attributes on every
+        // federated sign-in; immutable email breaks Google/GitHub login.
+        email: { required: true, mutable: true },
         givenName: { required: false, mutable: true },
         familyName: { required: false, mutable: true },
       },
@@ -58,6 +71,15 @@ export class SoloAuthStack extends cdk.Stack {
       mfaSecondFactor: { sms: false, otp: true },
       removalPolicy: config.removalPolicy,
     });
+
+    // CDK's L2 user-pool construct omits AttributeDataType for standard
+    // attributes in the synthesized Schema. Cognito accepts that on create,
+    // but rejects schema updates for existing pools. Patch only the standard
+    // attribute entries so the existing custom-attribute synthesis stays intact.
+    const cfnUserPool = this.userPool.node.defaultChild as cognito.CfnUserPool;
+    cfnUserPool.addPropertyOverride("Schema.0.AttributeDataType", "String");
+    cfnUserPool.addPropertyOverride("Schema.1.AttributeDataType", "String");
+    cfnUserPool.addPropertyOverride("Schema.2.AttributeDataType", "String");
 
     this.userPoolDomain = this.userPool.addDomain("HostedDomain", {
       cognitoDomain: { domainPrefix: config.cognitoDomainPrefix },
@@ -127,6 +149,35 @@ export class SoloAuthStack extends cdk.Stack {
       }
     }
 
+    const previewWebOrigin =
+      config.stage === "prod"
+        ? undefined
+        : "https://solo-web-sachin1801-sachins-projects-a130ba69.vercel.app";
+
+    const callbackUrls = [
+      "soloide://auth/callback",
+      "http://localhost:3000/auth/callback",
+      "https://solo.dev/auth/callback",
+      "https://solo-build.com/auth/callback",
+      "http://localhost:3000/api/auth/callback/cognito",
+      "https://solo.dev/api/auth/callback/cognito",
+      "https://solo-build.com/api/auth/callback/cognito",
+      ...(previewWebOrigin
+        ? [
+            `${previewWebOrigin}/auth/callback`,
+            `${previewWebOrigin}/api/auth/callback/cognito`,
+          ]
+        : []),
+    ];
+
+    const logoutUrls = [
+      "soloide://auth/signout",
+      "http://localhost:3000",
+      "https://solo.dev",
+      "https://solo-build.com",
+      ...(previewWebOrigin ? [previewWebOrigin] : []),
+    ];
+
     this.userPoolClient = this.userPool.addClient("DesktopClient", {
       userPoolClientName: `solo-desktop-${config.stage}`,
       generateSecret: false,
@@ -144,18 +195,8 @@ export class SoloAuthStack extends cdk.Stack {
           cognito.OAuthScope.PROFILE,
           cognito.OAuthScope.COGNITO_ADMIN,
         ],
-        callbackUrls: [
-          "soloide://auth/callback",
-          "http://localhost:3000/auth/callback",
-          "https://solo.dev/auth/callback",
-          "http://localhost:3000/api/auth/callback/cognito",
-          "https://solo.dev/api/auth/callback/cognito",
-        ],
-        logoutUrls: [
-          "soloide://auth/signout",
-          "http://localhost:3000",
-          "https://solo.dev",
-        ],
+        callbackUrls,
+        logoutUrls,
       },
       supportedIdentityProviders: supportedIdps,
       preventUserExistenceErrors: true,
@@ -183,7 +224,7 @@ export class SoloAuthStack extends cdk.Stack {
         functionName: postAuthFnName,
         runtime: lambda.Runtime.NODEJS_20_X,
         architecture: lambda.Architecture.ARM_64,
-        entry: path.resolve(__dirname, "..", "lambda/github/postAuth.ts"),
+        entry: resolveEntryPath("lambda/github/postAuth.ts"),
         handler: "handler",
         timeout: cdk.Duration.seconds(10),
         memorySize: 256,

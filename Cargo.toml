@@ -35,6 +35,26 @@ git2 = "0.20.4"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
-# WebSocket
-tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
 futures-util = "0.3"
+
+# Audio + ML for solo-voice
+cpal = "0.15"
+# TODO: bump to "2.0" once crates.io publishes a stable 2.0.0 (currently rc-only).
+ort = { version = "2.0.0-rc", features = ["download-binaries", "ndarray"] }
+ndarray = "0.16"
+rusqlite = { version = "0.32", features = ["bundled"] }
+uuid = { version = "1.11", features = ["v4", "serde"] }
+reqwest = { version = "0.12", features = ["json", "stream"] }
+sha2 = "0.10"
+hound = "3.5"
+
+# Sherpa-ONNX Rust bindings (ships the sherpa-onnx C++ lib as a sub-build)
+sherpa-rs = "0.6"
+
+# macOS platform glue for voice Phase 2
+objc2 = "0.5"
+objc2-app-kit = { version = "0.2", features = ["NSWorkspace", "NSRunningApplication", "NSPasteboard", "NSEvent"] }
+objc2-foundation = { version = "0.2", features = ["NSString", "NSArray", "NSURL"] }
+core-graphics = "0.24"
+core-foundation = "0.10"
+tauri-plugin-macos-permissions = "2"

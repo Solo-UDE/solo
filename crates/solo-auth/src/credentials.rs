@@ -164,7 +164,6 @@ const LEGACY_ENTRIES: &[(&str, &str, &str)] = &[
     ("solo.provider.anthropic.apiKey", "api-key", "anthropic.apiKey"),
     ("solo.provider.openai.apiKey", "api-key", "openai.apiKey"),
     ("solo.provider.gemini.apiKey", "api-key", "gemini.apiKey"),
-    ("solo.provider.elevenlabs.apiKey", "api-key", "elevenlabs.apiKey"),
     ("solo.provider.anthropic.oauth", "oauth-token", "anthropic.oauth"),
     ("solo.provider.openai.oauth", "oauth-token", "openai.oauth"),
     ("solo.supabase.accessToken", "solo-auth", "supabase.accessToken"),
@@ -1186,7 +1185,7 @@ impl CredentialManager {
 
         let new_token = match provider {
             ProviderType::Anthropic => AnthropicOAuthConfig::refresh_token(&refresh_token).await?,
-            ProviderType::OpenAI | ProviderType::Gemini | ProviderType::ElevenLabs => unreachable!(), // Handled above or no OAuth
+            ProviderType::OpenAI | ProviderType::Gemini => unreachable!(), // Handled above or no OAuth
         };
 
         // Store the new token
@@ -1772,10 +1771,6 @@ mod tests {
             CredentialManager::api_key_vault_key(ProviderType::Gemini),
             "gemini.apiKey"
         );
-        assert_eq!(
-            CredentialManager::api_key_vault_key(ProviderType::ElevenLabs),
-            "elevenlabs.apiKey"
-        );
     }
 
     #[test]
@@ -1815,14 +1810,13 @@ mod tests {
 
     #[test]
     fn test_legacy_entries_mapping() {
-        // Verify all 8 legacy entries are defined with correct vault keys
-        assert_eq!(LEGACY_ENTRIES.len(), 8);
+        // Verify all 7 legacy entries are defined with correct vault keys
+        assert_eq!(LEGACY_ENTRIES.len(), 7);
 
         let vault_keys: Vec<&str> = LEGACY_ENTRIES.iter().map(|(_, _, k)| *k).collect();
         assert!(vault_keys.contains(&"anthropic.apiKey"));
         assert!(vault_keys.contains(&"openai.apiKey"));
         assert!(vault_keys.contains(&"gemini.apiKey"));
-        assert!(vault_keys.contains(&"elevenlabs.apiKey"));
         assert!(vault_keys.contains(&"anthropic.oauth"));
         assert!(vault_keys.contains(&"openai.oauth"));
         assert!(vault_keys.contains(&"supabase.accessToken"));

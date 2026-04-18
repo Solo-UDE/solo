@@ -2,26 +2,69 @@
  * Keybinding Utilities - Parse and format keybinding strings
  */
 
-/**
- * Parse a KeyboardEvent into a keybinding string.
- */
-export function parseKeyboardEvent(e: KeyboardEvent): string {
+const CODE_TO_KEY: Record<string, string> = {
+  Backquote: '`',
+  Minus: '-',
+  Equal: '=',
+  BracketLeft: '[',
+  BracketRight: ']',
+  Backslash: '\\',
+  Semicolon: ';',
+  Quote: "'",
+  Comma: ',',
+  Period: '.',
+  Slash: '/',
+  Digit0: '0',
+  Digit1: '1',
+  Digit2: '2',
+  Digit3: '3',
+  Digit4: '4',
+  Digit5: '5',
+  Digit6: '6',
+  Digit7: '7',
+  Digit8: '8',
+  Digit9: '9',
+};
+
+function getEventKey(e: KeyboardEvent): string {
+  if (e.key === ' ') {
+    return 'Space';
+  }
+
+  if (e.key === 'Esc') {
+    return 'Escape';
+  }
+
+  if (e.code in CODE_TO_KEY) {
+    return CODE_TO_KEY[e.code];
+  }
+
+  if (e.key.length === 1) {
+    return e.key.toUpperCase();
+  }
+
+  return e.key;
+}
+
+function getEventModifiers(e: KeyboardEvent, includeShift: boolean = true): string[] {
   const parts: string[] = [];
 
   if (e.metaKey) parts.push('Cmd');
   if (e.ctrlKey) parts.push('Ctrl');
   if (e.altKey) parts.push('Alt');
-  if (e.shiftKey) parts.push('Shift');
+  if (includeShift && e.shiftKey) parts.push('Shift');
 
-  const key = e.key;
+  return parts;
+}
+
+/**
+ * Parse a KeyboardEvent into a keybinding string.
+ */
+export function parseKeyboardEvent(e: KeyboardEvent): string {
+  const parts = getEventModifiers(e);
+  const key = getEventKey(e);
   if (!['Meta', 'Control', 'Alt', 'Shift'].includes(key)) {
-    if (key === ' ') {
-      parts.push('Space');
-    } else if (key.length === 1) {
-      parts.push(key.toUpperCase());
-    } else {
-      parts.push(key);
-    }
+    parts.push(key);
   }
 
   return parts.join('+');
@@ -32,7 +75,20 @@ export function parseKeyboardEvent(e: KeyboardEvent): string {
  */
 export function matchesKeybinding(binding: string, e: KeyboardEvent): boolean {
   const eventKey = parseKeyboardEvent(e);
-  return normalizeForComparison(binding) === normalizeForComparison(eventKey);
+  const normalizedBinding = normalizeForComparison(binding);
+
+  if (normalizedBinding === normalizeForComparison(eventKey)) {
+    return true;
+  }
+
+  // Treat the shifted "+" variant on the "=" key as a match for bindings
+  // stored as Cmd+=, which is how zoom-in is represented in the registry.
+  if (e.code === 'Equal' && e.shiftKey) {
+    const eventWithoutShift = [...getEventModifiers(e, false), getEventKey(e)].join('+');
+    return normalizedBinding === normalizeForComparison(eventWithoutShift);
+  }
+
+  return false;
 }
 
 /**
