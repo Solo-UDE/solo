@@ -1,0 +1,99 @@
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+export const WORKSPACE_ROOT = path.resolve(SCRIPT_DIR, "..");
+
+export const DESKTOP_AUTH_ENV_KEYS = [
+  "SOLO_COGNITO_DOMAIN",
+  "SOLO_COGNITO_CLIENT_ID",
+  "SOLO_AWS_REGION",
+  "SOLO_API_ENDPOINT",
+];
+
+export const CALLBACK_URI = "soloide://auth/callback";
+export const SIGNOUT_URI = "soloide://auth/signout";
+
+export const candidateEnvFiles = [
+  path.join(WORKSPACE_ROOT, "infra/.env"),
+  path.join(WORKSPACE_ROOT, "infra/.env.dev"),
+  path.join(WORKSPACE_ROOT, ".env"),
+  path.join(WORKSPACE_ROOT, ".env.local"),
+];
+
+function parseEnvLine(rawLine) {
+  const match = rawLine.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/);
+  if (!match) return null;
+
+  let [, key, value] = match;
+  value = value.trim();
+
+  const quoted =
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"));
+  if (quoted) {
+    value = value.slice(1, -1);
+  } else {
+    value = value.replace(/\s+#.*$/, "").trim();
+  }
+
+  return [key, value];
+}
+
+function parseEnvFile(contents) {
+  const parsed = {};
+  for (const rawLine of contents.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    const entry = parseEnvLine(rawLine);
+    if (!entry) continue;
+    const [key, value] = entry;
+    parsed[key] = value;
+  }
+  return parsed;
+}
+
+export function resolveDesktopAuthEnv(baseEnv = process.env) {
+  const envFromFiles = {};
+  const sources = {};
+  const loadedFiles = [];
+
+  for (const filePath of candidateEnvFiles) {
+    if (!fs.existsSync(filePath)) continue;
+    loadedFiles.push(filePath);
+    const parsed = parseEnvFile(fs.readFileSync(filePath, "utf8"));
+    for (const [key, value] of Object.entries(parsed)) {
+      envFromFiles[key] = value;
+      sources[key] = filePath;
+    }
+  }
+
+  const env = {
+    ...envFromFiles,
+    ...baseEnv,
+  };
+
+  for (const [key, value] of Object.entries(baseEnv)) {
+    if (typeof value === "string" && value.trim().length > 0) {
+      sources[key] = "process";
+    }
+  }
+
+  const effective = Object.fromEntries(
+    DESKTOP_AUTH_ENV_KEYS.map((key) => [key, env[key] ?? ""])
+  );
+  const missing = DESKTOP_AUTH_ENV_KEYS.filter((key) => {
+    const value = env[key];
+    return typeof value !== "string" || value.trim().length === 0;
+  });
+
+  return { env, effective, sources, missing, loadedFiles };
+}
+
+export function inferDesktopAuthStage(effective) {
+  const domain = effective.SOLO_COGNITO_DOMAIN ?? "";
+  if (domain.includes("solo-ide-dev.")) return "dev";
+  if (domain.includes("solo-ide-prod.")) return "prod";
+  return "custom";
+}
