@@ -9,8 +9,10 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use solo_protocol::{CumulativeStats, LeaderboardEntry, StatsSnapshot, TierInfo};
-use solo_stats::{StatsCollector, StatsEvent, TokenProvider};
+use solo_protocol::{
+    CumulativeStats, DailyActivityEntry, LeaderboardEntry, StatsSnapshot, TierInfo,
+};
+use solo_stats::{DailyActivity, StatsCollector, StatsEvent, TokenProvider};
 use tauri::State;
 use tokio::sync::RwLock;
 use tracing::{debug, warn};
@@ -123,6 +125,22 @@ pub async fn stats_sync_now(state: State<'_, StatsState>) -> Result<CumulativeSt
     Ok(to_cumulative(snap.cumulative))
 }
 
+/// Fetch the signed-in user's 26-week usage heatmap. Each row is a day's
+/// raw counters — usage score is computed on the frontend.
+#[tauri::command]
+pub async fn stats_get_heatmap(
+    state: State<'_, StatsState>,
+) -> Result<Vec<DailyActivityEntry>, String> {
+    let Some(collector) = state.current().await else {
+        return Err("stats not initialized".to_string());
+    };
+    let rows = collector
+        .fetch_heatmap()
+        .await
+        .map_err(|e| format!("heatmap fetch: {e}"))?;
+    Ok(rows.into_iter().map(to_daily_activity_entry).collect())
+}
+
 /// Fetch the current user's tier info + unlocked name pool from the cloud.
 #[tauri::command]
 pub async fn stats_get_tier(
@@ -233,6 +251,17 @@ fn to_protocol(snap: solo_stats::StatsSnapshot) -> StatsSnapshot {
         },
         cumulative: to_cumulative(snap.cumulative),
         last_sync_at: snap.last_sync_at.map(|dt| dt.to_rfc3339()),
+    }
+}
+
+fn to_daily_activity_entry(row: DailyActivity) -> DailyActivityEntry {
+    DailyActivityEntry {
+        date: row.date,
+        commits: row.commits,
+        tokens: row.tokens,
+        worktrees: row.worktrees,
+        sessions: row.sessions,
+        messages: row.messages,
     }
 }
 
