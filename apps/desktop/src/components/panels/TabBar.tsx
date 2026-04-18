@@ -217,7 +217,7 @@ export function TabBar({
       ref={dropRef}
       className={cn(
         'flex bg-background/20 backdrop-blur-md border-b border-white/[0.04]',
-        'py-1 transition-colors duration-150',
+        'py-1 pl-2 transition-colors duration-150',
         isOver && 'bg-primary/10'
       )}
     >
