@@ -69,14 +69,46 @@ export function resolveDesktopAuthEnv(baseEnv = process.env) {
     }
   }
 
-  const env = {
-    ...envFromFiles,
-    ...baseEnv,
-  };
+  // For auth-critical keys the .env file is authoritative — direnv/shell-cached
+  // values drift after a CDK redeploy and cargo then bakes the stale value into
+  // the binary via option_env!. Prefer file values for these keys; everything
+  // else still honours the shell env.
+  const AUTH_FILE_WINS = new Set([
+    "SOLO_COGNITO_DOMAIN",
+    "SOLO_COGNITO_USER_POOL_ID",
+    "SOLO_COGNITO_CLIENT_ID",
+    "SOLO_COGNITO_IDENTITY_POOL_ID",
+    "SOLO_AWS_REGION",
+    "SOLO_API_ENDPOINT",
+    "SOLO_GITHUB_OIDC_ISSUER",
+    "SOLO_GITHUB_CALLBACK",
+  ]);
 
+  const env = {};
+  for (const [key, value] of Object.entries({ ...baseEnv, ...envFromFiles })) {
+    env[key] = value;
+  }
   for (const [key, value] of Object.entries(baseEnv)) {
     if (typeof value === "string" && value.trim().length > 0) {
       sources[key] = "process";
+    }
+  }
+  for (const [key, fileValue] of Object.entries(envFromFiles)) {
+    if (AUTH_FILE_WINS.has(key)) {
+      const shellValue = baseEnv[key];
+      if (
+        typeof shellValue === "string" &&
+        shellValue.trim().length > 0 &&
+        shellValue !== fileValue
+      ) {
+        console.warn(
+          `[desktop-auth-env] shell env ${key}=${shellValue} ` +
+            `disagrees with file ${fileValue} — preferring file. ` +
+            `Run \`direnv reload\` to refresh your shell.`,
+        );
+      }
+      env[key] = fileValue;
+      sources[key] = sources[key] ?? "file";
     }
   }
 
