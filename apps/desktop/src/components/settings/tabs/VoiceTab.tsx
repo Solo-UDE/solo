@@ -1,178 +1,117 @@
-/**
- * VoiceTab - ElevenLabs voice settings (API key, language, TTS preferences)
- */
-
-import { useCallback, useEffect, useState } from 'react';
-import { CheckCircledIcon, ExclamationTriangleIcon } from '@radix-ui/react-icons';
-import { SettingRow } from '../controls';
-import { PasswordInput } from '../controls';
-import { SelectDropdown } from '../controls';
-import { ToggleSwitch } from '../controls';
-import { setApiKey, hasApiKey, clearApiKey } from '@/lib/tauri/elevenlabs';
-import { useElevenLabsStore, useRefineEnabled } from '@/stores/elevenlabsStore';
-
-const LANGUAGE_OPTIONS = [
-  { value: 'en', label: 'English' },
-  { value: 'es', label: 'Spanish' },
-  { value: 'fr', label: 'French' },
-  { value: 'de', label: 'German' },
-  { value: 'it', label: 'Italian' },
-  { value: 'pt', label: 'Portuguese' },
-  { value: 'ja', label: 'Japanese' },
-  { value: 'ko', label: 'Korean' },
-  { value: 'zh', label: 'Chinese' },
-  { value: 'hi', label: 'Hindi' },
-  { value: 'ar', label: 'Arabic' },
-];
+import { useEffect, useState } from 'react';
+import { voiceApi, onVoiceModelProgress } from '@/lib/tauri/voice';
+import { useVoiceStore } from '@/stores/voiceStore';
+import type { VoiceTranscriptResult } from '@/bindings/VoiceTranscriptResult';
+import { Button } from '@solo/ui';
 
 export function VoiceTab() {
-  const [apiKeyInput, setApiKeyInput] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [error, setError] = useState<string>();
-  const [language, setLanguage] = useState('en');
-  const [autoPlay, setAutoPlay] = useState(false);
+  const enabled = useVoiceStore((s) => s.enabled);
+  const setEnabled = useVoiceStore((s) => s.setEnabled);
+  const parakeetInstalled = useVoiceStore((s) => s.parakeetInstalled);
+  const setParakeetInstalled = useVoiceStore((s) => s.setParakeetInstalled);
+  const modelDownload = useVoiceStore((s) => s.modelDownload);
+  const setModelDownload = useVoiceStore((s) => s.setModelDownload);
 
-  const hasKey = useElevenLabsStore((s) => s.hasApiKey);
-  const storeSetHasKey = useElevenLabsStore((s) => s.setHasApiKey);
-  const refineEnabled = useRefineEnabled();
-  const setRefineEnabled = useElevenLabsStore((s) => s.setRefineEnabled);
+  const [history, setHistory] = useState<VoiceTranscriptResult[]>([]);
+  const [downloading, setDownloading] = useState(false);
 
-  // Check if API key is already set on mount
   useEffect(() => {
-    hasApiKey()
-      .then((has) => {
-        storeSetHasKey(has);
-        if (has) {
-          setApiKeyInput('••••••••••••••••');
-        }
-      })
-      .catch(() => {});
-  }, [storeSetHasKey]);
+    (async () => {
+      if (!enabled) return;
+      setParakeetInstalled(await voiceApi.parakeetInstalled());
+      setHistory(await voiceApi.historyList(50));
+    })();
+  }, [enabled, setParakeetInstalled]);
 
-  const handleSaveApiKey = useCallback(async (value: string) => {
-    setApiKeyInput(value);
-    setError(undefined);
-    setSaved(false);
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    (async () => {
+      unlisten = await onVoiceModelProgress((p) =>
+        setModelDownload({ bytes: Number(p.bytes), total: Number(p.total) }),
+      );
+    })();
+    return () => unlisten?.();
+  }, [setModelDownload]);
 
-    // Don't save masked placeholder
-    if (!value || value === '••••••••••••••••') return;
-
-    // Auto-save when the key looks complete (ElevenLabs keys are 32 chars)
-    if (value.length >= 20) {
-      setSaving(true);
-      try {
-        await setApiKey(value);
-        storeSetHasKey(true);
-        setSaved(true);
-        setSaving(false);
-        // Mask the key after saving
-        setTimeout(() => {
-          setApiKeyInput('••••••••••••••••');
-        }, 1500);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
-        setSaving(false);
-      }
+  async function toggleEnable() {
+    if (!enabled) {
+      await voiceApi.enable();
+      setEnabled(true);
+      setParakeetInstalled(await voiceApi.parakeetInstalled());
+    } else {
+      setEnabled(false);
     }
-  }, [storeSetHasKey]);
+  }
 
-  const handleClearApiKey = useCallback(async () => {
-    setApiKeyInput('');
-    setSaved(false);
-    setError(undefined);
+  async function downloadParakeet() {
+    setDownloading(true);
     try {
-      await clearApiKey();
-      storeSetHasKey(false);
-    } catch {
-      // Ignore
+      await voiceApi.downloadParakeet();
+      setParakeetInstalled(true);
+    } finally {
+      setDownloading(false);
+      setModelDownload(null);
     }
-  }, [storeSetHasKey]);
+  }
+
+  async function deleteRow(id: string) {
+    await voiceApi.historyDelete(id);
+    setHistory(await voiceApi.historyList(50));
+  }
 
   return (
-    <div className="space-y-8">
-      {/* API Key Section */}
-      <div>
-        <h3 className="text-xs font-semibold text-muted-foreground mb-4">ElevenLabs</h3>
-        <div className="divide-y divide-border">
-          <SettingRow
-            label="API Key"
-            description="Required for voice input (STT) and text-to-speech (TTS). Get your key at elevenlabs.io"
-          >
-            <div className="flex items-center gap-2">
-              <PasswordInput
-                value={apiKeyInput}
-                onChange={handleSaveApiKey}
-                onClear={handleClearApiKey}
-                placeholder="Enter ElevenLabs API key..."
-                disabled={saving}
-              />
-              {saved && (
-                <CheckCircledIcon className="w-4 h-4 text-green-500 shrink-0" />
-              )}
-              {error && (
-                <ExclamationTriangleIcon className="w-4 h-4 text-destructive shrink-0" />
+    <div className="space-y-6">
+      <section>
+        <h3 className="text-sm font-semibold mb-2">Voice input</h3>
+        <Button onClick={toggleEnable}>{enabled ? 'Disable' : 'Enable'} voice</Button>
+      </section>
+
+      {enabled && (
+        <>
+          <section>
+            <h3 className="text-sm font-semibold mb-2">Models</h3>
+            <div className="flex items-center gap-3">
+              <span>Parakeet TDT 0.6B (int8) —</span>
+              <span>{parakeetInstalled ? 'Installed' : 'Not installed'}</span>
+              {!parakeetInstalled && (
+                <Button disabled={downloading} onClick={downloadParakeet}>
+                  {downloading ? 'Downloading…' : 'Download'}
+                </Button>
               )}
             </div>
-          </SettingRow>
+            {modelDownload && (
+              <div className="text-xs text-muted-foreground mt-2">
+                {Math.round((modelDownload.bytes / Math.max(1, modelDownload.total)) * 100)}%
+                ({Math.round(modelDownload.bytes / 1_048_576)} /
+                {Math.round(modelDownload.total / 1_048_576)} MB)
+              </div>
+            )}
+          </section>
 
-          {/* Status indicator */}
-          <SettingRow
-            label="Status"
-            description="Voice features require a valid API key"
-          >
-            <div className="flex items-center gap-2 text-sm">
-              <div className={`w-2 h-2 rounded-full ${hasKey ? 'bg-green-500' : 'bg-muted-foreground/30'}`} />
-              <span className={hasKey ? 'text-foreground' : 'text-muted-foreground'}>
-                {hasKey ? 'Connected' : 'Not configured'}
-              </span>
-            </div>
-          </SettingRow>
-        </div>
-      </div>
-
-      {/* Speech-to-Text Settings */}
-      <div>
-        <h3 className="text-xs font-semibold text-muted-foreground mb-4">Speech to Text</h3>
-        <div className="divide-y divide-border">
-          <SettingRow
-            label="Language"
-            description="Primary language for voice recognition"
-          >
-            <SelectDropdown
-              value={language}
-              options={LANGUAGE_OPTIONS}
-              onChange={setLanguage}
-            />
-          </SettingRow>
-
-          <SettingRow
-            label="Refine with AI"
-            description="Use AI to clean up transcription errors, fix technical terms, and remove filler words before inserting text"
-          >
-            <ToggleSwitch
-              checked={refineEnabled}
-              onChange={setRefineEnabled}
-            />
-          </SettingRow>
-        </div>
-      </div>
-
-      {/* Text-to-Speech Settings */}
-      <div>
-        <h3 className="text-xs font-semibold text-muted-foreground mb-4">Text to Speech</h3>
-        <div className="divide-y divide-border">
-          <SettingRow
-            label="Auto-play responses"
-            description="Automatically read agent responses aloud"
-          >
-            <ToggleSwitch
-              checked={autoPlay}
-              onChange={setAutoPlay}
-            />
-          </SettingRow>
-        </div>
-      </div>
+          <section>
+            <h3 className="text-sm font-semibold mb-2">History</h3>
+            {history.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No transcripts yet.</p>
+            ) : (
+              <ul className="space-y-2 max-h-80 overflow-auto">
+                {history.map((r) => (
+                  <li key={r.id} className="text-xs border rounded p-2 flex gap-2">
+                    <span className="flex-1">{r.formatted}</span>
+                    <button
+                      className="text-muted-foreground hover:text-foreground"
+                      onClick={() => navigator.clipboard.writeText(r.formatted)}
+                    >Copy</button>
+                    <button
+                      className="text-muted-foreground hover:text-foreground"
+                      onClick={() => deleteRow(r.id)}
+                    >Delete</button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </>
+      )}
     </div>
   );
 }
