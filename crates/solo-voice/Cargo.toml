@@ -1,0 +1,32 @@
+[package]
+name = "solo-voice"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Voice pipeline for Solo IDE — audio capture, VAD, STT, formatter"
+
+[dependencies]
+tokio.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+reqwest.workspace = true
+uuid.workspace = true
+sha2.workspace = true
+futures-util.workspace = true
+rusqlite.workspace = true
+ndarray.workspace = true
+ort.workspace = true
+cpal.workspace = true
+sherpa-rs.workspace = true
+ts-rs.workspace = true
+solo-protocol = { path = "../solo-protocol" }
+solo-auth = { path = "../solo-auth" }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+hound.workspace = true
+tempfile = "3"
