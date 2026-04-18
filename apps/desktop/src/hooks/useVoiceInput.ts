@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react';
+import { toast } from 'sonner';
 import { useVoiceStore } from '@/stores/voiceStore';
 import {
   voiceApi,
@@ -7,6 +8,7 @@ import {
   onVoiceError,
   onVoiceModelProgress,
   onVoiceHotkey,
+  onVoiceDispatched,
   type PipelineTarget,
 } from '@/lib/tauri/voice';
 import type { UnlistenFn } from '@tauri-apps/api/event';
@@ -88,6 +90,17 @@ export function useVoiceInput({ onTranscript }: UseVoiceInputOptions) {
     })();
     return () => un?.();
   }, [setError]);
+
+  useEffect(() => {
+    let un: UnlistenFn | undefined;
+    (async () => {
+      un = await onVoiceDispatched((ev) => {
+        toast.success(`Agent dispatched: ${ev.title}`);
+        useVoiceStore.getState().setPendingDispatch(ev);
+      });
+    })();
+    return () => un?.();
+  }, []);
 
   const start = useCallback(async () => {
     if (!enabled) {
