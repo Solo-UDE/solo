@@ -39,6 +39,7 @@ mod fs_commands;
 mod git_commands;
 mod parse_commands;
 mod plan_commands;
+mod plugins_commands;
 mod provider_commands;
 mod session_commands;
 mod settings_commands;
@@ -54,6 +55,7 @@ use elevenlabs_commands::ElevenLabsState;
 use embedding_commands::EmbeddingState;
 use fs_commands::FsState;
 use git_commands::GitState;
+use plugins_commands::PluginsState;
 use provider_commands::ProviderAuthState;
 use stats_commands::StatsState;
 use tauri::Emitter;
@@ -195,6 +197,7 @@ pub fn run() {
         .manage(ElevenLabsState::new())
         .manage(VaultState::new())
         .manage(StatsState::new())
+        .manage(PluginsState::new())
         .invoke_handler(tauri::generate_handler![
             // Core commands
             commands::ping,
@@ -359,6 +362,12 @@ pub fn run() {
             skills_commands::skills_onboarding_dismiss,
             skills_commands::skills_onboarding_reset,
             skills_commands::skills_set_imports,
+            // Plugin commands
+            plugins_commands::plugins_list,
+            plugins_commands::plugins_get_detail,
+            plugins_commands::plugins_set_enabled,
+            plugins_commands::plugins_install_local,
+            plugins_commands::plugins_uninstall,
             // Stats & tier commands
             stats_commands::stats_initialize,
             stats_commands::stats_current,
