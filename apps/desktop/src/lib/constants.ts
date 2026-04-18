@@ -84,6 +84,12 @@ export interface ModelOptionConfig {
   provider: 'anthropic' | 'openai' | 'google';
   /** Icon type for rendering */
   iconType: ProviderIconType;
+  /**
+   * When true, the model's UI surfaces a "Text only" badge and the chat
+   * input shows a capability banner. Set on all OpenAI entries in v1
+   * because the sidecar's OpenAI adapter doesn't support tool calls yet.
+   */
+  textOnly?: boolean;
 }
 
 export const MODEL_OPTIONS: ModelOptionConfig[] = [
@@ -116,6 +122,7 @@ export const MODEL_OPTIONS: ModelOptionConfig[] = [
     description: 'Most capable reasoning',
     provider: 'openai',
     iconType: 'openai',
+    textOnly: true,
   },
   {
     value: GPT_5_2_MEDIUM,
@@ -123,6 +130,7 @@ export const MODEL_OPTIONS: ModelOptionConfig[] = [
     description: 'Balanced performance',
     provider: 'openai',
     iconType: 'openai',
+    textOnly: true,
   },
   {
     value: GPT_5_2_LOW,
@@ -130,6 +138,7 @@ export const MODEL_OPTIONS: ModelOptionConfig[] = [
     description: 'Fast and cost-effective',
     provider: 'openai',
     iconType: 'openai',
+    textOnly: true,
   },
   // Google Gemini models
   {
