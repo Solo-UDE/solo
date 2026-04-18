@@ -38,7 +38,7 @@ only items still open.
 
 ### Section 2 — Desktop auth flows · ⏳ Needs UI
 
-Interactive. Start `cd solo && bun run dev` and run through 2.1–2.5 manually.
+Interactive. Start `cd solo && bun run dev:auth` and run through 2.1–2.5 manually.
 
 ### Section 3 — solo-web auth flows · ⏳ Needs UI
 

@@ -1,6 +1,10 @@
 export {
   DEFAULT_KEYBINDINGS,
   KEYBINDING_CATEGORIES,
+  getDefaultKeybinding,
+  getEffectiveKeybinding,
+  buildEffectiveKeybindings,
+  getKeybindingDefinition,
   getKeybindingConflicts,
   normalizeKeybinding,
   formatKeybinding,

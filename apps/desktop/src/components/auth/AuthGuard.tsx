@@ -19,9 +19,10 @@ interface AuthGuardProps {
 
 /**
  * By default in dev mode we bypass auth so unrelated feature work doesn't
- * require a full sign-in. Set `VITE_AUTH_ENABLED=1` in the environment (or
- * `.env.local`) while testing auth flows to actually mount the guard — this
- * is the ONLY way to see `LoginScreen`, sign-in, and sign-out in dev.
+ * require a full sign-in. `bun run dev:auth` sets `VITE_AUTH_ENABLED=1`
+ * and loads the local Cognito env for auth testing; setting the var manually
+ * still works too. This is the ONLY way to see `LoginScreen`, sign-in, and
+ * sign-out in dev.
  *
  * Production always enforces the guard.
  */

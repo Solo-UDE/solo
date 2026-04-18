@@ -55,10 +55,26 @@ Why the two-repo split: Tauri's updater does an anonymous `GET` for `latest.json
 
 ## GitHub Variables (on Solo-UDE/solo, repo-level)
 
+The workflows map **stage-specific** GitHub variables into the generic desktop
+env contract used by the Tauri build:
+
+### Dev workflows (`premerge-master.yml`, `build-master-dmg.yml`)
+
 | Variable | Value |
 |---|---|
-| `SOLO_SUPABASE_URL` | `https://<project-ref>.supabase.co` |
-| `SOLO_SUPABASE_ANON_KEY` | Supabase anon/public key |
+| `SOLO_DEV_COGNITO_DOMAIN` | `solo-ide-dev.auth.us-east-1.amazoncognito.com` |
+| `SOLO_DEV_COGNITO_CLIENT_ID` | dev Cognito desktop client ID |
+| `SOLO_DEV_AWS_REGION` | `us-east-1` |
+| `SOLO_DEV_API_ENDPOINT` | dev Solo API endpoint |
+
+### Release workflow (`release.yml`)
+
+| Variable | Value |
+|---|---|
+| `SOLO_PROD_COGNITO_DOMAIN` | `solo-ide-prod.auth.us-east-1.amazoncognito.com` |
+| `SOLO_PROD_COGNITO_CLIENT_ID` | prod Cognito desktop client ID |
+| `SOLO_PROD_AWS_REGION` | `us-east-1` |
+| `SOLO_PROD_API_ENDPOINT` | prod Solo API endpoint |
 
 ---
 
@@ -134,6 +150,11 @@ If you want a gated beta channel where only opted-in users see betas, that is a 
 
 ```bash
 export TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/solo-ide.key)"
+export SOLO_COGNITO_DOMAIN="solo-ide-dev.auth.us-east-1.amazoncognito.com"
+export SOLO_COGNITO_CLIENT_ID="3lvjbkkev35ejmm927rkfn13d3"
+export SOLO_AWS_REGION="us-east-1"
+export SOLO_API_ENDPOINT="https://vd8wm2yqle.execute-api.us-east-1.amazonaws.com"
+
 bun tauri build
 
 # Output:
@@ -143,7 +164,9 @@ bun tauri build
 #   target/release/bundle/macos/Solo.app.tar.gz.sig       (updater signature)
 ```
 
-Use this to sanity-check changes locally before tagging. For Apple-signed builds, only CI produces them (requires the keychain dance in `release.yml`).
+Use this to sanity-check changes locally before tagging. For auth-flow testing in
+dev, prefer `bun run auth:doctor` and `bun run dev:auth`. For Apple-signed
+builds, only CI produces them (requires the keychain dance in `release.yml`).
 
 ---
 

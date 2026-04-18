@@ -16,21 +16,8 @@ use tokio::sync::RwLock;
 use tracing::{debug, warn};
 
 use crate::auth_commands::AuthState;
+use crate::desktop_config;
 use crate::provider_commands::ProviderAuthState;
-
-/// Env var that points at the deployed API Gateway for a given stage.
-/// Baked in at compile time for release builds; falls back to the dev URL
-/// during local development.
-const DEFAULT_API_ENDPOINT: &str = "https://vd8wm2yqle.execute-api.us-east-1.amazonaws.com";
-
-fn api_endpoint() -> String {
-    if let Some(compile) = option_env!("SOLO_API_ENDPOINT") {
-        if !compile.trim().is_empty() {
-            return compile.trim().to_string();
-        }
-    }
-    std::env::var("SOLO_API_ENDPOINT").unwrap_or_else(|_| DEFAULT_API_ENDPOINT.to_string())
-}
 
 pub struct StatsState {
     collector: Arc<RwLock<Option<Arc<StatsCollector>>>>,
@@ -100,7 +87,7 @@ pub async fn stats_initialize(
         access_token: Arc::new(RwLock::new(Some(token))),
     });
 
-    let collector = StatsCollector::new(api_endpoint(), provider)
+    let collector = StatsCollector::new(desktop_config::api_endpoint().to_string(), provider)
         .await
         .map_err(|e| format!("init stats: {e}"))?;
     let collector = Arc::new(collector);
@@ -145,7 +132,10 @@ pub async fn stats_get_tier(
     let token = crate::auth_commands::access_token_snapshot(&auth, &provider_auth)
         .await
         .ok_or_else(|| "not authenticated".to_string())?;
-    let url = format!("{}/v1/tier/me", api_endpoint().trim_end_matches('/'));
+    let url = format!(
+        "{}/v1/tier/me",
+        desktop_config::api_endpoint().trim_end_matches('/')
+    );
     let resp = reqwest::Client::new()
         .get(&url)
         .bearer_auth(token)
@@ -175,7 +165,7 @@ pub async fn stats_get_leaderboard(
     let cap = limit.unwrap_or(100).min(500);
     let url = format!(
         "{}/v1/leaderboard?limit={}",
-        api_endpoint().trim_end_matches('/'),
+        desktop_config::api_endpoint().trim_end_matches('/'),
         cap
     );
     let resp = reqwest::Client::new()
@@ -209,7 +199,10 @@ pub async fn stats_generate_card(
     let token = crate::auth_commands::access_token_snapshot(&auth, &provider_auth)
         .await
         .ok_or_else(|| "not authenticated".to_string())?;
-    let url = format!("{}/v1/card/generate", api_endpoint().trim_end_matches('/'));
+    let url = format!(
+        "{}/v1/card/generate",
+        desktop_config::api_endpoint().trim_end_matches('/')
+    );
     let resp = reqwest::Client::new()
         .post(&url)
         .bearer_auth(token)

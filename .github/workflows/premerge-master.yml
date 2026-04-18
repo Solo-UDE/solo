@@ -12,8 +12,10 @@ jobs:
     permissions:
       contents: read
     env:
-      SOLO_SUPABASE_URL: ${{ vars.SOLO_SUPABASE_URL }}
-      SOLO_SUPABASE_ANON_KEY: ${{ vars.SOLO_SUPABASE_ANON_KEY }}
+      SOLO_COGNITO_DOMAIN: ${{ vars.SOLO_DEV_COGNITO_DOMAIN }}
+      SOLO_COGNITO_CLIENT_ID: ${{ vars.SOLO_DEV_COGNITO_CLIENT_ID }}
+      SOLO_AWS_REGION: ${{ vars.SOLO_DEV_AWS_REGION }}
+      SOLO_API_ENDPOINT: ${{ vars.SOLO_DEV_API_ENDPOINT }}
 
     steps:
       - name: Checkout
@@ -42,12 +44,20 @@ jobs:
 
       - name: Validate desktop auth config
         run: |
-          test -n "$SOLO_SUPABASE_URL" || {
-            echo "Missing GitHub repository variable: SOLO_SUPABASE_URL" >&2
+          test -n "$SOLO_COGNITO_DOMAIN" || {
+            echo "Missing GitHub repository variable: SOLO_DEV_COGNITO_DOMAIN" >&2
             exit 1
           }
-          test -n "$SOLO_SUPABASE_ANON_KEY" || {
-            echo "Missing GitHub repository variable: SOLO_SUPABASE_ANON_KEY" >&2
+          test -n "$SOLO_COGNITO_CLIENT_ID" || {
+            echo "Missing GitHub repository variable: SOLO_DEV_COGNITO_CLIENT_ID" >&2
+            exit 1
+          }
+          test -n "$SOLO_AWS_REGION" || {
+            echo "Missing GitHub repository variable: SOLO_DEV_AWS_REGION" >&2
+            exit 1
+          }
+          test -n "$SOLO_API_ENDPOINT" || {
+            echo "Missing GitHub repository variable: SOLO_DEV_API_ENDPOINT" >&2
             exit 1
           }
 

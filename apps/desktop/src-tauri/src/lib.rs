@@ -38,6 +38,7 @@ mod fs_commands;
 mod git_commands;
 mod parse_commands;
 mod plan_commands;
+mod plugins_commands;
 mod provider_commands;
 mod session_commands;
 mod settings_commands;
@@ -54,6 +55,7 @@ use auth_commands::AuthState;
 use embedding_commands::EmbeddingState;
 use fs_commands::FsState;
 use git_commands::GitState;
+use plugins_commands::PluginsState;
 use provider_commands::ProviderAuthState;
 use stats_commands::StatsState;
 use tauri::Emitter;
@@ -71,6 +73,8 @@ use std::sync::Arc;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    desktop_config::maybe_load_local_env();
+
     // Initialize logging
     tracing_subscriber::registry()
         .with(
@@ -123,6 +127,14 @@ pub fn run() {
                 }
             }
         }))
+        .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_macos_permissions::init())
+        .plugin(tauri_plugin_decorum::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .setup(move |app| {
             // Register deep link handler
             #[cfg(any(target_os = "linux", target_os = "windows"))]
@@ -135,6 +147,15 @@ pub fn run() {
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
                 let app_handle = app.handle().clone();
+                match app.deep_link().get_current() {
+                    Ok(Some(urls)) => {
+                        tracing::info!("Initial deep link URLs: {:?}", urls);
+                    }
+                    Ok(None) => {}
+                    Err(error) => {
+                        tracing::warn!("Failed to read initial deep links: {}", error);
+                    }
+                }
                 tracing::info!("Setting up deep link handler...");
                 app.deep_link().on_open_url(move |event| {
                     tracing::info!("Deep link event received!");
@@ -198,6 +219,7 @@ pub fn run() {
         .manage(VoiceState::new())
         .manage(std::sync::Arc::new(voice::hud::HudState::new()))
         .manage(StatsState::new())
+        .manage(PluginsState::new())
         .invoke_handler(tauri::generate_handler![
             // Core commands
             commands::ping,
@@ -362,6 +384,12 @@ pub fn run() {
             skills_commands::skills_onboarding_dismiss,
             skills_commands::skills_onboarding_reset,
             skills_commands::skills_set_imports,
+            // Plugin commands
+            plugins_commands::plugins_list,
+            plugins_commands::plugins_get_detail,
+            plugins_commands::plugins_set_enabled,
+            plugins_commands::plugins_install_local,
+            plugins_commands::plugins_uninstall,
             // Stats & tier commands
             stats_commands::stats_initialize,
             stats_commands::stats_current,
