@@ -159,6 +159,12 @@ pub async fn set_credentials(
     let provider_type = ProviderType::from_str(&provider)
         .ok_or_else(|| format!("Unknown provider: {}", provider))?;
 
+    // Validate the key against the provider's API before storing it.
+    // Transient errors (5xx, network) do NOT block — see validate_api_key_http.
+    solo_auth::CredentialManager::validate_api_key_http(provider_type, &api_key)
+        .await
+        .map_err(|e| e.to_string())?;
+
     state.credentials
         .set_credentials(provider_type, &api_key)
         .await
@@ -266,6 +272,24 @@ pub async fn get_auth_method(
 
     state.credentials
         .get_auth_method_info(provider_type)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Auth-check an API key WITHOUT storing it.
+///
+/// Returns Ok(()) if the key is accepted by the provider. Useful for
+/// "Test connection" buttons; also called internally before
+/// `set_credentials` persists the key.
+#[tauri::command]
+pub async fn validate_api_key(
+    provider: String,
+    api_key: String,
+) -> Result<(), String> {
+    debug!(provider = %provider, "Validating API key");
+    let provider_type = ProviderType::from_str(&provider)
+        .ok_or_else(|| format!("Unknown provider: {}", provider))?;
+    solo_auth::CredentialManager::validate_api_key_http(provider_type, &api_key)
         .await
         .map_err(|e| e.to_string())
 }

@@ -1405,6 +1405,88 @@ impl CredentialManager {
     }
 
     // =========================================================================
+    // API Key Validation
+    // =========================================================================
+
+    /// Lightweight auth-check against the provider's API.
+    ///
+    /// Returns `Ok(())` if the key is accepted; `Err(ProviderError::AuthError)`
+    /// with a human-readable message otherwise. Only checks auth correctness —
+    /// does not validate quota, scopes, or feature access.
+    ///
+    /// Transient errors (5xx, network failures) are treated as "accept" to
+    /// avoid blocking the user on provider-side hiccups.
+    pub async fn validate_api_key_http(
+        provider: ProviderType,
+        api_key: &str,
+    ) -> ProviderResult<()> {
+        if api_key.is_empty() {
+            return Err(ProviderError::AuthError("API key is empty".into()));
+        }
+
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .build()
+            .map_err(|e| ProviderError::AuthError(format!("HTTP client: {}", e)))?;
+
+        let (url, req) = match provider {
+            ProviderType::OpenAI => {
+                let r = client
+                    .get("https://api.openai.com/v1/models")
+                    .bearer_auth(api_key);
+                ("https://api.openai.com/v1/models".to_string(), r)
+            }
+            ProviderType::Anthropic => {
+                // Anthropic has no cheap models endpoint that works for all
+                // key tiers. The cheapest check is POST /v1/messages with a
+                // 1-token request; a 401/403 proves the key is bad, 400
+                // (validation) or 200 both prove it's good.
+                let r = client
+                    .post("https://api.anthropic.com/v1/messages")
+                    .header("x-api-key", api_key)
+                    .header("anthropic-version", "2023-06-01")
+                    .header("content-type", "application/json")
+                    .body(
+                        r#"{"model":"claude-haiku-4-5-20251001","max_tokens":1,"messages":[{"role":"user","content":"hi"}]}"#,
+                    );
+                ("https://api.anthropic.com/v1/messages".to_string(), r)
+            }
+            ProviderType::Gemini | ProviderType::ElevenLabs => {
+                return Err(ProviderError::AuthError(format!(
+                    "API-key validation not implemented for {}",
+                    provider.as_str()
+                )));
+            }
+        };
+
+        let resp = match req.send().await {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::warn!(
+                    "validation request to {} failed ({}) — accepting key optimistically",
+                    url, e
+                );
+                return Ok(());
+            }
+        };
+
+        match resp.status().as_u16() {
+            401 | 403 => Err(ProviderError::AuthError(
+                "API key rejected by provider (401/403)".into(),
+            )),
+            200..=299 | 400 | 422 => Ok(()), // 400/422: model/validation errors — key itself is good
+            code => {
+                // 5xx, 429, etc. — don't block the user on transient provider issues
+                tracing::warn!(
+                    "API-key validation returned unexpected status {} — accepting",
+                    code
+                );
+                Ok(())
+            }
+        }
+    }
+
+    // =========================================================================
     // Profile Management
     // =========================================================================
 
