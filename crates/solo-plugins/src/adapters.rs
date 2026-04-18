@@ -57,13 +57,13 @@ pub fn discover_claude_adapter(claude_plugins_dir: &Path) -> Vec<AdapterPlugin> 
     let mut out = Vec::new();
     for (scope, entries) in parsed.plugins {
         for entry in entries {
-            let root = PathBuf::from(&entry.install_path);
-            if !root.is_dir() {
+            let install_path = PathBuf::from(&entry.install_path);
+            if !install_path.is_dir() {
                 continue;
             }
-            let name = match root.file_name().and_then(|n| n.to_str()) {
-                Some(n) => n.to_string(),
-                None => continue,
+            let (root, name) = resolve_plugin_root_and_name(&install_path);
+            let Some(name) = name else {
+                continue;
             };
             let marketplace = entry
                 .marketplace_name
@@ -86,6 +86,48 @@ pub fn discover_claude_adapter(claude_plugins_dir: &Path) -> Vec<AdapterPlugin> 
         }
     }
     out
+}
+
+/// Resolve the plugin's canonical root directory and name.
+///
+/// Claude Code's `installed_plugins.json` can point to either the plugin
+/// root (which contains `.claude-plugin/plugin.json`) or a version
+/// subdirectory. We probe `install_path` first for the manifest, then walk
+/// up to 3 parent levels. The returned root is where the manifest was
+/// found — the loader uses this path for `plugin_root` and subsequent
+/// manifest reads, so getting it right here makes detail views and skill
+/// discovery work downstream.
+///
+/// Falls back to `(install_path, install_path.file_name())` if no manifest
+/// is found anywhere nearby — plugins without manifests still surface as
+/// bare tiles, matching the pre-refactor behavior.
+fn resolve_plugin_root_and_name(
+    install_path: &std::path::Path,
+) -> (PathBuf, Option<String>) {
+    use crate::manifest::load_plugin_manifest;
+
+    if let Some(m) = load_plugin_manifest(install_path) {
+        if !m.name.trim().is_empty() {
+            return (install_path.to_path_buf(), Some(m.name));
+        }
+    }
+
+    let mut current = install_path.parent();
+    for _ in 0..3 {
+        let Some(dir) = current else { break };
+        if let Some(m) = load_plugin_manifest(dir) {
+            if !m.name.trim().is_empty() {
+                return (dir.to_path_buf(), Some(m.name));
+            }
+        }
+        current = dir.parent();
+    }
+
+    let fallback_name = install_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .map(ToString::to_string);
+    (install_path.to_path_buf(), fallback_name)
 }
 
 /// Replace characters that aren't valid in a PluginId segment with '-'.
@@ -225,6 +267,52 @@ mod tests {
         let out = discover_claude_adapter(tmp.path());
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].id.marketplace, "my-mk");
+    }
+
+    #[test]
+    fn install_path_pointing_to_version_dir_uses_parent_manifest_name() {
+        // Layout: <tmp>/my-plugin/1-0-0/ with manifest at <tmp>/my-plugin/.claude-plugin/plugin.json
+        let tmp = tempdir().unwrap();
+        let plugin_dir = tmp.path().join("my-plugin");
+        let version_dir = plugin_dir.join("1-0-0");
+        fs::create_dir_all(&version_dir).unwrap();
+        fs::create_dir_all(plugin_dir.join(".claude-plugin")).unwrap();
+        fs::write(
+            plugin_dir.join(".claude-plugin/plugin.json"),
+            r#"{"name":"my-real-plugin","interface":{"displayName":"My Real Plugin"}}"#,
+        )
+        .unwrap();
+
+        let json = format!(
+            r#"{{"plugins":{{"user":[{{"installPath":"{}"}}]}}}}"#,
+            version_dir.display()
+        );
+        fs::write(tmp.path().join("installed_plugins.json"), json).unwrap();
+
+        let out = discover_claude_adapter(tmp.path());
+        assert_eq!(out.len(), 1);
+        // Name comes from the manifest, NOT the version directory name.
+        assert_eq!(out[0].id.name, "my-real-plugin");
+        // Root is the plugin dir (where the manifest lives), NOT the version subdir.
+        assert_eq!(out[0].root, plugin_dir);
+    }
+
+    #[test]
+    fn install_path_with_no_nearby_manifest_falls_back_to_file_name() {
+        let tmp = tempdir().unwrap();
+        let plugin_dir = tmp.path().join("stray-dir");
+        fs::create_dir_all(&plugin_dir).unwrap();
+
+        let json = format!(
+            r#"{{"plugins":{{"user":[{{"installPath":"{}"}}]}}}}"#,
+            plugin_dir.display()
+        );
+        fs::write(tmp.path().join("installed_plugins.json"), json).unwrap();
+
+        let out = discover_claude_adapter(tmp.path());
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].id.name, "stray-dir");
+        assert_eq!(out[0].root, plugin_dir);
     }
 
     #[test]
