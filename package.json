@@ -14,6 +14,7 @@
     "dev:auth:mac": "bun scripts/dev-auth-mac.mjs",
     "dev:auth:mac:restore": "bun scripts/dev-auth-mac-restore.mjs",
     "auth:doctor": "bun scripts/auth-doctor.mjs",
+    "auth:diagnose": "bun scripts/auth-diagnose.mjs",
     "bridge:build": "bun run --filter @solo/agent-bridge build",
     "bridge:dev": "bun run --filter @solo/agent-bridge dev",
     "build": "bun run --filter @solo/agent-bridge build && bun run --filter @solo/desktop build:vite && cargo build --release",
