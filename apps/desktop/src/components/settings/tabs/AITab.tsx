@@ -16,7 +16,8 @@ import { ClaudeLoginModal } from '../ClaudeLoginModal';
 import { verifyClaudeSetup } from '../../../lib/backend';
 import { getSetupCommands, setSetupCommands } from '../../../lib/tauri/worktree';
 import { toast } from 'sonner';
-import type { ProviderType, AuthMethodInfo, ClaudeSetupStatus } from '../../../lib/backend';
+import { ProfileRow } from '../ProfileRow';
+import type { ProviderType, AuthMethodInfo, ClaudeSetupStatus, ProfileSummary } from '../../../lib/backend';
 
 /**
  * Format seconds into a human-readable string
@@ -80,6 +81,10 @@ interface ProviderCardProps {
   onApiKeySave: () => void;
   isSaving: boolean;
   hasCredentials: boolean;
+  profiles?: ProfileSummary[];
+  onSetActiveProfile?: (name: string) => Promise<void>;
+  onRemoveProfile?: (name: string) => Promise<void>;
+  onAddAnotherAccount?: () => Promise<void>;
 }
 
 function ProviderCard({
@@ -95,6 +100,10 @@ function ProviderCard({
   onApiKeySave,
   isSaving,
   hasCredentials,
+  profiles,
+  onSetActiveProfile,
+  onRemoveProfile,
+  onAddAnotherAccount,
 }: ProviderCardProps) {
   const isAnthropic = provider === 'anthropic';
   const isClaudeCodeAuth = authInfo?.authType === 'claude-o-auth';
@@ -232,6 +241,36 @@ function ProviderCard({
               <span className="mx-1">or</span>
               <span>add an API key below to override.</span>
             </>
+          )}
+        </div>
+      )}
+
+      {/* Multi-account profile sub-list */}
+      {profiles && profiles.length > 0 && (
+        <div className="space-y-1.5">
+          <div className="text-xs text-muted-foreground">Accounts</div>
+          <div className="space-y-1.5">
+            {profiles.map((p) => (
+              <ProfileRow
+                key={p.name}
+                profile={p}
+                onSetActive={() => {
+                  void onSetActiveProfile?.(p.name);
+                }}
+                onRemove={() => {
+                  void onRemoveProfile?.(p.name);
+                }}
+              />
+            ))}
+          </div>
+          {onAddAnotherAccount && (
+            <button
+              type="button"
+              onClick={() => void onAddAnotherAccount()}
+              className="w-full text-xs text-primary hover:text-primary/80 py-1.5 border border-dashed border-border hover:border-primary/40 rounded-none transition-colors"
+            >
+              + Add another account
+            </button>
           )}
         </div>
       )}
@@ -504,6 +543,10 @@ export function AITab() {
   const startOAuthFlow = useProviderStore((s) => s.startOAuthFlow);
   const disconnectOAuth = useProviderStore((s) => s.disconnectOAuth);
   const clearCredentials = useProviderStore((s) => s.clearCredentials);
+  const providerProfiles = useProviderStore((s) => s.profiles);
+  const refreshProfiles = useProviderStore((s) => s.refreshProfiles);
+  const setActiveProfileAction = useProviderStore((s) => s.setActiveProfile);
+  const removeProfileAction = useProviderStore((s) => s.removeProfile);
 
   // Check if OAuth is pending for each provider
   const isAnthropicOAuthPending = useOAuthPending('anthropic');
@@ -566,6 +609,12 @@ export function AITab() {
       refreshAuthMethod('openai');
     }
   }, [isInitialized, refreshAuthMethod]);
+
+  // Preload profiles for both providers on mount
+  useEffect(() => {
+    refreshProfiles('anthropic');
+    refreshProfiles('openai');
+  }, [refreshProfiles]);
 
   // Model options - memoized to prevent new references
   const modelOptions = useMemo(
@@ -658,6 +707,17 @@ export function AITab() {
             onApiKeySave={() => handleApiKeySubmit('anthropic')}
             isSaving={savingProvider === 'anthropic'}
             hasCredentials={allProviderStatus['anthropic']?.has_credentials ?? false}
+            profiles={providerProfiles.anthropic ?? []}
+            onSetActiveProfile={async (name) => {
+              await setActiveProfileAction('anthropic', name);
+            }}
+            onRemoveProfile={async (name) => {
+              await removeProfileAction('anthropic', name);
+            }}
+            onAddAnotherAccount={() => {
+              setIsClaudeLoginOpen(true);
+              return Promise.resolve();
+            }}
           />
 
           {/* OpenAI Card */}
@@ -674,6 +734,14 @@ export function AITab() {
             onApiKeySave={() => handleApiKeySubmit('openai')}
             isSaving={savingProvider === 'openai'}
             hasCredentials={allProviderStatus['openai']?.has_credentials ?? false}
+            profiles={providerProfiles.openai ?? []}
+            onSetActiveProfile={async (name) => {
+              await setActiveProfileAction('openai', name);
+            }}
+            onRemoveProfile={async (name) => {
+              await removeProfileAction('openai', name);
+            }}
+            onAddAnotherAccount={handleOpenAIOAuthLogin}
           />
         </div>
       </div>
