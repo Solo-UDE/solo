@@ -5,7 +5,7 @@
 
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
-import type { User } from "../lib/auth";
+import type { AuthCallbackPayload, User } from "../lib/auth";
 import * as auth from "../lib/auth";
 import { useCloudStatsStore } from "./cloudStatsStore";
 
@@ -35,7 +35,7 @@ interface AuthActions {
   signInWithGoogle: () => Promise<void>;
   signInWithEmail: (email: string) => Promise<void>;
   signInWithMagicLink: (email: string) => Promise<void>;
-  handleAuthCallback: (code: string) => Promise<void>;
+  handleAuthCallback: (payload: AuthCallbackPayload) => Promise<void>;
 
   // Session
   signOut: () => Promise<void>;
@@ -156,14 +156,42 @@ export const useAuthStore = create<AuthStore>()(
       await get().signInWithEmail(email);
     },
 
-    handleAuthCallback: async (code: string) => {
+    handleAuthCallback: async (payload: AuthCallbackPayload) => {
+      if (payload.kind === "signout") {
+        set((s) => {
+          s.isAuthenticating = false;
+          s.error = null;
+        });
+        return;
+      }
+
+      if (payload.kind === "oauth_error") {
+        console.error("OAuth callback returned provider error:", payload);
+        set((s) => {
+          s.isAuthenticating = false;
+          s.error = payload.errorDescription
+            ? `${payload.error}: ${payload.errorDescription}`
+            : payload.error;
+        });
+        return;
+      }
+
+      if (payload.kind === "invalid") {
+        console.error("Invalid auth callback:", payload);
+        set((s) => {
+          s.isAuthenticating = false;
+          s.error = payload.message;
+        });
+        return;
+      }
+
       set((s) => {
         s.isAuthenticating = true;
         s.error = null;
       });
 
       try {
-        const session = await auth.exchangeCodeForSession(code);
+        const session = await auth.exchangeCodeForSession(payload.code);
 
         set((s) => {
           s.user = session.user;
@@ -195,6 +223,7 @@ export const useAuthStore = create<AuthStore>()(
       set((state) => {
         state.user = null;
         state.isAuthenticated = false;
+        state.isAuthenticating = false;
         state.error = null;
       });
       useCloudStatsStore.getState().reset();

@@ -51,15 +51,23 @@ infra/
 └── SETUP.md              # One-time OAuth setup checklist
 ```
 
-## GitHub federation (deferred)
+## GitHub federation
 
-Cognito can't federate directly to GitHub because GitHub isn't OIDC-compliant (it returns opaque access tokens, not signed JWTs). `config.githubOidcEnabled` is `false` for now — Google + Email sign-in will work first. Follow-up: deploy a small OIDC wrapper Lambda that adapts GitHub's OAuth response into an OIDC-compatible token endpoint, then flip the flag.
+Cognito still cannot federate directly to GitHub because GitHub is not OIDC-compliant. Solo ships a small Lambda-backed OIDC wrapper in `lib/github-stack.ts` / `lambda/github/*` so Cognito can treat GitHub as a standards-compatible IdP.
+
+Both `dev` and `prod` stages now support:
+
+- Google federation via Cognito's native Google IdP
+- GitHub federation via the Solo OIDC wrapper
+- Email/password through the Cognito Hosted UI
 
 ## Common operations
 
 ```bash
 bun run diff:dev           # show what deploy would change
+bun run diff:prod          # prod diff (requires prod secrets / vars)
 bun run synth:dev          # render CloudFormation YAML to cdk.out/
+bun run synth:prod         # render prod CloudFormation
 bun run destroy:dev        # tear down dev stage (retains prod)
 ```
 
@@ -73,8 +81,16 @@ aws secretsmanager put-secret-value --profile solo \
   --secret-string '{"clientId":"...","clientSecret":"..."}'
 ```
 
-Then redeploy AuthStack to pick up new values:
+Do the same for:
+
+- `solo/dev/github-oidc-client`
+- `solo/prod/google-oidc-client`
+- `solo/prod/github-oidc-client`
+
+Then redeploy the target stage so Cognito picks up the updated provider credentials:
 
 ```bash
 bun run deploy:dev
+# or
+bun run deploy:prod
 ```
