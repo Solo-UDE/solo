@@ -44,12 +44,14 @@ mod provider_commands;
 mod session_commands;
 mod settings_commands;
 mod skills_commands;
+mod skills_origin;
 mod stats_commands;
 mod terminal_commands;
 mod update_commands;
 mod vault_commands;
 mod voice;
 mod voice_commands;
+mod window_chrome;
 mod worktree_commands;
 
 use auth_commands::AuthState;
@@ -295,6 +297,7 @@ pub fn run() {
             auth_commands::auth_sign_out,
             auth_commands::auth_get_access_token,
             auth_commands::auth_get_id_token,
+            auth_commands::auth_diagnose,
             // Terminal commands
             terminal_commands::spawn_pty,
             terminal_commands::write_pty,
@@ -409,6 +412,8 @@ pub fn run() {
             voice_commands::voice_check_permissions,
             voice_commands::voice_request_permission,
             voice_commands::voice_clear_badge,
+            // Window chrome
+            window_chrome::set_traffic_lights_visible,
             // Update commands
             update_commands::check_for_update,
             update_commands::install_update,
