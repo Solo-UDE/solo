@@ -170,7 +170,7 @@ pub async fn vault_move_scope(
     state: State<'_, VaultState>,
 ) -> Result<Option<VaultEntry>, String> {
     let vault = get_vault(&state).await?;
-    let updated = vault.move_scope(&entry_id, new_scope).map_err(|e| e.to_string())?;
+    let updated = vault.move_scope(&entry_id, &new_scope).map_err(|e| e.to_string())?;
     if updated.is_some() {
         let _ = app.emit("backend-event", BackendEvent::VaultEntryUpdated { entry_id });
     }
