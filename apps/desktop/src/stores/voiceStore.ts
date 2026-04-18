@@ -4,6 +4,7 @@ import type { VoicePipelineState } from '@/bindings/VoicePipelineState';
 import type { VoiceTranscriptResult } from '@/bindings/VoiceTranscriptResult';
 import type { ShortcutsConfig } from '@/bindings/ShortcutsConfig';
 import type { VoicePermissions } from '@/bindings/VoicePermissions';
+import type { DispatchEvent } from '@/lib/tauri/voice';
 
 interface VoiceStore {
   enabled: boolean;
@@ -15,6 +16,7 @@ interface VoiceStore {
   shortcuts: ShortcutsConfig;
   permissions: VoicePermissions;
   rmsLevel: number;
+  pendingDispatch: DispatchEvent | null;
 
   setEnabled: (v: boolean) => void;
   setParakeetInstalled: (v: boolean) => void;
@@ -25,6 +27,7 @@ interface VoiceStore {
   setShortcuts: (s: ShortcutsConfig) => void;
   setPermissions: (p: VoicePermissions) => void;
   setRmsLevel: (v: number) => void;
+  setPendingDispatch: (d: DispatchEvent | null) => void;
 }
 
 export const useVoiceStore = create<VoiceStore>()(
@@ -46,6 +49,7 @@ export const useVoiceStore = create<VoiceStore>()(
       accessibility: false,
     },
     rmsLevel: 0,
+    pendingDispatch: null,
 
     setEnabled:            (v) => set((s) => { s.enabled = v; }),
     setParakeetInstalled:  (v) => set((s) => { s.parakeetInstalled = v; }),
@@ -56,5 +60,6 @@ export const useVoiceStore = create<VoiceStore>()(
     setShortcuts:          (s) => set((state) => { state.shortcuts = s; }),
     setPermissions:        (p) => set((state) => { state.permissions = p; }),
     setRmsLevel:           (v) => set((state) => { state.rmsLevel = v; }),
+    setPendingDispatch:    (d) => set((state) => { state.pendingDispatch = d; }),
   })),
 );

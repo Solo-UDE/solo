@@ -64,3 +64,12 @@ export type HotkeyKind = 'dictation_down' | 'dictation_up' | 'dispatch_down' | '
 export function onVoiceHotkey(cb: (kind: HotkeyKind) => void): Promise<UnlistenFn> {
   return listen<HotkeyKind>('voice:hotkey', (e) => cb(e.payload));
 }
+
+export interface DispatchEvent {
+  session_id: string;
+  title: string;
+}
+
+export function onVoiceDispatched(cb: (p: DispatchEvent) => void): Promise<UnlistenFn> {
+  return listen<DispatchEvent>('voice:dispatched', (e) => cb(e.payload));
+}
