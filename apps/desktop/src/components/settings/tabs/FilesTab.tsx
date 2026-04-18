@@ -30,7 +30,7 @@ export function FilesTab() {
     <div className="space-y-8">
       {/* File Handling Section */}
       <div>
-        <h3 className="text-xs font-semibold text-muted-foreground mb-4">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-4">
           File Handling
         </h3>
         <div className="divide-y divide-border">
@@ -74,7 +74,7 @@ export function FilesTab() {
 
       {/* Explorer Section */}
       <div>
-        <h3 className="text-xs font-semibold text-muted-foreground mb-4">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-4">
           Explorer
         </h3>
         <div className="divide-y divide-border">
