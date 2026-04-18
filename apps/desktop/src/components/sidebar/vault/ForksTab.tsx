@@ -23,25 +23,29 @@ export const ForksTab: FC = () => {
 
   if (!forked.length) {
     return (
-      <div className="px-4 py-6 text-xs text-muted-foreground">
-        <p>No forked skills.</p>
-        <p className="mt-2 text-[10px] text-muted-foreground/70">
-          When you tweak an installed skill with the agent, it appears here so you can see
-          upstream updates relative to your local edits.
-        </p>
+      <div className="p-5">
+        <div className="rounded-[12px] border border-border/60 bg-background/55 p-5">
+          <p className="text-[13px] font-medium text-foreground">No forked skills.</p>
+          <p className="mt-1.5 text-xs leading-5 text-muted-foreground/80 text-pretty max-w-[58ch]">
+            When you tweak an installed skill with the agent, it appears here so you can
+            see upstream updates relative to your local edits.
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
-    <ul className="space-y-1 p-3">
+    <ul
+      role="list"
+      className="m-5 divide-y divide-border/50 overflow-hidden rounded-[12px] border border-border/60 bg-background/35"
+    >
       {forked.map((skill) => (
-        <li
-          key={skill.name}
-          className="rounded-[10px] border border-border/60 bg-card/40 px-2.5 py-2 text-xs"
-        >
-          <span className="font-medium text-foreground">{skill.name}</span>
-          <p className="mt-1 text-muted-foreground">Locally tweaked from upstream.</p>
+        <li key={skill.name} className="px-3.5 py-3">
+          <p className="text-[13px] font-medium text-foreground">{skill.name}</p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground text-pretty">
+            Locally tweaked from upstream.
+          </p>
         </li>
       ))}
     </ul>
