@@ -8,7 +8,7 @@ use crate::provider_commands::ProviderAuthState;
 use solo_voice::{
     audio::{start_capture, AudioRing, AudioStream},
     formatter::{
-        AppContext, ChatClient, CloudFormatter, DictationOptions, FormatterProvider,
+        ChatClient, CloudFormatter, DictationOptions, FormatterProvider,
         DEFAULT_CLAUDE_FORMATTER_MODEL,
     },
     history::{History, HistoryRow},
@@ -212,11 +212,12 @@ pub async fn voice_end(
 
     *voice.stream.lock().await = None;
 
+    let ctx = crate::voice::app_monitor::frontmost_app();
     let out = pipeline
         .end(
             mode,
             target,
-            AppContext::default(),
+            ctx.clone(),
             DictationOptions::default(),
         )
         .await
@@ -228,8 +229,8 @@ pub async fn voice_end(
             mode: format!("{:?}", out.mode),
             raw_transcript: out.raw_transcript.clone(),
             formatted: out.formatted.clone(),
-            target_app_bundle_id: None,
-            target_app_name: None,
+            target_app_bundle_id: ctx.bundle_id.clone(),
+            target_app_name: ctx.app_name.clone(),
             duration_ms: out.duration_ms,
             linked_session_id: None,
             created_at: chrono::Utc::now().timestamp_millis(),
@@ -242,8 +243,8 @@ pub async fn voice_end(
         "mode": out.mode,
         "raw_transcript": out.raw_transcript,
         "formatted": out.formatted,
-        "target_app_bundle_id": serde_json::Value::Null,
-        "target_app_name": serde_json::Value::Null,
+        "target_app_bundle_id": ctx.bundle_id,
+        "target_app_name": ctx.app_name,
         "duration_ms": out.duration_ms,
         "linked_session_id": serde_json::Value::Null,
         "created_at": chrono::Utc::now().timestamp_millis(),
