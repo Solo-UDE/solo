@@ -46,6 +46,7 @@ mod settings_commands;
 mod skills_aggregate;
 mod skills_bundled;
 mod skills_commands;
+mod skills_marketplace;
 mod skills_origin;
 mod stats_commands;
 mod terminal_commands;
@@ -53,7 +54,6 @@ mod update_commands;
 mod vault_commands;
 mod voice;
 mod voice_commands;
-mod window_chrome;
 mod worktree_commands;
 
 use auth_commands::AuthState;
@@ -404,6 +404,11 @@ pub fn run() {
             skills_commands::skills_onboarding_reset,
             skills_commands::skills_set_imports,
             skills_aggregate::skills_write_workspace_agents_md,
+            skills_marketplace::skills_fetch_registry,
+            skills_marketplace::skills_search_marketplace,
+            skills_marketplace::skills_install,
+            skills_marketplace::skills_uninstall,
+            skills_marketplace::skills_write_installed,
             // Plugin commands
             plugins_commands::plugins_list,
             plugins_commands::plugins_get_detail,
@@ -431,8 +436,6 @@ pub fn run() {
             voice_commands::voice_check_permissions,
             voice_commands::voice_request_permission,
             voice_commands::voice_clear_badge,
-            // Window chrome
-            window_chrome::set_traffic_lights_visible,
             // Update commands
             update_commands::check_for_update,
             update_commands::install_update,
