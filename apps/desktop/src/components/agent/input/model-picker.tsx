@@ -164,21 +164,14 @@ export const ModelPicker: FC<ModelPickerProps> = ({
                   {renderModelIcon(option.iconType, 14)}
                 </div>
                 <div className="flex flex-col gap-0 flex-1">
-                  <div className="flex items-center gap-1.5">
-                    <span
-                      className={cn(
-                        'text-[13px] leading-tight',
-                        isSelected ? 'text-foreground' : 'text-foreground/90'
-                      )}
-                    >
-                      {option.label}
-                    </span>
-                    {option.textOnly && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
-                        Text only
-                      </span>
+                  <span
+                    className={cn(
+                      'text-[13px] leading-tight',
+                      isSelected ? 'text-foreground' : 'text-foreground/90'
                     )}
-                  </div>
+                  >
+                    {option.label}
+                  </span>
                   <span className="text-[11px] text-muted-foreground leading-tight">
                     {option.description}
                   </span>
