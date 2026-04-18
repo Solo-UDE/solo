@@ -40,6 +40,10 @@ const EMPTY_SETTINGS: SoloSettings = {
 		importCodex: true,
 		onboardingShown: false,
 	},
+	plugins: {
+		adapterClaudePlugins: true,
+		adapterCodexUser: true,
+	},
 };
 
 interface SoloSettingsState {
