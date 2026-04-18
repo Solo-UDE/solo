@@ -689,7 +689,7 @@ export function AITab() {
     <div className="space-y-6">
       {/* Providers Section */}
       <div>
-        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-4">
           Providers
         </h3>
         <div className="space-y-3">
@@ -748,7 +748,7 @@ export function AITab() {
 
       {/* Claude Code Setup Diagnostic */}
       <div>
-        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-4">
           Diagnostics
         </h3>
         <ClaudeSetupDiagnostic />
@@ -757,7 +757,7 @@ export function AITab() {
       {/* Model Selection - show when there are models for the active provider */}
       {models.length > 0 && (
         <div>
-          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-4">
             Model
           </h3>
           <div className="divide-y divide-border">
@@ -778,7 +778,7 @@ export function AITab() {
 
       {/* Behavior Section */}
       <div>
-        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-4">
           Behavior
         </h3>
         <div className="divide-y divide-border">
@@ -839,7 +839,7 @@ export function AITab() {
 
       {/* Worktree Setup Section */}
       <div>
-        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4 flex items-center gap-2">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-4 flex items-center gap-2">
           <Network className="w-3.5 h-3.5" />
           Worktree Setup
         </h3>
@@ -866,7 +866,7 @@ export function AITab() {
 
       {/* Advanced Section */}
       <div>
-        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-4">
           Advanced
         </h3>
         <div className="divide-y divide-border">
