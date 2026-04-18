@@ -11,11 +11,19 @@ import {
   useAuthStore,
   useIsAuthenticating,
   useAuthError,
+  usePendingAuthUrl,
 } from "../../stores/authStore";
+import { diagnoseAuth, type AuthDiagnostic } from "../../lib/auth";
+import { open as shellOpen } from "@tauri-apps/plugin-shell";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 
 export function LoginScreen() {
   const [email, setEmail] = useState("");
   const [emailFlowStarted, setEmailFlowStarted] = useState(false);
+  const [diagnostic, setDiagnostic] = useState<AuthDiagnostic | null>(null);
+  const [diagnosticError, setDiagnosticError] = useState<string | null>(null);
+  const [diagnosing, setDiagnosing] = useState(false);
+  const [urlCopied, setUrlCopied] = useState(false);
 
   const signInWithGitHub = useAuthStore((state) => state.signInWithGitHub);
   const signInWithGoogle = useAuthStore((state) => state.signInWithGoogle);
@@ -24,6 +32,40 @@ export function LoginScreen() {
 
   const isAuthenticating = useIsAuthenticating();
   const error = useAuthError();
+  const pendingAuthUrl = usePendingAuthUrl();
+
+  const handleDiagnose = useCallback(async () => {
+    setDiagnosing(true);
+    setDiagnosticError(null);
+    try {
+      const report = await diagnoseAuth();
+      setDiagnostic(report);
+    } catch (e) {
+      setDiagnosticError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDiagnosing(false);
+    }
+  }, []);
+
+  const handleCopyUrl = useCallback(async () => {
+    if (!pendingAuthUrl) return;
+    try {
+      await writeText(pendingAuthUrl);
+      setUrlCopied(true);
+      window.setTimeout(() => setUrlCopied(false), 1800);
+    } catch (e) {
+      console.error("Failed to copy URL:", e);
+    }
+  }, [pendingAuthUrl]);
+
+  const handleOpenManually = useCallback(async () => {
+    if (!pendingAuthUrl) return;
+    try {
+      await shellOpen(pendingAuthUrl);
+    } catch (e) {
+      console.error("Manual shell.open also failed:", e);
+    }
+  }, [pendingAuthUrl]);
 
   const handleGitHubClick = useCallback(async () => {
     clearError();
@@ -167,10 +209,62 @@ export function LoginScreen() {
           </form>
         )}
 
+        {/* Manual URL fallback — only surfaces when shell.open failed
+            or the user wants to paste the URL into a different browser. */}
+        {pendingAuthUrl && (
+          <div className="mt-6 p-3 rounded-lg bg-muted/40 border border-border text-left">
+            <p className="text-xs font-medium text-foreground mb-1.5">
+              Browser didn't open or landed on about:blank?
+            </p>
+            <p className="text-[11px] text-muted-foreground mb-2">
+              Copy this URL and paste it into any browser:
+            </p>
+            <div className="font-mono text-[10px] break-all bg-background rounded px-2 py-1.5 border border-border/50 mb-2 max-h-24 overflow-y-auto">
+              {pendingAuthUrl}
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleCopyUrl}
+                className="flex-1 text-xs px-2 py-1 rounded bg-background border border-border hover:bg-accent"
+              >
+                {urlCopied ? "Copied!" : "Copy URL"}
+              </button>
+              <button
+                type="button"
+                onClick={handleOpenManually}
+                className="flex-1 text-xs px-2 py-1 rounded bg-background border border-border hover:bg-accent"
+              >
+                Retry open
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Footer */}
         <p className="mt-8 text-center text-xs text-muted-foreground">
           By continuing, you agree to our Terms of Service and Privacy Policy.
         </p>
+
+        {/* Diagnostics */}
+        <div className="mt-4">
+          <button
+            type="button"
+            onClick={handleDiagnose}
+            disabled={diagnosing}
+            className="w-full text-[11px] text-muted-foreground hover:text-foreground underline underline-offset-2"
+          >
+            {diagnosing ? "Running diagnostics…" : "Run auth diagnostics"}
+          </button>
+          {diagnosticError && (
+            <p className="mt-2 text-[11px] text-destructive">{diagnosticError}</p>
+          )}
+          {diagnostic && (
+            <pre className="mt-2 text-[10px] bg-muted/40 border border-border rounded p-2 overflow-auto max-h-60 text-left font-mono">
+              {JSON.stringify(diagnostic, null, 2)}
+            </pre>
+          )}
+        </div>
       </div>
     </div>
   );
