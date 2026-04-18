@@ -26,11 +26,13 @@ import type { FileMention, Attachment, UserContentPart } from '../../../stores/a
 import { useActiveSessionMessages } from '../../../stores/agentStore';
 import { ModeSelector } from './mode-selector';
 import { ModelPicker } from './model-picker';
+import { OpenAICapabilityBanner } from './OpenAICapabilityBanner';
 import { SubmitButton } from './submit-button';
 import { useProviderStore } from '../../../stores/provider-store';
 import { useAttachmentStore } from '../../../stores/attachmentStore';
 import { useWorktreeList } from '../../../stores/worktreeStore';
-import { DEFAULT_MODEL_ID } from '../../../lib/constants';
+import { useAgentStore } from '../../../stores/agentStore';
+import { DEFAULT_MODEL_ID, MODEL_OPTIONS } from '../../../lib/constants';
 import { VoiceButton } from './voice-button';
 import { toolbarButtonIconOnly } from './toolbar-button-class';
 import { cn } from '../../../lib/utils';
@@ -103,6 +105,11 @@ function ChatInputContainerInner(
   const [skillNames, setSkillNames] = useState<string[]>([]);
   const [sketchOpen, setSketchOpen] = useState(false);
   const selectedModel = useProviderStore((state) => state.selectedModel);
+  const activeSessionId = useAgentStore((s) => s.activeSessionId);
+  const showOpenAIBanner = useMemo(() => {
+    const entry = MODEL_OPTIONS.find((m) => m.value === selectedModel);
+    return entry?.textOnly === true;
+  }, [selectedModel]);
   const attachments = useAttachmentStore((s) => s.attachments);
   const clearAttachments = useAttachmentStore((s) => s.clear);
   const editorRef = useRef<LexicalEditorHandle>(null);
@@ -291,6 +298,10 @@ function ChatInputContainerInner(
     <div className={`bg-transparent ${className}`}>
       <div className="mx-auto max-w-[56rem] px-4 pb-3 pt-2">
         <div className="rounded-[14px] border border-border/80 bg-card/96 shadow-[0_18px_36px_-30px_rgba(0,0,0,0.42)]">
+          {showOpenAIBanner && activeSessionId && (
+            <OpenAICapabilityBanner sessionId={activeSessionId} />
+          )}
+
           <AttachmentBar />
 
           <DropZoneOverlay>
