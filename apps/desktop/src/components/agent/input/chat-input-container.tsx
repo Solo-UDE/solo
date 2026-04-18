@@ -34,6 +34,8 @@ import { useAgentStore } from '../../../stores/agentStore';
 import { DEFAULT_MODEL_ID, MODEL_OPTIONS } from '../../../lib/constants';
 import { VoiceButton } from './voice-button';
 import { toolbarButtonIconOnly } from './toolbar-button-class';
+import { SkillSuggestionBanner } from './SkillSuggestionBanner';
+import { useSkillSuggestions } from '../../../hooks/useSkillSuggestions';
 import { cn } from '../../../lib/utils';
 
 import type { Mode } from './mode-selector';
@@ -282,8 +284,12 @@ function ChatInputContainerInner(
   // Only show the selector when there are linked worktrees (more than just main)
   const showWorktreeSelector = onWorktreeChange && worktrees.length > 1;
 
+  // Drive marketplace suggestions from the composer text (debounced inside hook).
+  useSkillSuggestions(content);
+
   return (
     <div className={`bg-transparent ${className}`}>
+      <SkillSuggestionBanner />
       <div className="mx-auto max-w-[56rem] px-4 pb-3 pt-2">
         <div className="rounded-[14px] border border-border/80 bg-card/96 shadow-[0_18px_36px_-30px_rgba(0,0,0,0.42)]">
           {showOpenAIBanner && activeSessionId && (

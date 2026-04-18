@@ -409,16 +409,123 @@ pub async fn skills_uninstall(app: AppHandle, skill_id: String) -> Result<(), St
     Ok(())
 }
 
-// ─── Search + write-installed (deferred to Phase 4 / 5) ──────────────
+// ─── Search (Task 4.1 — keyword + fuzzy scoring) ─────────────────────
+
+/// Normalize a string into whitespace-split lowercase tokens, dropping
+/// anything shorter than 3 chars and common stop words.
+fn tokens(s: &str) -> Vec<String> {
+    const STOP: &[&str] = &[
+        "the", "and", "for", "with", "use", "when", "that", "this", "from",
+        "into", "onto", "over", "what", "will", "can", "may", "are", "was",
+        "but", "not", "how", "you", "your", "about", "there", "their",
+    ];
+    s.to_lowercase()
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|t| t.len() >= 3 && !STOP.contains(t))
+        .map(String::from)
+        .collect()
+}
+
+/// Score how well `entry` matches `query_tokens`. Score ranges roughly 0..5.
+fn score_entry(entry: &RegistryEntry, query_tokens: &[String]) -> f32 {
+    if query_tokens.is_empty() {
+        return 0.0;
+    }
+
+    let name_tokens = tokens(&entry.name);
+    let desc_tokens = tokens(&entry.description);
+    let category_tokens: Vec<String> = entry
+        .categories
+        .iter()
+        .flat_map(|c| tokens(c))
+        .collect();
+    let tag_tokens: Vec<String> = entry.tags.iter().flat_map(|t| tokens(t)).collect();
+
+    let mut score = 0.0f32;
+    for q in query_tokens {
+        if name_tokens.iter().any(|t| t == q) {
+            score += 2.5;
+        } else if name_tokens.iter().any(|t| t.contains(q) || q.contains(t)) {
+            score += 1.2;
+        }
+        if tag_tokens.iter().any(|t| t == q) {
+            score += 1.5;
+        }
+        if category_tokens.iter().any(|t| t == q) {
+            score += 1.0;
+        }
+        if desc_tokens.iter().any(|t| t == q) {
+            score += 0.6;
+        } else if desc_tokens.iter().any(|t| t.contains(q) || q.contains(t)) {
+            score += 0.25;
+        }
+    }
+
+    // Penalize score by query length so "write a short poem" doesn't rank
+    // any skill artificially high just because the query is wordy.
+    score / (query_tokens.len() as f32).sqrt().max(1.0)
+}
+
+fn describe_match(entry: &RegistryEntry, query_tokens: &[String]) -> String {
+    let name_hit = query_tokens.iter().any(|q| entry.name.to_lowercase().contains(q));
+    let tag_hit = entry.tags.iter().any(|t| {
+        query_tokens.iter().any(|q| t.to_lowercase().contains(q))
+    });
+    if name_hit {
+        format!("matches skill name '{}'", entry.name)
+    } else if tag_hit {
+        format!("tagged for your task ({})", entry.tags.join(", "))
+    } else {
+        format!("description matches your task")
+    }
+}
 
 #[tauri::command]
 pub async fn skills_search_marketplace(
+    app: AppHandle,
     query: String,
     installed_ids: Vec<String>,
 ) -> Result<Vec<SkillSuggestion>, String> {
-    let _ = (query, installed_ids);
-    // Deferred to Phase 4 (semantic search via solo-embeddings).
-    Ok(Vec::new())
+    let trimmed = query.trim();
+    if trimmed.len() < 4 {
+        return Ok(Vec::new());
+    }
+
+    // Fetch registry (cached). Falls back to empty on any failure.
+    let reg = match skills_fetch_registry(app, false).await {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::debug!("search: registry unavailable ({})", e);
+            return Ok(Vec::new());
+        }
+    };
+
+    let installed: std::collections::HashSet<&str> =
+        installed_ids.iter().map(String::as_str).collect();
+    let qt = tokens(trimmed);
+    if qt.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut scored: Vec<(f32, RegistryEntry)> = reg
+        .skills
+        .into_iter()
+        .filter(|e| !installed.contains(e.id.as_str()))
+        .map(|e| (score_entry(&e, &qt), e))
+        .filter(|(s, _)| *s >= 0.9) // threshold — tuned by hand
+        .collect();
+
+    scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+    scored.truncate(3);
+
+    Ok(scored
+        .into_iter()
+        .map(|(score, entry)| SkillSuggestion {
+            reason: describe_match(&entry, &qt),
+            score,
+            entry,
+        })
+        .collect())
 }
 
 #[tauri::command]
@@ -604,6 +711,69 @@ mod tests {
             ar.finish().unwrap();
         }
         buf
+    }
+
+    fn sample_entry(id: &str, desc: &str, categories: &[&str], tags: &[&str]) -> RegistryEntry {
+        RegistryEntry {
+            id: id.into(),
+            name: id.into(),
+            version: "1.0.0".into(),
+            description: desc.into(),
+            categories: categories.iter().map(|s| (*s).to_string()).collect(),
+            author: "tester".into(),
+            license: "MIT".into(),
+            tarball_url: String::new(),
+            sha256: String::new(),
+            tags: tags.iter().map(|s| (*s).to_string()).collect(),
+            updated_at: String::new(),
+        }
+    }
+
+    #[test]
+    fn tokens_strip_stopwords_and_short_words() {
+        let t = tokens("Use this skill when you want to write poetry");
+        assert!(t.contains(&"skill".to_string()));
+        assert!(t.contains(&"write".to_string()));
+        assert!(t.contains(&"poetry".to_string()));
+        assert!(!t.contains(&"the".to_string()));
+        assert!(!t.contains(&"use".to_string())); // stop word
+        assert!(!t.contains(&"to".to_string())); // short
+    }
+
+    #[test]
+    fn score_name_match_ranks_highest() {
+        let poetry = sample_entry("poetry-writer", "Generate poems", &["writing"], &["poem", "verse"]);
+        let cooking = sample_entry("cooking-helper", "Recipe ideas", &["food"], &["recipe"]);
+        let q = tokens("i want to write a poem");
+        let poetry_score = score_entry(&poetry, &q);
+        let cooking_score = score_entry(&cooking, &q);
+        assert!(poetry_score > cooking_score);
+        assert!(poetry_score > 0.9, "score was {}", poetry_score);
+    }
+
+    #[test]
+    fn score_ignores_unrelated_skills() {
+        let cooking = sample_entry("cooking-helper", "Recipe ideas", &["food"], &["recipe"]);
+        let q = tokens("write a sonnet");
+        let s = score_entry(&cooking, &q);
+        assert!(s < 0.9, "score was {}", s);
+    }
+
+    #[test]
+    fn score_tag_match_contributes() {
+        let entry = sample_entry("x", "Generic description", &[], &["finance", "budget"]);
+        let q = tokens("help me with my budget");
+        let s = score_entry(&entry, &q);
+        assert!(s > 0.9, "score was {}", s);
+    }
+
+    #[test]
+    fn describe_match_prefers_name_then_tag() {
+        let e = sample_entry("poetry-writer", "gen", &[], &["verse"]);
+        let msg_name = describe_match(&e, &tokens("poetry please"));
+        assert!(msg_name.contains("poetry-writer"));
+        let msg_tag = describe_match(&e, &tokens("verse please"));
+        assert!(msg_tag.to_lowercase().contains("tag"));
     }
 
     #[test]
