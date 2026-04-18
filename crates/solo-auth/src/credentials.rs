@@ -189,6 +189,23 @@ pub struct OpenAIOAuthCredentialInfo {
     pub source: CredentialSource,
 }
 
+/// Lightweight view of one profile for UI display.
+///
+/// Intentionally does NOT carry tokens — callers only need display fields.
+#[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileSummary {
+    /// Profile key (e.g. "default", "work").
+    pub name: String,
+    /// Display label — typically the account email. `""` if unknown.
+    pub email: String,
+    /// True if this is the active profile for its provider.
+    pub is_active: bool,
+    /// Seconds until the token expires. `None` if no token stored (shouldn't happen).
+    pub expires_in_seconds: Option<u64>,
+}
+
 /// Credential manager for storing and retrieving API keys and OAuth tokens.
 ///
 /// All Solo-managed credentials are stored in a single keychain entry ("vault")
@@ -1387,6 +1404,139 @@ impl CredentialManager {
         Ok(None)
     }
 
+    // =========================================================================
+    // Profile Management
+    // =========================================================================
+
+    /// List all profiles for a provider's OAuth store, in undefined order.
+    ///
+    /// Returns an empty Vec if no OAuth blob exists for the provider.
+    pub async fn list_profiles(
+        &self,
+        provider: ProviderType,
+    ) -> ProviderResult<Vec<ProfileSummary>> {
+        let key = Self::oauth_vault_key(provider);
+        let raw = match self.vault_get(&key).await? {
+            Some(s) if !s.is_empty() => s,
+            _ => return Ok(Vec::new()),
+        };
+
+        let store = match crate::oauth::profiles::migrate_legacy_blob(&raw, provider.as_str()) {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::warn!("failed to parse OAuth store for {}: {}", provider.as_str(), e);
+                return Ok(Vec::new());
+            }
+        };
+
+        let active = store.active_profile.clone();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+
+        Ok(store
+            .profiles
+            .iter()
+            .map(|(name, profile)| {
+                let remaining = (profile.expires_at - now).max(0) as u64;
+                ProfileSummary {
+                    name: name.clone(),
+                    email: profile.email.clone(),
+                    is_active: active.as_deref() == Some(name.as_str()),
+                    expires_in_seconds: Some(remaining),
+                }
+            })
+            .collect())
+    }
+
+    /// Set the active profile for a provider. Errors if the profile doesn't exist.
+    pub async fn set_active_profile(
+        &self,
+        provider: ProviderType,
+        profile_name: &str,
+    ) -> ProviderResult<()> {
+        let key = Self::oauth_vault_key(provider);
+        let raw = self.vault_get(&key).await?.ok_or_else(|| {
+            ProviderError::AuthError(format!(
+                "no OAuth store for {} — cannot set active profile",
+                provider.as_str()
+            ))
+        })?;
+
+        let mut store =
+            crate::oauth::profiles::migrate_legacy_blob(&raw, provider.as_str())
+                .map_err(|e| ProviderError::AuthError(format!("parse OAuth store: {}", e)))?;
+
+        store
+            .set_active(profile_name)
+            .map_err(ProviderError::AuthError)?;
+
+        let json = serde_json::to_string(&store)
+            .map_err(|e| ProviderError::AuthError(format!("serialize OAuth store: {}", e)))?;
+        self.vault_set(&key, &json).await?;
+
+        // Invalidate caches — the active token just changed.
+        self.oauth_cache.write().await.remove(&provider);
+        if provider == ProviderType::OpenAI {
+            *self.openai_oauth_cache.write().await = None;
+        }
+
+        tracing::info!(
+            "set active profile for {} to {:?}",
+            provider.as_str(),
+            profile_name
+        );
+        Ok(())
+    }
+
+    /// Remove a profile. If it was active, another profile (alphabetically first
+    /// of the remainder) is promoted. If no profiles remain, the vault key is
+    /// deleted entirely.
+    pub async fn remove_profile(
+        &self,
+        provider: ProviderType,
+        profile_name: &str,
+    ) -> ProviderResult<()> {
+        let key = Self::oauth_vault_key(provider);
+        let raw = match self.vault_get(&key).await? {
+            Some(s) if !s.is_empty() => s,
+            _ => return Ok(()), // nothing to remove
+        };
+
+        let mut store =
+            crate::oauth::profiles::migrate_legacy_blob(&raw, provider.as_str())
+                .map_err(|e| ProviderError::AuthError(format!("parse OAuth store: {}", e)))?;
+
+        let removed = store.remove_profile(profile_name);
+        if removed.is_none() {
+            // Idempotent — nothing to do.
+            return Ok(());
+        }
+
+        if store.profiles.is_empty() {
+            // No profiles left — drop the whole vault entry.
+            self.vault_delete(&key).await?;
+        } else {
+            let json = serde_json::to_string(&store)
+                .map_err(|e| ProviderError::AuthError(format!("serialize OAuth store: {}", e)))?;
+            self.vault_set(&key, &json).await?;
+        }
+
+        // Invalidate caches.
+        self.oauth_cache.write().await.remove(&provider);
+        if provider == ProviderType::OpenAI {
+            *self.openai_oauth_cache.write().await = None;
+        }
+
+        tracing::info!(
+            "removed profile {:?} from {}",
+            profile_name,
+            provider.as_str()
+        );
+        Ok(())
+    }
+
     /// Remove OAuth token from the vault
     pub async fn disconnect_oauth(&self, provider: ProviderType) -> ProviderResult<()> {
         let key = Self::oauth_vault_key(provider);
@@ -2040,5 +2190,128 @@ mod profile_tests {
         let raw = m.vault_get_raw("openai.oauth").await.unwrap().unwrap();
         let saved: ProviderOAuthStore = serde_json::from_str(&raw).unwrap();
         assert_eq!(saved.active().unwrap().email, "kept@example.com");
+    }
+
+    fn seed_two_profiles() -> HashMap<String, String> {
+        let mut store = ProviderOAuthStore::empty();
+        store.upsert_profile(
+            "default",
+            OAuthProfile {
+                access_token: "ak-1".into(),
+                refresh_token: "rk-1".into(),
+                id_token: None,
+                expires_at: 9_999_999_999,
+                last_refresh: 0,
+                email: "a@x".into(),
+                account_id: None,
+                plan_type: None,
+            },
+        );
+        store.upsert_profile(
+            "work",
+            OAuthProfile {
+                access_token: "ak-2".into(),
+                refresh_token: "rk-2".into(),
+                id_token: None,
+                expires_at: 9_999_999_999,
+                last_refresh: 0,
+                email: "b@x".into(),
+                account_id: None,
+                plan_type: None,
+            },
+        );
+        let mut vault = HashMap::new();
+        vault.insert(
+            "anthropic.oauth".into(),
+            serde_json::to_string(&store).unwrap(),
+        );
+        vault
+    }
+
+    #[tokio::test]
+    async fn list_profiles_returns_both_with_active_flag() {
+        let m = manager_with_vault(seed_two_profiles()).await;
+        let mut profiles = m.list_profiles(ProviderType::Anthropic).await.unwrap();
+        profiles.sort_by(|a, b| a.name.cmp(&b.name));
+        assert_eq!(profiles.len(), 2);
+        assert_eq!(profiles[0].name, "default");
+        assert_eq!(profiles[0].email, "a@x");
+        assert!(profiles[0].is_active);
+        assert_eq!(profiles[1].name, "work");
+        assert!(!profiles[1].is_active);
+    }
+
+    #[tokio::test]
+    async fn list_profiles_returns_empty_when_no_oauth() {
+        let m = manager_with_vault(HashMap::new()).await;
+        let profiles = m.list_profiles(ProviderType::Anthropic).await.unwrap();
+        assert!(profiles.is_empty());
+    }
+
+    #[tokio::test]
+    async fn set_active_profile_updates_cursor() {
+        let m = manager_with_vault(seed_two_profiles()).await;
+        m.set_active_profile(ProviderType::Anthropic, "work")
+            .await
+            .unwrap();
+
+        let raw = m.vault_get_raw("anthropic.oauth").await.unwrap().unwrap();
+        let store: ProviderOAuthStore = serde_json::from_str(&raw).unwrap();
+        assert_eq!(store.active_profile.as_deref(), Some("work"));
+    }
+
+    #[tokio::test]
+    async fn set_active_profile_errors_on_unknown() {
+        let m = manager_with_vault(seed_two_profiles()).await;
+        let err = m
+            .set_active_profile(ProviderType::Anthropic, "ghost")
+            .await
+            .unwrap_err();
+        assert!(!err.to_string().is_empty());
+    }
+
+    #[tokio::test]
+    async fn remove_profile_drops_it_and_picks_new_active() {
+        let m = manager_with_vault(seed_two_profiles()).await;
+        m.remove_profile(ProviderType::Anthropic, "default")
+            .await
+            .unwrap();
+
+        let raw = m.vault_get_raw("anthropic.oauth").await.unwrap().unwrap();
+        let store: ProviderOAuthStore = serde_json::from_str(&raw).unwrap();
+        assert_eq!(store.profiles.len(), 1);
+        assert_eq!(store.active_profile.as_deref(), Some("work"));
+    }
+
+    #[tokio::test]
+    async fn remove_last_profile_clears_vault_key() {
+        let mut store = ProviderOAuthStore::empty();
+        store.upsert_profile(
+            "default",
+            OAuthProfile {
+                access_token: "ak".into(),
+                refresh_token: "".into(),
+                id_token: None,
+                expires_at: 1,
+                last_refresh: 0,
+                email: "a@x".into(),
+                account_id: None,
+                plan_type: None,
+            },
+        );
+        let mut vault = HashMap::new();
+        vault.insert(
+            "anthropic.oauth".into(),
+            serde_json::to_string(&store).unwrap(),
+        );
+
+        let m = manager_with_vault(vault).await;
+        m.remove_profile(ProviderType::Anthropic, "default")
+            .await
+            .unwrap();
+
+        // When the last profile is removed, the vault key should be cleared.
+        let raw = m.vault_get_raw("anthropic.oauth").await.unwrap();
+        assert!(raw.is_none() || raw.as_deref() == Some(""));
     }
 }

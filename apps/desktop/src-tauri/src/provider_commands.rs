@@ -393,6 +393,87 @@ pub async fn disconnect_oauth(
 }
 
 // =============================================================================
+// Profile Management Commands
+// =============================================================================
+
+use solo_auth::credentials::ProfileSummary;
+
+/// List OAuth profiles for a provider.
+#[tauri::command]
+pub async fn list_profiles(
+    provider: String,
+    state: State<'_, ProviderAuthState>,
+) -> Result<Vec<ProfileSummary>, String> {
+    debug!(provider = %provider, "Listing profiles");
+    let provider_type = ProviderType::from_str(&provider)
+        .ok_or_else(|| format!("Unknown provider: {}", provider))?;
+    state
+        .credentials
+        .list_profiles(provider_type)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Set the active profile for a provider.
+#[tauri::command]
+pub async fn set_active_profile(
+    provider: String,
+    profile_name: String,
+    state: State<'_, ProviderAuthState>,
+) -> Result<(), String> {
+    info!(provider = %provider, profile = %profile_name, "Setting active profile");
+    let provider_type = ProviderType::from_str(&provider)
+        .ok_or_else(|| format!("Unknown provider: {}", provider))?;
+    state
+        .credentials
+        .set_active_profile(provider_type, &profile_name)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Remove a named profile.
+#[tauri::command]
+pub async fn remove_profile(
+    provider: String,
+    profile_name: String,
+    state: State<'_, ProviderAuthState>,
+) -> Result<(), String> {
+    info!(provider = %provider, profile = %profile_name, "Removing profile");
+    let provider_type = ProviderType::from_str(&provider)
+        .ok_or_else(|| format!("Unknown provider: {}", provider))?;
+    state
+        .credentials
+        .remove_profile(provider_type, &profile_name)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Sign out of a specific profile. If `profile_name` is None, removes ALL
+/// profiles for the provider (equivalent to disconnect_oauth).
+#[tauri::command]
+pub async fn sign_out_profile(
+    provider: String,
+    profile_name: Option<String>,
+    state: State<'_, ProviderAuthState>,
+) -> Result<(), String> {
+    info!(provider = %provider, profile = ?profile_name, "Signing out profile");
+    let provider_type = ProviderType::from_str(&provider)
+        .ok_or_else(|| format!("Unknown provider: {}", provider))?;
+    match profile_name {
+        Some(name) => state
+            .credentials
+            .remove_profile(provider_type, &name)
+            .await
+            .map_err(|e| e.to_string()),
+        None => state
+            .credentials
+            .disconnect_oauth(provider_type)
+            .await
+            .map_err(|e| e.to_string()),
+    }
+}
+
+// =============================================================================
 // Claude Code CLI Commands
 // =============================================================================
 
