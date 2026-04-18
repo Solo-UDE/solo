@@ -210,8 +210,23 @@ pub async fn voice_begin(
         });
 
         let app_for_state = app.clone();
+        let hud_state: Arc<crate::voice::hud::HudState> =
+            app.state::<Arc<crate::voice::hud::HudState>>().inner().clone();
         let on_state = Arc::new(move |s: &PipelineState| {
             emit_state(&app_for_state, mode, s);
+            match s {
+                PipelineState::Arming
+                | PipelineState::Recording
+                | PipelineState::Transcribing
+                | PipelineState::Formatting => {
+                    let _ = crate::voice::hud::show(&app_for_state, &hud_state);
+                }
+                PipelineState::Idle
+                | PipelineState::Emitting
+                | PipelineState::Error(_) => {
+                    let _ = crate::voice::hud::hide(&app_for_state, &hud_state);
+                }
+            }
         });
 
         let app_for_level = app.clone();

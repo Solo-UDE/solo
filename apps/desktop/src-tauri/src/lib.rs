@@ -195,6 +195,7 @@ pub fn run() {
         .manage(WorktreeState::new())
         .manage(VaultState::new())
         .manage(VoiceState::new())
+        .manage(std::sync::Arc::new(voice::hud::HudState::new()))
         .manage(StatsState::new())
         .invoke_handler(tauri::generate_handler![
             // Core commands
