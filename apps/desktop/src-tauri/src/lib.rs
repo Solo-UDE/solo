@@ -33,6 +33,7 @@ mod agent;
 mod agent_commands;
 mod auth_commands;
 mod commands;
+mod desktop_config;
 mod elevenlabs_commands;
 mod embedding_commands;
 mod fs_commands;
@@ -70,11 +71,14 @@ use std::sync::Arc;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    desktop_config::maybe_load_local_env();
+
     // Initialize logging
     tracing_subscriber::registry()
         .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "solo_desktop_lib=debug,solo_elevenlabs=debug,tauri=info".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                "solo_desktop_lib=debug,solo_elevenlabs=debug,tauri=info".into()
+            }),
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
@@ -102,14 +106,8 @@ pub fn run() {
     let session_manager_for_state = Arc::clone(&session_manager);
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_clipboard_manager::init())
-        .plugin(tauri_plugin_macos_permissions::init())
-        .plugin(tauri_plugin_decorum::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_process::init())
-        .plugin(tauri_plugin_deep_link::init())
+        // Tauri's deep-link plugin expects single-instance to be registered
+        // first so link-triggered secondary launches are forwarded correctly.
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             // Handle deep link from single instance
             tracing::debug!("Single instance activated with args: {:?}", args);
@@ -121,6 +119,14 @@ pub fn run() {
                 }
             }
         }))
+        .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_macos_permissions::init())
+        .plugin(tauri_plugin_decorum::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .setup(move |app| {
             // Register deep link handler
             #[cfg(any(target_os = "linux", target_os = "windows"))]
@@ -133,6 +139,15 @@ pub fn run() {
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
                 let app_handle = app.handle().clone();
+                match app.deep_link().get_current() {
+                    Ok(Some(urls)) => {
+                        tracing::info!("Initial deep link URLs: {:?}", urls);
+                    }
+                    Ok(None) => {}
+                    Err(error) => {
+                        tracing::warn!("Failed to read initial deep links: {}", error);
+                    }
+                }
                 tracing::info!("Setting up deep link handler...");
                 app.deep_link().on_open_url(move |event| {
                     tracing::info!("Deep link event received!");
