@@ -24,7 +24,8 @@
         "decorations": true,
         "transparent": true,
         "titleBarStyle": "Overlay",
-        "hiddenTitle": true
+        "hiddenTitle": true,
+        "trafficLightPosition": { "x": 13, "y": 13 }
       },
       {
         "label": "voice-hud",
