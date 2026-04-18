@@ -20,6 +20,8 @@ Always use `bun` (not npm/yarn/pnpm). The lockfile is `bun.lock`.
     Sherpa-ONNX Parakeet STT, cloud formatter (Claude Haiku / GPT-5 nano).
     Phase 1 drives the chat mic only; global dictation and agent dispatch
     arrive in Phases 2 and 3.
+  - Phase 2 adds `apps/desktop/src-tauri/src/voice/{hotkey,injection,app_monitor,hud}.rs`
+    for global dictation and the cursor-pill HUD window.
 - `apps/desktop/src-tauri/src/` — Tauri Rust commands (*_commands.rs)
 - `apps/desktop/src/` — React frontend
 - `packages/ui/` — Shared React component library (@solo/ui)

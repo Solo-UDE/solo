@@ -9,3 +9,14 @@
 - [ ] Click `Copy` in Voice history → clipboard contains the formatted text
 - [ ] Click `Delete` in Voice history → row removed
 - [ ] Disable voice, re-enable → Parakeet still marked installed, history preserved
+
+## Voice (Phase 2 — global dictation)
+
+- [ ] Open Settings → Voice → Shortcuts → record `Fn` as Dictation PTT; backend stores it.
+- [ ] Click `Grant` for Input Monitoring → macOS prompt appears; status turns green.
+- [ ] Click `Grant` for Accessibility → macOS prompt appears; status turns green.
+- [ ] In Slack (or any focused app), hold `Fn` → cursor-pill HUD appears, waveform animates.
+- [ ] Release `Fn` → transcript formats, pastes at caret, clipboard is restored to its prior contents.
+- [ ] Press `Esc` while holding `Fn` (or during Transcribing) → HUD hides, no paste.
+- [ ] Disable Accessibility → attempting dictation shows "Paste failed — text copied to clipboard".
+- [ ] Change Dispatch PTT to `ctrl+alt+v`; hotkey remap takes effect without voice re-enable.
