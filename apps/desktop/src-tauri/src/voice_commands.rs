@@ -5,6 +5,8 @@
 //! arrive in Phase 2.
 
 use crate::provider_commands::ProviderAuthState;
+use crate::voice::hotkey::{HotkeyEvent, HotkeyManager};
+use solo_protocol::ShortcutsConfig;
 use solo_voice::{
     audio::{start_capture, AudioRing, AudioStream},
     formatter::{
@@ -55,6 +57,8 @@ pub struct VoiceState {
     ring: AudioRing,
     history: TokioMutex<Option<History>>,
     models_root: TokioMutex<Option<PathBuf>>,
+    hotkey: TokioMutex<Option<HotkeyManager>>,
+    shortcuts: TokioMutex<ShortcutsConfig>,
 }
 
 impl VoiceState {
@@ -65,6 +69,8 @@ impl VoiceState {
             ring: AudioRing::new(),
             history: TokioMutex::new(None),
             models_root: TokioMutex::new(None),
+            hotkey: TokioMutex::new(None),
+            shortcuts: TokioMutex::new(ShortcutsConfig::default()),
         }
     }
 }
@@ -111,6 +117,34 @@ pub async fn voice_enable(
     let history = History::open(&hist_path).map_err(|e| e.to_string())?;
     *voice.history.lock().await = Some(history);
     *voice.models_root.lock().await = Some(models_root);
+
+    let cfg = voice.shortcuts.lock().await.clone();
+    let app_for_cb = app.clone();
+    let mgr = HotkeyManager::start(
+        cfg,
+        std::sync::Arc::new(move |evt| {
+            match evt {
+                HotkeyEvent::DictationDown => {
+                    let _ = app_for_cb.emit("voice:hotkey", "dictation_down");
+                }
+                HotkeyEvent::DictationUp => {
+                    let _ = app_for_cb.emit("voice:hotkey", "dictation_up");
+                }
+                HotkeyEvent::DispatchDown => {
+                    let _ = app_for_cb.emit("voice:hotkey", "dispatch_down");
+                }
+                HotkeyEvent::DispatchUp => {
+                    let _ = app_for_cb.emit("voice:hotkey", "dispatch_up");
+                }
+                HotkeyEvent::Cancel => {
+                    let _ = app_for_cb.emit("voice:hotkey", "cancel");
+                }
+            }
+        }),
+    )
+    .map_err(|e| e)?;
+    *voice.hotkey.lock().await = Some(mgr);
+
     Ok(())
 }
 
@@ -328,4 +362,23 @@ pub async fn voice_parakeet_installed(
         .clone()
         .ok_or_else(|| "voice not enabled".to_string())?;
     Ok(models::is_installed(&root, &models::PARAKEET))
+}
+
+#[tauri::command]
+pub async fn voice_get_shortcuts(
+    voice: State<'_, VoiceState>,
+) -> Result<ShortcutsConfig, String> {
+    Ok(voice.shortcuts.lock().await.clone())
+}
+
+#[tauri::command]
+pub async fn voice_set_shortcuts(
+    voice: State<'_, VoiceState>,
+    shortcuts: ShortcutsConfig,
+) -> Result<(), String> {
+    *voice.shortcuts.lock().await = shortcuts.clone();
+    if let Some(mgr) = voice.hotkey.lock().await.as_ref() {
+        mgr.update(shortcuts);
+    }
+    Ok(())
 }

@@ -376,6 +376,8 @@ pub fn run() {
             voice_commands::voice_history_list,
             voice_commands::voice_history_delete,
             voice_commands::voice_parakeet_installed,
+            voice_commands::voice_get_shortcuts,
+            voice_commands::voice_set_shortcuts,
             // Update commands
             update_commands::check_for_update,
             update_commands::install_update,
