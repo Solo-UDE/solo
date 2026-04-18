@@ -1,5 +1,6 @@
 import { create } from "zustand";
 
+import { open } from "@tauri-apps/plugin-shell";
 import {
 	getProviders,
 	getActiveProvider,
@@ -15,6 +16,8 @@ import {
 	setActiveProfile as setActiveProfileBackend,
 	removeProfile as removeProfileBackend,
 	signOutProfile as signOutProfileBackend,
+	completeOAuthFlow,
+	waitForOAuthCallback,
 } from "../lib/backend";
 import type {
 	ProviderType,
@@ -241,11 +244,31 @@ export const useProviderStore = create<ProviderStore>()((set, get) => ({
 	startOAuthFlow: async (provider: string, method: string) => {
 		set((state) => ({
 			oauthPending: { ...state.oauthPending, [provider]: true },
+			error: null,
 		}));
 		try {
-			await startOAuthFlowBackend(provider, method as 'browser' | 'paste-code');
+			// 1. Ask the backend to build the authorize URL and allocate a
+			//    PKCE verifier + state. Returns { auth_url, state }.
+			const flow = await startOAuthFlowBackend(
+				provider,
+				method as "browser" | "paste-code"
+			);
+
+			// 2. Open the authorize URL in the system browser.
+			await open(flow.auth_url);
+
+			// 3. Block until the browser redirects to our local callback
+			//    server on port 1455. The backend validates the state matches
+			//    what was passed in and returns the authorization code.
+			const { code } = await waitForOAuthCallback(flow.state);
+
+			// 4. Exchange the code for tokens; the backend persists them.
+			await completeOAuthFlow(code, flow.state);
+
+			// Refresh UI state so the new profile/session is visible.
 			await get().refreshProviderStatus(provider);
 			await get().refreshAuthMethod(provider);
+			await get().refreshProfiles(provider);
 		} catch (error) {
 			set({
 				error: error instanceof Error ? error.message : String(error),
