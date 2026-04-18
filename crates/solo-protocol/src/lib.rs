@@ -1561,6 +1561,39 @@ pub struct TierInfo {
     pub names: Vec<String>,
 }
 
+// =============================================================================
+// Voice Configuration (Phase 2)
+// =============================================================================
+
+/// Keyboard shortcuts configuration for voice activation.
+#[derive(TS, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct ShortcutsConfig {
+    /// Macro-style shortcut spec: e.g. `"fn"`, `"ctrl+alt+space"`, `"escape"`.
+    pub dictation_ptt: String,
+    pub dispatch_ptt: String,
+    pub cancel: String,
+}
+
+impl Default for ShortcutsConfig {
+    fn default() -> Self {
+        Self {
+            dictation_ptt: "fn".into(),
+            dispatch_ptt: "ctrl+alt+space".into(),
+            cancel: "escape".into(),
+        }
+    }
+}
+
+/// Snapshot of voice-related macOS permissions.
+#[derive(TS, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct VoicePermissions {
+    pub microphone: bool,
+    pub input_monitoring: bool,
+    pub accessibility: bool,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
