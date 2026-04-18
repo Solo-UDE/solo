@@ -1,28 +1,43 @@
 /**
- * GitHub-style contribution heatmap. 26 weeks × 7 days, ending on today.
- * Full-width fluid grid: cells resize to fill the container, staying square
- * via aspect-ratio. Real-time — subscribes to the dailyActivityStore so a
- * successful `git push` brightens and pulses today's cell within a frame.
+ * Usage heatmap. 26 weeks × 7 days, ending on today. Full-width fluid grid:
+ * cells resize to fill the container, staying square via aspect-ratio.
  *
- * Color scale (primary-tinted, 5 steps):
- *   0 commits — muted/40
- *   1         — primary/25
- *   2–3       — primary/45
- *   4–6       — primary/70
- *   7+        — primary
+ * Cell color reflects a *usage score* (not raw commits): a weighted sum of
+ * commits, sessions, worktrees, messages, and log-damped tokens. See
+ * `computeUsageScore` / `usageBucket` in the store for the formula.
+ *
+ * Data flow:
+ *   - `hydrateFromServer()` pulls the 26-week window from DynamoDB via the
+ *     Rust `stats_get_heatmap` command on mount.
+ *   - `bumpLocal()` is called from gitStore.push for instant feedback
+ *     between syncs.
  */
 
 import { useMemo, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { useDailyActivityStore, dailyActivityIsoDay } from '@/stores/dailyActivityStore';
+import {
+  useDailyActivityStore,
+  dailyActivityIsoDay,
+  computeUsageScore,
+  usageBucket,
+  type DailyCounters,
+} from '@/stores/dailyActivityStore';
 
 const WEEKS = 26;
 const DAYS_PER_WEEK = 7;
 
-type CellMeta = { date: string; count: number; weekday: number; weekIdx: number };
+const ZERO: DailyCounters = { commits: 0, tokens: 0, worktrees: 0, sessions: 0, messages: 0 };
+
+type CellMeta = {
+  date: string;
+  counters: DailyCounters;
+  score: number;
+  weekday: number;
+  weekIdx: number;
+};
 
 /** Produce a WEEKS×DAYS_PER_WEEK grid of dates ending on today. */
-function buildGrid(commitsByDate: Record<string, number>): CellMeta[][] {
+function buildGrid(countersByDate: Record<string, DailyCounters>): CellMeta[][] {
   const today = new Date();
   const todayWeekday = today.getDay();
   const totalCells = WEEKS * DAYS_PER_WEEK;
@@ -35,24 +50,13 @@ function buildGrid(commitsByDate: Record<string, number>): CellMeta[][] {
     const d = new Date(startDate);
     d.setDate(startDate.getDate() + i);
     const key = dailyActivityIsoDay(d);
+    const counters = countersByDate[key] ?? ZERO;
+    const score = computeUsageScore(counters);
     const weekIdx = Math.floor(i / DAYS_PER_WEEK);
     const weekday = i % DAYS_PER_WEEK;
-    grid[weekIdx]!.push({
-      date: key,
-      count: commitsByDate[key] ?? 0,
-      weekday,
-      weekIdx,
-    });
+    grid[weekIdx]!.push({ date: key, counters, score, weekday, weekIdx });
   }
   return grid;
-}
-
-function bucket(count: number): 0 | 1 | 2 | 3 | 4 {
-  if (count === 0) return 0;
-  if (count === 1) return 1;
-  if (count <= 3) return 2;
-  if (count <= 6) return 3;
-  return 4;
 }
 
 const BUCKET_BG = [
@@ -82,15 +86,26 @@ function formatDate(iso: string): string {
 }
 
 export function ContributionGraph() {
-  const commitsByDate = useDailyActivityStore((s) => s.commitsByDate);
+  const countersByDate = useDailyActivityStore((s) => s.countersByDate);
   const version = useDailyActivityStore((s) => s.version);
+  const hydrateFromServer = useDailyActivityStore((s) => s.hydrateFromServer);
+  const lastHydrated = useDailyActivityStore((s) => s.lastHydrated);
 
-  const grid = useMemo(() => buildGrid(commitsByDate), [commitsByDate]);
+  // Hydrate once per mount; refresh if data is stale (> 5 min).
+  useEffect(() => {
+    const STALE_MS = 5 * 60 * 1000;
+    if (!lastHydrated || Date.now() - lastHydrated > STALE_MS) {
+      void hydrateFromServer();
+    }
+  }, [hydrateFromServer, lastHydrated]);
+
+  const grid = useMemo(() => buildGrid(countersByDate), [countersByDate]);
 
   const todayKey = dailyActivityIsoDay();
-  const todayCount = commitsByDate[todayKey] ?? 0;
+  const todayCounters = countersByDate[todayKey] ?? ZERO;
+  const todayCommits = todayCounters.commits;
   const windowTotal = useMemo(
-    () => grid.flat().reduce((acc, c) => acc + c.count, 0),
+    () => grid.flat().reduce((acc, c) => acc + c.counters.commits, 0),
     [grid],
   );
 
@@ -133,16 +148,16 @@ export function ContributionGraph() {
           </div>
         </div>
         <AnimatePresence mode="wait">
-          {todayCount > 0 ? (
+          {todayCommits > 0 ? (
             <motion.div
-              key={todayCount}
+              key={todayCommits}
               initial={{ opacity: 0, y: 4 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -4 }}
               transition={{ duration: 0.18 }}
               className="rounded-full border border-primary/40 bg-primary/10 px-2.5 py-1 text-[11px] font-medium text-foreground"
             >
-              {todayCount} today
+              {todayCommits} today
             </motion.div>
           ) : null}
         </AnimatePresence>
@@ -190,8 +205,14 @@ export function ContributionGraph() {
             }}
           >
             {flatCells.map((cell) => {
-              const b = bucket(cell.count);
+              const b = usageBucket(cell.score);
               const isToday = cell.date === todayKey;
+              const { commits, sessions, messages } = cell.counters;
+              const tip = [
+                formatDate(cell.date),
+                `usage ${cell.score.toFixed(1)}`,
+                `${commits}c · ${sessions}s · ${messages}m`,
+              ].join(' · ');
               return (
                 <motion.div
                   key={cell.date}
@@ -201,7 +222,7 @@ export function ContributionGraph() {
                     BUCKET_RING[b],
                     isToday ? 'outline outline-1 outline-primary/80 outline-offset-[1px]' : '',
                   ].join(' ')}
-                  title={`${cell.count} commit${cell.count === 1 ? '' : 's'} · ${formatDate(cell.date)}`}
+                  title={tip}
                   animate={
                     isToday && version !== 0
                       ? { scale: [1, 1.22, 1] }
