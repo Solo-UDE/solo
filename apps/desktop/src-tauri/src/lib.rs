@@ -421,6 +421,7 @@ pub fn run() {
             stats_commands::stats_current,
             stats_commands::stats_sync_now,
             stats_commands::stats_get_tier,
+            stats_commands::stats_get_heatmap,
             stats_commands::stats_get_leaderboard,
             stats_commands::stats_generate_card,
             // Voice commands
