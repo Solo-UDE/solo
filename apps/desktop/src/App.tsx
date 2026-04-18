@@ -712,7 +712,7 @@ function AppContent() {
                 )}
 
                 <div
-                  className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background"
+                  className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background rounded-tl-xl rounded-bl-xl"
                   style={{ paddingTop: HEIGHTS.titlebar }}
                 >
                   {splashComplete && (rootPath !== null || sidebarMode === 'vault') ? (
