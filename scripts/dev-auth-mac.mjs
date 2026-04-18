@@ -135,6 +135,45 @@ if (!exists(builtAppPath)) {
   fail(`Expected built app bundle at ${builtAppPath}`);
 }
 
+// Tauri's debug bundle copies the binary but not its sibling @rpath dylibs
+// (onnxruntime, sherpa-onnx). Without these the installed app crashes at
+// launch with "Library not loaded: @rpath/libonnxruntime.1.17.1.dylib" and
+// never handles the soloide:// deep-link, which is the whole point of the
+// install. Copy the required dylibs into Contents/Frameworks/ and add an
+// rpath on the binary so dyld can find them at runtime.
+const frameworksDir = path.join(builtAppPath, "Contents/Frameworks");
+const binaryPath = path.join(builtAppPath, "Contents/MacOS/solo-desktop");
+const targetDebugDir = path.join(WORKSPACE_ROOT, "target/debug");
+const requiredDylibs = [
+  "libonnxruntime.1.17.1.dylib",
+  "libsherpa-onnx-c-api.dylib",
+  "libsherpa-onnx-cxx-api.dylib",
+];
+fs.mkdirSync(frameworksDir, { recursive: true });
+for (const name of requiredDylibs) {
+  const src = path.join(targetDebugDir, name);
+  const dst = path.join(frameworksDir, name);
+  if (!exists(src)) {
+    console.warn(`! missing dylib ${src} — skipping (app may crash on launch)`);
+    continue;
+  }
+  fs.copyFileSync(src, dst);
+  console.log(`Copied ${name} -> Contents/Frameworks/`);
+}
+// Add @executable_path/../Frameworks to the binary's rpath list. install_name_tool
+// returns nonzero if the rpath already exists, which is fine on re-runs.
+const addRpath = spawnSync("install_name_tool", [
+  "-add_rpath",
+  "@executable_path/../Frameworks",
+  binaryPath,
+]);
+if (addRpath.status !== 0) {
+  const stderr = (addRpath.stderr ?? Buffer.from("")).toString();
+  if (!stderr.includes("would duplicate")) {
+    console.warn(`install_name_tool -add_rpath failed: ${stderr}`);
+  }
+}
+
 ensureBackupIfNeeded();
 
 console.log(`Installing local debug app to ${liveAppPath}`);
