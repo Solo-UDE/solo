@@ -250,8 +250,12 @@ export const useGitStore = create<GitState & GitActions>()(
         state._fetchSeq += 1;
       });
       try {
-        await gitPush(accessToken, githubRepoUrl, currentBranch);
+        const response = await gitPush(accessToken, githubRepoUrl, currentBranch);
         set((state) => { state.isPushing = false; });
+        if (response && response.commits_count > 0) {
+          const { useDailyActivityStore } = await import('./dailyActivityStore');
+          useDailyActivityStore.getState().recordCommits(response.commits_count);
+        }
       } catch (err) {
         set((state) => { state.isPushing = false; });
         throw err;
