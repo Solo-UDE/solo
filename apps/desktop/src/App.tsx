@@ -24,7 +24,6 @@ import { useAgentStream } from "./hooks/useAgentStream";
 import { useTerminalStream } from "./hooks/useTerminalStream";
 import { useGitStream } from "./hooks/useGitStream";
 import { useWorktreeStream } from "./hooks/useWorktreeStream";
-import { useElevenLabsStream } from "./hooks/useElevenLabsStream";
 import { useUpdateStream } from "./hooks/useUpdateStream";
 import { useVaultStream } from "./hooks/useVaultStream";
 import { useTerminalStore, clearActiveTerminal, findInActiveTerminal } from "./stores/terminalStore";
@@ -153,7 +152,6 @@ function AppContent() {
   useTerminalStream();
   useGitStream();
   useWorktreeStream();
-  useElevenLabsStream();
   useUpdateStream();
   useVaultStream();
 

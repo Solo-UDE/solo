@@ -1131,53 +1131,6 @@ pub struct ParseErrorInfo {
 }
 
 // =============================================================================
-// ElevenLabs Voice Protocol
-// =============================================================================
-
-/// STT partial transcript event (emitted on "elevenlabs:stt_partial" channel)
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../apps/desktop/src/bindings/")]
-pub struct ElevenLabsSttPartialEvent {
-    pub session_id: String,
-    pub text: String,
-}
-
-/// STT committed (final) transcript event (emitted on "elevenlabs:stt_committed" channel)
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../apps/desktop/src/bindings/")]
-pub struct ElevenLabsSttCommittedEvent {
-    pub session_id: String,
-    pub text: String,
-}
-
-/// STT status event (emitted on "elevenlabs:stt_status" channel)
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../apps/desktop/src/bindings/")]
-pub struct ElevenLabsSttStatusEvent {
-    pub session_id: String,
-    pub status: String,
-    pub error: Option<String>,
-}
-
-/// TTS audio chunk event (emitted on "elevenlabs:tts_audio" channel)
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../apps/desktop/src/bindings/")]
-pub struct ElevenLabsTtsAudioEvent {
-    pub session_id: String,
-    pub chunk: String,
-    pub sample_rate: u32,
-}
-
-/// TTS status event (emitted on "elevenlabs:tts_status" channel)
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../apps/desktop/src/bindings/")]
-pub struct ElevenLabsTtsStatusEvent {
-    pub session_id: String,
-    pub status: String,
-    pub error: Option<String>,
-}
-
-// =============================================================================
 // Claude CLI Setup
 // =============================================================================
 

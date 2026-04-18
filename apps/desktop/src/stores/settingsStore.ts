@@ -237,6 +237,18 @@ function migrateV1ToV2(persistedState: unknown): SettingsState {
   return newState;
 }
 
+// Drop legacy elevenlabs keys on load (safe no-op if absent)
+const raw = localStorage.getItem('solo-settings');
+if (raw) {
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed?.state && 'elevenlabs' in parsed.state) {
+      delete parsed.state.elevenlabs;
+      localStorage.setItem('solo-settings', JSON.stringify(parsed));
+    }
+  } catch { /* ignore */ }
+}
+
 export const useSettingsStore = create<SettingsStore>()(
   persist(
     immer((set) => ({
