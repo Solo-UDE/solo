@@ -129,10 +129,19 @@ export function discoverSkillsFromDir(dirPath: string, source: SkillSource): Loa
         skillFilePath = fullPath;
         derivedName = basename(entry, '.md');
       } else if (stat.isDirectory()) {
+        // Prefer AGENTS.md (the open standard adopted by Cursor/Codex/Windsurf)
+        // but fall back to SKILL.md for drop-in compatibility with Claude Code
+        // skill folders.
+        const agentsMd = join(fullPath, 'AGENTS.md');
         const skillMd = join(fullPath, 'SKILL.md');
-        if (!existsSync(skillMd)) continue;
-        raw = readFileSync(skillMd, 'utf-8');
-        skillFilePath = skillMd;
+        const chosen = existsSync(agentsMd)
+          ? agentsMd
+          : existsSync(skillMd)
+            ? skillMd
+            : null;
+        if (!chosen) continue;
+        raw = readFileSync(chosen, 'utf-8');
+        skillFilePath = chosen;
         derivedName = entry;
       } else {
         continue;

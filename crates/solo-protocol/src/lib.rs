@@ -1531,6 +1531,25 @@ pub struct StatsSnapshot {
     pub last_sync_at: Option<String>,
 }
 
+/// One row of the usage heatmap. Raw per-day counters; the client computes
+/// the usage score so weight calibration stays out of the server.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub struct DailyActivityEntry {
+    pub date: String,
+    #[serde(default)]
+    pub commits: u64,
+    #[serde(default)]
+    pub tokens: u64,
+    #[serde(default)]
+    pub worktrees: u64,
+    #[serde(default)]
+    pub sessions: u64,
+    #[serde(default)]
+    pub messages: u64,
+}
+
 /// Single entry in the cloud leaderboard response.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../apps/desktop/src/bindings/")]
@@ -1699,6 +1718,91 @@ impl Default for PluginsConfig {
 
 fn default_true_plugins() -> bool {
     true
+}
+
+// =============================================================================
+// Skills Marketplace Protocol
+// =============================================================================
+
+/// One entry in the public skills registry.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct RegistryEntry {
+    pub id: String,
+    pub name: String,
+    pub version: String,
+    pub description: String,
+    pub categories: Vec<String>,
+    pub author: String,
+    pub license: String,
+    pub tarball_url: String,
+    pub sha256: String,
+    pub tags: Vec<String>,
+    pub updated_at: String,
+}
+
+/// The full parsed `registry.json` pulled from `solo/skills-registry`.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct Registry {
+    pub version: u32,
+    pub generated_at: String,
+    pub skills: Vec<RegistryEntry>,
+}
+
+/// A marketplace hit scored against the current user query.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct SkillSuggestion {
+    pub entry: RegistryEntry,
+    pub score: f32,
+    pub reason: String,
+}
+
+/// Where an installed skill came from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "snake_case")]
+pub enum OriginSource {
+    Registry,
+    Bundled,
+    User,
+}
+
+/// Persisted alongside an installed skill as `.solo-origin.json`.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct InstalledSkillMeta {
+    pub source: OriginSource,
+    pub id: String,
+    pub version: String,
+    pub installed_at: String,
+    pub modified: bool,
+    /// Present when installed from the registry; the upstream tarball sha256 at install time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub upstream_sha256: Option<String>,
+}
+
+/// Events emitted by the skills marketplace subsystem.
+///
+/// Emitted via `app.emit("skills-event", SkillsEvent::...)`. The tagged union
+/// mirrors `BackendEvent`'s shape — `type` is the discriminant, colon-separated
+/// to match existing event naming conventions.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(tag = "type")]
+pub enum SkillsEvent {
+    #[serde(rename = "skills:suggestion")]
+    Suggestion {
+        session_id: String,
+        suggestions: Vec<SkillSuggestion>,
+    },
+    #[serde(rename = "skills:installed")]
+    Installed { skill_id: String },
+    #[serde(rename = "skills:uninstalled")]
+    Uninstalled { skill_id: String },
+    #[serde(rename = "skills:registry_updated")]
+    RegistryUpdated,
 }
 
 #[cfg(test)]

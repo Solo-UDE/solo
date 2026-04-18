@@ -43,7 +43,11 @@ mod plugins_commands;
 mod provider_commands;
 mod session_commands;
 mod settings_commands;
+mod skills_aggregate;
+mod skills_bundled;
 mod skills_commands;
+mod skills_marketplace;
+mod skills_origin;
 mod stats_commands;
 mod terminal_commands;
 mod update_commands;
@@ -180,6 +184,22 @@ pub fn run() {
             // Wire up agent event callbacks
             agent_commands::setup_event_callbacks(app.handle(), &session_manager);
 
+            // First-launch: extract the bundled UI skill into ~/.solo/skills/ui/
+            // if not already present. Idempotent — subsequent launches are a no-op.
+            {
+                tauri::async_runtime::spawn(async move {
+                    let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")) else {
+                        return;
+                    };
+                    let user_skills = std::path::PathBuf::from(home).join(".solo").join("skills");
+                    match skills_bundled::extract_bundled_if_missing(&user_skills).await {
+                        Ok(true) => tracing::info!("extracted bundled ui skill to {}", user_skills.display()),
+                        Ok(false) => tracing::debug!("bundled ui skill already present"),
+                        Err(e) => tracing::warn!("failed to extract bundled skill: {}", e),
+                    }
+                });
+            }
+
             // macOS: apply native vibrancy. Traffic-light position is set
             // natively via `trafficLightPosition` in tauri.conf.json — the
             // decorum-based approach crashed on macOS 26 (Tahoe) because the
@@ -295,6 +315,7 @@ pub fn run() {
             auth_commands::auth_sign_out,
             auth_commands::auth_get_access_token,
             auth_commands::auth_get_id_token,
+            auth_commands::auth_diagnose,
             // Terminal commands
             terminal_commands::spawn_pty,
             terminal_commands::write_pty,
@@ -382,6 +403,13 @@ pub fn run() {
             skills_commands::skills_onboarding_dismiss,
             skills_commands::skills_onboarding_reset,
             skills_commands::skills_set_imports,
+            skills_aggregate::skills_write_workspace_agents_md,
+            skills_marketplace::skills_fetch_registry,
+            skills_marketplace::skills_search_marketplace,
+            skills_marketplace::skills_install,
+            skills_marketplace::skills_uninstall,
+            skills_marketplace::skills_read_installed,
+            skills_marketplace::skills_write_installed,
             // Plugin commands
             plugins_commands::plugins_list,
             plugins_commands::plugins_get_detail,
@@ -393,6 +421,7 @@ pub fn run() {
             stats_commands::stats_current,
             stats_commands::stats_sync_now,
             stats_commands::stats_get_tier,
+            stats_commands::stats_get_heatmap,
             stats_commands::stats_get_leaderboard,
             stats_commands::stats_generate_card,
             // Voice commands

@@ -11,6 +11,12 @@ import { TerminalPanel } from '@/components/panels/TerminalPanel';
 import { GitDiffPanel } from '@/components/panels/GitDiffPanel';
 import { WorktreeDiffPanel } from '@/components/panels/WorktreeDiffPanel';
 import { BranchDiffPanel } from '@/components/panels/BranchDiffPanel';
+import { SkillsPanel } from '@/components/panels/vault/SkillsPanel';
+import { MemoryPanel } from '@/components/panels/vault/MemoryPanel';
+import { TasksPanel } from '@/components/panels/vault/TasksPanel';
+import { CurrentVaultPanel } from '@/components/panels/vault/CurrentVaultPanel';
+import { PluginsPanel } from '@/components/panels/vault/PluginsPanel';
+import { ConnectorsPanel } from '@/components/panels/vault/ConnectorsPanel';
 
 /**
  * Register all built-in panel types
@@ -114,6 +120,56 @@ export function registerBuiltinPanels(): void {
       const branch = data.branch as string | undefined;
       return branch ? `Branch Changes: ${branch}` : 'All Branch Changes';
     },
+    allowMultiple: false,
+    preferredRegion: 'editor',
+  });
+
+  // ── Vault panels — singletons (find-or-focus), open from VaultSidebar ──
+  panelRegistry.register({
+    id: 'vault-skills',
+    displayName: 'Skills',
+    defaultIcon: 'sparkles',
+    component: SkillsPanel,
+    allowMultiple: false,
+    preferredRegion: 'editor',
+  });
+  panelRegistry.register({
+    id: 'vault-memory',
+    displayName: 'Memory',
+    defaultIcon: 'brain',
+    component: MemoryPanel,
+    allowMultiple: false,
+    preferredRegion: 'editor',
+  });
+  panelRegistry.register({
+    id: 'vault-tasks',
+    displayName: 'Tasks',
+    defaultIcon: 'list-checks',
+    component: TasksPanel,
+    allowMultiple: false,
+    preferredRegion: 'editor',
+  });
+  panelRegistry.register({
+    id: 'vault-current',
+    displayName: 'Current Vault',
+    defaultIcon: 'vault',
+    component: CurrentVaultPanel,
+    allowMultiple: false,
+    preferredRegion: 'editor',
+  });
+  panelRegistry.register({
+    id: 'vault-plugins',
+    displayName: 'Plugins',
+    defaultIcon: 'puzzle',
+    component: PluginsPanel,
+    allowMultiple: false,
+    preferredRegion: 'editor',
+  });
+  panelRegistry.register({
+    id: 'vault-connectors',
+    displayName: 'Connectors',
+    defaultIcon: 'plug-zap',
+    component: ConnectorsPanel,
     allowMultiple: false,
     preferredRegion: 'editor',
   });

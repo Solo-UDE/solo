@@ -201,11 +201,14 @@ button,
   box-shadow: 0 0 6px 1px oklch(0.55 0.02 60 / 15%);
 }
 
-/* Tab bar - hidden scrollbar (webkit override) */
-.tab-scrollbar-none::-webkit-scrollbar {
+/* Hidden scrollbar utility (webkit + firefox). Used for tab bars, textareas,
+   and any surface where scroll functionality is needed but chrome isn't. */
+.tab-scrollbar-none::-webkit-scrollbar,
+.scrollbar-none::-webkit-scrollbar {
   display: none;
 }
-.tab-scrollbar-none {
+.tab-scrollbar-none,
+.scrollbar-none {
   scrollbar-width: none;
 }
 

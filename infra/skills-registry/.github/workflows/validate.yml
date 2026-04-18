@@ -1,0 +1,36 @@
+name: Validate skills
+
+on:
+  pull_request:
+    paths:
+      - 'skills/**'
+      - 'registry.json'
+  push:
+    branches: [main]
+    paths:
+      - 'skills/**'
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v1
+
+      - name: Validate every skill folder
+        run: bun run scripts/validate.ts
+
+      - name: Regenerate registry.json
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: bun run scripts/generate-registry.ts
+
+      - name: Commit regenerated registry
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: 'chore: regenerate registry.json'
+          file_pattern: registry.json

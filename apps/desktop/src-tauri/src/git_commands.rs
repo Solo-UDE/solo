@@ -2200,16 +2200,101 @@ pub async fn github_complete_auth(
     Ok(())
 }
 
-/// Get the stored GitHub access token (or null if not connected)
+/// Get the stored GitHub access token (or null if not connected).
+///
+/// Two-tier lookup:
+///   1. Local vault — populated by the legacy device-flow / local OAuth paths.
+///   2. Cloud fallback — after Cognito federated sign-in the GitHub token is
+///      stored in DynamoDB and served by `GET /v1/github/token`. Fetch it
+///      once using the Cognito access token, cache it locally, return it.
+///
+/// The cloud endpoint is authenticated by the Cognito `HttpJwtAuthorizer`,
+/// so we only try it when we actually have a Cognito session. A 404 from the
+/// backend means "no GitHub linked for this user" and collapses to `None`
+/// (the UI will surface "Not connected to GitHub" as before).
 #[tauri::command]
 pub async fn github_get_token(
+    auth_state: State<'_, crate::auth_commands::AuthState>,
     state: State<'_, crate::provider_commands::ProviderAuthState>,
 ) -> Result<Option<String>, String> {
-    state
+    if let Some(token) = state
         .credentials
         .get_github_access_token()
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?
+    {
+        return Ok(Some(token));
+    }
+
+    let Some(cognito_access_token) =
+        crate::auth_commands::access_token_snapshot(&auth_state, &state).await
+    else {
+        info!("github_get_token: no local vault token and no Cognito session");
+        return Ok(None);
+    };
+
+    let api_endpoint = crate::desktop_config::api_endpoint().trim_end_matches('/');
+    let url = format!("{}/v1/github/token", api_endpoint);
+    info!(url = %url, "github_get_token: fetching from cloud (post-Cognito federation)");
+
+    let client = reqwest::Client::new();
+    let response = client
+        .get(&url)
+        .bearer_auth(&cognito_access_token)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to call {}: {}", url, e))?;
+
+    let status = response.status();
+    if status == reqwest::StatusCode::NOT_FOUND {
+        info!("github_get_token: /v1/github/token 404 — user has no linked GitHub");
+        return Ok(None);
+    }
+    if !status.is_success() {
+        let body = response.text().await.unwrap_or_default();
+        warn!(
+            status = %status,
+            body = %body,
+            "github_get_token: /v1/github/token failed"
+        );
+        return Err(format!(
+            "GitHub token fetch failed ({}): {}",
+            status, body
+        ));
+    }
+
+    #[derive(serde::Deserialize)]
+    struct GitHubTokenResponse {
+        access_token: String,
+        #[serde(default)]
+        scope: Option<String>,
+    }
+    let body: GitHubTokenResponse = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse /v1/github/token response: {}", e))?;
+
+    // Cache locally so subsequent git ops don't round-trip to the backend.
+    // GitHub tokens don't expire in the traditional OAuth sense; use a long
+    // synthetic expiry (1 year). `clear_github_oauth_token` wipes this on
+    // sign-out / disconnect.
+    let oauth_token = solo_auth::OAuthToken::new(
+        body.access_token.clone(),
+        None,
+        365 * 24 * 60 * 60,
+        "Bearer".to_string(),
+        body.scope,
+    );
+    if let Err(e) = state.credentials.set_github_oauth_token(oauth_token).await {
+        warn!(
+            error = %e,
+            "github_get_token: fetched from cloud but failed to cache locally (returning anyway)"
+        );
+    } else {
+        info!("github_get_token: cached cloud token in local vault");
+    }
+
+    Ok(Some(body.access_token))
 }
 
 /// Disconnect GitHub — clear stored token

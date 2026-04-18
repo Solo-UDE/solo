@@ -15,6 +15,7 @@
 //! Only aggregate counters ever leave the device: commits, tokens, worktrees,
 //! sessions, messages. No file paths, no repo names, no code contents.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -129,10 +130,72 @@ pub struct CumulativeStats {
 pub struct StatsSnapshot {
     #[serde(default)]
     pub pending: StatsDelta,
+    /// Per-day buckets (UTC `YYYY-MM-DD` keys) accumulated since the last
+    /// successful sync. Drives the usage heatmap on the Journey page. Cleared
+    /// alongside `pending` when the sync POST succeeds.
+    #[serde(default)]
+    pub pending_daily: HashMap<String, StatsDelta>,
     #[serde(default)]
     pub cumulative: CumulativeStats,
     #[serde(default)]
     pub last_sync_at: Option<DateTime<Utc>>,
+}
+
+fn today_utc_iso() -> String {
+    Utc::now().format("%Y-%m-%d").to_string()
+}
+
+/// Wire format for `POST /v1/stats/sync`, matching the syncStats Lambda's
+/// `SyncBody` (camelCase).
+#[derive(Debug, Serialize)]
+struct SyncRequest<'a> {
+    delta: &'a StatsDelta,
+    daily: &'a HashMap<String, StatsDelta>,
+    #[serde(rename = "lastActive", skip_serializing_if = "Option::is_none")]
+    last_active: Option<String>,
+}
+
+/// Shape returned by the syncStats Lambda. Intentionally narrow — the Lambda
+/// only echoes tier-derived fields. Parsing into `CumulativeStats` directly
+/// would wipe the counter fields since they're absent in the response.
+#[derive(Debug, Deserialize)]
+struct SyncResponse {
+    #[serde(default)]
+    tier: u8,
+    /// Lambda returns this rounded to the 0–100 integer scale. Translated to
+    /// the local 0–1 float scale when merged into `CumulativeStats`.
+    #[serde(default)]
+    tier_progress: f64,
+    #[serde(default)]
+    score: f64,
+}
+
+/// One row of the 26-week rolling usage heatmap. Raw counters — the usage
+/// score itself is computed client-side so weights can be tuned without a
+/// Lambda deploy.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DailyActivity {
+    pub date: String,
+    #[serde(default)]
+    pub commits: u64,
+    #[serde(default)]
+    pub tokens: u64,
+    #[serde(default)]
+    pub worktrees: u64,
+    #[serde(default)]
+    pub sessions: u64,
+    #[serde(default)]
+    pub messages: u64,
+}
+
+/// Envelope returned by `GET /v1/stats/my`.
+#[derive(Debug, Deserialize)]
+struct MyStatsResponse {
+    #[serde(default)]
+    #[allow(dead_code)]
+    stats: serde_json::Value,
+    #[serde(default)]
+    heatmap: Vec<DailyActivity>,
 }
 
 #[derive(Debug, Error)]
@@ -205,8 +268,13 @@ impl StatsCollector {
     /// counters without waiting for a sync.
     pub async fn record(&self, event: StatsEvent) -> Result<()> {
         debug!(?event, "stats event recorded");
+        let day_key = today_utc_iso();
         let mut snap = self.snapshot.write().await;
         snap.pending.apply(&event);
+        snap.pending_daily
+            .entry(day_key)
+            .or_default()
+            .apply(&event);
         self.store.save(&snap).await?;
         Ok(())
     }
@@ -222,7 +290,7 @@ impl StatsCollector {
         let _guard = self.sync_lock.lock().await;
 
         let snapshot = self.snapshot.read().await.clone();
-        if snapshot.pending.is_empty() {
+        if snapshot.pending.is_empty() && snapshot.pending_daily.is_empty() {
             debug!("no pending stats — skipping sync");
             return Ok(());
         }
@@ -233,11 +301,17 @@ impl StatsCollector {
         };
 
         let url = format!("{}/v1/stats/sync", self.api_base.trim_end_matches('/'));
+        let last_active = Some(Utc::now().to_rfc3339());
+        let request = SyncRequest {
+            delta: &snapshot.pending,
+            daily: &snapshot.pending_daily,
+            last_active,
+        };
         let response = self
             .client
             .post(&url)
             .bearer_auth(token)
-            .json(&snapshot.pending)
+            .json(&request)
             .send()
             .await?;
 
@@ -251,19 +325,75 @@ impl StatsCollector {
             });
         }
 
-        let cumulative: CumulativeStats = response.json().await.map_err(StatsError::from)?;
+        // The sync Lambda returns a narrow `{tier, tier_progress (0-100), score}`
+        // response — only these three fields are authoritatively updated here.
+        // The cumulative counters are refreshed by the next `GET /v1/stats/my`
+        // call rather than round-tripped through sync.
+        let resp: SyncResponse = response.json().await.map_err(StatsError::from)?;
         info!(
-            tier = cumulative.tier,
-            progress = cumulative.tier_progress,
+            tier = resp.tier,
+            progress = resp.tier_progress,
             "stats sync ok"
         );
 
         let mut snap = self.snapshot.write().await;
         snap.pending = StatsDelta::default();
-        snap.cumulative = cumulative;
+        snap.pending_daily.clear();
+        snap.cumulative.tier = resp.tier;
+        snap.cumulative.tier_progress = resp.tier_progress / 100.0;
+        snap.cumulative.score = resp.score;
         snap.last_sync_at = Some(Utc::now());
         self.store.save(&snap).await?;
         Ok(())
+    }
+
+    /// Fetch the server's 26-week usage heatmap (per-day deltas) for the
+    /// signed-in user. Merged with `pending_daily` so cells reflect activity
+    /// that hasn't been synced yet. Returns rows sorted by date ascending.
+    pub async fn fetch_heatmap(&self) -> Result<Vec<DailyActivity>, StatsError> {
+        let Some(token) = self.token_provider.bearer_token().await else {
+            return Err(StatsError::NotAuthenticated);
+        };
+        let url = format!("{}/v1/stats/my", self.api_base.trim_end_matches('/'));
+        let response = self.client.get(&url).bearer_auth(token).send().await?;
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(StatsError::ApiError {
+                status: status.as_u16(),
+                body,
+            });
+        }
+        let payload: MyStatsResponse = response.json().await.map_err(StatsError::from)?;
+
+        // Collapse server rows into a map, then layer pending (unsynced) daily
+        // counters on top so the UI can reflect activity still buffered locally.
+        let mut by_date: HashMap<String, DailyActivity> = payload
+            .heatmap
+            .into_iter()
+            .map(|row| (row.date.clone(), row))
+            .collect();
+
+        let pending_daily = self.snapshot.read().await.pending_daily.clone();
+        for (date, delta) in pending_daily {
+            let entry = by_date.entry(date.clone()).or_insert_with(|| DailyActivity {
+                date: date.clone(),
+                commits: 0,
+                tokens: 0,
+                worktrees: 0,
+                sessions: 0,
+                messages: 0,
+            });
+            entry.commits += delta.commits;
+            entry.tokens += delta.tokens;
+            entry.worktrees += delta.worktrees;
+            entry.sessions += delta.sessions;
+            entry.messages += delta.messages;
+        }
+
+        let mut rows: Vec<DailyActivity> = by_date.into_values().collect();
+        rows.sort_by(|a, b| a.date.cmp(&b.date));
+        Ok(rows)
     }
 
     /// Spawn a background task that periodically syncs. Returns immediately.

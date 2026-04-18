@@ -48,9 +48,14 @@ export class SoloAuthStack extends cdk.Stack {
       signInAliases: { email: true },
       autoVerify: { email: true },
       standardAttributes: {
-        // Cognito must be able to update mapped IdP attributes on every
-        // federated sign-in; immutable email breaks Google/GitHub login.
-        email: { required: true, mutable: true },
+        // Standard-attribute mutability cannot be changed on an existing user
+        // pool — Cognito's UpdateUserPool API rejects the change. The live
+        // pool was provisioned with `email.mutable: false`, so keep it here
+        // to match; redeploying with `true` would roll back the whole stack.
+        // Cross-IdP sign-in (GitHub + Google on the same email) is handled by
+        // the PreSignUp trigger below, which calls AdminLinkProviderForUser
+        // instead of relying on mutable email.
+        email: { required: true, mutable: false },
         givenName: { required: false, mutable: true },
         familyName: { required: false, mutable: true },
       },
@@ -72,14 +77,14 @@ export class SoloAuthStack extends cdk.Stack {
       removalPolicy: config.removalPolicy,
     });
 
-    // CDK's L2 user-pool construct omits AttributeDataType for standard
-    // attributes in the synthesized Schema. Cognito accepts that on create,
-    // but rejects schema updates for existing pools. Patch only the standard
-    // attribute entries so the existing custom-attribute synthesis stays intact.
-    const cfnUserPool = this.userPool.node.defaultChild as cognito.CfnUserPool;
-    cfnUserPool.addPropertyOverride("Schema.0.AttributeDataType", "String");
-    cfnUserPool.addPropertyOverride("Schema.1.AttributeDataType", "String");
-    cfnUserPool.addPropertyOverride("Schema.2.AttributeDataType", "String");
+    // NB: intentionally NOT touching the L2 userPool's LambdaConfig or Schema
+    // from this stack. Cognito's UpdateUserPool API rejects any payload that
+    // mutates Schema (even setting it to the same values produces a diff
+    // against the 20+ OIDC standard attributes Cognito auto-creates). Any
+    // subsequent UserPool update here would send the full resource, including
+    // Schema, and fail. Lambda triggers for this pool are attached
+    // out-of-band via `aws cognito-idp update-user-pool --lambda-config …`
+    // after the Lambda is deployed.
 
     this.userPoolDomain = this.userPool.addDomain("HostedDomain", {
       cognitoDomain: { domainPrefix: config.cognitoDomainPrefix },
@@ -212,6 +217,60 @@ export class SoloAuthStack extends cdk.Stack {
     if (githubIdp) {
       this.userPoolClient.node.addDependency(githubIdp);
     }
+
+    // PreSignUp trigger: link incoming federated identities to any existing
+    // user with the same email. Without this, Cognito refuses to create the
+    // second federated user (email is a UsernameAttribute and therefore
+    // globally unique) and sign-in fails with OAuthCallbackError.
+    const preSignUpFnName = `solo-auth-preSignUp-${config.stage}`;
+    const preSignUpLogGroup = new logs.LogGroup(this, "PreSignUpLogGroup", {
+      logGroupName: `/aws/lambda/${preSignUpFnName}`,
+      retention: logs.RetentionDays.TWO_WEEKS,
+      removalPolicy: config.removalPolicy,
+    });
+    const preSignUpFn = new lambdaNodejs.NodejsFunction(this, "PreSignUpFn", {
+      functionName: preSignUpFnName,
+      runtime: lambda.Runtime.NODEJS_20_X,
+      architecture: lambda.Architecture.ARM_64,
+      entry: resolveEntryPath("lambda/auth/preSignUp.ts"),
+      handler: "handler",
+      timeout: cdk.Duration.seconds(10),
+      memorySize: 256,
+      logGroup: preSignUpLogGroup,
+      environment: {
+        STAGE: config.stage,
+        AWS_REGION_OVERRIDE: config.region,
+      },
+      bundling: {
+        minify: true,
+        sourceMap: true,
+        target: "node20",
+        externalModules: ["@aws-sdk/*"],
+      },
+    });
+    // Using `this.userPool.userPoolArn` here would introduce a circular
+    // dependency (Lambda → UserPool via policy, UserPool → Lambda via
+    // trigger, Lambda → UserPool via permission). Scope the IAM policy to
+    // any user pool in this account/region instead — functionally the same
+    // since the pool is the only one we manage here.
+    preSignUpFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["cognito-idp:ListUsers", "cognito-idp:AdminLinkProviderForUser"],
+        resources: [`arn:aws:cognito-idp:${config.region}:${this.account}:userpool/*`],
+      }),
+    );
+    // Grant Cognito permission to invoke the function. The actual trigger
+    // wiring (UpdateUserPool LambdaConfig) happens out-of-band — see comment
+    // on `userPool` construct above.
+    preSignUpFn.addPermission("AllowCognitoInvoke", {
+      principal: new iam.ServicePrincipal("cognito-idp.amazonaws.com"),
+      sourceArn: this.userPool.userPoolArn,
+    });
+
+    new cdk.CfnOutput(this, "PreSignUpFnArn", {
+      value: preSignUpFn.functionArn,
+      exportName: `solo-${config.stage}-presignup-fn-arn`,
+    });
 
     if (props.githubTokensTableName && props.githubPendingTableName) {
       const postAuthFnName = `solo-gh-postAuth-${config.stage}`;

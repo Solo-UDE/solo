@@ -293,7 +293,7 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
               onKeyDown={handleKeyDown}
               placeholder="Commit message..."
               className={cn(
-                'w-full h-[72px] px-3 py-2 rounded-lg text-xs resize-none',
+                'w-full h-[72px] px-3 py-2 rounded-lg text-xs resize-none scrollbar-none',
                 'bg-muted/40 border-none text-foreground placeholder:text-muted-foreground/50',
                 'focus:bg-muted/60 focus:ring-1 focus:ring-ring/30 focus:outline-none',
                 'transition-colors duration-150',

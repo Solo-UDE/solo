@@ -142,7 +142,7 @@ export const SkillsTab: FC = () => {
     <div className="space-y-8">
       {/* Sources */}
       <div>
-        <h3 className="text-xs font-semibold text-muted-foreground mb-4">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-4">
           Sources
         </h3>
         <p className="text-xs text-muted-foreground/80 mb-4 -mt-2">
@@ -212,7 +212,7 @@ export const SkillsTab: FC = () => {
 
       {/* Summary */}
       <div>
-        <h3 className="text-xs font-semibold text-muted-foreground mb-4">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-4">
           Loaded Skills
         </h3>
         <div className="flex items-center gap-3 mb-4 text-xs text-muted-foreground">

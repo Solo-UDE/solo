@@ -18,7 +18,7 @@ export function GeneralTab() {
     <div className="space-y-8">
       {/* Appearance Section */}
       <div>
-        <h3 className="text-xs font-semibold text-muted-foreground mb-4">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-4">
           Appearance
         </h3>
 

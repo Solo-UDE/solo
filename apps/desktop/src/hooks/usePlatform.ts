@@ -76,10 +76,11 @@ export function usePlatform(): PlatformInfo {
     isLinux,
     isFullscreen,
     titlebarInset: {
-      // No insets needed in fullscreen - traffic lights are hidden
-      // Titlebar no longer has a left-side control cluster; only reserve
-      // enough space for the native traffic lights and a small visual buffer.
-      left: isMac && !isFullscreen ? 72 : 0,
+      // No insets needed in fullscreen - traffic lights are hidden.
+      // Traffic lights sit at trafficLightPosition.x=22 and span ~52px, so
+      // they end around x=74. 80px leaves a small gap before the
+      // sidebar-toggle button.
+      left: isMac && !isFullscreen ? 80 : 0,
       right: (isWindows || isLinux) && !isFullscreen ? 140 : 0,
     },
   };

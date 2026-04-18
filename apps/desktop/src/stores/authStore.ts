@@ -24,6 +24,11 @@ interface AuthState {
 
   // Error state
   error: string | null;
+
+  // Last generated OAuth URL (exposed so LoginScreen can offer a manual
+  // "Open in browser" fallback when shell.open misbehaves — e.g. default
+  // browser navigates to about:blank, custom handler intercepts, etc).
+  pendingAuthUrl: string | null;
 }
 
 interface AuthActions {
@@ -57,6 +62,7 @@ const initialState: AuthState = {
   isInitializing: true,
   isAuthenticating: false,
   error: null,
+  pendingAuthUrl: null,
 };
 
 // =============================================================================
@@ -99,11 +105,20 @@ export const useAuthStore = create<AuthStore>()(
       set((state) => {
         state.isAuthenticating = true;
         state.error = null;
+        state.pendingAuthUrl = null;
       });
 
       try {
-        await auth.signInWithOAuth("github");
-        // Browser will open, user completes auth, deep link callback will fire
+        const result = await auth.signInWithOAuth("github");
+        set((state) => {
+          state.pendingAuthUrl = result.authUrl || null;
+          if (!result.opened) {
+            state.error =
+              result.error ??
+              "We couldn't open your browser automatically. Copy the URL below and open it manually.";
+            state.isAuthenticating = false;
+          }
+        });
       } catch (error) {
         console.error("Failed to start GitHub OAuth:", error);
         set((state) => {
@@ -120,10 +135,20 @@ export const useAuthStore = create<AuthStore>()(
       set((state) => {
         state.isAuthenticating = true;
         state.error = null;
+        state.pendingAuthUrl = null;
       });
 
       try {
-        await auth.signInWithOAuth("google");
+        const result = await auth.signInWithOAuth("google");
+        set((state) => {
+          state.pendingAuthUrl = result.authUrl || null;
+          if (!result.opened) {
+            state.error =
+              result.error ??
+              "We couldn't open your browser automatically. Copy the URL below and open it manually.";
+            state.isAuthenticating = false;
+          }
+        });
       } catch (error) {
         console.error("Failed to start Google OAuth:", error);
         set((state) => {
@@ -279,3 +304,5 @@ export const useIsAuthInitializing = () =>
 export const useIsAuthenticating = () =>
   useAuthStore((state) => state.isAuthenticating);
 export const useAuthError = () => useAuthStore((state) => state.error);
+export const usePendingAuthUrl = () =>
+  useAuthStore((state) => state.pendingAuthUrl);

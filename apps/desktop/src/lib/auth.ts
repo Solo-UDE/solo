@@ -53,18 +53,54 @@ export type AuthCallbackPayload =
 // =============================================================================
 
 /**
- * Start OAuth sign-in flow
- * Opens the system browser to the OAuth provider
+ * Result of a sign-in attempt. The URL is always returned so callers can
+ * expose a manual "Open in browser" fallback when the automatic hand-off
+ * via the shell plugin misbehaves (e.g. default-browser navigates to
+ * about:blank, sandboxed scheme handler refuses the URL, etc).
  */
-export async function signInWithOAuth(provider: OAuthProvider): Promise<void> {
+export interface OAuthLaunchResult {
+  authUrl: string;
+  opened: boolean;
+  error?: string;
+}
+
+/**
+ * Start OAuth sign-in flow. Returns the generated auth URL and whether the
+ * browser open succeeded. Callers should surface `authUrl` to the user if
+ * `opened` is false so they can navigate manually.
+ */
+export async function signInWithOAuth(
+  provider: OAuthProvider,
+): Promise<OAuthLaunchResult> {
+  console.debug("[auth.signInWithOAuth] invoking auth_start_oauth", { provider });
   const authUrl = await invoke<string>("auth_start_oauth", { provider });
-  console.log("Opening OAuth URL:", authUrl);
+  console.debug("[auth.signInWithOAuth] got auth URL", {
+    length: authUrl.length,
+    prefix: authUrl.slice(0, 80),
+  });
+  if (!authUrl || authUrl.length === 0) {
+    const msg = "auth_start_oauth returned an empty URL";
+    console.error("[auth.signInWithOAuth]", msg);
+    return { authUrl, opened: false, error: msg };
+  }
   try {
     await open(authUrl);
+    console.debug("[auth.signInWithOAuth] shell.open resolved");
+    return { authUrl, opened: true };
   } catch (error) {
-    console.error("Failed to open browser:", error);
-    // Fallback: try window.open
-    window.open(authUrl, "_blank");
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error("[auth.signInWithOAuth] shell.open failed:", msg);
+    try {
+      const w = window.open(authUrl, "_blank");
+      if (w) {
+        console.debug("[auth.signInWithOAuth] window.open fallback opened a window");
+        return { authUrl, opened: true };
+      }
+      console.warn("[auth.signInWithOAuth] window.open returned null");
+    } catch (windowErr) {
+      console.error("[auth.signInWithOAuth] window.open fallback threw:", windowErr);
+    }
+    return { authUrl, opened: false, error: msg };
   }
 }
 
@@ -147,6 +183,42 @@ export async function signOut(): Promise<string> {
  */
 export async function getAccessToken(): Promise<string | null> {
   return invoke<string | null>("auth_get_access_token");
+}
+
+export interface HttpProbe {
+  status: number;
+  location: string | null;
+  body_snippet: string | null;
+  error: string | null;
+}
+
+export interface AuthDiagnostic {
+  stage: string;
+  config_ok: boolean;
+  config_error: string | null;
+  cognito_domain: string | null;
+  cognito_client_id: string | null;
+  cognito_region: string | null;
+  redirect_uri: string;
+  signout_uri: string;
+  sample_authorize_url: string | null;
+  authorize_probe: HttpProbe | null;
+  signout_probe: HttpProbe | null;
+  has_cached_session: boolean;
+  vault_has_access_token: boolean;
+  vault_has_refresh_token: boolean;
+}
+
+/**
+ * Run a full auth pipeline diagnostic. Reports resolved config, tests
+ * Cognito reachability for both /authorize and /logout with the exact URLs
+ * the app would use, and surfaces cached-session / vault state.
+ */
+export async function diagnoseAuth(): Promise<AuthDiagnostic> {
+  console.debug("[auth.diagnoseAuth] invoking auth_diagnose");
+  const report = await invoke<AuthDiagnostic>("auth_diagnose");
+  console.debug("[auth.diagnoseAuth] report", report);
+  return report;
 }
 
 /**

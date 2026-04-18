@@ -43,48 +43,60 @@ export const VaultSectionShell: FC<VaultSectionShellProps> = ({
     initial={{ opacity: 0, y: 6 }}
     animate={{ opacity: 1, y: 0 }}
     transition={{ duration: 0.18 }}
-    className="flex h-full flex-col gap-4 px-4 py-5"
+    className="flex h-full flex-col gap-5 p-5"
   >
-    <div className="flex items-start gap-3">
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[11px] border border-border/70 bg-background/65">
-        <Icon className="h-4 w-4 text-muted-foreground" />
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <p className="text-sm font-semibold text-foreground">{title}</p>
-          {status ? (
-            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[9px] font-medium uppercase tracking-[0.12em] text-primary/80">
-              {status}
-            </span>
-          ) : null}
+    <div className="relative overflow-hidden rounded-[14px] border border-border/60 bg-background/55 p-5">
+      <div
+        aria-hidden="true"
+        className="absolute inset-0 opacity-[0.08] [background:radial-gradient(circle_at_25%_20%,var(--color-primary)_0%,transparent_55%)]"
+      />
+      <div className="relative flex items-start gap-3.5">
+        <div className="flex size-10 shrink-0 items-center justify-center rounded-[12px] border border-border/70 bg-background/80 shadow-[0_8px_16px_-14px_rgba(0,0,0,0.35)]">
+          <Icon className="size-4 text-muted-foreground" />
         </div>
-        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-          {description}
-        </p>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <h3 className="text-base font-semibold tracking-tight text-foreground text-balance">
+              {title}
+            </h3>
+            {status ? (
+              <span className="rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-primary/90">
+                {status}
+              </span>
+            ) : null}
+          </div>
+          <p className="mt-1.5 text-[13px] leading-5 text-muted-foreground text-pretty max-w-[58ch]">
+            {description}
+          </p>
+        </div>
       </div>
     </div>
 
     {previewItems && previewItems.length > 0 ? (
-      <div className="flex flex-col gap-1.5">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground/60">
+      <div className="flex flex-col gap-2">
+        <p className="px-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground/65">
           What will live here
         </p>
-        <ul className="flex flex-col gap-1.5">
-          {previewItems.map((item) => (
+        <ul role="list" className="flex flex-col">
+          {previewItems.map((item, i) => (
             <li
               key={item.label}
-              className="flex items-start gap-2 rounded-[8px] border border-border/50 bg-background/35 px-3 py-2"
+              className={
+                'flex items-start gap-3 border-border/50 px-3 py-3 ' +
+                (i === 0 ? 'border-t' : '') +
+                ' border-b'
+              }
             >
               <span
-                className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-muted-foreground/45"
+                className="mt-[7px] size-1.5 shrink-0 rounded-full bg-primary/60"
                 aria-hidden="true"
               />
               <div className="min-w-0 flex-1">
-                <p className="truncate text-[12px] font-medium text-foreground">
+                <p className="truncate text-[13px] font-medium text-foreground">
                   {item.label}
                 </p>
                 {item.hint ? (
-                  <p className="mt-0.5 text-[11px] text-muted-foreground/70">
+                  <p className="mt-0.5 text-xs leading-5 text-muted-foreground/75 text-pretty">
                     {item.hint}
                   </p>
                 ) : null}
@@ -95,6 +107,6 @@ export const VaultSectionShell: FC<VaultSectionShellProps> = ({
       </div>
     ) : null}
 
-    {action ? <div className="mt-auto">{action}</div> : null}
+    {action ? <div className="mt-auto pt-2">{action}</div> : null}
   </motion.div>
 );

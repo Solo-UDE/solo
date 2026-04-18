@@ -272,9 +272,28 @@ pub async fn auth_start_oauth(
     provider: String,
     state: State<'_, AuthState>,
 ) -> Result<String, String> {
-    info!(provider = %provider, "Starting OAuth flow");
-    let config = desktop_config::cognito_config()?;
+    info!(provider = %provider, "[auth_start_oauth] begin");
+    let config = match desktop_config::cognito_config() {
+        Ok(cfg) => {
+            info!(
+                domain = %cfg.domain,
+                client_id = %cfg.client_id,
+                region = %cfg.region,
+                "[auth_start_oauth] resolved Cognito config"
+            );
+            cfg
+        }
+        Err(err) => {
+            warn!(error = %err, "[auth_start_oauth] cognito_config() failed");
+            return Err(err);
+        }
+    };
     let idp = cognito_identity_provider(&provider)?;
+    info!(
+        provider = %provider,
+        idp = ?idp,
+        "[auth_start_oauth] mapped provider"
+    );
 
     let pkce = AuthState::generate_pkce();
 
@@ -295,8 +314,156 @@ pub async fn auth_start_oauth(
 
     *state.pkce.write().await = Some(pkce);
 
-    info!(url = %url, "Generated OAuth URL - opening in browser");
-    Ok(url.to_string())
+    let built = url.to_string();
+    info!(
+        url = %built,
+        len = built.len(),
+        "[auth_start_oauth] returning URL to frontend"
+    );
+    Ok(built)
+}
+
+/// Structured diagnostic report for the auth pipeline. Returned by the
+/// `auth_diagnose` command so the UI (or a CLI tail of logs) can show every
+/// piece of the flow in one shot without reproducing the failure first.
+#[derive(Debug, Serialize)]
+pub struct AuthDiagnostic {
+    pub stage: String,
+    pub config_ok: bool,
+    pub config_error: Option<String>,
+    pub cognito_domain: Option<String>,
+    pub cognito_client_id: Option<String>,
+    pub cognito_region: Option<String>,
+    pub redirect_uri: String,
+    pub signout_uri: String,
+    pub sample_authorize_url: Option<String>,
+    pub authorize_probe: Option<HttpProbe>,
+    pub signout_probe: Option<HttpProbe>,
+    pub has_cached_session: bool,
+    pub vault_has_access_token: bool,
+    pub vault_has_refresh_token: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct HttpProbe {
+    pub status: u16,
+    pub location: Option<String>,
+    pub body_snippet: Option<String>,
+    pub error: Option<String>,
+}
+
+async fn probe_url(client: &reqwest::Client, url: &str) -> HttpProbe {
+    match client
+        .get(url)
+        .send()
+        .await
+    {
+        Ok(resp) => {
+            let status = resp.status().as_u16();
+            let location = resp
+                .headers()
+                .get(reqwest::header::LOCATION)
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string());
+            let body_snippet = if !(300..400).contains(&status) {
+                let text = resp.text().await.unwrap_or_default();
+                let snippet: String = text.chars().take(200).collect();
+                Some(snippet)
+            } else {
+                None
+            };
+            HttpProbe {
+                status,
+                location,
+                body_snippet,
+                error: None,
+            }
+        }
+        Err(err) => HttpProbe {
+            status: 0,
+            location: None,
+            body_snippet: None,
+            error: Some(err.to_string()),
+        },
+    }
+}
+
+/// Run a full diagnostic of the auth pipeline and return a structured report.
+/// Used by the LoginScreen's "Diagnose" button and by the external CLI probe.
+/// Never mutates state; safe to call at any time.
+#[tauri::command]
+pub async fn auth_diagnose(
+    state: State<'_, AuthState>,
+    auth: State<'_, ProviderAuthState>,
+) -> Result<AuthDiagnostic, String> {
+    info!("[auth_diagnose] begin");
+    let mut report = AuthDiagnostic {
+        stage: String::new(),
+        config_ok: false,
+        config_error: None,
+        cognito_domain: None,
+        cognito_client_id: None,
+        cognito_region: None,
+        redirect_uri: REDIRECT_URL.to_string(),
+        signout_uri: SIGNOUT_URL.to_string(),
+        sample_authorize_url: None,
+        authorize_probe: None,
+        signout_probe: None,
+        has_cached_session: state.session.read().await.is_some(),
+        vault_has_access_token: vault_read(&auth, VAULT_KEY_ACCESS_TOKEN).await.is_some(),
+        vault_has_refresh_token: vault_read(&auth, VAULT_KEY_REFRESH_TOKEN).await.is_some(),
+    };
+
+    match desktop_config::cognito_config() {
+        Ok(cfg) => {
+            report.config_ok = true;
+            report.cognito_domain = Some(cfg.domain.clone());
+            report.cognito_client_id = Some(cfg.client_id.clone());
+            report.cognito_region = Some(cfg.region.clone());
+            report.stage = if cfg.domain.contains("solo-ide-dev") {
+                "dev".to_string()
+            } else if cfg.domain.contains("solo-ide-prod") {
+                "prod".to_string()
+            } else {
+                "custom".to_string()
+            };
+
+            let sample_pkce = AuthState::generate_pkce();
+            let mut url = Url::parse(&format!("{}/oauth2/authorize", cfg.base_url()))
+                .map_err(|e| format!("url parse failed: {}", e))?;
+            {
+                let mut q = url.query_pairs_mut();
+                q.append_pair("response_type", "code");
+                q.append_pair("client_id", &cfg.client_id);
+                q.append_pair("redirect_uri", REDIRECT_URL);
+                q.append_pair("scope", "openid email profile");
+                q.append_pair("code_challenge", &sample_pkce.challenge);
+                q.append_pair("code_challenge_method", "S256");
+                q.append_pair("identity_provider", "GitHub");
+            }
+            let authorize = url.to_string();
+            report.sample_authorize_url = Some(authorize.clone());
+            info!(url = %authorize, "[auth_diagnose] probing authorize URL");
+            report.authorize_probe = Some(probe_url(&state.client, &authorize).await);
+
+            let mut logout = Url::parse(&format!("{}/logout", cfg.base_url()))
+                .map_err(|e| format!("url parse failed: {}", e))?;
+            logout
+                .query_pairs_mut()
+                .append_pair("client_id", &cfg.client_id)
+                .append_pair("logout_uri", SIGNOUT_URL);
+            info!(url = %logout, "[auth_diagnose] probing signout URL");
+            report.signout_probe = Some(probe_url(&state.client, &logout.to_string()).await);
+        }
+        Err(err) => {
+            warn!(error = %err, "[auth_diagnose] cognito_config() failed");
+            report.config_error = Some(err);
+            report.stage = "unconfigured".to_string();
+        }
+    }
+
+    info!(report = ?report, "[auth_diagnose] done");
+    Ok(report)
 }
 
 /// Backwards-compatible stub. Magic links aren't native to Cognito; instead
@@ -606,6 +773,14 @@ pub async fn auth_sign_out(
         }
     }
     info!("auth_sign_out: vault cleared");
+
+    // The GitHub access token cached from /v1/github/token is tied to the
+    // Cognito identity — once the user signs out we must drop it so a
+    // different user on this machine doesn't inherit git push creds.
+    match auth.credentials.clear_github_oauth_token().await {
+        Ok(()) => info!("auth_sign_out: cleared cached GitHub token"),
+        Err(e) => tracing::warn!(error = %e, "auth_sign_out: GitHub token clear failed (ignored)"),
+    }
 
     // Build the Cognito logout URL when possible. Missing env / bad config
     // is NOT a sign-out failure — local state is already clean. Return an

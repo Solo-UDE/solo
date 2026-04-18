@@ -17,7 +17,13 @@ export const handler: PostAuthenticationTriggerHandler = async (event: PostAuthe
     const cognitoSub = event.request.userAttributes.sub;
     if (!cognitoSub) return event;
 
-    const githubUserId = `github:${githubIdentity.userId}`;
+    // The OIDC wrapper mints id_tokens with `sub: "github:<numeric>"` and the
+    // pending-table row is keyed off that sub directly. Cognito maps the sub
+    // claim into `identities[].userId`, so it already carries the `github:`
+    // prefix — don't double-prefix it. Tolerate both forms for safety across
+    // a mixed deploy window.
+    const rawUserId = githubIdentity.userId;
+    const githubUserId = rawUserId.startsWith("github:") ? rawUserId : `github:${rawUserId}`;
     const { Item } = await ddb.send(
       new GetCommand({ TableName: env("PENDING_TABLE"), Key: { github_user_id: githubUserId } }),
     );
