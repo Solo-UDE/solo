@@ -214,11 +214,17 @@ pub async fn voice_begin(
             emit_state(&app_for_state, mode, s);
         });
 
+        let app_for_level = app.clone();
+        let on_level = Arc::new(move |rms: f32| {
+            let _ = app_for_level.emit("voice:level", serde_json::json!({ "rms": rms }));
+        });
+
         *pipeline_guard = Some(Arc::new(VoicePipeline::new(
             stt,
             formatter,
             voice.ring.clone(),
             on_state,
+            on_level,
         )));
     }
     let pipeline = pipeline_guard.as_ref().unwrap().clone();

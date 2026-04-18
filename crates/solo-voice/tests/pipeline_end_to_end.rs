@@ -34,7 +34,8 @@ async fn end_to_end_dictation() {
     let states_c = states.clone();
     let on_state = Arc::new(move |s: &PipelineState| states_c.lock().unwrap().push(s.clone()));
 
-    let pipeline = VoicePipeline::new(stt, formatter, ring.clone(), on_state);
+    let on_level = Arc::new(|_: f32| {});
+    let pipeline = VoicePipeline::new(stt, formatter, ring.clone(), on_state, on_level);
 
     pipeline.begin().await.unwrap();
 

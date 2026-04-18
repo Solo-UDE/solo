@@ -37,6 +37,7 @@ pub struct VoicePipeline {
     pub ring: AudioRing,
     state: Arc<Mutex<PipelineState>>,
     on_state: Arc<dyn Fn(&PipelineState) + Send + Sync>,
+    on_level: Arc<dyn Fn(f32) + Send + Sync>,
 }
 
 impl VoicePipeline {
@@ -45,6 +46,7 @@ impl VoicePipeline {
         formatter: Arc<dyn FormatterProvider>,
         ring: AudioRing,
         on_state: Arc<dyn Fn(&PipelineState) + Send + Sync>,
+        on_level: Arc<dyn Fn(f32) + Send + Sync>,
     ) -> Self {
         Self {
             stt,
@@ -52,6 +54,7 @@ impl VoicePipeline {
             ring,
             state: Arc::new(Mutex::new(PipelineState::Idle)),
             on_state,
+            on_level,
         }
     }
 
@@ -77,6 +80,26 @@ impl VoicePipeline {
         self.set(PipelineState::Arming).await;
         self.ring.clear();
         self.set(PipelineState::Recording).await;
+
+        // Spawn a 50 Hz task that peeks the last 480 samples (30 ms at 16 kHz),
+        // computes RMS, and emits it via on_level. Loop exits once state is no
+        // longer Recording.
+        let ring = self.ring.clone();
+        let state = self.state.clone();
+        let on_level = self.on_level.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
+                let current = state.lock().await.clone();
+                if current != PipelineState::Recording {
+                    break;
+                }
+                let samples = ring.peek_last(480);
+                let rms = crate::vad::rms(&samples);
+                on_level(rms);
+            }
+        });
+
         Ok(())
     }
 
@@ -166,7 +189,8 @@ mod tests {
         });
         let ring = AudioRing::new();
         let on_state = Arc::new(|_: &PipelineState| {});
-        VoicePipeline::new(stt, formatter, ring, on_state)
+        let on_level = Arc::new(|_: f32| {});
+        VoicePipeline::new(stt, formatter, ring, on_state, on_level)
     }
 
     #[tokio::test]

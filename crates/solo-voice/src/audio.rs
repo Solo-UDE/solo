@@ -56,6 +56,15 @@ impl AudioRing {
         g.samples.clear();
         g.dropped = 0;
     }
+
+    /// Returns a copy of the last `n` samples without draining the ring.
+    /// If fewer than `n` samples are buffered, returns all of them.
+    pub fn peek_last(&self, n: usize) -> Vec<f32> {
+        let g = self.inner.lock().unwrap();
+        let len = g.samples.len();
+        let skip = len.saturating_sub(n);
+        g.samples.iter().skip(skip).copied().collect()
+    }
 }
 
 /// Thread-owned audio capture. `cpal::Stream` is `!Send` on macOS (CoreAudio
