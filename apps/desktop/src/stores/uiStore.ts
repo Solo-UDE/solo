@@ -21,7 +21,8 @@ export type SettingsTabId =
   | 'shortcuts'
   | 'ai'
   | 'voice'
-  | 'skills';
+  | 'skills'
+  | 'plugins';
 
 // Dev/Vault sidebar mode.
 // Sessions moved out of the Vault tab (they're worktree-bound and live under Dev now).

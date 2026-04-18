@@ -11,10 +11,11 @@ import { ShortcutsTab } from './tabs/ShortcutsTab';
 import { AITab } from './tabs/AITab';
 import { VoiceTab } from './tabs/VoiceTab';
 import { SkillsTab } from './tabs/SkillsTab';
+import { PluginsTab } from './tabs/PluginsTab';
 import { JourneyPage } from './journey/JourneyPage';
 import { LeaderboardPage } from './leaderboard/LeaderboardPage';
 
-const TAB_ORDER: SettingsTabId[] = ['journey', 'leaderboard', 'account', 'general', 'editor', 'terminal', 'files', 'shortcuts', 'ai', 'voice', 'skills'];
+const TAB_ORDER: SettingsTabId[] = ['journey', 'leaderboard', 'account', 'general', 'editor', 'terminal', 'files', 'shortcuts', 'ai', 'voice', 'skills', 'plugins'];
 
 const TAB_LABELS: Record<SettingsTabId, string> = {
   journey: 'Your Journey',
@@ -28,6 +29,7 @@ const TAB_LABELS: Record<SettingsTabId, string> = {
   ai: 'Providers',
   voice: 'Voice',
   skills: 'Skills',
+  plugins: 'Plugins',
 };
 
 const TAB_DESCRIPTIONS: Record<SettingsTabId, string> = {
@@ -42,6 +44,7 @@ const TAB_DESCRIPTIONS: Record<SettingsTabId, string> = {
   ai: 'Providers, model defaults, and agent execution preferences.',
   voice: 'Speech input behavior and audio capture settings.',
   skills: 'Installed skills and assistant capability controls.',
+  plugins: 'Plugins bundle skills, MCP servers, and connectors you can enable.',
 };
 
 export function SettingsView() {
@@ -74,6 +77,8 @@ export function SettingsView() {
         return <VoiceTab />;
       case 'skills':
         return <SkillsTab />;
+      case 'plugins':
+        return <PluginsTab />;
       default:
         return null;
     }
