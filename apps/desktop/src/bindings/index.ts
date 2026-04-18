@@ -79,6 +79,7 @@ export type { PluginLoadError } from './PluginLoadError';
 export type { PluginSource } from './PluginSource';
 export type { PluginSummary } from './PluginSummary';
 export type { PluginsConfig } from './PluginsConfig';
+export type { ProfileSummary } from './ProfileSummary';
 export type { ProviderConfig } from './ProviderConfig';
 export type { ProviderStatus } from './ProviderStatus';
 export type { ProviderType } from './ProviderType';
