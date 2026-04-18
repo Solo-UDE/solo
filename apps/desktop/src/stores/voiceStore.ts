@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import type { VoicePipelineState } from '@/bindings/VoicePipelineState';
 import type { VoiceTranscriptResult } from '@/bindings/VoiceTranscriptResult';
+import type { ShortcutsConfig } from '@/bindings/ShortcutsConfig';
+import type { VoicePermissions } from '@/bindings/VoicePermissions';
 
 interface VoiceStore {
   enabled: boolean;
@@ -10,6 +12,9 @@ interface VoiceStore {
   lastTranscript: VoiceTranscriptResult | null;
   error: string | null;
   modelDownload: { bytes: number; total: number } | null;
+  shortcuts: ShortcutsConfig;
+  permissions: VoicePermissions;
+  rmsLevel: number;
 
   setEnabled: (v: boolean) => void;
   setParakeetInstalled: (v: boolean) => void;
@@ -17,6 +22,9 @@ interface VoiceStore {
   setLastTranscript: (r: VoiceTranscriptResult) => void;
   setError: (msg: string | null) => void;
   setModelDownload: (p: { bytes: number; total: number } | null) => void;
+  setShortcuts: (s: ShortcutsConfig) => void;
+  setPermissions: (p: VoicePermissions) => void;
+  setRmsLevel: (v: number) => void;
 }
 
 export const useVoiceStore = create<VoiceStore>()(
@@ -27,6 +35,17 @@ export const useVoiceStore = create<VoiceStore>()(
     lastTranscript: null,
     error: null,
     modelDownload: null,
+    shortcuts: {
+      dictation_ptt: 'fn',
+      dispatch_ptt: 'ctrl+alt+space',
+      cancel: 'escape',
+    },
+    permissions: {
+      microphone: false,
+      input_monitoring: false,
+      accessibility: false,
+    },
+    rmsLevel: 0,
 
     setEnabled:            (v) => set((s) => { s.enabled = v; }),
     setParakeetInstalled:  (v) => set((s) => { s.parakeetInstalled = v; }),
@@ -34,5 +53,8 @@ export const useVoiceStore = create<VoiceStore>()(
     setLastTranscript:     (r) => set((s) => { s.lastTranscript = r; }),
     setError:              (e) => set((s) => { s.error = e; }),
     setModelDownload:      (p) => set((s) => { s.modelDownload = p; }),
+    setShortcuts:          (s) => set((state) => { state.shortcuts = s; }),
+    setPermissions:        (p) => set((state) => { state.permissions = p; }),
+    setRmsLevel:           (v) => set((state) => { state.rmsLevel = v; }),
   })),
 );

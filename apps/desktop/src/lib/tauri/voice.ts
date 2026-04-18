@@ -4,6 +4,8 @@ import type { VoiceMode } from '@/bindings/VoiceMode';
 import type { VoicePipelineState } from '@/bindings/VoicePipelineState';
 import type { VoiceTranscriptResult } from '@/bindings/VoiceTranscriptResult';
 import type { VoiceModelProgress } from '@/bindings/VoiceModelProgress';
+import type { ShortcutsConfig } from '@/bindings/ShortcutsConfig';
+import type { VoicePermissions } from '@/bindings/VoicePermissions';
 
 export type PipelineTarget = 'ChatInput' | 'FocusedApp' | 'NewAgentSession';
 
@@ -18,6 +20,11 @@ export const voiceApi = {
   historyList:       (limit = 50) =>
                        invoke<VoiceTranscriptResult[]>('voice_history_list', { limit }),
   historyDelete:     (id: string) => invoke<void>('voice_history_delete', { id }),
+  getShortcuts:      () => invoke<ShortcutsConfig>('voice_get_shortcuts'),
+  setShortcuts:      (shortcuts: ShortcutsConfig) => invoke<void>('voice_set_shortcuts', { shortcuts }),
+  checkPermissions:  () => invoke<VoicePermissions>('voice_check_permissions'),
+  requestPermission: (which: 'microphone' | 'input-monitoring' | 'accessibility') =>
+                       invoke<VoicePermissions>('voice_request_permission', { which }),
 };
 
 export function onVoiceState(
@@ -46,4 +53,14 @@ export function onVoiceModelProgress(
   return listen<{ progress: VoiceModelProgress }>('voice:model_progress', (e) =>
     cb(e.payload.progress),
   );
+}
+
+export function onVoiceLevel(cb: (rms: number) => void): Promise<UnlistenFn> {
+  return listen<{ rms: number }>('voice:level', (e) => cb(e.payload.rms));
+}
+
+export type HotkeyKind = 'dictation_down' | 'dictation_up' | 'dispatch_down' | 'dispatch_up' | 'cancel';
+
+export function onVoiceHotkey(cb: (kind: HotkeyKind) => void): Promise<UnlistenFn> {
+  return listen<HotkeyKind>('voice:hotkey', (e) => cb(e.payload));
 }
