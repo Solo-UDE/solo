@@ -63,4 +63,10 @@ export const BUILTIN_PANEL_TYPES = {
   GIT_DIFF: 'git-diff',
   WORKTREE_DIFF: 'worktree-diff',
   BRANCH_DIFF: 'branch-diff',
+  VAULT_SKILLS: 'vault-skills',
+  VAULT_MEMORY: 'vault-memory',
+  VAULT_TASKS: 'vault-tasks',
+  VAULT_CURRENT: 'vault-current',
+  VAULT_PLUGINS: 'vault-plugins',
+  VAULT_CONNECTORS: 'vault-connectors',
 } as const;
