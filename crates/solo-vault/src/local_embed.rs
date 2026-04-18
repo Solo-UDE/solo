@@ -9,8 +9,8 @@
 //! operation (happens inside `spawn_blocking`) and the caller is expected
 //! to wrap it in a background task so the app stays responsive.
 //!
-//! ## Trade-off vs OpenAI
-//! - Quality: all-MiniLM-L6-v2 scores ~61 MTEB vs ~62 for OpenAI-3-small.
+//! ## Trade-off vs `OpenAI`
+//! - Quality: `all-MiniLM-L6-v2` scores ~61 MTEB vs ~62 for `OpenAI-3-small`.
 //!   Retrieval precision is comparable for the common "find the doc I put
 //!   in here" use case.
 //! - Dim: 384 vs 1536 → 4× less storage per chunk, faster cosine scans.
@@ -41,7 +41,7 @@ pub struct LocalEmbeddingProvider {
 }
 
 impl LocalEmbeddingProvider {
-    /// Load (or download on first call) the MiniLM model into an on-disk
+    /// Load (or download on first call) the `MiniLM` model into an on-disk
     /// cache under `<vault_root>/models/`. Runs `fastembed::TextEmbedding::try_new`
     /// inside `spawn_blocking` so we don't stall the tokio reactor.
     pub async fn load(vault_root: &Path) -> EmbeddingResult<Self> {

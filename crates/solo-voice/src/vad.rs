@@ -24,7 +24,7 @@ pub const FRAME_SAMPLES: usize = 480;
 const SILERO_INPUT_SAMPLES: usize = 512;
 
 /// Size of the recurrent dimension in the Silero VAD state tensors.
-const RNN_STATE_SIZE: usize = 2 * 1 * 64; // shape (2,1,64), flattened
+const RNN_STATE_SIZE: usize = 2 * 64; // shape (2,1,64), flattened
 
 /// Compute the Root Mean Square of a frame.
 ///

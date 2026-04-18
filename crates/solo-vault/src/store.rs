@@ -1,4 +1,4 @@
-//! SQLite + FTS5 store for vault entries and chunks.
+//! `SQLite` + `FTS5` store for vault entries and chunks.
 //!
 //! V1: scalar columns + FTS5 for lexical search.
 //! V1.2: semantic search — vectors stored as little-endian f32 BLOB in the
@@ -28,13 +28,13 @@ use crate::{Result, VaultError};
 ///
 /// V1.2.1 default: **384** — matches `all-MiniLM-L6-v2` from fastembed-rs.
 /// We deliberately picked (a) "bump this constant and force a backfill"
-/// over (b) per-row dim coexistence: the blob_to_f32_vec dim check rejects
-/// any pre-existing 1536-dim rows from the V1.2 OpenAI era and the search
+/// over (b) per-row dim coexistence: the `blob_to_f32_vec` dim check rejects
+/// any pre-existing 1536-dim rows from the V1.2 `OpenAI` era and the search
 /// path auto-nulls them. `vault_backfill_embeddings` then re-embeds them
 /// with the local model.
 pub const EMBEDDING_DIM: usize = 384;
 
-const SCHEMA: &str = r#"
+const SCHEMA: &str = r"
 CREATE TABLE IF NOT EXISTS entries (
     id                      TEXT PRIMARY KEY,
     kind                    TEXT NOT NULL,
@@ -81,7 +81,7 @@ CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
     chunk_id UNINDEXED,
     tokenize = 'porter'
 );
-"#;
+";
 
 pub struct Store {
     conn: Mutex<Connection>,
@@ -96,8 +96,8 @@ impl Store {
         }
         let conn = Connection::open(&db_path).map_err(to_vault)?;
         conn.execute_batch(SCHEMA).map_err(to_vault)?;
-        conn.pragma_update(None, "journal_mode", &"WAL").map_err(to_vault)?;
-        conn.pragma_update(None, "foreign_keys", &"ON").map_err(to_vault)?;
+        conn.pragma_update(None, "journal_mode", "WAL").map_err(to_vault)?;
+        conn.pragma_update(None, "foreign_keys", "ON").map_err(to_vault)?;
         Ok(Self { conn: Mutex::new(conn), db_path })
     }
 
@@ -298,7 +298,7 @@ impl Store {
     pub fn fts_search(&self, query: &str, scope: &VaultScope, top_k: usize) -> Result<Vec<(VaultChunk, VaultEntry, f32)>> {
         let conn = self.conn.lock().expect("vault store mutex poisoned");
 
-        let sql = r#"
+        let sql = r"
             SELECT c.id, c.entry_id, c.chunk_index, c.content, c.token_count,
                    bm25(chunks_fts) AS rank
             FROM chunks_fts
@@ -309,7 +309,7 @@ impl Store {
                    OR (e.scope_type = 'project' AND e.scope_project_id = ?2))
             ORDER BY rank
             LIMIT ?3
-        "#;
+        ";
 
         let (_scope_type, scope_project_id) = split_scope(scope);
         let mut stmt = conn.prepare(sql).map_err(to_vault)?;
@@ -332,10 +332,10 @@ impl Store {
 
         let mut results = Vec::with_capacity(raw.len());
         for (chunk, entry_id, rank) in raw {
-            let mut stmt2 = conn.prepare("SELECT * FROM entries WHERE id = ?1").map_err(to_vault)?;
-            let entry = stmt2.query_row(params![entry_id], row_to_entry).map_err(to_vault)?;
-            let score = (1.0 / (1.0 + rank.abs())) as f32;
-            results.push((chunk, entry, score));
+            let mut lookup = conn.prepare("SELECT * FROM entries WHERE id = ?1").map_err(to_vault)?;
+            let entry = lookup.query_row(params![entry_id], row_to_entry).map_err(to_vault)?;
+            let relevance = (1.0 / (1.0 + rank.abs())) as f32;
+            results.push((chunk, entry, relevance));
         }
         Ok(results)
     }
@@ -417,7 +417,7 @@ impl Store {
             })
             .map_err(to_vault)?
             .collect();
-        Ok(rows.map_err(to_vault)?)
+        rows.map_err(to_vault)
     }
 
     /// Null out the embedding for a chunk. Used when we detect corruption /
@@ -466,14 +466,14 @@ impl Store {
         // Phase 1: Pull every in-scope chunk with its embedding blob.
         let mut stmt = conn
             .prepare(
-                r#"
+                r"
                 SELECT c.id, c.entry_id, c.chunk_index, c.content, c.token_count, c.embedding
                 FROM chunks c
                 JOIN entries e ON e.id = c.entry_id
                 WHERE c.embedding IS NOT NULL
                   AND (e.scope_type = 'global'
                        OR (e.scope_type = 'project' AND e.scope_project_id = ?1))
-                "#,
+                ",
             )
             .map_err(to_vault)?;
 
@@ -504,11 +504,11 @@ impl Store {
         for (chunk, blob) in raw {
             match blob_to_f32_vec(&blob, EMBEDDING_DIM) {
                 Ok(vec) => {
-                    let score = cosine_similarity(query_vec, &vec);
-                    if score.is_finite() {
-                        candidates.push((chunk, score));
+                    let similarity = cosine_similarity(query_vec, &vec);
+                    if similarity.is_finite() {
+                        candidates.push((chunk, similarity));
                     } else {
-                        debug!(chunk_id = %chunk.id, score, "vault.search.non_finite_score");
+                        debug!(chunk_id = %chunk.id, score = similarity, "vault.search.non_finite_score");
                     }
                 }
                 Err(e) => {
@@ -534,20 +534,20 @@ impl Store {
         candidates.truncate(top_k);
 
         let rank_ms = start.elapsed().as_millis() as u64 - load_ms - score_ms;
-        let top_score = candidates.first().map(|(_, s)| *s).unwrap_or(0.0);
+        let top_score = candidates.first().map_or(0.0, |(_, s)| *s);
         let median_score = if candidates.is_empty() {
             0.0
         } else {
             candidates[candidates.len() / 2].1
         };
-        let bottom_score = candidates.last().map(|(_, s)| *s).unwrap_or(0.0);
+        let bottom_score = candidates.last().map_or(0.0, |(_, s)| *s);
         info!(
             mode = "semantic",
             rank_ms,
             returned_n = candidates.len(),
-            top_score = top_score as f64,
-            median_score = median_score as f64,
-            bottom_score = bottom_score as f64,
+            top_score = f64::from(top_score),
+            median_score = f64::from(median_score),
+            bottom_score = f64::from(bottom_score),
             "vault.search.rank"
         );
 
@@ -555,13 +555,13 @@ impl Store {
         let mut out = Vec::with_capacity(candidates.len());
         for (chunk, score) in candidates {
             let entry_id = chunk.entry_id.clone();
-            let mut stmt2 = conn
+            let mut lookup = conn
                 .prepare("SELECT * FROM entries WHERE id = ?1")
                 .map_err(to_vault)?;
-            let entry = stmt2
+            let entry = lookup
                 .query_row(params![&entry_id], row_to_entry)
                 .map_err(to_vault)?;
-            drop(stmt2);
+            drop(lookup);
             out.push((chunk, entry, score));
         }
 
@@ -601,7 +601,7 @@ pub(crate) fn f32_slice_to_blob(vec: &[f32]) -> Vec<u8> {
 /// than a rich typed error — callers just want to skip the row and log.
 #[inline]
 pub(crate) fn blob_to_f32_vec(bytes: &[u8], expected_dim: usize) -> std::result::Result<Vec<f32>, String> {
-    if bytes.len() % 4 != 0 {
+    if !bytes.len().is_multiple_of(4) {
         return Err(format!(
             "embedding blob length {} not a multiple of 4",
             bytes.len()
@@ -620,53 +620,6 @@ pub(crate) fn blob_to_f32_vec(bytes: &[u8], expected_dim: usize) -> std::result:
         out.push(f32::from_le_bytes(arr));
     }
     Ok(out)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn blob_roundtrips_exact_bits() {
-        // Mix of ordinary, tiny, negative, and "interesting" floats.
-        let input: Vec<f32> = vec![
-            0.0,
-            1.0,
-            -1.0,
-            std::f32::consts::PI,
-            -std::f32::consts::E,
-            1e-20,
-            1e20,
-            f32::MIN_POSITIVE,
-        ];
-        let blob = f32_slice_to_blob(&input);
-        assert_eq!(blob.len(), input.len() * 4);
-        let out = blob_to_f32_vec(&blob, input.len()).expect("decode");
-        // Bit-exact: we're not doing any arithmetic, just IEEE-754 memcpy.
-        assert_eq!(input, out);
-    }
-
-    #[test]
-    fn blob_detects_dim_mismatch() {
-        let v: Vec<f32> = vec![1.0, 2.0, 3.0];
-        let blob = f32_slice_to_blob(&v);
-        assert!(blob_to_f32_vec(&blob, 4).is_err());
-        assert!(blob_to_f32_vec(&blob, 3).is_ok());
-    }
-
-    #[test]
-    fn blob_detects_truncation() {
-        // Length not a multiple of 4.
-        let broken = vec![0u8, 1u8, 2u8];
-        assert!(blob_to_f32_vec(&broken, 0).is_err());
-    }
-
-    #[test]
-    fn blob_is_little_endian() {
-        // 1.0f32 = 0x3F800000; in LE bytes: 00 00 80 3F.
-        let blob = f32_slice_to_blob(&[1.0]);
-        assert_eq!(blob, vec![0x00, 0x00, 0x80, 0x3F]);
-    }
 }
 
 fn row_to_entry(row: &rusqlite::Row<'_>) -> rusqlite::Result<VaultEntry> {
@@ -815,6 +768,54 @@ fn str_to_sync(s: &str) -> CloudSyncState {
     }
 }
 
+#[allow(clippy::needless_pass_by_value)]
 fn to_vault(err: rusqlite::Error) -> VaultError {
-    VaultError::Io(std::io::Error::new(std::io::ErrorKind::Other, err.to_string()))
+    VaultError::Io(std::io::Error::other(err.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn blob_roundtrips_exact_bits() {
+        // Mix of ordinary, tiny, negative, and "interesting" floats.
+        let input: Vec<f32> = vec![
+            0.0,
+            1.0,
+            -1.0,
+            std::f32::consts::PI,
+            -std::f32::consts::E,
+            1e-20,
+            1e20,
+            f32::MIN_POSITIVE,
+        ];
+        let blob = f32_slice_to_blob(&input);
+        assert_eq!(blob.len(), input.len() * 4);
+        let out = blob_to_f32_vec(&blob, input.len()).expect("decode");
+        // Bit-exact: we're not doing any arithmetic, just IEEE-754 memcpy.
+        assert_eq!(input, out);
+    }
+
+    #[test]
+    fn blob_detects_dim_mismatch() {
+        let v: Vec<f32> = vec![1.0, 2.0, 3.0];
+        let blob = f32_slice_to_blob(&v);
+        assert!(blob_to_f32_vec(&blob, 4).is_err());
+        assert!(blob_to_f32_vec(&blob, 3).is_ok());
+    }
+
+    #[test]
+    fn blob_detects_truncation() {
+        // Length not a multiple of 4.
+        let broken = vec![0u8, 1u8, 2u8];
+        assert!(blob_to_f32_vec(&broken, 0).is_err());
+    }
+
+    #[test]
+    fn blob_is_little_endian() {
+        // 1.0f32 = 0x3F800000; in LE bytes: 00 00 80 3F.
+        let blob = f32_slice_to_blob(&[1.0]);
+        assert_eq!(blob, vec![0x00, 0x00, 0x80, 0x3F]);
+    }
 }

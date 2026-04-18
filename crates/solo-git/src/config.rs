@@ -146,9 +146,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("worktrees.json");
 
-        let mut config = WorktreeConfig::default();
-        config.setup_commands = vec!["bun install".to_string()];
-        config.max_age_days = Some(30);
+        let mut config = WorktreeConfig {
+            setup_commands: vec!["bun install".to_string()],
+            max_age_days: Some(30),
+            ..WorktreeConfig::default()
+        };
         config.insert(sample_metadata("wt-1"));
         config.insert(sample_metadata("wt-2"));
 
@@ -228,7 +230,7 @@ mod tests {
     fn test_stable_path_hash_different_paths() {
         let a = Path::new("/Users/alice/my-app");
         let b = Path::new("/Users/bob/my-app");
-        assert_ne!(stable_path_hash(&a), stable_path_hash(&b));
+        assert_ne!(stable_path_hash(a), stable_path_hash(b));
     }
 
     #[test]

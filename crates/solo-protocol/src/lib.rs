@@ -1165,22 +1165,17 @@ pub struct ClaudeSetupStatus {
 /// - `Default` — strictly honor the allow/ask/deny lists; prompt on `ask`.
 /// - `Plan`    — read-only by default; writes are redirected to the plan file.
 /// - `Accept`  — bypass prompts (like `--dangerously-skip-permissions`), but
-///               the destructive tier still prompts (bypass-immune).
+///   the destructive tier still prompts (bypass-immune).
 /// - `Debug`   — same gating as `Default`; adds goal-capture + periodic review.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../apps/desktop/src/bindings/")]
 #[serde(rename_all = "lowercase")]
 pub enum PermissionMode {
+    #[default]
     Default,
     Plan,
     Accept,
     Debug,
-}
-
-impl Default for PermissionMode {
-    fn default() -> Self {
-        Self::Default
-    }
 }
 
 /// Classification of a tool for permission gating.

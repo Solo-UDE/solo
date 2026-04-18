@@ -14,7 +14,7 @@
 
 //! Solo Vault — agent memory system.
 //!
-//! V1.2: local SQLite store with FTS5 lexical + cosine-in-RAM semantic
+//! V1.2: local `SQLite` store with `FTS5` lexical + cosine-in-RAM semantic
 //! search. Embeddings are best-effort during ingest; recoverable via
 //! `backfill_embeddings`. Cloud sync and OCR land later.
 
@@ -83,9 +83,9 @@ pub struct BackfillStats {
 pub struct Vault {
     pub root: PathBuf,
     store: Store,
-    /// Interior-mutable so vault_commands can inject / swap the provider
+    /// Interior-mutable so `vault_commands` can inject / swap the provider
     /// after the vault has been wrapped in an `Arc` (e.g. when the user
-    /// adds their OpenAI key mid-session).
+    /// adds their `OpenAI` key mid-session).
     embed_provider: RwLock<Option<Arc<dyn EmbeddingProvider>>>,
     /// Rate-limits the "semantic search without a provider" warning to one
     /// per session so logs stay readable.
@@ -117,13 +117,14 @@ impl Vault {
     /// takes `&self` (uses interior mutability) so it works through an
     /// `Arc<Vault>`.
     pub fn set_embedding_provider(&self, provider: Option<Arc<dyn EmbeddingProvider>>) {
-        match provider.as_deref() {
-            Some(p) => info!(
+        if let Some(p) = provider.as_deref() {
+            info!(
                 model = p.model_name(),
                 dim = p.dimensions(),
                 "vault.provider.attached"
-            ),
-            None => info!("vault.provider.cleared"),
+            );
+        } else {
+            info!("vault.provider.cleared");
         }
         *self.embed_provider.write().expect("vault provider lock poisoned") = provider;
         self.no_provider_warned.store(false, Ordering::Relaxed);
@@ -149,7 +150,7 @@ impl Vault {
     /// task calls `set_embedding_provider` and semantic search activates.
     ///
     /// Safe to call multiple times: no-op if a provider is already attached
-    /// or a load is already in flight (we rely on the SetOnce pattern —
+    /// or a load is already in flight (we rely on the `SetOnce` pattern —
     /// `set_embedding_provider` is idempotent when called with the same
     /// provider, and callers should only invoke this once per vault open).
     pub fn spawn_local_embedder_load(self: &std::sync::Arc<Self>) {
@@ -222,8 +223,8 @@ impl Vault {
         self.store.set_pinned(id, pinned, unix_now())
     }
 
-    pub fn move_scope(&self, id: &str, new_scope: VaultScope) -> Result<Option<VaultEntry>> {
-        self.store.move_scope(id, &new_scope, unix_now())
+    pub fn move_scope(&self, id: &str, new_scope: &VaultScope) -> Result<Option<VaultEntry>> {
+        self.store.move_scope(id, new_scope, unix_now())
     }
 
     pub fn move_bucket(&self, id: &str, new_kind: EntryKind) -> Result<Option<VaultEntry>> {
@@ -259,12 +260,12 @@ impl Vault {
             let _ = self.store.bump_retrieval(&entry.id, now);
         }
         let total_ms = start.elapsed().as_millis() as u64;
-        let top_score = hits.first().map(|(_, _, s)| *s).unwrap_or(0.0);
+        let top_score = hits.first().map_or(0.0, |(_, _, s)| *s);
         info!(
             mode = "fts",
             total_ms,
             returned_n = hits.len(),
-            top_score = top_score as f64,
+            top_score = f64::from(top_score),
             "vault.search.done"
         );
         Ok(hits
@@ -290,17 +291,14 @@ impl Vault {
             "vault.search.query"
         );
 
-        let provider = match self.current_provider() {
-            Some(p) => p,
-            None => {
-                if !self.no_provider_warned.swap(true, Ordering::Relaxed) {
-                    warn!(
-                        reason = "no_provider",
-                        "vault.search.fallback (semantic → fts, add an OpenAI key to enable)"
-                    );
-                }
-                return self.fts_search(query, scope, top_k);
+        let Some(provider) = self.current_provider() else {
+            if !self.no_provider_warned.swap(true, Ordering::Relaxed) {
+                warn!(
+                    reason = "no_provider",
+                    "vault.search.fallback (semantic → fts, add an OpenAI key to enable)"
+                );
             }
+            return self.fts_search(query, scope, top_k);
         };
 
         let embed_start = Instant::now();

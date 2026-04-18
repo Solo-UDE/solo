@@ -187,6 +187,9 @@ pub struct OpenAIOAuthCredentialInfo {
     pub source: CredentialSource,
 }
 
+/// Cached Claude Code detailed info: token, expiry_ms, source, raw JSON.
+type ClaudeCodeDetailedCache = Option<(String, Option<i64>, CredentialSource, serde_json::Value)>;
+
 /// Credential manager for storing and retrieving API keys and OAuth tokens.
 ///
 /// All Solo-managed credentials are stored in a single keychain entry ("vault")
@@ -208,9 +211,7 @@ pub struct CredentialManager {
     /// Cached Claude Code OAuth access token: None = not yet loaded, Some(None) = no token
     claude_code_cache: tokio::sync::RwLock<Option<Option<String>>>,
     /// Cached Claude Code detailed info: None = not yet loaded
-    claude_code_detailed_cache: tokio::sync::RwLock<
-        Option<Option<(String, Option<i64>, CredentialSource, serde_json::Value)>>,
-    >,
+    claude_code_detailed_cache: tokio::sync::RwLock<Option<ClaudeCodeDetailedCache>>,
     /// Serialize Claude Code keychain initialization (same double-checked locking pattern)
     claude_code_init: tokio::sync::Mutex<()>,
 }
