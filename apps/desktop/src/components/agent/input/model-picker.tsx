@@ -88,6 +88,27 @@ export const ModelPicker: FC<ModelPickerProps> = ({
     [selectedModel]
   );
 
+  const groupedModels = useMemo(() => {
+    const groups: { claude: typeof MODEL_OPTIONS; openai: typeof MODEL_OPTIONS; gemini: typeof MODEL_OPTIONS } = {
+      claude: [],
+      openai: [],
+      gemini: [],
+    };
+    for (const model of MODEL_OPTIONS) {
+      const key = model.iconType as 'claude' | 'openai' | 'gemini';
+      if (key in groups) {
+        groups[key].push(model);
+      }
+    }
+    return groups;
+  }, []);
+
+  const groupOrder: Array<{ key: 'claude' | 'openai' | 'gemini'; label: string }> = [
+    { key: 'claude', label: 'Claude (Anthropic)' },
+    { key: 'openai', label: 'ChatGPT (OpenAI)' },
+    { key: 'gemini', label: 'Gemini (Google)' },
+  ];
+
   const ChevronIcon = chevronIcon === 'up' ? ChevronUpIcon : ChevronDownIcon;
 
   const handleModelSelect = async (modelValue: string) => {
@@ -147,36 +168,55 @@ export const ModelPicker: FC<ModelPickerProps> = ({
           side={side}
           className="w-56 flex flex-col gap-0.5"
         >
-          {MODEL_OPTIONS.map((option) => {
-            const isSelected = option.value === selectedModel;
+          {groupOrder.map(({ key, label }, groupIdx) => {
+            const models = groupedModels[key];
+            if (!models.length) return null;
             return (
-              <DropdownMenuItem
-                key={option.value}
-                onClick={() => {
-                  void handleModelSelect(option.value);
-                }}
-                className={cn(
-                  'items-start gap-2.5',
-                  isSelected && 'bg-accent'
-                )}
-              >
-                <div className="mt-0.5 shrink-0">
-                  {renderModelIcon(option.iconType, 14)}
+              <div key={key}>
+                {groupIdx > 0 && <div className="h-px bg-border my-1 mx-2" />}
+                <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  {label}
                 </div>
-                <div className="flex flex-col gap-0">
-                  <span
-                    className={cn(
-                      'text-[13px] leading-tight',
-                      isSelected ? 'text-foreground' : 'text-foreground/90'
-                    )}
-                  >
-                    {option.label}
-                  </span>
-                  <span className="text-[11px] text-muted-foreground leading-tight">
-                    {option.description}
-                  </span>
-                </div>
-              </DropdownMenuItem>
+                {models.map((option) => {
+                  const isSelected = option.value === selectedModel;
+                  return (
+                    <DropdownMenuItem
+                      key={option.value}
+                      onClick={() => {
+                        void handleModelSelect(option.value);
+                      }}
+                      className={cn(
+                        'items-start gap-2.5',
+                        isSelected && 'bg-accent'
+                      )}
+                    >
+                      <div className="mt-0.5 shrink-0">
+                        {renderModelIcon(option.iconType, 14)}
+                      </div>
+                      <div className="flex flex-col gap-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            className={cn(
+                              'text-[13px] leading-tight',
+                              isSelected ? 'text-foreground' : 'text-foreground/90'
+                            )}
+                          >
+                            {option.label}
+                          </span>
+                          {option.textOnly && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                              Text only
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[11px] text-muted-foreground leading-tight">
+                          {option.description}
+                        </span>
+                      </div>
+                    </DropdownMenuItem>
+                  );
+                })}
+              </div>
             );
           })}
         </DropdownMenuContent>
