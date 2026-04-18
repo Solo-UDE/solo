@@ -280,6 +280,61 @@ pub async fn voice_end(
 
     use crate::voice::injection::{inject_text, InjectionOutcome};
 
+    // Handle NewAgentSession target — creates an agent session then exits early
+    // (the usual history insert + voice:transcript are skipped for this branch).
+    if matches!(target, PipelineTarget::NewAgentSession) {
+        let Some(task) = out.dispatch_task.as_ref() else {
+            return Err("dispatch target requires Dispatch mode".into());
+        };
+
+        let session_id = crate::agent_commands::create_session_internal(
+            &app,
+            task.title.clone(),
+            task.prompt.clone(),
+        )
+        .await?;
+
+        // History row with linked session id
+        if let Some(h) = voice.history.lock().await.as_ref() {
+            let _ = h.insert(&HistoryRow {
+                id: out.id.clone(),
+                mode: format!("{:?}", out.mode),
+                raw_transcript: out.raw_transcript.clone(),
+                formatted: out.formatted.clone(),
+                target_app_bundle_id: ctx.bundle_id.clone(),
+                target_app_name: ctx.app_name.clone(),
+                duration_ms: out.duration_ms,
+                linked_session_id: Some(session_id.clone()),
+                created_at: chrono::Utc::now().timestamp_millis(),
+            });
+        }
+
+        // macOS notification
+        use tauri_plugin_notification::NotificationExt as _;
+        let _ = app
+            .notification()
+            .builder()
+            .title("Agent dispatched")
+            .body(&task.title)
+            .show();
+
+        // Dock badge +1
+        if let Some(w) = app.get_webview_window("main") {
+            let _ = w.set_badge_count(Some(1));
+        }
+
+        // Frontend event
+        let _ = app.emit(
+            "voice:dispatched",
+            serde_json::json!({
+                "session_id": session_id,
+                "title": task.title,
+            }),
+        );
+
+        return Ok(());
+    }
+
     let paste_outcome = match target {
         PipelineTarget::FocusedApp => {
             match inject_text(&out.formatted) {
