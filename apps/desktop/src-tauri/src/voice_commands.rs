@@ -6,7 +6,7 @@
 
 use crate::provider_commands::ProviderAuthState;
 use crate::voice::hotkey::{HotkeyEvent, HotkeyManager};
-use solo_protocol::ShortcutsConfig;
+use solo_protocol::{ShortcutsConfig, VoicePermissions};
 use solo_voice::{
     audio::{start_capture, AudioRing, AudioStream},
     formatter::{
@@ -381,4 +381,38 @@ pub async fn voice_set_shortcuts(
         mgr.update(shortcuts);
     }
     Ok(())
+}
+
+#[tauri::command]
+pub async fn voice_check_permissions() -> Result<VoicePermissions, String> {
+    let microphone = tauri_plugin_macos_permissions::check_microphone_permission().await;
+    let input_monitoring =
+        tauri_plugin_macos_permissions::check_input_monitoring_permission().await;
+    let accessibility = tauri_plugin_macos_permissions::check_accessibility_permission().await;
+    Ok(VoicePermissions {
+        microphone,
+        input_monitoring,
+        accessibility,
+    })
+}
+
+#[tauri::command]
+pub async fn voice_request_permission(
+    which: String,
+) -> Result<VoicePermissions, String> {
+    match which.as_str() {
+        "microphone" => {
+            let _ =
+                tauri_plugin_macos_permissions::request_microphone_permission().await;
+        }
+        "input-monitoring" => {
+            let _ = tauri_plugin_macos_permissions::request_input_monitoring_permission()
+                .await;
+        }
+        "accessibility" => {
+            tauri_plugin_macos_permissions::request_accessibility_permission().await;
+        }
+        other => return Err(format!("unknown permission: {other}")),
+    };
+    voice_check_permissions().await
 }
