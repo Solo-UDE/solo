@@ -1531,6 +1531,25 @@ pub struct StatsSnapshot {
     pub last_sync_at: Option<String>,
 }
 
+/// One row of the usage heatmap. Raw per-day counters; the client computes
+/// the usage score so weight calibration stays out of the server.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub struct DailyActivityEntry {
+    pub date: String,
+    #[serde(default)]
+    pub commits: u64,
+    #[serde(default)]
+    pub tokens: u64,
+    #[serde(default)]
+    pub worktrees: u64,
+    #[serde(default)]
+    pub sessions: u64,
+    #[serde(default)]
+    pub messages: u64,
+}
+
 /// Single entry in the cloud leaderboard response.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../apps/desktop/src/bindings/")]
