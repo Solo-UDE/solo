@@ -6,6 +6,7 @@ import {
   onVoiceTranscript,
   onVoiceError,
   onVoiceModelProgress,
+  onVoiceHotkey,
   type PipelineTarget,
 } from '@/lib/tauri/voice';
 import type { UnlistenFn } from '@tauri-apps/api/event';
@@ -49,6 +50,44 @@ export function useVoiceInput({ onTranscript }: UseVoiceInputOptions) {
       unlistenRefs.current = [];
     };
   }, [setPipeline, setTranscript, setError, setModelProgress, onTranscript]);
+
+  useEffect(() => {
+    let un: UnlistenFn | undefined;
+    let currentMode: 'Dictation' | 'Dispatch' | null = null;
+    (async () => {
+      un = await onVoiceHotkey(async (kind) => {
+        if (kind === 'dictation_down') {
+          currentMode = 'Dictation';
+          try {
+            await voiceApi.begin('Dictation');
+          } catch (e) {
+            setError(String(e));
+          }
+        } else if (kind === 'dispatch_down') {
+          currentMode = 'Dispatch';
+          try {
+            await voiceApi.begin('Dispatch');
+          } catch (e) {
+            setError(String(e));
+          }
+        } else if (kind === 'dictation_up' || kind === 'dispatch_up') {
+          try {
+            await voiceApi.end(currentMode ?? 'Dictation', 'FocusedApp');
+          } catch (e) {
+            setError(String(e));
+          }
+          currentMode = null;
+        } else if (kind === 'cancel') {
+          try {
+            await voiceApi.cancel();
+          } catch (e) {
+            setError(String(e));
+          }
+        }
+      });
+    })();
+    return () => un?.();
+  }, [setError]);
 
   const start = useCallback(async () => {
     if (!enabled) {
