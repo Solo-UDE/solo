@@ -13,6 +13,7 @@
     "clipboard-manager:allow-write-text",
     "clipboard-manager:allow-read-text",
     "macos-permissions:default",
+    "notification:default",
     "updater:default",
     "process:allow-restart"
   ]

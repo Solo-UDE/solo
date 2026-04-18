@@ -152,9 +152,9 @@ pub static GEMINI_MODELS: LazyLock<Vec<AIModel>> = LazyLock::new(|| {
 pub static OPENAI_MODELS: LazyLock<Vec<AIModel>> = LazyLock::new(|| {
     vec![
         AIModel {
-            id: "gpt-5.2-high".to_string(),
-            display_name: "GPT-5.2 High".to_string(),
-            alias: "gpt5-high".to_string(),
+            id: "gpt-5.4".to_string(),
+            display_name: "GPT-5.4".to_string(),
+            alias: "gpt-5.4".to_string(),
             provider: ProviderType::OpenAI,
             capabilities: ModelCapabilities {
                 context_window: 1_000_000,
@@ -165,12 +165,12 @@ pub static OPENAI_MODELS: LazyLock<Vec<AIModel>> = LazyLock::new(|| {
                 supports_thinking: true,
             },
             is_default: true,
-            description: "Most capable reasoning".to_string(),
+            description: "Flagship reasoning model".to_string(),
         },
         AIModel {
-            id: "gpt-5.2-medium".to_string(),
-            display_name: "GPT-5.2 Medium".to_string(),
-            alias: "gpt5-medium".to_string(),
+            id: "gpt-5.3-codex-spark".to_string(),
+            display_name: "Codex Spark".to_string(),
+            alias: "codex-spark".to_string(),
             provider: ProviderType::OpenAI,
             capabilities: ModelCapabilities {
                 context_window: 1_000_000,
@@ -178,18 +178,18 @@ pub static OPENAI_MODELS: LazyLock<Vec<AIModel>> = LazyLock::new(|| {
                 supports_vision: true,
                 supports_tools: true,
                 supports_streaming: true,
-                supports_thinking: false,
+                supports_thinking: true,
             },
             is_default: false,
-            description: "Balanced performance".to_string(),
+            description: "Coding-tuned on GPT-5.3".to_string(),
         },
         AIModel {
-            id: "gpt-5.2-low".to_string(),
-            display_name: "GPT-5.2 Low".to_string(),
-            alias: "gpt5-low".to_string(),
+            id: "gpt-5.4-mini".to_string(),
+            display_name: "GPT-5.4 Mini".to_string(),
+            alias: "gpt-5.4-mini".to_string(),
             provider: ProviderType::OpenAI,
             capabilities: ModelCapabilities {
-                context_window: 200_000,
+                context_window: 400_000,
                 max_output_tokens: 16384,
                 supports_vision: true,
                 supports_tools: true,
@@ -264,14 +264,16 @@ mod tests {
         assert_eq!(anthropic_default.alias, "opus");
 
         let openai_default = get_default_model(ProviderType::OpenAI);
-        assert_eq!(openai_default.id, "gpt-5.2-high");
+        assert_eq!(openai_default.id, "gpt-5.4");
     }
 
     #[test]
     fn test_find_model() {
         assert!(find_model("sonnet").is_some());
         assert!(find_model("claude-sonnet-4-6").is_some());
-        assert!(find_model("gpt-5.2-high").is_some());
+        assert!(find_model("gpt-5.4").is_some());
+        assert!(find_model("codex-spark").is_some());
+        assert!(find_model("gpt-5.4-mini").is_some());
         assert!(find_model("nonexistent").is_none());
     }
 }

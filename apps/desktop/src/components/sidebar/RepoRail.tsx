@@ -166,20 +166,25 @@ const RailIcon: FC<RailIconProps> = ({ repo, isActive, expanded, onClick, onRemo
           <button
             onClick={onClick}
             className={cn(
-              'group relative inline-flex border transition-[background-color,border-color,color,transform,box-shadow] duration-150 active:scale-95',
+              'group relative inline-flex transition-[color,transform,filter] duration-150 active:scale-95',
               expanded
-                ? 'h-11 w-full items-center gap-2.5 rounded-[12px] px-3 text-left'
-                : 'h-10 w-10 items-center justify-center rounded-[10px]',
+                ? 'h-11 w-full items-center gap-2.5 rounded-full px-3 text-left'
+                : 'h-10 w-10 items-center justify-center rounded-full',
               isActive
-                ? 'border-border/70 bg-card text-foreground shadow-[0_14px_28px_-18px_rgba(0,0,0,0.35)]'
-                : 'border-transparent bg-transparent text-muted-foreground hover:border-border/60 hover:bg-card/80 hover:text-foreground',
+                ? 'text-foreground'
+                : 'text-muted-foreground hover:text-foreground',
             )}
+            style={{ '--repo-color': getRepoColorVar(repo.color) } as React.CSSProperties}
             title={repo.currentBranch ? `${repo.name} · ${repo.currentBranch}` : repo.name}
             aria-label={repo.name}
           >
             <Icon
-              className="h-[18px] w-[18px] shrink-0"
-              style={{ color: isActive ? getRepoColorVar(repo.color) : undefined }}
+              className={cn(
+                'h-[18px] w-[18px] shrink-0 transition-[color,filter] duration-150',
+                'group-hover:[color:var(--repo-color)]',
+                'group-hover:[filter:drop-shadow(0_0_6px_var(--repo-color))]',
+                isActive && '[color:var(--repo-color)] [filter:drop-shadow(0_0_6px_var(--repo-color))]',
+              )}
             />
             {expanded ? (
               <span className="min-w-0 flex-1">

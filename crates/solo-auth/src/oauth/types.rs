@@ -266,11 +266,19 @@ pub struct OpenAIOAuthToken {
     /// ChatGPT account ID extracted from id_token
     /// Required for API calls via ChatGPT-Account-Id header
     pub account_id: Option<String>,
+    /// Email extracted from the id_token's `email` claim. `None` if the JWT
+    /// did not include one (e.g. older tokens, stripped by refresh flow).
+    #[serde(default)]
+    pub email: Option<String>,
 }
 
 impl OpenAIOAuthToken {
     /// Create a new OpenAI OAuth token from a token response
-    pub fn from_response(response: OpenAITokenResponse, account_id: Option<String>) -> Self {
+    pub fn from_response(
+        response: OpenAITokenResponse,
+        account_id: Option<String>,
+        email: Option<String>,
+    ) -> Self {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or(std::time::Duration::ZERO)
@@ -284,6 +292,7 @@ impl OpenAIOAuthToken {
             scope: response.scope,
             id_token: response.id_token,
             account_id,
+            email,
         }
     }
 

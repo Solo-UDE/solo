@@ -13,6 +13,7 @@ import type {
 	ClaudeSetupStatus,
 	SessionConfig,
 	AttachmentContentBlock,
+	ProfileSummary,
 } from '../bindings';
 
 // =============================================================================
@@ -246,8 +247,11 @@ export async function completeOAuthFlow(
 	return invoke('complete_oauth_flow', { code, oauthState });
 }
 
-export async function waitForOAuthCallback(expectedState: string): Promise<{ code: string; state: string }> {
-	const [code, state] = await invoke<[string, string]>('wait_for_oauth_callback', { expectedState });
+export async function waitForOAuthCallback(
+	expectedState: string,
+	provider?: string,
+): Promise<{ code: string; state: string }> {
+	const [code, state] = await invoke<[string, string]>('wait_for_oauth_callback', { expectedState, provider });
 	return { code, state };
 }
 
@@ -258,6 +262,40 @@ export async function getAuthMethod(provider: string): Promise<AuthMethodInfo> {
 export async function disconnectOAuth(provider: string): Promise<void> {
 	return invoke('disconnect_oauth', { provider });
 }
+
+export async function listProfiles(provider: string): Promise<ProfileSummary[]> {
+	return invoke<ProfileSummary[]>('list_profiles', { provider });
+}
+
+export async function setActiveProfile(
+	provider: string,
+	profileName: string
+): Promise<void> {
+	return invoke('set_active_profile', { provider, profileName });
+}
+
+export async function removeProfile(
+	provider: string,
+	profileName: string
+): Promise<void> {
+	return invoke('remove_profile', { provider, profileName });
+}
+
+export async function signOutProfile(
+	provider: string,
+	profileName?: string
+): Promise<void> {
+	return invoke('sign_out_profile', { provider, profileName });
+}
+
+export async function validateApiKey(
+	provider: string,
+	apiKey: string
+): Promise<void> {
+	return invoke('validate_api_key', { provider, apiKey });
+}
+
+export type { ProfileSummary };
 
 // =============================================================================
 // Claude Code CLI Commands

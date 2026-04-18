@@ -192,9 +192,10 @@ export function Tab({
         'shrink-0 rounded-md overflow-hidden',
         isCollapsedAgent
           ? 'justify-center px-0'
-          : isAgentTab && isHovered && !isActive
-            ? 'gap-1.5 px-3 min-w-[200px] max-w-[320px]'
-            : 'gap-1.5 px-3 min-w-[80px] max-w-[200px]',
+          // Expanded tab — same width range whether active or hover-previewed,
+          // so the hover-expand animation lands at the same size the active
+          // tab occupies (avoids the neighbor tabs shifting).
+          : 'gap-1.5 px-3 min-w-[160px] max-w-[200px]',
         isActive
           ? 'bg-foreground/[0.08] text-foreground'
           : 'text-foreground/60 hover:text-foreground/80 hover:bg-foreground/[0.06]',

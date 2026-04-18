@@ -51,9 +51,7 @@ export function onVoiceError(cb: (msg: string) => void): Promise<UnlistenFn> {
 export function onVoiceModelProgress(
   cb: (p: VoiceModelProgress) => void,
 ): Promise<UnlistenFn> {
-  return listen<{ progress: VoiceModelProgress }>('voice:model_progress', (e) =>
-    cb(e.payload.progress),
-  );
+  return listen<VoiceModelProgress>('voice:model_progress', (e) => cb(e.payload));
 }
 
 export function onVoiceLevel(cb: (rms: number) => void): Promise<UnlistenFn> {

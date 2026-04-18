@@ -160,7 +160,20 @@ pub async fn voice_download_parakeet(
         .clone()
         .ok_or_else(|| "voice not enabled".to_string())?;
     let app_for_progress = app.clone();
+    // Throttle: reqwest bytes_stream fires per-chunk (hundreds per file).
+    // Emit at most once per 256KiB of delta, plus a final tick at 100%.
+    let last_emitted = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+    const EMIT_STEP: u64 = 256 * 1024;
     models::download_manifest(&models::PARAKEET, &root, move |bytes, total| {
+        let prev = last_emitted.load(std::sync::atomic::Ordering::Relaxed);
+        let is_final = total > 0 && bytes >= total;
+        // A new file within the manifest resets the counter below `prev`;
+        // treat that as a forced emit so the UI resyncs.
+        let reset = bytes < prev;
+        if !is_final && !reset && bytes.saturating_sub(prev) < EMIT_STEP {
+            return;
+        }
+        last_emitted.store(bytes, std::sync::atomic::Ordering::Relaxed);
         let _ = app_for_progress.emit(
             "voice:model_progress",
             serde_json::json!({

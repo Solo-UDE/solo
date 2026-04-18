@@ -25,11 +25,13 @@ import type { LexicalEditorHandle } from './lexical-editor';
 import type { FileMention, Attachment, UserContentPart } from '../../../stores/agentStore';
 import { ModeSelector } from './mode-selector';
 import { ModelPicker } from './model-picker';
+import { OpenAICapabilityBanner } from './OpenAICapabilityBanner';
 import { SubmitButton } from './submit-button';
 import { useProviderStore } from '../../../stores/provider-store';
 import { useAttachmentStore } from '../../../stores/attachmentStore';
 import { useWorktreeList } from '../../../stores/worktreeStore';
-import { DEFAULT_MODEL_ID } from '../../../lib/constants';
+import { useAgentStore } from '../../../stores/agentStore';
+import { DEFAULT_MODEL_ID, MODEL_OPTIONS } from '../../../lib/constants';
 import { VoiceButton } from './voice-button';
 import { toolbarButtonIconOnly } from './toolbar-button-class';
 import { cn } from '../../../lib/utils';
@@ -102,6 +104,11 @@ function ChatInputContainerInner(
   const [skillNames, setSkillNames] = useState<string[]>([]);
   const [sketchOpen, setSketchOpen] = useState(false);
   const selectedModel = useProviderStore((state) => state.selectedModel);
+  const activeSessionId = useAgentStore((s) => s.activeSessionId);
+  const showOpenAIBanner = useMemo(() => {
+    const entry = MODEL_OPTIONS.find((m) => m.value === selectedModel);
+    return entry?.textOnly === true;
+  }, [selectedModel]);
   const attachments = useAttachmentStore((s) => s.attachments);
   const clearAttachments = useAttachmentStore((s) => s.clear);
   const editorRef = useRef<LexicalEditorHandle>(null);
@@ -279,6 +286,10 @@ function ChatInputContainerInner(
     <div className={`bg-transparent ${className}`}>
       <div className="mx-auto max-w-[56rem] px-4 pb-3 pt-2">
         <div className="rounded-[14px] border border-border/80 bg-card/96 shadow-[0_18px_36px_-30px_rgba(0,0,0,0.42)]">
+          {showOpenAIBanner && activeSessionId && (
+            <OpenAICapabilityBanner sessionId={activeSessionId} />
+          )}
+
           <AttachmentBar />
 
           <DropZoneOverlay>
@@ -327,7 +338,7 @@ function ChatInputContainerInner(
                       disabled={isAgentRunning}
                     >
                       <SelectTrigger
-                        className="h-[30px] min-w-0 w-full rounded-[8px] bg-transparent px-2.5 text-xs font-medium text-muted-foreground hover:bg-muted/60 hover:text-foreground [&>span]:min-w-0 [&>span]:truncate"
+                        className="h-[30px] min-w-0 w-full rounded-full border-0 bg-transparent px-2.5 text-xs font-medium text-muted-foreground hover:bg-muted/60 hover:text-foreground ring-0 dark:ring-0 focus:outline-none focus:ring-0 focus:ring-offset-0 [&>span]:min-w-0 [&>span]:truncate"
                         title="Worktree"
                       >
                         <SelectValue />

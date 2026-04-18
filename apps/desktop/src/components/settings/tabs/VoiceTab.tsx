@@ -85,12 +85,11 @@ export function VoiceTab() {
                 </Button>
               )}
             </div>
-            {modelDownload && (
-              <div className="text-xs text-muted-foreground mt-2">
-                {Math.round((modelDownload.bytes / Math.max(1, modelDownload.total)) * 100)}%
-                ({Math.round(modelDownload.bytes / 1_048_576)} /
-                {Math.round(modelDownload.total / 1_048_576)} MB)
-              </div>
+            {downloading && (
+              <ModelDownloadProgress
+                bytes={modelDownload ? Number(modelDownload.bytes) : 0}
+                total={modelDownload ? Number(modelDownload.total) : 0}
+              />
             )}
           </section>
 
@@ -166,6 +165,28 @@ export function VoiceTab() {
           </section>
         </>
       )}
+    </div>
+  );
+}
+
+function ModelDownloadProgress({ bytes, total }: { bytes: number; total: number }) {
+  const hasTotal = total > 0;
+  const pct = hasTotal ? Math.min(100, Math.round((bytes / total) * 100)) : 0;
+  const mb = (n: number) => (n / 1_048_576).toFixed(1);
+  return (
+    <div className="mt-3 space-y-1.5" role="status" aria-live="polite">
+      <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+        <div
+          className={`h-full bg-primary transition-[width] duration-200 ease-out ${hasTotal ? '' : 'animate-pulse w-1/3'}`}
+          style={hasTotal ? { width: `${pct}%` } : undefined}
+        />
+      </div>
+      <div className="flex items-center justify-between text-xs text-muted-foreground tabular-nums">
+        <span>{hasTotal ? `${pct}%` : 'Connecting…'}</span>
+        <span>
+          {hasTotal ? `${mb(bytes)} / ${mb(total)} MB` : bytes > 0 ? `${mb(bytes)} MB` : ''}
+        </span>
+      </div>
     </div>
   );
 }
