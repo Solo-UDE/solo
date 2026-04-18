@@ -68,14 +68,14 @@ export function VoiceTab() {
   return (
     <div className="space-y-6">
       <section>
-        <h3 className="text-sm font-semibold mb-2">Voice input</h3>
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-4">Voice input</h3>
         <Button onClick={toggleEnable}>{enabled ? 'Disable' : 'Enable'} voice</Button>
       </section>
 
       {enabled && (
         <>
           <section>
-            <h3 className="text-sm font-semibold mb-2">Models</h3>
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-4">Models</h3>
             <div className="flex items-center gap-3">
               <span>Parakeet TDT 0.6B (int8) —</span>
               <span>{parakeetInstalled ? 'Installed' : 'Not installed'}</span>
@@ -94,7 +94,7 @@ export function VoiceTab() {
           </section>
 
           <section>
-            <h3 className="text-sm font-semibold mb-2">History</h3>
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-4">History</h3>
             {history.length === 0 ? (
               <p className="text-xs text-muted-foreground">No transcripts yet.</p>
             ) : (
@@ -117,7 +117,7 @@ export function VoiceTab() {
           </section>
 
           <section>
-            <h3 className="text-sm font-semibold mb-2">Shortcuts</h3>
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-4">Shortcuts</h3>
             <div className="grid grid-cols-[140px_1fr] gap-2 items-center">
               {([
                 ['Dictation PTT', 'dictation_ptt'],
@@ -140,7 +140,7 @@ export function VoiceTab() {
           </section>
 
           <section>
-            <h3 className="text-sm font-semibold mb-2">Permissions</h3>
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-4">Permissions</h3>
             <ul className="space-y-1">
               {([
                 ['Microphone', 'microphone'],
