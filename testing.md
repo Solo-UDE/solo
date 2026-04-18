@@ -20,3 +20,12 @@
 - [ ] Press `Esc` while holding `Fn` (or during Transcribing) → HUD hides, no paste.
 - [ ] Disable Accessibility → attempting dictation shows "Paste failed — text copied to clipboard".
 - [ ] Change Dispatch PTT to `ctrl+alt+v`; hotkey remap takes effect without voice re-enable.
+
+## Voice (Phase 3 — agent dispatch)
+
+- [ ] From Arc or any non-Solo app, hold `⌃⌥Space` and say "refactor the auth module and add integration tests".
+- [ ] Release → green HUD pill hides, no focus-steal, macOS notification "Agent dispatched: Refactor auth module" fires.
+- [ ] Solo's dock badge shows `1`.
+- [ ] Click Solo in the dock → agent panel auto-opens on the new session; dock badge clears.
+- [ ] History row for the dispatch exists with `linked_session_id` matching the new session.
+- [ ] Dispatch formatter produces non-JSON → toast "Dispatch failed" instead of silent no-op.
