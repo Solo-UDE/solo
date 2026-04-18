@@ -11,6 +11,10 @@ export function VoiceTab() {
   const setParakeetInstalled = useVoiceStore((s) => s.setParakeetInstalled);
   const modelDownload = useVoiceStore((s) => s.modelDownload);
   const setModelDownload = useVoiceStore((s) => s.setModelDownload);
+  const shortcuts = useVoiceStore((s) => s.shortcuts);
+  const setShortcuts = useVoiceStore((s) => s.setShortcuts);
+  const permissions = useVoiceStore((s) => s.permissions);
+  const setPermissions = useVoiceStore((s) => s.setPermissions);
 
   const [history, setHistory] = useState<VoiceTranscriptResult[]>([]);
   const [downloading, setDownloading] = useState(false);
@@ -20,8 +24,10 @@ export function VoiceTab() {
       if (!enabled) return;
       setParakeetInstalled(await voiceApi.parakeetInstalled());
       setHistory(await voiceApi.historyList(50));
+      setShortcuts(await voiceApi.getShortcuts());
+      setPermissions(await voiceApi.checkPermissions());
     })();
-  }, [enabled, setParakeetInstalled]);
+  }, [enabled, setParakeetInstalled, setShortcuts, setPermissions]);
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -110,8 +116,85 @@ export function VoiceTab() {
               </ul>
             )}
           </section>
+
+          <section>
+            <h3 className="text-sm font-semibold mb-2">Shortcuts</h3>
+            <div className="grid grid-cols-[140px_1fr] gap-2 items-center">
+              {([
+                ['Dictation PTT', 'dictation_ptt'],
+                ['Dispatch PTT', 'dispatch_ptt'],
+                ['Cancel', 'cancel'],
+              ] as const).map(([label, key]) => (
+                <div key={key} className="contents">
+                  <span className="text-xs">{label}</span>
+                  <ShortcutRecorder
+                    value={shortcuts[key]}
+                    onChange={async (next) => {
+                      const updated = { ...shortcuts, [key]: next };
+                      setShortcuts(updated);
+                      await voiceApi.setShortcuts(updated);
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section>
+            <h3 className="text-sm font-semibold mb-2">Permissions</h3>
+            <ul className="space-y-1">
+              {([
+                ['Microphone', 'microphone'],
+                ['Input Monitoring', 'input_monitoring'],
+                ['Accessibility', 'accessibility'],
+              ] as const).map(([label, key]) => (
+                <li key={key} className="flex items-center gap-3">
+                  <span className={`w-2 h-2 rounded-full ${permissions[key] ? 'bg-green-500' : 'bg-red-500'}`} />
+                  <span className="flex-1 text-xs">{label}</span>
+                  {!permissions[key] && (
+                    <Button onClick={async () => {
+                      const which = key === 'input_monitoring' ? 'input-monitoring' : (key as 'microphone' | 'accessibility');
+                      const next = await voiceApi.requestPermission(which);
+                      setPermissions(next);
+                    }}>
+                      Grant
+                    </Button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </section>
         </>
       )}
     </div>
+  );
+}
+
+function ShortcutRecorder({ value, onChange }: { value: string; onChange: (s: string) => void }) {
+  const [listening, setListening] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={() => setListening(true)}
+      onKeyDown={(e) => {
+        if (!listening) return;
+        e.preventDefault();
+        const parts: string[] = [];
+        if (e.ctrlKey) parts.push('ctrl');
+        if (e.altKey) parts.push('alt');
+        if (e.shiftKey) parts.push('shift');
+        if (e.metaKey) parts.push('cmd');
+        const name = e.key === ' ' ? 'space' : e.key === 'Escape' ? 'escape' : e.key.toLowerCase();
+        if (name.length > 0 && !['control', 'alt', 'shift', 'meta', 'fn'].includes(name)) {
+          parts.push(name);
+          onChange(parts.join('+'));
+          setListening(false);
+        }
+      }}
+      onBlur={() => setListening(false)}
+      className="text-xs border rounded px-2 py-1 text-left"
+    >
+      {listening ? 'Press a shortcut…' : value}
+    </button>
   );
 }
