@@ -46,6 +46,7 @@ mod stats_commands;
 mod terminal_commands;
 mod update_commands;
 mod vault_commands;
+mod voice;
 mod voice_commands;
 mod worktree_commands;
 
