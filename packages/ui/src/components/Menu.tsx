@@ -43,7 +43,9 @@ export function MenuShortcut({ className, ...props }: HTMLAttributes<HTMLSpanEle
 
 const menuItemBase = cn(
   "relative flex items-center gap-2 rounded-sm px-2 py-1 text-[13px] cursor-default select-none",
-  "outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground",
+  "outline-none transition-colors",
+  "hover:bg-muted/70 hover:text-foreground",
+  "data-[highlighted]:bg-muted/70 data-[highlighted]:text-foreground",
   "data-[disabled]:opacity-50 data-[disabled]:pointer-events-none",
 );
 

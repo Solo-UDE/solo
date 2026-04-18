@@ -163,7 +163,7 @@ export const ModelPicker: FC<ModelPickerProps> = ({
                 <div className="mt-0.5 shrink-0">
                   {renderModelIcon(option.iconType, 14)}
                 </div>
-                <div className="flex flex-col gap-0">
+                <div className="flex flex-col gap-0 flex-1">
                   <span
                     className={cn(
                       'text-[13px] leading-tight',

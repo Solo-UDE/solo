@@ -12,7 +12,7 @@ use tauri::{AppHandle, Emitter as _, State};
 
 use crate::agent::{
     AttachmentContentBlock, PermissionDecision, PermissionResponse, SessionConfig,
-    SessionManager,
+    SessionCredentials, SessionManager,
 };
 use crate::fs_commands::FsState;
 use crate::provider_commands::ProviderAuthState;
@@ -31,6 +31,12 @@ fn to_error<E: Display>(e: E) -> String {
 // Session Management Commands
 // ============================================================================
 
+/// Create a new agent session.
+///
+/// Resolves the active provider + credentials from ProviderAuthState and
+/// attaches them to the SessionConfig before forwarding to the sidecar.
+/// Backward-compatible: if the caller passed provider/credentials in
+/// `config` already, those take precedence.
 /// Internal helper — create a session and send the first prompt.
 ///
 /// Generates a fresh UUID for the session, registers it with the bridge,
@@ -66,9 +72,69 @@ pub async fn agent_create_session(
     session_id: String,
     config: Option<SessionConfig>,
     state: State<'_, Arc<SessionManager>>,
+    provider_state: State<'_, ProviderAuthState>,
     stats: State<'_, crate::stats_commands::StatsState>,
 ) -> Result<()> {
-    state.create_session(&session_id, config).map_err(to_error)?;
+    let mut config = config.unwrap_or_default();
+
+    // If the caller didn't specify a provider, use the currently-active one.
+    if config.provider.is_none() {
+        let active = provider_state.active_provider.read().await;
+        config.provider = Some(active.as_str().to_string());
+    }
+
+    // Resolve credentials iff the caller didn't already pass them.
+    if config.credentials.is_none() {
+        let provider_str = config.provider.as_deref().unwrap_or("anthropic");
+        let provider_type = ProviderType::from_str(provider_str)
+            .ok_or_else(|| format!("unknown provider {:?}", provider_str))?;
+
+        match provider_type {
+            ProviderType::OpenAI => {
+                // Prefer OAuth, fall back to API key, fall back to env.
+                let resolved = provider_state
+                    .credentials
+                    .get_credentials_with_source(provider_type)
+                    .await
+                    .map_err(to_error)?;
+
+                if let Some(info) = resolved {
+                    use solo_auth::credentials::CredentialSource as CS;
+                    let account_id = provider_state
+                        .credentials
+                        .get_openai_account_id()
+                        .await
+                        .map_err(to_error)?;
+
+                    config.credentials = Some(match info.source {
+                        CS::SoloOAuth => SessionCredentials::OAuth {
+                            token: info.api_key,
+                            account_id,
+                        },
+                        _ => SessionCredentials::ApiKey { token: info.api_key },
+                    });
+                } else {
+                    return Err(format!(
+                        "No credentials configured for {}",
+                        provider_type.as_str()
+                    ));
+                }
+            }
+            ProviderType::Anthropic => {
+                // For Anthropic we leave credentials unset — the sidecar
+                // has its own ClaudeCredentials resolver (file, keychain,
+                // env) that works well and we don't want to break it.
+            }
+            ProviderType::Gemini | ProviderType::ElevenLabs => {
+                return Err(format!(
+                    "{} is not supported by the chat agent",
+                    provider_type.as_str()
+                ));
+            }
+        }
+    }
+
+    state.create_session(&session_id, Some(config)).map_err(to_error)?;
     stats.record(solo_stats::StatsEvent::SessionCreated).await;
     Ok(())
 }

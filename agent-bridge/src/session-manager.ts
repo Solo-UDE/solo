@@ -103,6 +103,19 @@ export interface SessionConfig {
   sessionMode?: 'chat' | 'agent';
   resumeSessionId?: string;
   forkSession?: boolean;
+  /**
+   * Provider for this session. When absent, defaults to 'anthropic'.
+   */
+  provider?: 'anthropic' | 'openai';
+
+  /**
+   * Credentials handed from Rust. When absent, the Anthropic adapter falls
+   * back to ClaudeCredentials.getCredentials(). The OpenAI adapter errors
+   * if this is missing.
+   */
+  credentials?:
+    | { kind: 'oauth'; token: string; accountId?: string }
+    | { kind: 'api_key'; token: string };
 }
 
 /**
@@ -298,6 +311,16 @@ export class SessionManager extends Disposable {
 
   // Session tracking
   private activeSessions = new Map<string, OrbitAgent>();
+
+  /**
+   * Parallel map of OpenAI provider sessions, keyed by sessionId. These
+   * do NOT share state with the Anthropic `activeSessions` map —
+   * every lookup in the manager checks both and dispatches accordingly.
+   */
+  private readonly openAISessions = new Map<
+    string,
+    import('./providers/types.js').ProviderSession
+  >();
   private sessionConsumers = new Map<string, { cancel: () => void }>();
   private permissionResolvers = new Map<string, PermissionResolver>();
   /**
@@ -348,9 +371,41 @@ export class SessionManager extends Disposable {
    * Create a new agent session
    */
   async createSession(sessionId: string, config?: SessionConfig): Promise<void> {
-    if (this.activeSessions.has(sessionId)) {
+    if (this.activeSessions.has(sessionId) || this.openAISessions.has(sessionId)) {
       return;
     }
+
+    const provider = config?.provider ?? 'anthropic';
+
+    if (provider === 'openai') {
+      if (!config?.credentials) {
+        throw new Error(
+          'OpenAI session requires credentials — Rust side must pass them via SessionConfig.credentials'
+        );
+      }
+      if (!config?.model) {
+        throw new Error('OpenAI session requires a model');
+      }
+
+      const { createOpenAISession } = await import('./providers/openai.js');
+      const openaiSession = await createOpenAISession({
+        model: config.model,
+        credentials: config.credentials,
+        maxTokens: config.maxTokens,
+        thinkingEnabled: config.thinkingEnabled,
+      });
+      this.openAISessions.set(sessionId, openaiSession);
+
+      this._onSessionInit.fire({
+        sessionId,
+        sdkSessionId: sessionId, // no separate SDK id for OpenAI
+        isResumed: false,
+        isForked: false,
+      });
+      return;
+    }
+
+    // ... existing Anthropic path continues below ...
 
     // Initialize shared tool use map for this session
     const toolUseMap = new Map<string, ToolUseEntry>();
@@ -750,6 +805,13 @@ export class SessionManager extends Disposable {
    * Delete a session
    */
   async deleteSession(sessionId: string): Promise<void> {
+    const openaiSession = this.openAISessions.get(sessionId);
+    if (openaiSession) {
+      await openaiSession.close();
+      this.openAISessions.delete(sessionId);
+      return;
+    }
+
     const consumer = this.sessionConsumers.get(sessionId);
     if (consumer) {
       consumer.cancel();
@@ -771,6 +833,7 @@ export class SessionManager extends Disposable {
    * Check if a session is ready
    */
   isSessionReady(sessionId: string): boolean {
+    if (this.openAISessions.has(sessionId)) return true;
     const agent = this.activeSessions.get(sessionId);
     return agent?.isSessionReady() ?? false;
   }
@@ -779,6 +842,12 @@ export class SessionManager extends Disposable {
    * Interrupt a session
    */
   async interrupt(sessionId: string): Promise<void> {
+    const openaiSession = this.openAISessions.get(sessionId);
+    if (openaiSession) {
+      await openaiSession.interrupt();
+      return;
+    }
+
     const agent = this.activeSessions.get(sessionId);
     if (!agent) {
       throw new Error(`Session ${sessionId} not found`);
@@ -790,6 +859,7 @@ export class SessionManager extends Disposable {
    * Get the SDK session ID for a session
    */
   getSDKSessionId(sessionId: string): string | undefined {
+    if (this.openAISessions.has(sessionId)) return sessionId;
     const agent = this.activeSessions.get(sessionId);
     return agent?.getCurrentSessionId();
   }
@@ -798,6 +868,14 @@ export class SessionManager extends Disposable {
    * Send a message to a session
    */
   sendMessage(message: string, sessionId: string, attachments?: AttachmentContentBlock[]): void {
+    const openaiSession = this.openAISessions.get(sessionId);
+    if (openaiSession) {
+      openaiSession.sendMessage(message, attachments);
+      // Fire the run loop without awaiting — it emits events as it streams.
+      void this.runOpenAILoop(sessionId, openaiSession);
+      return;
+    }
+
     const agent = this.activeSessions.get(sessionId);
     if (agent === undefined) {
       throw new Error(`Session ${sessionId} not found. Call createSession() first.`);
@@ -842,6 +920,10 @@ export class SessionManager extends Disposable {
    * Set thinking mode for a session
    */
   async setThinkingMode(sessionId: string, enabled: boolean, maxTokens?: number): Promise<void> {
+    if (this.openAISessions.has(sessionId)) {
+      logger.warn({ sessionId, method: 'setThinkingMode' }, 'not supported on OpenAI sessions');
+      return;
+    }
     const agent = this.activeSessions.get(sessionId);
     if (!agent) {
       const prefs = this.modePreferences.get(sessionId) ?? {};
@@ -861,6 +943,7 @@ export class SessionManager extends Disposable {
    * Get thinking mode for a session
    */
   getThinkingMode(sessionId: string): boolean {
+    if (this.openAISessions.has(sessionId)) return false;
     const agent = this.activeSessions.get(sessionId);
     if (agent === undefined) {
       const prefs = this.modePreferences.get(sessionId);
@@ -873,6 +956,10 @@ export class SessionManager extends Disposable {
    * Set model for a session
    */
   async setModel(sessionId: string, model: string): Promise<void> {
+    if (this.openAISessions.has(sessionId)) {
+      logger.warn({ sessionId, method: 'setModel' }, 'not supported on OpenAI sessions');
+      return;
+    }
     const agent = this.activeSessions.get(sessionId);
     if (!agent) {
       const prefs = this.modePreferences.get(sessionId) ?? {};
@@ -941,6 +1028,10 @@ export class SessionManager extends Disposable {
    * Set plan mode for a session
    */
   setPlanMode(sessionId: string, enabled: boolean): void {
+    if (this.openAISessions.has(sessionId)) {
+      logger.warn({ sessionId, method: 'setPlanMode' }, 'not supported on OpenAI sessions');
+      return;
+    }
     const agent = this.activeSessions.get(sessionId);
     if (agent === undefined) {
       const prefs = this.modePreferences.get(sessionId) ?? {};
@@ -965,6 +1056,7 @@ export class SessionManager extends Disposable {
    * Get plan mode for a session
    */
   getPlanMode(sessionId: string): boolean {
+    if (this.openAISessions.has(sessionId)) return false;
     const agent = this.activeSessions.get(sessionId);
     if (agent === undefined) {
       const prefs = this.modePreferences.get(sessionId);
@@ -977,6 +1069,10 @@ export class SessionManager extends Disposable {
    * Set accept mode for a session
    */
   setAcceptMode(sessionId: string, enabled: boolean): void {
+    if (this.openAISessions.has(sessionId)) {
+      logger.warn({ sessionId, method: 'setAcceptMode' }, 'not supported on OpenAI sessions');
+      return;
+    }
     const agent = this.activeSessions.get(sessionId);
     if (!agent) {
       const prefs = this.modePreferences.get(sessionId) ?? {};
@@ -1002,6 +1098,7 @@ export class SessionManager extends Disposable {
    * Get accept mode for a session
    */
   getAcceptMode(sessionId: string): boolean {
+    if (this.openAISessions.has(sessionId)) return false;
     const agent = this.activeSessions.get(sessionId);
     if (agent === undefined) {
       const prefs = this.modePreferences.get(sessionId);
@@ -1016,6 +1113,10 @@ export class SessionManager extends Disposable {
    * is emitted so the UI can pin the goal.
    */
   setDebugMode(sessionId: string, enabled: boolean): void {
+    if (this.openAISessions.has(sessionId)) {
+      logger.warn({ sessionId, method: 'setDebugMode' }, 'not supported on OpenAI sessions');
+      return;
+    }
     const agent = this.activeSessions.get(sessionId);
     if (!agent) {
       const prefs = this.modePreferences.get(sessionId) ?? {};
@@ -1078,6 +1179,7 @@ export class SessionManager extends Disposable {
 
   /** Get Debug mode for a session. */
   getDebugMode(sessionId: string): boolean {
+    if (this.openAISessions.has(sessionId)) return false;
     const agent = this.activeSessions.get(sessionId);
     if (agent === undefined) {
       const prefs = this.modePreferences.get(sessionId);
@@ -1093,6 +1195,10 @@ export class SessionManager extends Disposable {
    * - 'ask-all': prompt for every tool (default)
    */
   setToolPolicy(sessionId: string, mode: string, _isWorktreeSession: boolean): void {
+    if (this.openAISessions.has(sessionId)) {
+      logger.warn({ sessionId, method: 'setToolPolicy' }, 'not supported on OpenAI sessions');
+      return;
+    }
     const agent = this.activeSessions.get(sessionId);
 
     if (mode === 'approve-all') {
@@ -1120,6 +1226,70 @@ export class SessionManager extends Disposable {
   }
 
   /**
+   * Drive an OpenAI session's receiveResponse() loop and emit AgentMessage
+   * events through the same channel the Anthropic path uses.
+   *
+   * Much simpler than the Anthropic path — no tool calls, no permissions,
+   * no hooks. Each event type maps directly to an AgentMessage.
+   */
+  private async runOpenAILoop(
+    sessionId: string,
+    session: import('./providers/types.js').ProviderSession
+  ): Promise<void> {
+    try {
+      for await (const ev of session.receiveResponse()) {
+        switch (ev.type) {
+          case 'text_delta':
+            this.emitAgentMessage(sessionId, {
+              type: 'text',
+              content: ev.text,
+            });
+            break;
+          case 'thinking_delta':
+            this.emitAgentMessage(sessionId, {
+              type: 'thinking',
+              content: ev.text,
+            });
+            break;
+          case 'usage':
+            this.emitAgentMessage(sessionId, {
+              type: 'text',
+              content: '',
+              usage: {
+                inputTokens: ev.inputTokens,
+                outputTokens: ev.outputTokens,
+              },
+            });
+            break;
+          case 'done':
+            this.emitAgentMessage(sessionId, {
+              type: 'result',
+              content: '',
+              resultSubtype: ev.stopReason,
+              totalCostUsd: ev.totalCostUsd,
+              durationMs: ev.durationMs,
+            });
+            break;
+          // v1 doesn't emit tool_call / tool_result from OpenAI.
+          default:
+            break;
+        }
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.emitAgentMessage(sessionId, { type: 'error', content: msg });
+    }
+  }
+
+  /**
+   * Thin helper that centralizes agent message emission for the OpenAI path,
+   * matching the exact emitter pattern used throughout this file.
+   */
+  private emitAgentMessage(sessionId: string, message: AgentMessage): void {
+    this._onAgentMessage.fire({ sessionId, message });
+  }
+
+  /**
    * Dispose the session manager
    */
   override dispose(): void {
@@ -1143,6 +1313,14 @@ export class SessionManager extends Disposable {
     }
     this.activeSessions.clear();
     this.sessionToolUseMaps.clear();
+
+    // Close all OpenAI sessions
+    for (const [sessionId, session] of this.openAISessions.entries()) {
+      void session.close().catch((err: unknown) => {
+        logger.error({ sessionId, error: err }, 'Error closing OpenAI session');
+      });
+    }
+    this.openAISessions.clear();
 
     super.dispose();
   }

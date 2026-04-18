@@ -54,6 +54,20 @@ pub struct AttachmentSource {
 // Session Configuration
 // ============================================================================
 
+/// Credentials handed to the sidecar for a session.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", tag = "kind")]
+pub enum SessionCredentials {
+    #[serde(rename = "oauth")]
+    OAuth {
+        token: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        account_id: Option<String>,
+    },
+    #[serde(rename = "api_key")]
+    ApiKey { token: String },
+}
+
 /// Session configuration
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -86,6 +100,16 @@ pub struct SessionConfig {
     pub resume_session_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fork_session: Option<bool>,
+    /// Provider for this session. When absent, defaults to "anthropic" —
+    /// preserves backward-compat with clients that don't know about multi-provider.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+
+    /// Credentials passed explicitly from Rust to the sidecar. When absent,
+    /// the Anthropic adapter falls back to reading ~/.claude/.credentials.json
+    /// or ANTHROPIC_API_KEY. The OpenAI adapter REQUIRES this field.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub credentials: Option<SessionCredentials>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]

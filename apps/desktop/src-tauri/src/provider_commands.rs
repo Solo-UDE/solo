@@ -8,7 +8,7 @@ use solo_auth::{
     oauth::{
         AuthMethodInfo, OAuthFlowResult, OAuthMethod, OAuthState,
         AnthropicOAuthConfig, OpenAIOAuthConfig,
-        start_callback_server,
+        start_callback_server, start_callback_server_on,
     },
     CredentialManager, ProviderType,
 };
@@ -159,6 +159,12 @@ pub async fn set_credentials(
     let provider_type = ProviderType::from_str(&provider)
         .ok_or_else(|| format!("Unknown provider: {}", provider))?;
 
+    // Validate the key against the provider's API before storing it.
+    // Transient errors (5xx, network) do NOT block — see validate_api_key_http.
+    solo_auth::CredentialManager::validate_api_key_http(provider_type, &api_key)
+        .await
+        .map_err(|e| e.to_string())?;
+
     state.credentials
         .set_credentials(provider_type, &api_key)
         .await
@@ -270,6 +276,24 @@ pub async fn get_auth_method(
         .map_err(|e| e.to_string())
 }
 
+/// Auth-check an API key WITHOUT storing it.
+///
+/// Returns Ok(()) if the key is accepted by the provider. Useful for
+/// "Test connection" buttons; also called internally before
+/// `set_credentials` persists the key.
+#[tauri::command]
+pub async fn validate_api_key(
+    provider: String,
+    api_key: String,
+) -> Result<(), String> {
+    debug!(provider = %provider, "Validating API key");
+    let provider_type = ProviderType::from_str(&provider)
+        .ok_or_else(|| format!("Unknown provider: {}", provider))?;
+    solo_auth::CredentialManager::validate_api_key_http(provider_type, &api_key)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 // =============================================================================
 // OAuth Commands
 // =============================================================================
@@ -363,14 +387,26 @@ pub async fn complete_oauth_flow(
 
 /// Wait for OAuth callback from browser (starts a local HTTP server).
 /// The expected_state parameter is validated against the callback's state
-/// to prevent CSRF attacks.
+/// to prevent CSRF attacks. The provider argument selects the port the
+/// server binds to — some providers (OpenAI/Codex) have their OAuth app
+/// registered against a specific localhost port, so we must match it
+/// exactly or auth.openai.com returns "unknown_error".
 #[tauri::command]
-pub async fn wait_for_oauth_callback(expected_state: String) -> Result<(String, String), String> {
-    info!("Waiting for OAuth callback");
+pub async fn wait_for_oauth_callback(
+    expected_state: String,
+    provider: Option<String>,
+) -> Result<(String, String), String> {
+    let provider_str = provider.as_deref().unwrap_or("");
+    info!(provider = %provider_str, "Waiting for OAuth callback");
 
-    let result = start_callback_server(&expected_state, None)
-        .await
-        .map_err(|e| format!("OAuth callback failed: {:?}", e))?;
+    let result = match provider_str {
+        "openai" => {
+            start_callback_server_on(&expected_state, None, OpenAIOAuthConfig::CALLBACK_PORT)
+                .await
+        }
+        _ => start_callback_server(&expected_state, None).await,
+    }
+    .map_err(|e| format!("OAuth callback failed: {:?}", e))?;
 
     Ok((result.code, result.state))
 }
@@ -390,6 +426,87 @@ pub async fn disconnect_oauth(
         .disconnect_oauth(provider_type)
         .await
         .map_err(|e| e.to_string())
+}
+
+// =============================================================================
+// Profile Management Commands
+// =============================================================================
+
+use solo_auth::credentials::ProfileSummary;
+
+/// List OAuth profiles for a provider.
+#[tauri::command]
+pub async fn list_profiles(
+    provider: String,
+    state: State<'_, ProviderAuthState>,
+) -> Result<Vec<ProfileSummary>, String> {
+    debug!(provider = %provider, "Listing profiles");
+    let provider_type = ProviderType::from_str(&provider)
+        .ok_or_else(|| format!("Unknown provider: {}", provider))?;
+    state
+        .credentials
+        .list_profiles(provider_type)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Set the active profile for a provider.
+#[tauri::command]
+pub async fn set_active_profile(
+    provider: String,
+    profile_name: String,
+    state: State<'_, ProviderAuthState>,
+) -> Result<(), String> {
+    info!(provider = %provider, profile = %profile_name, "Setting active profile");
+    let provider_type = ProviderType::from_str(&provider)
+        .ok_or_else(|| format!("Unknown provider: {}", provider))?;
+    state
+        .credentials
+        .set_active_profile(provider_type, &profile_name)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Remove a named profile.
+#[tauri::command]
+pub async fn remove_profile(
+    provider: String,
+    profile_name: String,
+    state: State<'_, ProviderAuthState>,
+) -> Result<(), String> {
+    info!(provider = %provider, profile = %profile_name, "Removing profile");
+    let provider_type = ProviderType::from_str(&provider)
+        .ok_or_else(|| format!("Unknown provider: {}", provider))?;
+    state
+        .credentials
+        .remove_profile(provider_type, &profile_name)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Sign out of a specific profile. If `profile_name` is None, removes ALL
+/// profiles for the provider (equivalent to disconnect_oauth).
+#[tauri::command]
+pub async fn sign_out_profile(
+    provider: String,
+    profile_name: Option<String>,
+    state: State<'_, ProviderAuthState>,
+) -> Result<(), String> {
+    info!(provider = %provider, profile = ?profile_name, "Signing out profile");
+    let provider_type = ProviderType::from_str(&provider)
+        .ok_or_else(|| format!("Unknown provider: {}", provider))?;
+    match profile_name {
+        Some(name) => state
+            .credentials
+            .remove_profile(provider_type, &name)
+            .await
+            .map_err(|e| e.to_string()),
+        None => state
+            .credentials
+            .disconnect_oauth(provider_type)
+            .await
+            .map_err(|e| e.to_string()),
+    }
 }
 
 // =============================================================================
