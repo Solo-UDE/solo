@@ -1627,6 +1627,7 @@ pub struct PluginLoadError {
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "camelCase")]
 pub struct PluginsConfig {
     #[serde(default = "default_true_plugins")]
     pub adapter_claude_plugins: bool,
