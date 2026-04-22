@@ -1,12 +1,16 @@
-import type { FC } from 'react';
+import { useState, type FC } from 'react';
 import { X, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
 import { useTaskStore } from '@/stores/taskStore';
 import type { Task, TaskPriority, TaskStatus } from '@/lib/tauri/tasks';
+import { RunButton } from './RunButton';
+import { TaskRunsTab } from './TaskRunsTab';
 
 const STATUS_OPTIONS: TaskStatus[] = ['queued', 'running', 'needs_review', 'done', 'failed', 'archived'];
 const PRIORITY_OPTIONS: TaskPriority[] = ['low', 'medium', 'high', 'urgent'];
+
+type DrawerTab = 'overview' | 'runs';
 
 export const TaskDrawer: FC = () => {
   const taskId = useTaskStore((s) => s.selectedTaskId);
@@ -14,6 +18,7 @@ export const TaskDrawer: FC = () => {
   const select = useTaskStore((s) => s.select);
   const update = useTaskStore((s) => s.update);
   const remove = useTaskStore((s) => s.remove);
+  const [tab, setTab] = useState<DrawerTab>('overview');
 
   return (
     <AnimatePresence>
@@ -30,6 +35,7 @@ export const TaskDrawer: FC = () => {
         >
           <header className="flex shrink-0 items-center gap-2 border-b border-border/50 px-4 py-3">
             <Detail task={task} />
+            <RunButton task={task} />
             <button
               type="button"
               onClick={() => void remove(task.id)}
@@ -48,53 +54,74 @@ export const TaskDrawer: FC = () => {
             </button>
           </header>
 
-          <div className="min-h-0 flex-1 overflow-y-auto p-4">
-            <label className="mb-4 flex flex-col gap-1 text-[11px] uppercase tracking-wider text-muted-foreground">
-              Title
-              <input
-                value={task.title}
-                onChange={(e) => void update(task.id, { title: e.target.value })}
-                className="rounded-md border border-border/60 bg-background px-2 py-1.5 text-[14px] font-medium text-foreground focus:outline-none focus:ring-1 focus:ring-border"
-              />
-            </label>
+          <nav className="flex shrink-0 gap-1 border-b border-border/50 px-3 py-1.5">
+            {(['overview', 'runs'] as const).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setTab(t)}
+                className={cn(
+                  'rounded-md px-2.5 py-1 text-[11px] font-medium capitalize',
+                  tab === t ? 'bg-card text-foreground border border-border/70' : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {t}
+                {t === 'runs' && task.runs?.length ? ` · ${task.runs.length}` : ''}
+              </button>
+            ))}
+          </nav>
 
-            <label className="mb-4 flex flex-col gap-1 text-[11px] uppercase tracking-wider text-muted-foreground">
-              Description
-              <textarea
-                rows={6}
-                value={task.description}
-                onChange={(e) => void update(task.id, { description: e.target.value })}
-                className="resize-y rounded-md border border-border/60 bg-background px-2 py-1.5 text-[13px] text-foreground focus:outline-none focus:ring-1 focus:ring-border"
-              />
-            </label>
+          {tab === 'overview' && (
+            <div className="min-h-0 flex-1 overflow-y-auto p-4">
+              <label className="mb-4 flex flex-col gap-1 text-[11px] uppercase tracking-wider text-muted-foreground">
+                Title
+                <input
+                  value={task.title}
+                  onChange={(e) => void update(task.id, { title: e.target.value })}
+                  className="rounded-md border border-border/60 bg-background px-2 py-1.5 text-[14px] font-medium text-foreground focus:outline-none focus:ring-1 focus:ring-border"
+                />
+              </label>
 
-            <div className="grid grid-cols-2 gap-3">
-              <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wider text-muted-foreground">
-                Status
-                <select
-                  value={task.status}
-                  onChange={(e) => void update(task.id, { status: e.target.value as TaskStatus })}
-                  className="rounded-md border border-border/60 bg-background px-2 py-1.5 text-[13px] text-foreground"
-                >
-                  {STATUS_OPTIONS.map((s) => (
-                    <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>
-                  ))}
-                </select>
+              <label className="mb-4 flex flex-col gap-1 text-[11px] uppercase tracking-wider text-muted-foreground">
+                Description
+                <textarea
+                  rows={6}
+                  value={task.description}
+                  onChange={(e) => void update(task.id, { description: e.target.value })}
+                  className="resize-y rounded-md border border-border/60 bg-background px-2 py-1.5 text-[13px] text-foreground focus:outline-none focus:ring-1 focus:ring-border"
+                />
               </label>
-              <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wider text-muted-foreground">
-                Priority
-                <select
-                  value={task.priority}
-                  onChange={(e) => void update(task.id, { priority: e.target.value as TaskPriority })}
-                  className="rounded-md border border-border/60 bg-background px-2 py-1.5 text-[13px] text-foreground"
-                >
-                  {PRIORITY_OPTIONS.map((p) => (
-                    <option key={p} value={p}>{p}</option>
-                  ))}
-                </select>
-              </label>
+
+              <div className="grid grid-cols-2 gap-3">
+                <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wider text-muted-foreground">
+                  Status
+                  <select
+                    value={task.status}
+                    onChange={(e) => void update(task.id, { status: e.target.value as TaskStatus })}
+                    className="rounded-md border border-border/60 bg-background px-2 py-1.5 text-[13px] text-foreground"
+                  >
+                    {STATUS_OPTIONS.map((s) => (
+                      <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wider text-muted-foreground">
+                  Priority
+                  <select
+                    value={task.priority}
+                    onChange={(e) => void update(task.id, { priority: e.target.value as TaskPriority })}
+                    className="rounded-md border border-border/60 bg-background px-2 py-1.5 text-[13px] text-foreground"
+                  >
+                    {PRIORITY_OPTIONS.map((p) => (
+                      <option key={p} value={p}>{p}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
             </div>
-          </div>
+          )}
+
+          {tab === 'runs' && <TaskRunsTab task={task} />}
         </motion.aside>
       )}
     </AnimatePresence>
