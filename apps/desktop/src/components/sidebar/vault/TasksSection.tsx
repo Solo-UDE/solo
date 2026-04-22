@@ -47,12 +47,14 @@ export const TasksSection: FC = () => {
         onNewPlan={() => setPlanOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
       />
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        {view === 'list' && <TaskListView grouping={grouping} />}
-        {view === 'kanban' && <TaskKanbanView grouping={grouping} />}
-        {view === 'calendar' && <TaskCalendarView />}
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {view === 'list' && <TaskListView grouping={grouping} />}
+          {view === 'kanban' && <TaskKanbanView grouping={grouping} />}
+          {view === 'calendar' && <TaskCalendarView />}
+        </div>
+        <TaskDrawer />
       </div>
-      <TaskDrawer />
       <NewTaskDialog open={newOpen} onClose={() => setNewOpen(false)} />
       <NewPlanDialog open={planOpen} onClose={() => setPlanOpen(false)} />
       <TasksSettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />

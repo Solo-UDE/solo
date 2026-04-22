@@ -34,8 +34,8 @@ export const TaskDrawer: FC = () => {
           exit={{ x: '100%' }}
           transition={{ type: 'spring', stiffness: 380, damping: 38 }}
           className={cn(
-            'absolute right-0 top-0 z-40 flex h-full w-[480px] flex-col',
-            'border-l border-border/60 bg-background shadow-[0_0_40px_-16px_rgba(0,0,0,0.4)]',
+            'flex h-full w-[480px] shrink-0 flex-col',
+            'border-l border-border/60 bg-background shadow-[0_-8px_32px_-16px_rgba(0,0,0,0.3)]',
           )}
         >
           <header className="flex shrink-0 items-center gap-2 border-b border-border/50 px-4 py-3">
