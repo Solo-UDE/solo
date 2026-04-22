@@ -193,6 +193,7 @@ impl TaskStore {
         if let Some(v) = patch.status { task.status = v; }
         if let Some(v) = patch.priority { task.priority = v; }
         if let Some(v) = patch.agent_config { task.agent_config = Some(v); }
+        if let Some(v) = patch.schedule { task.schedule = Some(v); }
         if let Some(v) = patch.catch_up_on_launch { task.catch_up_on_launch = v; }
         task.updated_at = now_ms();
         self.insert(&task)?;     // INSERT OR REPLACE — upsert semantics
@@ -226,6 +227,21 @@ impl TaskStore {
         )?;
         let ids: Vec<String> = stmt
             .query_map([match_expr], |row| row.get::<_, String>(0))?
+            .collect::<Result<_, _>>()?;
+        let mut out = Vec::with_capacity(ids.len());
+        for id in ids {
+            if let Some(t) = load_task_row(&conn, &id)? { out.push(t); }
+        }
+        Ok(out)
+    }
+
+    /// List tasks eligible for scheduling (scheduled field set, status Queued or Done).
+    pub fn list_scheduled(&self) -> TaskResult<Vec<Task>> {
+        let conn = self.conn.lock().expect("poisoned");
+        let mut stmt = conn.prepare(
+            "SELECT id FROM tasks WHERE schedule_json IS NOT NULL AND status IN ('queued','done') ORDER BY updated_at DESC"
+        )?;
+        let ids: Vec<String> = stmt.query_map([], |r| r.get::<_, String>(0))?
             .collect::<Result<_, _>>()?;
         let mut out = Vec::with_capacity(ids.len());
         for id in ids {
@@ -633,5 +649,22 @@ mod tests {
             ..Default::default()
         }).unwrap();
         assert_eq!(updated.agent_config.unwrap().permission_mode, AgentPermissionMode::Bypass);
+    }
+
+    #[test]
+    fn list_scheduled_returns_only_scheduled() {
+        use solo_protocol::{Schedule, PresetKind};
+        let store = TaskStore::open_in_memory().unwrap();
+        let _manual = store.create(draft("no schedule")).unwrap();
+        let scheduled = store.create(draft("will run")).unwrap();
+        store.update(&scheduled.id, TaskPatch {
+            schedule: Some(Schedule::Preset {
+                kind: PresetKind::Daily, hour: 3, minute: 0, weekday: None, next_fire: 0,
+            }),
+            ..Default::default()
+        }).unwrap();
+        let list = store.list_scheduled().unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].id, scheduled.id);
     }
 }
