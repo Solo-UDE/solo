@@ -14,6 +14,7 @@ import { FiltersBar } from '@/components/vault/tasks/FiltersBar';
 import { TaskListView } from '@/components/vault/tasks/TaskListView';
 import { TaskDrawer } from '@/components/vault/tasks/TaskDrawer';
 import { NewTaskDialog } from '@/components/vault/tasks/NewTaskDialog';
+import { NewPlanDialog } from '@/components/vault/tasks/NewPlanDialog';
 import { ReviewModal } from '@/components/vault/tasks/ReviewModal';
 import type { GroupKey } from '@/components/vault/tasks/groupings';
 
@@ -23,6 +24,7 @@ export const TasksSection: FC = () => {
 
   const [grouping, setGrouping] = useState<GroupKey>('status');
   const [newOpen, setNewOpen] = useState(false);
+  const [planOpen, setPlanOpen] = useState(false);
 
   useEffect(() => {
     void load();
@@ -34,12 +36,14 @@ export const TasksSection: FC = () => {
         grouping={grouping}
         onGroupingChange={setGrouping}
         onNewTask={() => setNewOpen(true)}
+        onNewPlan={() => setPlanOpen(true)}
       />
       <div className="min-h-0 flex-1 overflow-y-auto">
         <TaskListView grouping={grouping} />
       </div>
       <TaskDrawer />
       <NewTaskDialog open={newOpen} onClose={() => setNewOpen(false)} />
+      <NewPlanDialog open={planOpen} onClose={() => setPlanOpen(false)} />
       <ReviewModal />
     </div>
   );
