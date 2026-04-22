@@ -190,11 +190,12 @@ pub fn run() {
 
             // Install task allocator agent listeners
             let handle_for_listeners = app.handle().clone();
+            let sm_for_listeners = session_manager.clone();
             tauri::async_runtime::block_on(async {
                 if let Ok(store) = task_commands::get_store_for_setup(&handle_for_listeners).await {
                     use tauri::Manager as _;
                     let map = handle_for_listeners.state::<std::sync::Arc<ExecutorMap>>().inner().clone();
-                    task_executor::install_agent_listeners(&handle_for_listeners, store, map);
+                    task_executor::install_agent_listeners(&handle_for_listeners, store, map, sm_for_listeners);
                 }
             });
 
