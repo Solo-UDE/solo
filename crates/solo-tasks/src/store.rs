@@ -192,6 +192,7 @@ impl TaskStore {
         if let Some(v) = patch.description { task.description = v; }
         if let Some(v) = patch.status { task.status = v; }
         if let Some(v) = patch.priority { task.priority = v; }
+        if let Some(v) = patch.agent_config { task.agent_config = Some(v); }
         if let Some(v) = patch.catch_up_on_launch { task.catch_up_on_launch = v; }
         task.updated_at = now_ms();
         self.insert(&task)?;     // INSERT OR REPLACE — upsert semantics
@@ -278,6 +279,16 @@ impl TaskStore {
             |r| r.get(0),
         ).optional()?;
         Ok(tid)
+    }
+
+    /// Record the worktree id for a run.
+    pub fn record_worktree_for_run(&self, run_id: &str, worktree_id: &str) -> TaskResult<()> {
+        let conn = self.conn.lock().expect("poisoned");
+        conn.execute(
+            "UPDATE task_runs SET worktree_id = ? WHERE id = ?",
+            params![worktree_id, run_id],
+        )?;
+        Ok(())
     }
 
     // ---- internals ------------------------------------------------------
@@ -600,5 +611,27 @@ mod tests {
         let run_id = store.create_run(&t.id).unwrap();
         assert_eq!(store.task_id_for_run(&run_id).unwrap().as_deref(), Some(t.id.as_str()));
         assert_eq!(store.task_id_for_run("nope").unwrap(), None);
+    }
+
+    #[test]
+    fn update_sets_agent_config() {
+        use solo_protocol::{AgentConfig, ExecutionLocation, AgentPermissionMode};
+        let store = TaskStore::open_in_memory().unwrap();
+        let t = store.create(TaskDraft {
+            title: "run".into(), description: String::new(),
+            executor: Executor::Agent, priority: TaskPriority::Medium,
+        }).unwrap();
+        assert!(t.agent_config.is_none());
+
+        let cfg = AgentConfig {
+            permission_mode: AgentPermissionMode::Bypass,
+            execution_location: ExecutionLocation::Worktree,
+            ..Default::default()
+        };
+        let updated = store.update(&t.id, TaskPatch {
+            agent_config: Some(cfg.clone()),
+            ..Default::default()
+        }).unwrap();
+        assert_eq!(updated.agent_config.unwrap().permission_mode, AgentPermissionMode::Bypass);
     }
 }
