@@ -41,6 +41,11 @@ interface TaskStoreState {
   planFromGoal: (goal: string, contextOverride?: string[]) => Promise<string[]>;
   acceptDraft: (id: string) => Promise<void>;
   dismissDraft: (id: string) => Promise<void>;
+  addSubtask: (taskId: string, title: string) => Promise<Task>;
+  toggleSubtask: (taskId: string, subtaskId: string, completed: boolean) => Promise<Task>;
+  renameSubtask: (taskId: string, subtaskId: string, title: string) => Promise<Task>;
+  removeSubtask: (taskId: string, subtaskId: string) => Promise<Task>;
+  reorderSubtasks: (taskId: string, subtaskIds: string[]) => Promise<Task>;
 }
 
 export const useTaskStore = create<TaskStoreState>()(
@@ -174,6 +179,36 @@ export const useTaskStore = create<TaskStoreState>()(
 
     dismissDraft: async (id) => {
       await tasksApi.planDismissDraft(id);
+    },
+
+    addSubtask: async (taskId, title) => {
+      const task = await tasksApi.subtaskAdd(taskId, title);
+      set((s) => { s.tasks.set(task.id, task); });
+      return task;
+    },
+
+    toggleSubtask: async (taskId, subtaskId, completed) => {
+      const task = await tasksApi.subtaskToggle(taskId, subtaskId, completed);
+      set((s) => { s.tasks.set(task.id, task); });
+      return task;
+    },
+
+    renameSubtask: async (taskId, subtaskId, title) => {
+      const task = await tasksApi.subtaskRename(taskId, subtaskId, title);
+      set((s) => { s.tasks.set(task.id, task); });
+      return task;
+    },
+
+    removeSubtask: async (taskId, subtaskId) => {
+      const task = await tasksApi.subtaskRemove(taskId, subtaskId);
+      set((s) => { s.tasks.set(task.id, task); });
+      return task;
+    },
+
+    reorderSubtasks: async (taskId, subtaskIds) => {
+      const task = await tasksApi.subtaskReorder(taskId, subtaskIds);
+      set((s) => { s.tasks.set(task.id, task); });
+      return task;
     },
   })),
 );
