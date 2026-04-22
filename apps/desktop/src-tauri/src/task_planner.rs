@@ -302,6 +302,7 @@ pub async fn plan_from_goal(
                 description: d.description,
                 executor: d.executor,
                 priority: d.priority,
+                subtasks: Vec::new(),
             })
             .map_err(|e| e.to_string())?;
         // Promote to Suggested status (create defaults to Queued)
