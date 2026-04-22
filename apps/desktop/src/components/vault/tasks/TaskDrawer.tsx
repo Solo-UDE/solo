@@ -11,6 +11,11 @@ import { ScheduleTab } from './ScheduleTab';
 import { StatusSelector } from './StatusSelector';
 import { PrioritySelector } from './PrioritySelector';
 import { SubtaskList } from './SubtaskList';
+import { LabelSelector } from './LabelSelector';
+import { LabelBadge } from './LabelBadge';
+import { ProjectSelector } from './ProjectSelector';
+import { CycleSelector } from './CycleSelector';
+import { useLabelStore } from '@/stores/labelStore';
 import { StatusIcon, STATUS_LABEL } from './icons/StatusIcon';
 
 type DrawerTab = 'overview' | 'runs' | 'agent' | 'schedule';
@@ -21,6 +26,11 @@ export const TaskDrawer: FC = () => {
   const select = useTaskStore((s) => s.select);
   const update = useTaskStore((s) => s.update);
   const remove = useTaskStore((s) => s.remove);
+  const addLabel = useTaskStore((s) => s.addLabel);
+  const removeLabel = useTaskStore((s) => s.removeLabel);
+  const setProject = useTaskStore((s) => s.setProject);
+  const setCycle = useTaskStore((s) => s.setCycle);
+  const labels = useLabelStore((s) => s.labels);
   const [tab, setTab] = useState<DrawerTab>('overview');
 
   return (
@@ -98,7 +108,35 @@ export const TaskDrawer: FC = () => {
                   value={task.priority}
                   onChange={(p) => void update(task.id, { priority: p })}
                 />
+                <ProjectSelector
+                  value={task.project_id ?? null}
+                  onChange={(pid) => void setProject(task.id, pid)}
+                />
+                <CycleSelector
+                  value={task.cycle_id ?? null}
+                  onChange={(cid) => void setCycle(task.id, cid)}
+                />
+                <LabelSelector
+                  selected={task.label_ids}
+                  onAdd={(lid) => void addLabel(task.id, lid)}
+                  onRemove={(lid) => void removeLabel(task.id, lid)}
+                />
               </div>
+
+              {task.label_ids.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {task.label_ids.map((lid) => {
+                    const l = labels.get(lid);
+                    return l ? (
+                      <LabelBadge
+                        key={lid}
+                        label={l}
+                        onRemove={() => void removeLabel(task.id, lid)}
+                      />
+                    ) : null;
+                  })}
+                </div>
+              )}
 
               <label className="flex flex-col gap-1 text-[11px] font-medium text-muted-foreground">
                 Description
