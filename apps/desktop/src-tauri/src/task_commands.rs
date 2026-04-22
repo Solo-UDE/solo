@@ -126,6 +126,85 @@ pub async fn task_search(
     store.search(&query).map_err(|e| e.to_string())
 }
 
+// =============================================================================
+// Subtask commands
+// =============================================================================
+
+#[tauri::command]
+pub async fn task_subtask_add(
+    task_id: String,
+    title: String,
+    app: AppHandle,
+    state: State<'_, TaskState>,
+) -> Result<Task, String> {
+    let store = get_store(&state).await?;
+    let task = store.subtask_add(&task_id, title).map_err(|e| e.to_string())?;
+    emit_changed(&app, vec![task.id.clone()]);
+    Ok(task)
+}
+
+#[tauri::command]
+pub async fn task_subtask_toggle(
+    task_id: String,
+    subtask_id: String,
+    completed: bool,
+    app: AppHandle,
+    state: State<'_, TaskState>,
+) -> Result<Task, String> {
+    let store = get_store(&state).await?;
+    let task = store
+        .subtask_toggle(&task_id, &subtask_id, completed)
+        .map_err(|e| e.to_string())?;
+    emit_changed(&app, vec![task.id.clone()]);
+    Ok(task)
+}
+
+#[tauri::command]
+pub async fn task_subtask_rename(
+    task_id: String,
+    subtask_id: String,
+    title: String,
+    app: AppHandle,
+    state: State<'_, TaskState>,
+) -> Result<Task, String> {
+    let store = get_store(&state).await?;
+    let task = store
+        .subtask_rename(&task_id, &subtask_id, title)
+        .map_err(|e| e.to_string())?;
+    emit_changed(&app, vec![task.id.clone()]);
+    Ok(task)
+}
+
+#[tauri::command]
+pub async fn task_subtask_remove(
+    task_id: String,
+    subtask_id: String,
+    app: AppHandle,
+    state: State<'_, TaskState>,
+) -> Result<Task, String> {
+    let store = get_store(&state).await?;
+    let task = store
+        .subtask_remove(&task_id, &subtask_id)
+        .map_err(|e| e.to_string())?;
+    emit_changed(&app, vec![task.id.clone()]);
+    Ok(task)
+}
+
+#[tauri::command]
+pub async fn task_subtask_reorder(
+    task_id: String,
+    ordered_ids: Vec<String>,
+    app: AppHandle,
+    state: State<'_, TaskState>,
+) -> Result<Task, String> {
+    let store = get_store(&state).await?;
+    let task = store
+        .subtask_reorder(&task_id, &ordered_ids)
+        .map_err(|e| e.to_string())?;
+    emit_changed(&app, vec![task.id.clone()]);
+    Ok(task)
+}
+
 #[tauri::command]
 pub async fn task_run(
     id: String,
