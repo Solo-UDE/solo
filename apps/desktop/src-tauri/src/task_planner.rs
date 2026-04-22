@@ -175,6 +175,46 @@ pub async fn collect_git_fragment(app: &AppHandle) -> Option<ContextFragment> {
     Some(ContextFragment::new("git", body))
 }
 
+pub async fn collect_sessions_fragment(_app: &AppHandle) -> Option<ContextFragment> {
+    // Phase 6 fallback: read recent session JSON files from ~/.solo/sessions/.
+    let home = dirs::home_dir()?;
+    let sess_dir = home.join(".solo").join("sessions");
+    let mut entries: Vec<std::path::PathBuf> = std::fs::read_dir(&sess_dir)
+        .ok()?
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.extension().map(|ext| ext == "json").unwrap_or(false))
+        .collect();
+    entries.sort_by_key(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok());
+    entries.reverse();
+    entries.truncate(5);
+    if entries.is_empty() {
+        return None;
+    }
+    let body = entries
+        .iter()
+        .map(|p| {
+            let name = p.file_stem().and_then(|s| s.to_str()).unwrap_or("?");
+            format!("- {}", name)
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    Some(ContextFragment::new("sessions", body))
+}
+
+pub async fn collect_notes_fragment(app: &AppHandle) -> Option<ContextFragment> {
+    // Read the planner_notes field from user-scope settings.
+    let notes = crate::settings_commands::settings_get_planner_notes()
+        .await
+        .ok()?;
+    let notes = notes.trim().to_string();
+    if notes.is_empty() {
+        return None;
+    }
+    let _ = app; // app kept in signature for future use (e.g. project-scope notes)
+    Some(ContextFragment::new("notes", notes))
+}
+
 pub async fn collect_tasks_fragment(store: &Arc<TaskStore>) -> Option<ContextFragment> {
     let existing = store
         .list(&solo_protocol::TaskListFilters::default())
@@ -220,7 +260,9 @@ pub async fn plan_from_goal(
             "skills" => collect_skills_fragment(app).await,
             "git" => collect_git_fragment(app).await,
             "tasks" | "existing_tasks" => collect_tasks_fragment(&store).await,
-            _ => None, // Phase 5 providers end here; "sessions" + "notes" in Phase 6
+            "sessions" => collect_sessions_fragment(app).await,
+            "notes" => collect_notes_fragment(app).await,
+            _ => None,
         };
         if let Some(f) = frag {
             fragments.push(f);

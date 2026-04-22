@@ -211,3 +211,45 @@ pub async fn settings_default_mode(workspace: String) -> Result<PermissionMode, 
     .await
     .map_err(to_err)?
 }
+
+/// Get the planner_notes field from user-scope settings.
+///
+/// planner_notes is personal and always stored at user scope (~/.solo/settings.json),
+/// so no workspace argument is needed.
+#[tauri::command]
+pub async fn settings_get_planner_notes() -> Result<String, String> {
+    let home = dirs::home_dir().ok_or_else(|| "home directory not found".to_string())?;
+    tokio::task::spawn_blocking(move || {
+        let user = settings::load_scope(solo_protocol::SettingsScope::User, &home).map_err(to_err)?;
+        Ok::<String, String>(user.planner_notes)
+    })
+    .await
+    .map_err(to_err)?
+}
+
+/// Set the planner_notes field in user-scope settings.
+#[tauri::command]
+pub async fn settings_set_planner_notes(
+    app: tauri::AppHandle,
+    notes: String,
+) -> Result<(), String> {
+    let home = dirs::home_dir().ok_or_else(|| "home directory not found".to_string())?;
+    let notes_clone = notes.clone();
+    let home_clone = home.clone();
+    tokio::task::spawn_blocking(move || {
+        settings::update_scope(solo_protocol::SettingsScope::User, &home_clone, |s| {
+            s.planner_notes = notes_clone;
+        })
+        .map_err(to_err)
+    })
+    .await
+    .map_err(to_err)??;
+
+    // Emit settings:changed so UI listeners can refresh (best-effort).
+    if let Ok(merged) = tokio::task::spawn_blocking(move || settings::load_merged(&home).map_err(to_err)).await.map_err(to_err) {
+        if let Ok(merged) = merged {
+            let _ = app.emit("backend-event", solo_protocol::BackendEvent::SettingsChanged { settings: merged });
+        }
+    }
+    Ok(())
+}

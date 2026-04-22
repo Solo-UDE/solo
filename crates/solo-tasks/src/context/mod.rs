@@ -10,7 +10,7 @@ pub use fragment::ContextFragment;
 /// that a pure Rust crate can't reference.
 pub type Bundle = Vec<String>;
 
-pub const DEFAULT_BUNDLE: &[&str] = &["vault", "skills", "git", "tasks"];
+pub const DEFAULT_BUNDLE: &[&str] = &["vault", "skills", "git", "tasks", "sessions", "notes"];
 
 /// Total token budget for a single planner call. Fragments beyond this are truncated.
 pub const DEFAULT_TOKEN_BUDGET: usize = 8000;

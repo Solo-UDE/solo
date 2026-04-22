@@ -1,5 +1,5 @@
 import type { FC } from 'react';
-import { Search, Plus, Sparkles } from 'lucide-react';
+import { Search, Plus, Sparkles, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useTaskStore } from '@/stores/taskStore';
 import { GroupByMenu } from './GroupByMenu';
@@ -10,9 +10,16 @@ interface Props {
   readonly onGroupingChange: (k: GroupKey) => void;
   readonly onNewTask: () => void;
   readonly onNewPlan: () => void;
+  readonly onOpenSettings: () => void;
 }
 
-export const FiltersBar: FC<Props> = ({ grouping, onGroupingChange, onNewTask, onNewPlan }) => {
+export const FiltersBar: FC<Props> = ({
+  grouping,
+  onGroupingChange,
+  onNewTask,
+  onNewPlan,
+  onOpenSettings,
+}) => {
   const searchQuery = useTaskStore((s) => s.searchQuery);
   const setSearchQuery = useTaskStore((s) => s.setSearchQuery);
 
@@ -53,6 +60,15 @@ export const FiltersBar: FC<Props> = ({ grouping, onGroupingChange, onNewTask, o
       >
         <Plus className="h-3.5 w-3.5" />
         New task
+      </button>
+      <button
+        type="button"
+        onClick={onOpenSettings}
+        title="Tasks settings"
+        aria-label="Tasks settings"
+        className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground hover:bg-muted/50"
+      >
+        <Settings className="h-3.5 w-3.5" />
       </button>
     </div>
   );

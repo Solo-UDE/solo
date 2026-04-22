@@ -1646,6 +1646,10 @@ pub struct SoloSettings {
     pub skills: SkillsConfig,
     #[serde(default)]
     pub plugins: PluginsConfig,
+    /// Free-form notes the planner injects into every goal-plan run.
+    /// Stored at user scope so it applies across all workspaces.
+    #[serde(default)]
+    pub planner_notes: String,
 }
 
 /// Outcome of a permission check. Mirrors Claude Code's `PermissionResult`.

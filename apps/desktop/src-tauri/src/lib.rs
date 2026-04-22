@@ -457,6 +457,8 @@ pub fn run() {
             settings_commands::settings_get_permissions,
             settings_commands::settings_default_mode,
             settings_commands::permissions_check,
+            settings_commands::settings_get_planner_notes,
+            settings_commands::settings_set_planner_notes,
             // Plan file commands
             plan_commands::plan_new_slug,
             plan_commands::plan_write,

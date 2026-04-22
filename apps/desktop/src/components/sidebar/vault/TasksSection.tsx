@@ -16,6 +16,7 @@ import { TaskDrawer } from '@/components/vault/tasks/TaskDrawer';
 import { NewTaskDialog } from '@/components/vault/tasks/NewTaskDialog';
 import { NewPlanDialog } from '@/components/vault/tasks/NewPlanDialog';
 import { ReviewModal } from '@/components/vault/tasks/ReviewModal';
+import { TasksSettingsModal } from '@/components/vault/tasks/TasksSettingsModal';
 import type { GroupKey } from '@/components/vault/tasks/groupings';
 
 export const TasksSection: FC = () => {
@@ -25,6 +26,7 @@ export const TasksSection: FC = () => {
   const [grouping, setGrouping] = useState<GroupKey>('status');
   const [newOpen, setNewOpen] = useState(false);
   const [planOpen, setPlanOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
     void load();
@@ -37,6 +39,7 @@ export const TasksSection: FC = () => {
         onGroupingChange={setGrouping}
         onNewTask={() => setNewOpen(true)}
         onNewPlan={() => setPlanOpen(true)}
+        onOpenSettings={() => setSettingsOpen(true)}
       />
       <div className="min-h-0 flex-1 overflow-y-auto">
         <TaskListView grouping={grouping} />
@@ -44,6 +47,7 @@ export const TasksSection: FC = () => {
       <TaskDrawer />
       <NewTaskDialog open={newOpen} onClose={() => setNewOpen(false)} />
       <NewPlanDialog open={planOpen} onClose={() => setPlanOpen(false)} />
+      <TasksSettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <ReviewModal />
     </div>
   );
