@@ -135,17 +135,86 @@ fn build_agent_prompt(task: &Task) -> String {
     if !task.subtasks.is_empty() {
         prompt.push_str(
             "\n## Checklist\n\
-             Work through these subtasks in order. Report completion of each \
-             explicitly in your response so the user can tick them off.\n\n",
+             Work through these subtasks in order.\n\n",
         );
         for s in &task.subtasks {
             let mark = if s.completed { "x" } else { " " };
-            prompt.push_str(&format!("- [{mark}] {}\n", s.title));
+            prompt.push_str(&format!(
+                "- [{mark}] (id={id}) {title}\n",
+                id = s.id,
+                title = s.title,
+            ));
         }
-        prompt.push_str("\nDo NOT skip subtasks. Do NOT add new ones.\n");
+        prompt.push_str(
+            "\n**Marking a subtask complete.** When you finish a subtask, output \
+             this marker on its own line, substituting the subtask id from the \
+             list above:\n\
+             \n\
+             `<subtask-done id=\"<id>\" />`\n\
+             \n\
+             Emit the marker immediately after you finish a subtask. You may \
+             emit multiple markers in the same response if you finish several. \
+             Markers referencing unknown ids are silently ignored, so only use \
+             the ids shown above.\n\
+             \n\
+             Do NOT skip subtasks. Do NOT add new ones.\n",
+        );
     }
     prompt.push_str("\n[Run this task. Report progress concisely.]");
     prompt
+}
+
+/// Extract subtask ids from `<subtask-done id="..." />` markers in a
+/// serialized agent message. Tolerant of surrounding whitespace, quotes,
+/// attribute ordering, and JSON-escaped strings (the listener feeds in
+/// `message.to_string()`, so quotes may be `\"`).
+fn parse_subtask_markers(serialized: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let pattern = "<subtask-done";
+    let bytes = serialized.as_bytes();
+    let mut i = 0;
+    while let Some(rel) = serialized[i..].find(pattern) {
+        let start = i + rel + pattern.len();
+        // Find the closing `>` of this tag.
+        let Some(end_rel) = serialized[start..].find('>') else { break; };
+        let tag_inner = &serialized[start..start + end_rel];
+        i = start + end_rel + 1;
+        // Extract id="..." — accept both raw " and JSON-escaped \".
+        if let Some(id) = extract_id_attr(tag_inner) {
+            if !id.is_empty() {
+                out.push(id);
+            }
+        }
+        if i >= bytes.len() { break; }
+    }
+    out
+}
+
+fn extract_id_attr(tag_inner: &str) -> Option<String> {
+    // Case-insensitive search for `id=` then read a quoted value (either
+    // `"..."` or `\"...\"`). Simple state machine keeps us off a regex dep.
+    let lower = tag_inner.to_ascii_lowercase();
+    let at = lower.find("id=")?;
+    let rest = &tag_inner[at + 3..];
+    let bytes = rest.as_bytes();
+    let mut idx = 0;
+    // Optional backslash before the opening quote (JSON-escaped form).
+    if idx < bytes.len() && bytes[idx] == b'\\' { idx += 1; }
+    if idx >= bytes.len() || bytes[idx] != b'"' { return None; }
+    idx += 1;
+    let start = idx;
+    while idx < bytes.len() {
+        let b = bytes[idx];
+        if b == b'\\' && idx + 1 < bytes.len() && bytes[idx + 1] == b'"' {
+            // End of a JSON-escaped value.
+            return Some(rest[start..idx].to_string());
+        }
+        if b == b'"' {
+            return Some(rest[start..idx].to_string());
+        }
+        idx += 1;
+    }
+    None
 }
 
 fn extract_command(tool_name: &str, tool_input: &Value) -> Option<String> {
@@ -316,7 +385,34 @@ pub fn install_agent_listeners(
                 // Task-owned session — existing lifecycle handling.
                 match message_type.as_str() {
                     "assistant" | "tool_use" | "tool_result" => {
-                        let summary = truncate(&message.to_string(), 200);
+                        let serialized = message.to_string();
+                        // Scan for `<subtask-done id="..." />` markers and
+                        // auto-tick. Unknown ids silently fail at the store
+                        // boundary — safe default.
+                        let marker_ids = parse_subtask_markers(&serialized);
+                        if !marker_ids.is_empty() {
+                            let mut changed = false;
+                            for sid in &marker_ids {
+                                match store__.subtask_toggle(&run.task_id, sid, true) {
+                                    Ok(_) => { changed = true; }
+                                    Err(e) => debug!(
+                                        subtask_id = %sid,
+                                        error = %e,
+                                        "subtask marker ignored"
+                                    ),
+                                }
+                            }
+                            if changed {
+                                let _ = app__.emit(
+                                    "backend-event",
+                                    BackendEvent::TasksChanged {
+                                        task_ids: vec![run.task_id.clone()],
+                                    },
+                                );
+                            }
+                        }
+
+                        let summary = truncate(&serialized, 200);
                         let _ = store__.update_run_summary(&run.run_id, &summary);
                         let _ = app__.emit(
                             "backend-event",
@@ -599,4 +695,111 @@ pub async fn cancel_task(
     )
     .await;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_marker_plain() {
+        let ids = parse_subtask_markers("text before <subtask-done id=\"abc-123\" /> text after");
+        assert_eq!(ids, vec!["abc-123"]);
+    }
+
+    #[test]
+    fn parse_marker_json_escaped() {
+        // Message stringified via serde_json::Value::to_string() will use \" inside string fields.
+        let s = r#"{"text":"I did it. <subtask-done id=\"uid-42\" />"}"#;
+        let ids = parse_subtask_markers(s);
+        assert_eq!(ids, vec!["uid-42"]);
+    }
+
+    #[test]
+    fn parse_marker_multiple() {
+        let s = "<subtask-done id=\"a\" /> middle <subtask-done id=\"b\" />";
+        let ids = parse_subtask_markers(s);
+        assert_eq!(ids, vec!["a", "b"]);
+    }
+
+    #[test]
+    fn parse_marker_missing_id_returns_empty() {
+        let ids = parse_subtask_markers("<subtask-done />");
+        assert!(ids.is_empty());
+    }
+
+    #[test]
+    fn parse_marker_no_marker_returns_empty() {
+        let ids = parse_subtask_markers("just some text");
+        assert!(ids.is_empty());
+    }
+
+    #[test]
+    fn parse_marker_case_insensitive_attr() {
+        let ids = parse_subtask_markers("<subtask-done ID=\"upper\" />");
+        assert_eq!(ids, vec!["upper"]);
+    }
+
+    #[test]
+    fn build_prompt_includes_marker_instruction_when_subtasks_present() {
+        let task = solo_protocol::Task {
+            id: "t1".into(),
+            title: "do stuff".into(),
+            description: "d".into(),
+            status: solo_protocol::TaskStatus::Queued,
+            executor: solo_protocol::Executor::Agent,
+            priority: solo_protocol::TaskPriority::Medium,
+            created_at: 0,
+            updated_at: 0,
+            agent_config: None,
+            schedule: None,
+            context_anchors: Vec::new(),
+            runs: Vec::new(),
+            last_error: None,
+            catch_up_on_launch: false,
+            origin: solo_protocol::TaskOrigin::Manual,
+            subtasks: vec![solo_protocol::Subtask {
+                id: "sub-1".into(),
+                title: "first".into(),
+                completed: false,
+                created_at: 0,
+                completed_at: None,
+            }],
+            label_ids: Vec::new(),
+            project_id: None,
+            cycle_id: None,
+        };
+        let prompt = build_agent_prompt(&task);
+        assert!(prompt.contains("## Checklist"));
+        assert!(prompt.contains("(id=sub-1)"));
+        assert!(prompt.contains("<subtask-done"));
+    }
+
+    #[test]
+    fn build_prompt_skips_checklist_when_no_subtasks() {
+        let task = solo_protocol::Task {
+            id: "t1".into(),
+            title: "do stuff".into(),
+            description: "d".into(),
+            status: solo_protocol::TaskStatus::Queued,
+            executor: solo_protocol::Executor::Agent,
+            priority: solo_protocol::TaskPriority::Medium,
+            created_at: 0,
+            updated_at: 0,
+            agent_config: None,
+            schedule: None,
+            context_anchors: Vec::new(),
+            runs: Vec::new(),
+            last_error: None,
+            catch_up_on_launch: false,
+            origin: solo_protocol::TaskOrigin::Manual,
+            subtasks: Vec::new(),
+            label_ids: Vec::new(),
+            project_id: None,
+            cycle_id: None,
+        };
+        let prompt = build_agent_prompt(&task);
+        assert!(!prompt.contains("## Checklist"));
+        assert!(!prompt.contains("<subtask-done"));
+    }
 }
