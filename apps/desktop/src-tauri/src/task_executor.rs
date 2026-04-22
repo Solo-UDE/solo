@@ -276,15 +276,26 @@ pub async fn spawn_agent_for_task(
     // Create the agent session (UUID)
     let session_id = uuid::Uuid::new_v4().to_string();
 
-    // Build session config — set cwd to worktree path when available
-    let session_config = if let Some(ref path) = worktree_path {
-        Some(SessionConfig {
-            cwd: Some(path.clone()),
-            ..Default::default()
-        })
-    } else {
-        None
-    };
+    // Build session config — thread the task's AgentConfig through to the
+    // bridge so the LLM actually honors per-ticket model/provider/skills/
+    // permission-mode preferences. Without this, the bridge uses global
+    // defaults regardless of what the ticket asked for.
+    let session_config = Some(SessionConfig {
+        cwd: worktree_path.clone(),
+        provider: cfg.provider.clone(),
+        model: cfg.model.clone(),
+        // Skill allow-list → bridge's allowed_tools.
+        allowed_tools: cfg.skills.clone(),
+        // Permission-mode hints: accept_enabled for AcceptEdits/Bypass,
+        // plan_enabled for Plan. Bypass also implies accept-all; deny-list
+        // enforcement happens in the listener regardless.
+        accept_enabled: Some(matches!(
+            cfg.permission_mode,
+            AgentPermissionMode::AcceptEdits | AgentPermissionMode::Bypass
+        )),
+        plan_enabled: Some(cfg.permission_mode == AgentPermissionMode::Plan),
+        ..Default::default()
+    });
 
     session_manager
         .create_session(&session_id, session_config)
@@ -773,6 +784,41 @@ mod tests {
         assert!(prompt.contains("## Checklist"));
         assert!(prompt.contains("(id=sub-1)"));
         assert!(prompt.contains("<subtask-done"));
+    }
+
+    #[test]
+    fn build_prompt_references_marker_ids_in_checklist() {
+        // Regression: ensure each checklist line contains the subtask id so
+        // the agent can cite it back in <subtask-done id="..." /> markers.
+        let task = solo_protocol::Task {
+            id: "t1".into(),
+            title: "multi".into(),
+            description: "d".into(),
+            status: solo_protocol::TaskStatus::Queued,
+            executor: solo_protocol::Executor::Agent,
+            priority: solo_protocol::TaskPriority::Medium,
+            created_at: 0, updated_at: 0,
+            agent_config: None, schedule: None,
+            context_anchors: Vec::new(), runs: Vec::new(),
+            last_error: None, catch_up_on_launch: false,
+            origin: solo_protocol::TaskOrigin::Manual,
+            subtasks: vec![
+                solo_protocol::Subtask {
+                    id: "alpha".into(), title: "a".into(), completed: true,
+                    created_at: 0, completed_at: Some(1),
+                },
+                solo_protocol::Subtask {
+                    id: "beta".into(), title: "b".into(), completed: false,
+                    created_at: 0, completed_at: None,
+                },
+            ],
+            label_ids: Vec::new(), project_id: None, cycle_id: None,
+        };
+        let prompt = build_agent_prompt(&task);
+        assert!(prompt.contains("(id=alpha)"));
+        assert!(prompt.contains("(id=beta)"));
+        assert!(prompt.contains("- [x]"), "completed subtask renders with [x]");
+        assert!(prompt.contains("- [ ]"), "incomplete subtask renders with [ ]");
     }
 
     #[test]
