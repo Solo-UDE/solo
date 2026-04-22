@@ -509,7 +509,7 @@ The spec is large but cohesive. The implementation plan will land it in 6 sequen
 
 | Phase | Scope | Exit criteria |
 |---|---|---|
-| **1 · Foundation** | Protocol types, `solo-tasks` crate skeleton, SQLite store + FTS, `task_commands.rs` for CRUD, `TasksAllocatorTab` with list view only, manual tasks end-to-end (executor=manual, no schedule, no agent) | Can create/edit/delete/search manual tasks in the UI |
+| **1 · Foundation** ✅ | Protocol types, `solo-tasks` crate skeleton, SQLite store + FTS, `task_commands.rs` for CRUD, `TasksAllocatorTab` with list view only, manual tasks end-to-end (executor=manual, no schedule, no agent) | Can create/edit/delete/search manual tasks in the UI — **shipped 2026-04-21 on `feat/dmg`, plan `docs/superpowers/plans/2026-04-21-task-allocator-phase-1-foundation.md`** |
 | **2 · Agent executor (main workspace)** | Executor for `executor=Agent, execution=main, permission=ask`; spawn existing `agent_create_session`; stream run events; Runs tab in drawer | Click Run → agent session spawns → outcome captured |
 | **3 · Worktree + safety** | Worktree-mode execution; deny-list enforcement (global + per-task); network allow-list plumbing (advisory); Review modal with Merge / Discard / Open PR | Scheduled-style tasks can run in worktree with bypass mode + safety gates |
 | **4 · Scheduler** | Cron (`croner` crate), schedule editor UI (presets + raw), event bus (session-ended only), rate limiter, catch-up, queueing when MAX_ACTIVE_SESSIONS reached | Daily/cron tasks fire correctly; event trigger fires proactive with rate limit |
