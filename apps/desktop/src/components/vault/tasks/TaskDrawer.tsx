@@ -6,11 +6,12 @@ import { useTaskStore } from '@/stores/taskStore';
 import type { Task, TaskPriority, TaskStatus } from '@/lib/tauri/tasks';
 import { RunButton } from './RunButton';
 import { TaskRunsTab } from './TaskRunsTab';
+import { AgentConfigTab } from './AgentConfigTab';
 
 const STATUS_OPTIONS: TaskStatus[] = ['queued', 'running', 'needs_review', 'done', 'failed', 'archived'];
 const PRIORITY_OPTIONS: TaskPriority[] = ['low', 'medium', 'high', 'urgent'];
 
-type DrawerTab = 'overview' | 'runs';
+type DrawerTab = 'overview' | 'runs' | 'agent';
 
 export const TaskDrawer: FC = () => {
   const taskId = useTaskStore((s) => s.selectedTaskId);
@@ -55,7 +56,10 @@ export const TaskDrawer: FC = () => {
           </header>
 
           <nav className="flex shrink-0 gap-1 border-b border-border/50 px-3 py-1.5">
-            {(['overview', 'runs'] as const).map((t) => (
+            {(task.executor === 'agent'
+              ? (['overview', 'runs', 'agent'] as const)
+              : (['overview', 'runs'] as const)
+            ).map((t) => (
               <button
                 key={t}
                 type="button"
@@ -122,6 +126,7 @@ export const TaskDrawer: FC = () => {
           )}
 
           {tab === 'runs' && <TaskRunsTab task={task} />}
+          {tab === 'agent' && task.executor === 'agent' && <AgentConfigTab task={task} />}
         </motion.aside>
       )}
     </AnimatePresence>
