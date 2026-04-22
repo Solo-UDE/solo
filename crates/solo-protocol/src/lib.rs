@@ -917,6 +917,29 @@ pub enum RunOutcome {
     Cancelled,
 }
 
+/// A checklist item on a `Task`. Order is the containing `Vec`'s index — there
+/// is no `position` field. Reordering is a full array rewrite via
+/// `task_subtask_reorder`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct Subtask {
+    pub id: String,
+    pub title: String,
+    pub completed: bool,
+    pub created_at: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub completed_at: Option<i64>,
+}
+
+/// Payload shape for creating a subtask via `TaskDraft.subtasks` or the
+/// dedicated `task_subtask_add` command. Server assigns id/timestamps.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct SubtaskDraft {
+    pub title: String,
+}
+
 /// How the agent task execution session is constrained.
 /// Distinct from the settings-level `PermissionMode` (which controls the
 /// interactive agent permission pipeline). This type governs per-task
@@ -1058,6 +1081,10 @@ pub struct Task {
     #[serde(default)]
     pub catch_up_on_launch: bool,
     pub origin: TaskOrigin,
+    /// Ordered checklist items. Defaults to empty for tasks created before the
+    /// subtask feature; `ALTER TABLE ... DEFAULT '[]'` covers existing rows.
+    #[serde(default)]
+    pub subtasks: Vec<Subtask>,
 }
 
 /// Filter applied on `task_list`.
@@ -1086,6 +1113,9 @@ pub struct TaskDraft {
     pub description: String,
     pub executor: Executor,
     pub priority: TaskPriority,
+    /// Optional initial subtasks. Each becomes a `Subtask` with a server-assigned id.
+    #[serde(default)]
+    pub subtasks: Vec<SubtaskDraft>,
 }
 
 /// Partial update for `task_update` — any `Some` field is written; `None` leaves alone.
@@ -1113,6 +1143,11 @@ pub struct TaskPatch {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub schedule: Option<Schedule>,
+    /// Bulk-replace subtasks. Rarely used from the UI (we prefer fine-grained
+    /// `task_subtask_*` commands); kept for completeness.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub subtasks: Option<Vec<Subtask>>,
 }
 
 // =============================================================================
