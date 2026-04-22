@@ -823,6 +823,175 @@ pub struct VoiceModelProgress {
 }
 
 // =============================================================================
+// Task Allocator
+// =============================================================================
+
+/// Lifecycle status of a task. Phase 1 uses a subset; later phases activate
+/// the remainder without enum changes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "snake_case")]
+pub enum TaskStatus {
+    /// LLM-proposed draft awaiting user accept/dismiss (Phase 5).
+    Suggested,
+    /// Accepted and ready to run (manual) or waiting for next fire (scheduled).
+    Queued,
+    /// Currently executing (Phase 2+).
+    Running,
+    /// Agent finished; awaiting user review (Phase 3+).
+    NeedsReview,
+    /// Completed successfully or ticked off manually.
+    Done,
+    /// Execution or scheduling failed.
+    Failed,
+    /// User-archived.
+    Archived,
+}
+
+/// Who executes the task. Phase 1 ships `Manual` only; `Agent` activates in Phase 2.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "snake_case")]
+pub enum Executor {
+    Manual,
+    Agent,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "snake_case")]
+pub enum TaskPriority {
+    Low,
+    Medium,
+    High,
+    Urgent,
+}
+
+/// Where a task came from. Distinguishes user-authored vs planner-emitted.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(tag = "kind", content = "data", rename_all = "snake_case")]
+pub enum TaskOrigin {
+    Manual,
+    /// goal-plan id — the submission that produced the batch (Phase 5).
+    GoalPlan(String),
+    Proactive,
+}
+
+/// Planner-attached tags enabling the "Context anchor" grouping (§7 of spec).
+/// Phase 1 accepts the enum but does not produce any values — the UI renders
+/// whatever is present.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(tag = "kind", content = "id", rename_all = "snake_case")]
+pub enum ContextAnchor {
+    VaultEntry(String),
+    Skill(String),
+    Branch(String),
+    File(String),
+    Session(String),
+    Topic(String),
+}
+
+/// A single execution of a task. Populated by the Executor (Phase 2+). Phase 1
+/// persists an empty `Vec<TaskRun>` on every task.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct TaskRun {
+    pub id: String,
+    pub started_at: i64,
+    pub ended_at: Option<i64>,
+    pub outcome: RunOutcome,
+    pub session_id: Option<String>,
+    pub worktree_id: Option<String>,
+    pub summary: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "snake_case")]
+pub enum RunOutcome {
+    Running,
+    Succeeded,
+    Failed,
+    Cancelled,
+}
+
+/// The core task entity. `agent_config` + `schedule` are `Option` so Phase 1
+/// (manual-only) persists `None` without schema churn.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct Task {
+    pub id: String,
+    pub title: String,
+    pub description: String,
+    pub status: TaskStatus,
+    pub executor: Executor,
+    pub priority: TaskPriority,
+    pub created_at: i64,
+    pub updated_at: i64,
+
+    /// `None` for manual tasks (Phase 1). Activated in Phase 2.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "unknown")]
+    pub agent_config: Option<serde_json::Value>,
+    /// `None` for one-shot tasks. Activated in Phase 4.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "unknown")]
+    pub schedule: Option<serde_json::Value>,
+
+    #[serde(default)]
+    pub context_anchors: Vec<ContextAnchor>,
+    #[serde(default)]
+    pub runs: Vec<TaskRun>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_error: Option<String>,
+    #[serde(default)]
+    pub catch_up_on_launch: bool,
+    pub origin: TaskOrigin,
+}
+
+/// Filter applied on `task_list`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct TaskListFilters {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<Vec<TaskStatus>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub executor: Option<Executor>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub priority: Option<Vec<TaskPriority>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub query: Option<String>,
+}
+
+/// Payload for `task_create` — minimal fields; server fills id/timestamps.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct TaskDraft {
+    pub title: String,
+    pub description: String,
+    pub executor: Executor,
+    pub priority: TaskPriority,
+}
+
+/// Partial update for `task_update` — any `Some` field is written; `None` leaves alone.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct TaskPatch {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<TaskStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub priority: Option<TaskPriority>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub catch_up_on_launch: Option<bool>,
+}
+
+// =============================================================================
 // Backend Events (sent from Rust to TypeScript)
 // =============================================================================
 
