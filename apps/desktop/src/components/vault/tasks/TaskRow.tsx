@@ -1,5 +1,5 @@
 import type { FC, ComponentType } from 'react';
-import { Bot, User, Circle, CircleDot, CheckCircle2, XCircle, Archive } from 'lucide-react';
+import { Bot, User, Circle, CircleDot, CheckCircle2, XCircle, Archive, Check, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Task, TaskStatus, TaskPriority, Executor } from '@/lib/tauri/tasks';
 import { useTaskStore } from '@/stores/taskStore';
@@ -32,6 +32,8 @@ export const TaskRow: FC<Props> = ({ task, isSelected, onSelect, onToggleDone })
   const StatusIcon = STATUS_ICON[task.status];
   const isDone = task.status === 'done';
   const isRunning = useTaskStore((s) => s.runningTasks.has(task.id));
+  const accept = useTaskStore((s) => s.acceptDraft);
+  const dismiss = useTaskStore((s) => s.dismissDraft);
   return (
     <button
       type="button"
@@ -43,23 +45,44 @@ export const TaskRow: FC<Props> = ({ task, isSelected, onSelect, onToggleDone })
         isSelected && 'border-border/70 bg-card shadow-[0_8px_16px_-14px_rgba(0,0,0,0.35)]',
       )}
     >
-      {/* status / tick */}
-      <span
-        role="checkbox"
-        aria-checked={isDone}
-        tabIndex={0}
-        onClick={(e) => {
-          e.stopPropagation();
-          onToggleDone(task.id, isDone ? 'queued' : 'done');
-        }}
-        className={cn(
-          'grid h-5 w-5 shrink-0 place-items-center rounded-full text-muted-foreground',
-          'hover:text-foreground',
-          isDone && 'text-green-500',
-        )}
-      >
-        <StatusIcon className="h-4 w-4" />
-      </span>
+      {/* status / tick or accept-dismiss for suggested */}
+      {task.status === 'suggested' ? (
+        <div className="flex shrink-0 gap-1">
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); void accept(task.id); }}
+            className="grid h-5 w-5 place-items-center rounded-full border border-green-500/30 bg-green-500/10 text-green-600 hover:bg-green-500/20"
+            aria-label="Accept draft"
+          >
+            <Check className="h-3 w-3" />
+          </button>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); void dismiss(task.id); }}
+            className="grid h-5 w-5 place-items-center rounded-full border border-border/50 text-muted-foreground hover:bg-muted/50"
+            aria-label="Dismiss draft"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </div>
+      ) : (
+        <span
+          role="checkbox"
+          aria-checked={isDone}
+          tabIndex={0}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleDone(task.id, isDone ? 'queued' : 'done');
+          }}
+          className={cn(
+            'grid h-5 w-5 shrink-0 place-items-center rounded-full text-muted-foreground',
+            'hover:text-foreground',
+            isDone && 'text-green-500',
+          )}
+        >
+          <StatusIcon className="h-4 w-4" />
+        </span>
+      )}
 
       {/* title + description preview */}
       <span className="min-w-0 flex-1">
