@@ -15,6 +15,7 @@ use tracing::{debug, info};
 
 use crate::task_executor::{spawn_agent_for_task, cancel_task, ExecutorMap};
 use crate::agent::SessionManager;
+use crate::task_planner::{plan_from_goal as planner_run, ProactiveGate};
 
 // =============================================================================
 // State
@@ -274,4 +275,86 @@ pub async fn task_schedule_preview(
         .map(|d| i64::try_from(d.as_millis()).unwrap_or(0))
         .unwrap_or(0);
     solo_tasks::next_fires(&schedule, now_ms, 5).map_err(|e| e.to_string())
+}
+
+// =============================================================================
+// Phase 5 — Planner commands
+// =============================================================================
+
+#[tauri::command]
+pub async fn plan_from_goal(
+    goal: String,
+    context_override: Option<Vec<String>>,
+    app: AppHandle,
+    state: State<'_, TaskState>,
+    session_manager: State<'_, Arc<SessionManager>>,
+) -> Result<Vec<String>, String> {
+    let store = get_store(&state).await?;
+    let bundle = context_override.unwrap_or_default();
+    let draft_ids = planner_run(
+        &app,
+        store,
+        session_manager.inner().clone(),
+        goal,
+        bundle,
+    ).await?;
+    let _ = app.emit("backend-event", solo_protocol::BackendEvent::TasksChanged {
+        task_ids: draft_ids.clone(),
+    });
+    Ok(draft_ids)
+}
+
+#[tauri::command]
+pub async fn plan_accept_draft(
+    id: String,
+    app: AppHandle,
+    state: State<'_, TaskState>,
+) -> Result<(), String> {
+    let store = get_store(&state).await?;
+    store.update(&id, solo_protocol::TaskPatch {
+        status: Some(solo_protocol::TaskStatus::Queued),
+        ..Default::default()
+    }).map_err(|e| e.to_string())?;
+    let _ = app.emit("backend-event", solo_protocol::BackendEvent::TasksChanged {
+        task_ids: vec![id],
+    });
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn plan_dismiss_draft(
+    id: String,
+    app: AppHandle,
+    state: State<'_, TaskState>,
+) -> Result<(), String> {
+    let store = get_store(&state).await?;
+    store.delete(&id).map_err(|e| e.to_string())?;
+    let _ = app.emit("backend-event", solo_protocol::BackendEvent::TasksChanged {
+        task_ids: vec![id],
+    });
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn plan_proactive(
+    app: AppHandle,
+    state: State<'_, TaskState>,
+    session_manager: State<'_, Arc<SessionManager>>,
+    gate: State<'_, Arc<ProactiveGate>>,
+) -> Result<Vec<String>, String> {
+    if !gate.try_fire().await {
+        return Err("proactive planner rate-limited (10 min min)".into());
+    }
+    let store = get_store(&state).await?;
+    let draft_ids = planner_run(
+        &app,
+        store,
+        session_manager.inner().clone(),
+        "Based on my recent activity, suggest 3 useful next tasks.".to_string(),
+        Vec::new(), // use default bundle
+    ).await?;
+    let _ = app.emit("backend-event", solo_protocol::BackendEvent::TasksChanged {
+        task_ids: draft_ids.clone(),
+    });
+    Ok(draft_ids)
 }

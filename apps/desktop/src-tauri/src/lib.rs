@@ -69,6 +69,7 @@ use stats_commands::StatsState;
 use tauri::Emitter;
 use task_commands::TaskState;
 use task_executor::ExecutorMap;
+use task_planner::ProactiveGate;
 use terminal_commands::TerminalState;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use vault_commands::VaultState;
@@ -314,6 +315,7 @@ pub fn run() {
         .manage(VaultState::new())
         .manage(TaskState::new())
         .manage(ExecutorMap::new())
+        .manage(ProactiveGate::new())
         .manage(VoiceState::new())
         .manage(std::sync::Arc::new(voice::hud::HudState::new()))
         .manage(StatsState::new())
@@ -536,6 +538,10 @@ pub fn run() {
             task_commands::task_review_discard,
             task_commands::task_review_open_pr,
             task_commands::task_schedule_preview,
+            task_commands::plan_from_goal,
+            task_commands::plan_accept_draft,
+            task_commands::plan_dismiss_draft,
+            task_commands::plan_proactive,
             // Update commands
             update_commands::check_for_update,
             update_commands::install_update,
