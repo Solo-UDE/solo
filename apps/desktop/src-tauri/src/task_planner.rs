@@ -319,7 +319,13 @@ pub async fn plan_from_goal(
     Ok(ids)
 }
 
-// Wait for an agent:message with type=result for this session.
+// Listen for agent:message events, accumulate assistant text, and return it
+// when the session emits its terminal `result` message. The agent-bridge
+// shape per `BridgeAgentMessage` is:
+//   - { type: "text", content: "..." }          ← assistant chunks we concatenate
+//   - { type: "tool_use" | "thinking" | ... }   ← ignored
+//   - { type: "result" }                        ← terminal marker (no `result` field)
+//   - { type: "error", content: "..." }         ← abort
 async fn wait_for_result(
     app: &AppHandle,
     session_id: &str,
@@ -328,9 +334,12 @@ async fn wait_for_result(
     use tauri::Listener as _;
     let (tx, rx) = tokio::sync::oneshot::channel::<String>();
     let tx = std::sync::Arc::new(Mutex::new(Some(tx)));
+    let buf = std::sync::Arc::new(Mutex::new(String::new()));
     let sid = session_id.to_string();
+
     let handle = app.listen("agent:message", move |event| {
         let tx_c = tx.clone();
+        let buf_c = buf.clone();
         let sid_c = sid.clone();
         let payload = event.payload().to_string();
         tauri::async_runtime::spawn(async move {
@@ -346,16 +355,32 @@ async fn wait_for_result(
             let Some(msg) = v.get("message") else {
                 return;
             };
-            if msg.get("type").and_then(|x| x.as_str()) != Some("result") {
-                return;
-            }
-            let result_str = msg
-                .get("result")
-                .and_then(|x| x.as_str())
-                .unwrap_or("")
-                .to_string();
-            if let Some(tx) = tx_c.lock().await.take() {
-                let _ = tx.send(result_str);
+            let msg_type = msg.get("type").and_then(|x| x.as_str()).unwrap_or("");
+
+            match msg_type {
+                "text" => {
+                    if let Some(content) = msg.get("content").and_then(|x| x.as_str()) {
+                        buf_c.lock().await.push_str(content);
+                    }
+                }
+                "result" => {
+                    let collected = buf_c.lock().await.clone();
+                    if let Some(tx) = tx_c.lock().await.take() {
+                        let _ = tx.send(collected);
+                    }
+                }
+                "error" => {
+                    let content = msg
+                        .get("content")
+                        .and_then(|x| x.as_str())
+                        .unwrap_or("agent error")
+                        .to_string();
+                    // Send the error text as the "result" so parse_drafts can surface it
+                    if let Some(tx) = tx_c.lock().await.take() {
+                        let _ = tx.send(format!("ERROR: {content}"));
+                    }
+                }
+                _ => {}
             }
         });
     });
