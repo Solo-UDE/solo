@@ -233,6 +233,53 @@ impl TaskStore {
         Ok(out)
     }
 
+    /// Insert a new Running `task_run`, return its id.
+    pub fn create_run(&self, task_id: &str) -> TaskResult<String> {
+        let conn = self.conn.lock().expect("poisoned");
+        let id = Uuid::new_v4().to_string();
+        conn.execute(
+            "INSERT INTO task_runs(id, task_id, started_at, outcome) VALUES(?,?,?,?)",
+            params![id, task_id, now_ms(), run_outcome_str(RunOutcome::Running)],
+        )?;
+        Ok(id)
+    }
+
+    /// Stream a progress summary into the live run (overwrites summary).
+    pub fn update_run_summary(&self, run_id: &str, summary: &str) -> TaskResult<()> {
+        let conn = self.conn.lock().expect("poisoned");
+        conn.execute(
+            "UPDATE task_runs SET summary = ? WHERE id = ?",
+            params![summary, run_id],
+        )?;
+        Ok(())
+    }
+
+    /// Mark a run ended with final outcome + summary.
+    pub fn end_run(
+        &self,
+        run_id: &str,
+        outcome: RunOutcome,
+        summary: Option<&str>,
+    ) -> TaskResult<()> {
+        let conn = self.conn.lock().expect("poisoned");
+        conn.execute(
+            "UPDATE task_runs SET ended_at = ?, outcome = ?, summary = COALESCE(?, summary) WHERE id = ?",
+            params![now_ms(), run_outcome_str(outcome), summary, run_id],
+        )?;
+        Ok(())
+    }
+
+    /// Resolve the task that owns a run.
+    pub fn task_id_for_run(&self, run_id: &str) -> TaskResult<Option<String>> {
+        let conn = self.conn.lock().expect("poisoned");
+        let tid: Option<String> = conn.query_row(
+            "SELECT task_id FROM task_runs WHERE id = ?",
+            [run_id],
+            |r| r.get(0),
+        ).optional()?;
+        Ok(tid)
+    }
+
     // ---- internals ------------------------------------------------------
 
     fn insert(&self, task: &Task) -> TaskResult<()> {
@@ -395,7 +442,6 @@ fn run_outcome_from(s: &str) -> TaskResult<RunOutcome> {
     })
 }
 
-#[allow(unused)]
 fn run_outcome_str(o: RunOutcome) -> &'static str {
     match o {
         RunOutcome::Running   => "running",
@@ -531,5 +577,28 @@ mod tests {
         let hits = store.search("auth").unwrap();
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].title, "refactor the authentication module");
+    }
+
+    #[test]
+    fn create_and_end_run_updates_outcome() {
+        let store = TaskStore::open_in_memory().unwrap();
+        let t = store.create(draft("x")).unwrap();
+        let run_id = store.create_run(&t.id).unwrap();
+        store.update_run_summary(&run_id, "halfway").unwrap();
+        store.end_run(&run_id, RunOutcome::Succeeded, Some("done ok")).unwrap();
+        let got = store.get(&t.id).unwrap();
+        assert_eq!(got.runs.len(), 1);
+        assert!(matches!(got.runs[0].outcome, RunOutcome::Succeeded));
+        assert_eq!(got.runs[0].summary.as_deref(), Some("done ok"));
+        assert!(got.runs[0].ended_at.is_some());
+    }
+
+    #[test]
+    fn task_id_for_run_resolves() {
+        let store = TaskStore::open_in_memory().unwrap();
+        let t = store.create(draft("y")).unwrap();
+        let run_id = store.create_run(&t.id).unwrap();
+        assert_eq!(store.task_id_for_run(&run_id).unwrap().as_deref(), Some(t.id.as_str()));
+        assert_eq!(store.task_id_for_run("nope").unwrap(), None);
     }
 }
