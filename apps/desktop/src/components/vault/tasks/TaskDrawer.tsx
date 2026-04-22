@@ -3,17 +3,15 @@ import { X, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
 import { useTaskStore } from '@/stores/taskStore';
-import type { Task, TaskPriority, TaskStatus } from '@/lib/tauri/tasks';
-import { SelectDropdown } from '@/components/settings/controls/SelectDropdown';
+import type { Task } from '@/lib/tauri/tasks';
 import { RunButton } from './RunButton';
 import { TaskRunsTab } from './TaskRunsTab';
 import { AgentConfigTab } from './AgentConfigTab';
 import { ScheduleTab } from './ScheduleTab';
-
-const STATUS_OPTIONS: TaskStatus[] = ['queued', 'running', 'needs_review', 'done', 'failed', 'archived'];
-const PRIORITY_OPTIONS: TaskPriority[] = ['low', 'medium', 'high', 'urgent'];
-
-const pretty = (v: string) => v.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
+import { StatusSelector } from './StatusSelector';
+import { PrioritySelector } from './PrioritySelector';
+import { SubtaskList } from './SubtaskList';
+import { StatusIcon, STATUS_LABEL } from './icons/StatusIcon';
 
 type DrawerTab = 'overview' | 'runs' | 'agent' | 'schedule';
 
@@ -80,8 +78,8 @@ export const TaskDrawer: FC = () => {
           </nav>
 
           {tab === 'overview' && (
-            <div className="min-h-0 flex-1 overflow-y-auto p-4">
-              <label className="mb-4 flex flex-col gap-1 text-[11px] font-medium text-muted-foreground">
+            <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
+              <label className="flex flex-col gap-1 text-[11px] font-medium text-muted-foreground">
                 Title
                 <input
                   value={task.title}
@@ -90,7 +88,19 @@ export const TaskDrawer: FC = () => {
                 />
               </label>
 
-              <label className="mb-4 flex flex-col gap-1 text-[11px] font-medium text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-2">
+                <StatusSelector
+                  value={task.status}
+                  onChange={(s) => void update(task.id, { status: s })}
+                  exclude={['suggested']}
+                />
+                <PrioritySelector
+                  value={task.priority}
+                  onChange={(p) => void update(task.id, { priority: p })}
+                />
+              </div>
+
+              <label className="flex flex-col gap-1 text-[11px] font-medium text-muted-foreground">
                 Description
                 <textarea
                   wrap="soft"
@@ -101,24 +111,7 @@ export const TaskDrawer: FC = () => {
                 />
               </label>
 
-              <div className="grid grid-cols-2 gap-3">
-                <label className="flex flex-col gap-1 text-[11px] font-medium text-muted-foreground">
-                  Status
-                  <SelectDropdown
-                    value={task.status}
-                    options={STATUS_OPTIONS.map((s) => ({ label: pretty(s), value: s }))}
-                    onChange={(v) => void update(task.id, { status: v })}
-                  />
-                </label>
-                <label className="flex flex-col gap-1 text-[11px] font-medium text-muted-foreground">
-                  Priority
-                  <SelectDropdown
-                    value={task.priority}
-                    options={PRIORITY_OPTIONS.map((p) => ({ label: pretty(p), value: p }))}
-                    onChange={(v) => void update(task.id, { priority: v })}
-                  />
-                </label>
-              </div>
+              <SubtaskList task={task} />
             </div>
           )}
 
@@ -133,9 +126,12 @@ export const TaskDrawer: FC = () => {
 
 const Detail: FC<{ task: Task }> = ({ task }) => (
   <div className="min-w-0 flex-1">
-    <div className="truncate text-[13px] font-semibold">{task.title || 'Untitled'}</div>
+    <div className="flex items-center gap-1.5 truncate text-[13px] font-semibold">
+      <StatusIcon status={task.status} size={13} />
+      <span className="truncate">{task.title || 'Untitled'}</span>
+    </div>
     <div className="text-[10px] text-muted-foreground">
-      {task.executor === 'agent' ? 'Agent · ' : 'Manual · '}{task.status.replace(/_/g, ' ')}
+      {task.executor === 'agent' ? 'Agent · ' : 'Manual · '}{STATUS_LABEL[task.status]}
     </div>
   </div>
 );
