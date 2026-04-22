@@ -111,9 +111,13 @@ export const SelectContent = forwardRef<
       )}
       {...props}
     >
-      <SelectScrollUpButton />
-      <Viewport className="p-1">{children}</Viewport>
-      <SelectScrollDownButton />
+      {/*
+       * Radix Viewport handles scroll natively — we drop the custom
+       * SelectScrollUp/DownButton because they render unconditionally in
+       * this impl and leave visible chevron artifacts at the top/bottom of
+       * short menus. Lists >~10 items will scroll via max-height + overflow.
+       */}
+      <Viewport className="max-h-[18rem] overflow-y-auto p-1">{children}</Viewport>
     </Content>
   </Portal>
 ));

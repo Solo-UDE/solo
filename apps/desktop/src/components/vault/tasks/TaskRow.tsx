@@ -76,7 +76,7 @@ export const TaskRow: FC<Props> = ({ task, isSelected, onSelect, onToggleDone })
           onKeyDown={onKey}
           aria-selected={isSelected}
           className={cn(
-            'group flex w-full cursor-pointer select-none items-center gap-3 rounded-[10px] border border-transparent px-3 py-2 text-left outline-none transition-all duration-200',
+            'group flex h-10 w-full cursor-pointer select-none items-center gap-3 rounded-[10px] border border-transparent px-3 text-left outline-none transition-all duration-200',
             'hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-primary/20',
             isSelected && 'border-border/40 bg-card shadow-[0_4px_12px_-8px_rgba(0,0,0,0.25)]',
           )}
@@ -120,16 +120,12 @@ export const TaskRow: FC<Props> = ({ task, isSelected, onSelect, onToggleDone })
             </span>
           )}
 
-          {/* title + description preview */}
-          <span className="min-w-0 flex-1">
-            <span className={cn('block truncate text-[13px] font-medium', isDone && 'text-muted-foreground line-through')}>
-              {task.title}
-            </span>
-            {task.description && (
-              <span className="block truncate text-[11px] text-muted-foreground">
-                {firstLine(task.description)}
-              </span>
-            )}
+          {/* title — description intentionally omitted from row so heights stay uniform */}
+          <span className={cn(
+            'min-w-0 flex-1 truncate text-[13px] font-medium',
+            isDone && 'text-muted-foreground line-through',
+          )}>
+            {task.title}
           </span>
 
           {/* priority pill */}
@@ -239,11 +235,6 @@ const ExecutorGlyph: FC<{ executor: Executor }> = ({ executor }) => (
     {executor === 'agent' ? <Bot className="h-3 w-3" /> : <User className="h-3 w-3" />}
   </span>
 );
-
-function firstLine(s: string): string {
-  const idx = s.indexOf('\n');
-  return idx === -1 ? s : s.slice(0, idx);
-}
 
 function relativeTime(ms: number | bigint): string {
   const diff = Number(Date.now()) - Number(ms);
