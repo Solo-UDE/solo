@@ -3,6 +3,9 @@ import { ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
 import { useTaskStore } from '@/stores/taskStore';
+import { useLabelStore } from '@/stores/labelStore';
+import { useProjectStore } from '@/stores/projectStore';
+import { useCycleStore } from '@/stores/cycleStore';
 import { TaskRow } from './TaskRow';
 import { groupTasks, type GroupKey } from './groupings';
 import { StatusIcon } from './icons/StatusIcon';
@@ -39,8 +42,14 @@ export const TaskListView: FC<Props> = ({ grouping }) => {
   const select = useTaskStore((s) => s.select);
   const update = useTaskStore((s) => s.update);
 
+  const labels = useLabelStore((s) => s.labels);
+  const projects = useProjectStore((s) => s.projects);
+  const cycles = useCycleStore((s) => s.cycles);
   const tasks = useMemo(() => Array.from(tasksMap.values()), [tasksMap]);
-  const groups = useMemo(() => groupTasks(tasks, grouping), [tasks, grouping]);
+  const groups = useMemo(
+    () => groupTasks(tasks, grouping, { labels, projects, cycles }),
+    [tasks, grouping, labels, projects, cycles],
+  );
 
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   const toggle = (id: string) =>
