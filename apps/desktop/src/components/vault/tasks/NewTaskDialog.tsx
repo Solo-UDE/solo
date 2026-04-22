@@ -1,27 +1,48 @@
-import { useState, type FC, type FormEvent } from 'react';
+import { useState, type FC, type FormEvent, type KeyboardEvent } from 'react';
+import { Plus, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
 import { useTaskStore } from '@/stores/taskStore';
 import type { Executor, TaskPriority } from '@/lib/tauri/tasks';
 import { SelectDropdown } from '@/components/settings/controls/SelectDropdown';
-
-const pretty = (v: string) => v.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
+import { PrioritySelector } from './PrioritySelector';
 
 interface Props {
   readonly open: boolean;
   readonly onClose: () => void;
 }
 
+/**
+ * Create-task modal with Circle's compact layout: title on top, inline
+ * Executor + Priority selectors, description, and a dynamic subtask list you
+ * build before submitting. Subtasks are submitted together with the task so
+ * the agent's first message already includes the checklist if you assign
+ * executor=agent and hit Run.
+ */
 export const NewTaskDialog: FC<Props> = ({ open, onClose }) => {
   const create = useTaskStore((s) => s.create);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [executor, setExecutor] = useState<Executor>('manual');
   const [priority, setPriority] = useState<TaskPriority>('medium');
+  const [subtasks, setSubtasks] = useState<string[]>([]);
+  const [draftSub, setDraftSub] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   const reset = () => {
-    setTitle(''); setDescription(''); setExecutor('manual'); setPriority('medium');
+    setTitle('');
+    setDescription('');
+    setExecutor('manual');
+    setPriority('medium');
+    setSubtasks([]);
+    setDraftSub('');
+  };
+
+  const addSub = () => {
+    const t = draftSub.trim();
+    if (!t) return;
+    setSubtasks((prev) => [...prev, t]);
+    setDraftSub('');
   };
 
   const onSubmit = async (e: FormEvent) => {
@@ -29,11 +50,24 @@ export const NewTaskDialog: FC<Props> = ({ open, onClose }) => {
     if (!title.trim()) return;
     setSubmitting(true);
     try {
-      await create({ title: title.trim(), description, executor, priority });
+      await create({
+        title: title.trim(),
+        description,
+        executor,
+        priority,
+        subtasks: subtasks.map((s) => ({ title: s })),
+      });
       reset();
       onClose();
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const onSubKey = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addSub();
     }
   };
 
@@ -57,7 +91,7 @@ export const NewTaskDialog: FC<Props> = ({ open, onClose }) => {
             onSubmit={onSubmit}
             className={cn(
               'w-full max-w-md rounded-[14px] border border-border/40 bg-card/95 backdrop-blur-md p-5 shadow-[0_8px_32px_-8px_rgba(0,0,0,0.2)]',
-              'flex flex-col gap-4',
+              'flex flex-col gap-4 max-h-[85vh] overflow-y-auto',
             )}
           >
             <h2 className="text-[14px] font-semibold">New task</h2>
@@ -74,6 +108,24 @@ export const NewTaskDialog: FC<Props> = ({ open, onClose }) => {
               />
             </label>
 
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="flex min-w-[140px] flex-1 flex-col gap-1 text-[12px] text-muted-foreground">
+                Executor
+                <SelectDropdown
+                  value={executor}
+                  options={[
+                    { label: 'You', value: 'manual' as Executor },
+                    { label: 'Agent', value: 'agent' as Executor },
+                  ]}
+                  onChange={(v) => setExecutor(v)}
+                />
+              </label>
+              <div className="flex flex-col gap-1 text-[12px] text-muted-foreground">
+                <span>Priority</span>
+                <PrioritySelector value={priority} onChange={setPriority} />
+              </div>
+            </div>
+
             <label className="flex flex-col gap-1 text-[12px] text-muted-foreground">
               Description (optional)
               <textarea
@@ -85,27 +137,55 @@ export const NewTaskDialog: FC<Props> = ({ open, onClose }) => {
               />
             </label>
 
-            <div className="grid grid-cols-2 gap-3">
-              <label className="flex flex-col gap-1 text-[12px] text-muted-foreground">
-                Executor
-                <SelectDropdown
-                  value={executor}
-                  options={[
-                    { label: 'You', value: 'manual' as Executor },
-                    { label: 'Agent', value: 'agent' as Executor },
-                  ]}
-                  onChange={(v) => setExecutor(v)}
+            <section className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between px-0.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <span>Subtasks</span>
+                {subtasks.length > 0 && (
+                  <span className="tabular-nums">{subtasks.length}</span>
+                )}
+              </div>
+
+              {subtasks.length > 0 && (
+                <ul className="flex flex-col gap-0.5">
+                  {subtasks.map((s, i) => (
+                    <li
+                      key={`${s}-${i}`}
+                      className="flex items-center gap-2 rounded-[8px] bg-muted/30 px-2 py-1.5 text-[12.5px]"
+                    >
+                      <span className="flex-1 truncate">{s}</span>
+                      <button
+                        type="button"
+                        aria-label="Remove subtask"
+                        onClick={() => setSubtasks((prev) => prev.filter((_, j) => j !== i))}
+                        className="grid h-5 w-5 place-items-center rounded-sm text-muted-foreground/50 hover:text-red-500"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              <div className="flex items-center gap-2 rounded-[8px] border border-dashed border-border/50 bg-muted/20 px-2 py-1.5">
+                <Plus className="h-3.5 w-3.5 text-muted-foreground" />
+                <input
+                  value={draftSub}
+                  onChange={(e) => setDraftSub(e.target.value)}
+                  onKeyDown={onSubKey}
+                  placeholder="Add a subtask…"
+                  className="flex-1 bg-transparent text-[12.5px] outline-none placeholder:text-muted-foreground"
                 />
-              </label>
-              <label className="flex flex-col gap-1 text-[12px] text-muted-foreground">
-                Priority
-                <SelectDropdown
-                  value={priority}
-                  options={(['low', 'medium', 'high', 'urgent'] as TaskPriority[]).map((p) => ({ label: pretty(p), value: p }))}
-                  onChange={(v) => setPriority(v)}
-                />
-              </label>
-            </div>
+                {draftSub.trim() && (
+                  <button
+                    type="button"
+                    onClick={addSub}
+                    className="rounded-md bg-muted/60 px-2 py-0.5 text-[11px] font-medium hover:bg-muted"
+                  >
+                    Add
+                  </button>
+                )}
+              </div>
+            </section>
 
             <div className="flex justify-end gap-2">
               <button
