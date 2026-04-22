@@ -6,6 +6,7 @@ import { useTaskStore } from '@/stores/taskStore';
 export function useTaskStream(): void {
   const patchFromEvent = useTaskStore((s) => s.patchFromEvent);
   const markRunning = useTaskStore((s) => s.markRunning);
+  const openReview = useTaskStore((s) => s.openReview);
 
   useEffect(() => {
     let unlisten: UnlistenFn | undefined;
@@ -27,6 +28,15 @@ export function useTaskStream(): void {
             markRunning(ev.payload.task_id, false);
             void patchFromEvent([ev.payload.task_id]);
             break;
+          case 'tasks:review_ready':
+            openReview({
+              taskId: ev.payload.task_id,
+              runId: ev.payload.run_id,
+              worktreeId: ev.payload.worktree_id,
+              diffSummary: ev.payload.diff_summary,
+            });
+            void patchFromEvent([ev.payload.task_id]);
+            break;
           default:
             break;
         }
@@ -34,5 +44,5 @@ export function useTaskStream(): void {
     };
     void setup();
     return () => { unlisten?.(); };
-  }, [patchFromEvent, markRunning]);
+  }, [patchFromEvent, markRunning, openReview]);
 }
