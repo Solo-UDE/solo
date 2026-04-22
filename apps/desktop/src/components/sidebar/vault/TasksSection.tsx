@@ -14,6 +14,7 @@ import { FiltersBar } from '@/components/vault/tasks/FiltersBar';
 import { TaskListView } from '@/components/vault/tasks/TaskListView';
 import { TaskDrawer } from '@/components/vault/tasks/TaskDrawer';
 import { NewTaskDialog } from '@/components/vault/tasks/NewTaskDialog';
+import { ReviewModal } from '@/components/vault/tasks/ReviewModal';
 import type { GroupKey } from '@/components/vault/tasks/groupings';
 
 export const TasksSection: FC = () => {
@@ -39,6 +40,7 @@ export const TasksSection: FC = () => {
       </div>
       <TaskDrawer />
       <NewTaskDialog open={newOpen} onClose={() => setNewOpen(false)} />
+      <ReviewModal />
     </div>
   );
 };
