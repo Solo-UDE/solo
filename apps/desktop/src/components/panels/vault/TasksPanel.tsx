@@ -6,6 +6,7 @@ import { VaultPanelShell } from './VaultPanelShell';
 export function TasksPanel(_props: PanelProps) {
   return (
     <VaultPanelShell
+      wide
       icon={ListChecks}
       title="Tasks"
       description="Shared task list across agent sessions. Pin open questions, track intent, and hand off work between sessions."

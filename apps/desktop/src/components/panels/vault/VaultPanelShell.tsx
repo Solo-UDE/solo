@@ -14,6 +14,9 @@ interface VaultPanelShellProps {
   readonly title: string;
   readonly description?: string;
   readonly children: ReactNode;
+  /** Let the body fill the full panel width instead of the centered max-w-5xl column.
+   *  Use for panels with their own multi-column layout (e.g. Tasks). */
+  readonly wide?: boolean;
 }
 
 export const VaultPanelShell: FC<VaultPanelShellProps> = ({
@@ -21,6 +24,7 @@ export const VaultPanelShell: FC<VaultPanelShellProps> = ({
   title,
   description,
   children,
+  wide = false,
 }) => (
   <div className="flex h-full min-h-0 flex-col bg-background">
     <div className="border-b border-border/60 px-6 py-4 shrink-0">
@@ -42,7 +46,9 @@ export const VaultPanelShell: FC<VaultPanelShellProps> = ({
       </div>
     </div>
     <div className="min-h-0 flex-1 overflow-y-auto">
-      <div className="mx-auto h-full max-w-5xl">{children}</div>
+      {wide
+        ? <div className="h-full">{children}</div>
+        : <div className="mx-auto h-full max-w-5xl">{children}</div>}
     </div>
   </div>
 );
