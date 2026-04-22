@@ -38,7 +38,13 @@ const DraggableRow: FC<{
   }, [taskId, fromGroupId]);
 
   return (
-    <li ref={ref} className={cn('cursor-grab active:cursor-grabbing', dragging && 'opacity-40')}>
+    <li
+      ref={ref}
+      className={cn(
+        'select-none cursor-grab active:cursor-grabbing',
+        dragging && 'opacity-40',
+      )}
+    >
       {children}
     </li>
   );
