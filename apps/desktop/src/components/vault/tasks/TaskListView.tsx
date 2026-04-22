@@ -11,11 +11,14 @@ interface Props {
 }
 
 export const TaskListView: FC<Props> = ({ grouping }) => {
-  const tasks = useTaskStore((s) => Array.from(s.tasks.values()));
+  // Select the stable Map reference (not a derived array) to avoid infinite
+  // re-renders from Zustand's snapshot `===` check.
+  const tasksMap = useTaskStore((s) => s.tasks);
   const selectedId = useTaskStore((s) => s.selectedTaskId);
   const select = useTaskStore((s) => s.select);
   const update = useTaskStore((s) => s.update);
 
+  const tasks = useMemo(() => Array.from(tasksMap.values()), [tasksMap]);
   const groups = useMemo(() => groupTasks(tasks, grouping), [tasks, grouping]);
 
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
