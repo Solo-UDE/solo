@@ -4,8 +4,10 @@ use std::path::Path;
 use std::sync::Mutex;
 use rusqlite::{Connection, OptionalExtension, params};
 use solo_protocol::{
-    Executor, RunOutcome, Subtask, Task, TaskDraft, TaskListFilters,
-    TaskOrigin, TaskPatch, TaskPriority, TaskRun, TaskStatus,
+    Cycle, CycleDraft, CyclePatch, Executor, Label, LabelDraft, LabelPatch,
+    Project, ProjectDraft, ProjectHealth, ProjectPatch, ProjectStatus,
+    RunOutcome, Subtask, Task, TaskDraft, TaskListFilters, TaskOrigin, TaskPatch,
+    TaskPriority, TaskRun, TaskStatus,
 };
 use uuid::Uuid;
 
@@ -111,6 +113,69 @@ impl TaskStore {
             conn.execute_batch("PRAGMA user_version = 1;")?;
         }
 
+        if version < 2 {
+            // v2: Labels, Projects, Cycles. Tasks get label_ids, project_id, cycle_id.
+            let add_column = |name: &str, ddl: &str| -> TaskResult<()> {
+                let has: bool = conn
+                    .prepare(&format!(
+                        "SELECT 1 FROM pragma_table_info('tasks') WHERE name = '{name}'"
+                    ))?
+                    .query_map([], |_| Ok(()))?
+                    .next()
+                    .is_some();
+                if !has {
+                    conn.execute_batch(ddl)?;
+                }
+                Ok(())
+            };
+            add_column(
+                "label_ids_json",
+                "ALTER TABLE tasks ADD COLUMN label_ids_json TEXT NOT NULL DEFAULT '[]';",
+            )?;
+            add_column(
+                "project_id",
+                "ALTER TABLE tasks ADD COLUMN project_id TEXT;",
+            )?;
+            add_column(
+                "cycle_id",
+                "ALTER TABLE tasks ADD COLUMN cycle_id TEXT;",
+            )?;
+
+            conn.execute_batch(
+                r"
+                CREATE TABLE IF NOT EXISTS labels (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL UNIQUE,
+                    color TEXT NOT NULL,
+                    created_at INTEGER NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS projects (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    description TEXT NOT NULL DEFAULT '',
+                    status TEXT NOT NULL,
+                    health TEXT NOT NULL,
+                    color TEXT NOT NULL,
+                    start_at INTEGER,
+                    target_at INTEGER,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS cycles (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    start_at INTEGER NOT NULL,
+                    end_at INTEGER NOT NULL,
+                    created_at INTEGER NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
+                CREATE INDEX IF NOT EXISTS idx_tasks_cycle   ON tasks(cycle_id);
+                ",
+            )?;
+            conn.execute_batch("PRAGMA user_version = 2;")?;
+        }
+
         Ok(())
     }
 
@@ -147,6 +212,9 @@ impl TaskStore {
             catch_up_on_launch: false,
             origin: TaskOrigin::Manual,
             subtasks,
+            label_ids: draft.label_ids,
+            project_id: draft.project_id,
+            cycle_id: draft.cycle_id,
         };
         self.insert(&task)?;
         Ok(task)
@@ -228,6 +296,11 @@ impl TaskStore {
         if let Some(v) = patch.schedule { task.schedule = Some(v); }
         if let Some(v) = patch.catch_up_on_launch { task.catch_up_on_launch = v; }
         if let Some(v) = patch.subtasks { task.subtasks = v; }
+        if let Some(v) = patch.label_ids { task.label_ids = v; }
+        if patch.clear_project == Some(true) { task.project_id = None; }
+        else if let Some(v) = patch.project_id { task.project_id = Some(v); }
+        if patch.clear_cycle == Some(true) { task.cycle_id = None; }
+        else if let Some(v) = patch.cycle_id { task.cycle_id = Some(v); }
         task.updated_at = now_ms();
         self.insert(&task)?;     // INSERT OR REPLACE — upsert semantics
         Ok(task)
@@ -454,6 +527,275 @@ impl TaskStore {
         Ok(())
     }
 
+    // ---- Labels ---------------------------------------------------------
+
+    pub fn label_list(&self) -> TaskResult<Vec<Label>> {
+        let conn = self.conn.lock().expect("poisoned");
+        let mut stmt = conn.prepare(
+            "SELECT id, name, color, created_at FROM labels ORDER BY name COLLATE NOCASE"
+        )?;
+        let rows = stmt.query_map([], |r| Ok(Label {
+            id: r.get(0)?, name: r.get(1)?, color: r.get(2)?, created_at: r.get(3)?,
+        }))?;
+        rows.collect::<Result<_, _>>().map_err(Into::into)
+    }
+
+    pub fn label_create(&self, draft: LabelDraft) -> TaskResult<Label> {
+        let conn = self.conn.lock().expect("poisoned");
+        let label = Label {
+            id: Uuid::new_v4().to_string(),
+            name: draft.name,
+            color: draft.color,
+            created_at: now_ms(),
+        };
+        conn.execute(
+            "INSERT INTO labels(id, name, color, created_at) VALUES(?1, ?2, ?3, ?4)",
+            params![label.id, label.name, label.color, label.created_at],
+        )?;
+        Ok(label)
+    }
+
+    pub fn label_update(&self, id: &str, patch: LabelPatch) -> TaskResult<Label> {
+        let conn = self.conn.lock().expect("poisoned");
+        let existing: Option<(String, String, String, i64)> = conn.query_row(
+            "SELECT id, name, color, created_at FROM labels WHERE id = ?",
+            [id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        ).optional()?;
+        let Some((lid, mut name, mut color, created_at)) = existing else {
+            return Err(TaskError::NotFound(id.into()));
+        };
+        if let Some(v) = patch.name { name = v; }
+        if let Some(v) = patch.color { color = v; }
+        conn.execute(
+            "UPDATE labels SET name = ?2, color = ?3 WHERE id = ?1",
+            params![lid, name, color],
+        )?;
+        Ok(Label { id: lid, name, color, created_at })
+    }
+
+    /// Delete a label and prune its id from every task's `label_ids_json`.
+    pub fn label_delete(&self, id: &str) -> TaskResult<Vec<String>> {
+        let conn = self.conn.lock().expect("poisoned");
+        let affected = conn.execute("DELETE FROM labels WHERE id = ?", [id])?;
+        if affected == 0 { return Err(TaskError::NotFound(id.into())); }
+        // Prune from all tasks that carry it.
+        let mut stmt = conn.prepare(
+            "SELECT id, label_ids_json FROM tasks WHERE label_ids_json LIKE ?"
+        )?;
+        let affected_ids: Vec<(String, String)> = stmt
+            .query_map([format!("%\"{id}\"%")], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<Result<_, _>>()?;
+        drop(stmt);
+        let mut changed_task_ids = Vec::new();
+        for (task_id, json) in affected_ids {
+            let mut ids: Vec<String> = serde_json::from_str(&json).unwrap_or_default();
+            let before = ids.len();
+            ids.retain(|x| x != id);
+            if ids.len() != before {
+                conn.execute(
+                    "UPDATE tasks SET label_ids_json = ?1, updated_at = ?2 WHERE id = ?3",
+                    params![serde_json::to_string(&ids)?, now_ms(), task_id],
+                )?;
+                changed_task_ids.push(task_id);
+            }
+        }
+        Ok(changed_task_ids)
+    }
+
+    pub fn task_label_add(&self, task_id: &str, label_id: &str) -> TaskResult<Task> {
+        let mut task = self.get(task_id)?;
+        if !task.label_ids.iter().any(|x| x == label_id) {
+            task.label_ids.push(label_id.to_string());
+            task.updated_at = now_ms();
+            self.insert(&task)?;
+        }
+        Ok(task)
+    }
+
+    pub fn task_label_remove(&self, task_id: &str, label_id: &str) -> TaskResult<Task> {
+        let mut task = self.get(task_id)?;
+        let before = task.label_ids.len();
+        task.label_ids.retain(|x| x != label_id);
+        if task.label_ids.len() != before {
+            task.updated_at = now_ms();
+            self.insert(&task)?;
+        }
+        Ok(task)
+    }
+
+    // ---- Projects -------------------------------------------------------
+
+    pub fn project_list(&self) -> TaskResult<Vec<Project>> {
+        let conn = self.conn.lock().expect("poisoned");
+        let mut stmt = conn.prepare(
+            "SELECT id, name, description, status, health, color, start_at, target_at,
+                    created_at, updated_at FROM projects ORDER BY updated_at DESC"
+        )?;
+        let rows = stmt.query_map([], |r| Ok(Project {
+            id: r.get(0)?,
+            name: r.get(1)?,
+            description: r.get(2)?,
+            status: project_status_from(&r.get::<_, String>(3)?)
+                .map_err(|_| rusqlite::Error::InvalidQuery)?,
+            health: project_health_from(&r.get::<_, String>(4)?)
+                .map_err(|_| rusqlite::Error::InvalidQuery)?,
+            color: r.get(5)?,
+            start_at: r.get(6)?,
+            target_at: r.get(7)?,
+            created_at: r.get(8)?,
+            updated_at: r.get(9)?,
+        }))?;
+        rows.collect::<Result<_, _>>().map_err(Into::into)
+    }
+
+    pub fn project_create(&self, draft: ProjectDraft) -> TaskResult<Project> {
+        let now = now_ms();
+        let project = Project {
+            id: Uuid::new_v4().to_string(),
+            name: draft.name,
+            description: draft.description,
+            status: ProjectStatus::Planned,
+            health: ProjectHealth::Unknown,
+            color: draft.color,
+            start_at: None,
+            target_at: None,
+            created_at: now,
+            updated_at: now,
+        };
+        self.project_insert(&project)?;
+        Ok(project)
+    }
+
+    pub fn project_update(&self, id: &str, patch: ProjectPatch) -> TaskResult<Project> {
+        let mut p = self.project_get(id)?;
+        if let Some(v) = patch.name { p.name = v; }
+        if let Some(v) = patch.description { p.description = v; }
+        if let Some(v) = patch.status { p.status = v; }
+        if let Some(v) = patch.health { p.health = v; }
+        if let Some(v) = patch.color { p.color = v; }
+        if let Some(v) = patch.start_at { p.start_at = Some(v); }
+        if let Some(v) = patch.target_at { p.target_at = Some(v); }
+        p.updated_at = now_ms();
+        self.project_insert(&p)?;
+        Ok(p)
+    }
+
+    pub fn project_get(&self, id: &str) -> TaskResult<Project> {
+        let conn = self.conn.lock().expect("poisoned");
+        let row: Option<(String, String, String, String, String, String, Option<i64>, Option<i64>, i64, i64)> = conn.query_row(
+            "SELECT id, name, description, status, health, color, start_at, target_at,
+                    created_at, updated_at FROM projects WHERE id = ?",
+            [id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?,
+                    r.get(6)?, r.get(7)?, r.get(8)?, r.get(9)?)),
+        ).optional()?;
+        let Some(r) = row else { return Err(TaskError::NotFound(id.into())); };
+        Ok(Project {
+            id: r.0, name: r.1, description: r.2,
+            status: project_status_from(&r.3)?,
+            health: project_health_from(&r.4)?,
+            color: r.5, start_at: r.6, target_at: r.7,
+            created_at: r.8, updated_at: r.9,
+        })
+    }
+
+    /// Delete a project and null out `project_id` on every task that pointed to it.
+    pub fn project_delete(&self, id: &str) -> TaskResult<Vec<String>> {
+        let conn = self.conn.lock().expect("poisoned");
+        let affected = conn.execute("DELETE FROM projects WHERE id = ?", [id])?;
+        if affected == 0 { return Err(TaskError::NotFound(id.into())); }
+        let mut stmt = conn.prepare("SELECT id FROM tasks WHERE project_id = ?")?;
+        let ids: Vec<String> = stmt.query_map([id], |r| r.get::<_, String>(0))?
+            .collect::<Result<_, _>>()?;
+        drop(stmt);
+        conn.execute(
+            "UPDATE tasks SET project_id = NULL, updated_at = ? WHERE project_id = ?",
+            params![now_ms(), id],
+        )?;
+        Ok(ids)
+    }
+
+    fn project_insert(&self, p: &Project) -> TaskResult<()> {
+        let conn = self.conn.lock().expect("poisoned");
+        conn.execute(
+            "INSERT OR REPLACE INTO projects(id, name, description, status, health,
+                color, start_at, target_at, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            params![
+                p.id, p.name, p.description,
+                project_status_str(&p.status),
+                project_health_str(&p.health),
+                p.color, p.start_at, p.target_at, p.created_at, p.updated_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    // ---- Cycles ---------------------------------------------------------
+
+    pub fn cycle_list(&self) -> TaskResult<Vec<Cycle>> {
+        let conn = self.conn.lock().expect("poisoned");
+        let mut stmt = conn.prepare(
+            "SELECT id, name, start_at, end_at, created_at FROM cycles ORDER BY start_at DESC"
+        )?;
+        let rows = stmt.query_map([], |r| Ok(Cycle {
+            id: r.get(0)?, name: r.get(1)?, start_at: r.get(2)?,
+            end_at: r.get(3)?, created_at: r.get(4)?,
+        }))?;
+        rows.collect::<Result<_, _>>().map_err(Into::into)
+    }
+
+    pub fn cycle_create(&self, draft: CycleDraft) -> TaskResult<Cycle> {
+        let conn = self.conn.lock().expect("poisoned");
+        let cycle = Cycle {
+            id: Uuid::new_v4().to_string(),
+            name: draft.name,
+            start_at: draft.start_at,
+            end_at: draft.end_at,
+            created_at: now_ms(),
+        };
+        conn.execute(
+            "INSERT INTO cycles(id, name, start_at, end_at, created_at) VALUES(?1, ?2, ?3, ?4, ?5)",
+            params![cycle.id, cycle.name, cycle.start_at, cycle.end_at, cycle.created_at],
+        )?;
+        Ok(cycle)
+    }
+
+    pub fn cycle_update(&self, id: &str, patch: CyclePatch) -> TaskResult<Cycle> {
+        let conn = self.conn.lock().expect("poisoned");
+        let row: Option<(String, String, i64, i64, i64)> = conn.query_row(
+            "SELECT id, name, start_at, end_at, created_at FROM cycles WHERE id = ?",
+            [id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+        ).optional()?;
+        let Some((cid, mut name, mut start_at, mut end_at, created_at)) = row else {
+            return Err(TaskError::NotFound(id.into()));
+        };
+        if let Some(v) = patch.name { name = v; }
+        if let Some(v) = patch.start_at { start_at = v; }
+        if let Some(v) = patch.end_at { end_at = v; }
+        conn.execute(
+            "UPDATE cycles SET name = ?2, start_at = ?3, end_at = ?4 WHERE id = ?1",
+            params![cid, name, start_at, end_at],
+        )?;
+        Ok(Cycle { id: cid, name, start_at, end_at, created_at })
+    }
+
+    /// Delete a cycle and null out `cycle_id` on every task that pointed to it.
+    pub fn cycle_delete(&self, id: &str) -> TaskResult<Vec<String>> {
+        let conn = self.conn.lock().expect("poisoned");
+        let affected = conn.execute("DELETE FROM cycles WHERE id = ?", [id])?;
+        if affected == 0 { return Err(TaskError::NotFound(id.into())); }
+        let mut stmt = conn.prepare("SELECT id FROM tasks WHERE cycle_id = ?")?;
+        let ids: Vec<String> = stmt.query_map([id], |r| r.get::<_, String>(0))?
+            .collect::<Result<_, _>>()?;
+        drop(stmt);
+        conn.execute(
+            "UPDATE tasks SET cycle_id = NULL, updated_at = ? WHERE cycle_id = ?",
+            params![now_ms(), id],
+        )?;
+        Ok(ids)
+    }
+
     // ---- internals ------------------------------------------------------
 
     fn insert(&self, task: &Task) -> TaskResult<()> {
@@ -464,8 +806,8 @@ impl TaskStore {
                 (id, title, description, status, executor, priority,
                  created_at, updated_at, agent_config_json, schedule_json,
                  context_anchors_json, last_error, catch_up_on_launch, origin_json,
-                 subtasks_json)
-            VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15)
+                 subtasks_json, label_ids_json, project_id, cycle_id)
+            VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18)
             ",
             params![
                 task.id,
@@ -483,6 +825,9 @@ impl TaskStore {
                 i64::from(task.catch_up_on_launch),
                 serde_json::to_string(&task.origin)?,
                 serde_json::to_string(&task.subtasks)?,
+                serde_json::to_string(&task.label_ids)?,
+                task.project_id,
+                task.cycle_id,
             ],
         )?;
         Ok(())
@@ -561,17 +906,19 @@ fn load_task_row(conn: &Connection, id: &str) -> TaskResult<Option<Task>> {
         String, String, String, String, String, String,
         i64, i64, Option<String>, Option<String>,
         String, Option<String>, i64, String, String,
+        String, Option<String>, Option<String>,
     )> = conn.query_row(
         "SELECT id, title, description, status, executor, priority,
                 created_at, updated_at, agent_config_json, schedule_json,
                 context_anchors_json, last_error, catch_up_on_launch, origin_json,
-                subtasks_json
+                subtasks_json, label_ids_json, project_id, cycle_id
          FROM tasks WHERE id = ?",
         [id],
         |r| Ok((
             r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?,
             r.get(6)?, r.get(7)?, r.get(8)?, r.get(9)?,
             r.get(10)?, r.get(11)?, r.get(12)?, r.get(13)?, r.get(14)?,
+            r.get(15)?, r.get(16)?, r.get(17)?,
         ))
     ).optional()?;
 
@@ -607,7 +954,48 @@ fn load_task_row(conn: &Connection, id: &str) -> TaskResult<Option<Task>> {
         catch_up_on_launch: r.12 != 0,
         origin: serde_json::from_str(&r.13)?,
         subtasks: serde_json::from_str(&r.14)?,
+        label_ids: serde_json::from_str(&r.15)?,
+        project_id: r.16,
+        cycle_id: r.17,
     }))
+}
+
+fn project_status_str(s: &ProjectStatus) -> &'static str {
+    match s {
+        ProjectStatus::Planned    => "planned",
+        ProjectStatus::InProgress => "in_progress",
+        ProjectStatus::Paused     => "paused",
+        ProjectStatus::Completed  => "completed",
+        ProjectStatus::Cancelled  => "cancelled",
+    }
+}
+fn project_status_from(s: &str) -> TaskResult<ProjectStatus> {
+    Ok(match s {
+        "planned"     => ProjectStatus::Planned,
+        "in_progress" => ProjectStatus::InProgress,
+        "paused"      => ProjectStatus::Paused,
+        "completed"   => ProjectStatus::Completed,
+        "cancelled"   => ProjectStatus::Cancelled,
+        other         => return Err(TaskError::Invalid(format!("project status={other}"))),
+    })
+}
+
+fn project_health_str(h: &ProjectHealth) -> &'static str {
+    match h {
+        ProjectHealth::OnTrack  => "on_track",
+        ProjectHealth::AtRisk   => "at_risk",
+        ProjectHealth::OffTrack => "off_track",
+        ProjectHealth::Unknown  => "unknown",
+    }
+}
+fn project_health_from(s: &str) -> TaskResult<ProjectHealth> {
+    Ok(match s {
+        "on_track"  => ProjectHealth::OnTrack,
+        "at_risk"   => ProjectHealth::AtRisk,
+        "off_track" => ProjectHealth::OffTrack,
+        "unknown"   => ProjectHealth::Unknown,
+        other       => return Err(TaskError::Invalid(format!("project health={other}"))),
+    })
 }
 
 fn run_outcome_from(s: &str) -> TaskResult<RunOutcome> {
@@ -644,6 +1032,9 @@ mod tests {
             executor: Executor::Manual,
             priority: TaskPriority::Medium,
             subtasks: Vec::new(),
+            label_ids: Vec::new(),
+            project_id: None,
+            cycle_id: None,
         }
     }
 
@@ -789,6 +1180,9 @@ mod tests {
             title: "run".into(), description: String::new(),
             executor: Executor::Agent, priority: TaskPriority::Medium,
             subtasks: Vec::new(),
+            label_ids: Vec::new(),
+            project_id: None,
+            cycle_id: None,
         }).unwrap();
         assert!(t.agent_config.is_none());
 
@@ -954,6 +1348,9 @@ mod tests {
                 solo_protocol::SubtaskDraft { title: "one".into() },
                 solo_protocol::SubtaskDraft { title: "two".into() },
             ],
+            label_ids: Vec::new(),
+            project_id: None,
+            cycle_id: None,
         };
         let t = store.create(d).unwrap();
         assert_eq!(t.subtasks.len(), 2);
