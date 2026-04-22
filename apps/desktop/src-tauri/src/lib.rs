@@ -49,6 +49,7 @@ mod skills_commands;
 mod skills_marketplace;
 mod skills_origin;
 mod stats_commands;
+mod task_commands;
 mod terminal_commands;
 mod update_commands;
 mod vault_commands;
@@ -64,6 +65,7 @@ use plugins_commands::PluginsState;
 use provider_commands::ProviderAuthState;
 use stats_commands::StatsState;
 use tauri::Emitter;
+use task_commands::TaskState;
 use terminal_commands::TerminalState;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use vault_commands::VaultState;
@@ -229,6 +231,7 @@ pub fn run() {
         .manage(GitState::new())
         .manage(WorktreeState::new())
         .manage(VaultState::new())
+        .manage(TaskState::new())
         .manage(VoiceState::new())
         .manage(std::sync::Arc::new(voice::hud::HudState::new()))
         .manage(StatsState::new())
@@ -438,6 +441,13 @@ pub fn run() {
             voice_commands::voice_check_permissions,
             voice_commands::voice_request_permission,
             voice_commands::voice_clear_badge,
+            // Task commands
+            task_commands::task_list,
+            task_commands::task_get,
+            task_commands::task_create,
+            task_commands::task_update,
+            task_commands::task_delete,
+            task_commands::task_search,
             // Update commands
             update_commands::check_for_update,
             update_commands::install_update,

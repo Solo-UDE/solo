@@ -1,6 +1,6 @@
 //! SQLite-backed task store (FTS5 in Task 5).
 
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::Mutex;
 use rusqlite::{Connection, OptionalExtension, params};
 use solo_protocol::{
@@ -17,7 +17,7 @@ pub struct TaskStore {
 
 impl TaskStore {
     /// Open (or create) the task store at `db_path`. Parent dir must exist.
-    pub fn open(db_path: &PathBuf) -> TaskResult<Self> {
+    pub fn open(db_path: &Path) -> TaskResult<Self> {
         if let Some(parent) = db_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
