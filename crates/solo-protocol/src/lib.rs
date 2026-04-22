@@ -917,6 +917,75 @@ pub enum RunOutcome {
     Cancelled,
 }
 
+/// How the agent task execution session is constrained.
+/// Distinct from the settings-level `PermissionMode` (which controls the
+/// interactive agent permission pipeline). This type governs per-task
+/// autonomous execution safety.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "snake_case")]
+pub enum AgentPermissionMode {
+    /// User confirms every tool use. Default for manual runs.
+    Ask,
+    /// Agent plans but does not execute.
+    Plan,
+    /// Auto-accept file edits; confirm shell writes.
+    AcceptEdits,
+    /// No prompts. REQUIRES ExecutionLocation::Worktree.
+    Bypass,
+}
+
+/// Where the agent runs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "snake_case")]
+pub enum ExecutionLocation {
+    /// The user's live workspace. Default for manual runs.
+    MainWorkspace,
+    /// An isolated git worktree (auto-created, auto-cleaned after review).
+    Worktree,
+}
+
+/// Per-task executor configuration.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct AgentConfig {
+    /// Model override; None → system default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub model: Option<String>,
+
+    /// Explicit skill allow-list; None → planner/default picks.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub skills: Option<Vec<String>>,
+
+    pub permission_mode: AgentPermissionMode,
+    pub execution_location: ExecutionLocation,
+
+    /// Extra command patterns to block (merged with global deny-list).
+    #[serde(default)]
+    pub deny_list: Vec<String>,
+
+    /// Optional network allow-list. None = open; Some([]) = offline.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub network_allow_list: Option<Vec<String>>,
+}
+
+impl Default for AgentConfig {
+    fn default() -> Self {
+        Self {
+            model: None,
+            skills: None,
+            permission_mode: AgentPermissionMode::Ask,
+            execution_location: ExecutionLocation::MainWorkspace,
+            deny_list: Vec::new(),
+            network_allow_list: None,
+        }
+    }
+}
+
 /// The core task entity. `agent_config` + `schedule` are `Option` so Phase 1
 /// (manual-only) persists `None` without schema churn.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -933,8 +1002,8 @@ pub struct Task {
 
     /// `None` for manual tasks (Phase 1). Activated in Phase 2.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[ts(type = "unknown | null")]
-    pub agent_config: Option<serde_json::Value>,
+    #[ts(optional)]
+    pub agent_config: Option<AgentConfig>,
     /// `None` for one-shot tasks. Activated in Phase 4.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(type = "unknown | null")]
@@ -998,6 +1067,9 @@ pub struct TaskPatch {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub catch_up_on_launch: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub agent_config: Option<AgentConfig>,
 }
 
 // =============================================================================
@@ -1228,6 +1300,15 @@ pub enum BackendEvent {
     /// Terminal — the run ended with an outcome.
     #[serde(rename = "tasks:run_ended")]
     TaskRunEnded { task_id: String, run_id: String, outcome: RunOutcome, summary: Option<String> },
+
+    /// A task in a worktree finished with pending changes; show review modal.
+    #[serde(rename = "tasks:review_ready")]
+    TaskReviewReady {
+        task_id: String,
+        run_id: String,
+        worktree_id: String,
+        diff_summary: String, // "N files changed, +X/-Y"
+    },
 }
 
 // =============================================================================
