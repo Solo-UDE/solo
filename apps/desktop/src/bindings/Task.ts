@@ -2,6 +2,7 @@
 import type { AgentConfig } from "./AgentConfig";
 import type { ContextAnchor } from "./ContextAnchor";
 import type { Executor } from "./Executor";
+import type { Schedule } from "./Schedule";
 import type { TaskOrigin } from "./TaskOrigin";
 import type { TaskPriority } from "./TaskPriority";
 import type { TaskRun } from "./TaskRun";
@@ -19,4 +20,4 @@ agent_config?: AgentConfig,
 /**
  * `None` for one-shot tasks. Activated in Phase 4.
  */
-schedule: unknown | null, context_anchors: Array<ContextAnchor>, runs: Array<TaskRun>, last_error: string | null, catch_up_on_launch: boolean, origin: TaskOrigin, };
+schedule?: Schedule, context_anchors: Array<ContextAnchor>, runs: Array<TaskRun>, last_error: string | null, catch_up_on_launch: boolean, origin: TaskOrigin, };

@@ -986,6 +986,46 @@ impl Default for AgentConfig {
     }
 }
 
+/// Preset cadence for scheduled tasks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "snake_case")]
+pub enum PresetKind {
+    Hourly,
+    Daily,
+    Weekly,
+    Monthly,
+}
+
+/// Event trigger kinds. v1 ships one variant; enum lets Phase 5+ add more without migration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "snake_case")]
+pub enum EventKind {
+    AgentSessionEnded,
+}
+
+/// How a task fires automatically. `None` on Task = one-shot / manual.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(tag = "kind", content = "data", rename_all = "snake_case")]
+pub enum Schedule {
+    /// Fire once at the given UTC millis.
+    OneShot { at: i64 },
+    /// Fire on a raw cron expression (UTC).
+    Cron { expr: String, next_fire: i64 },
+    /// Preset kind — hour/minute interpreted in UTC; weekday is 0..=6 (Mon=0).
+    Preset {
+        kind: PresetKind,
+        hour: u8,
+        minute: u8,
+        weekday: Option<u8>,
+        next_fire: i64,
+    },
+    /// Event-driven. v1 populates this shape but the scheduler wires it up in Phase 5.
+    EventTriggered { event: EventKind },
+}
+
 /// The core task entity. `agent_config` + `schedule` are `Option` so Phase 1
 /// (manual-only) persists `None` without schema churn.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -1006,8 +1046,8 @@ pub struct Task {
     pub agent_config: Option<AgentConfig>,
     /// `None` for one-shot tasks. Activated in Phase 4.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[ts(type = "unknown | null")]
-    pub schedule: Option<serde_json::Value>,
+    #[ts(optional)]
+    pub schedule: Option<Schedule>,
 
     #[serde(default)]
     pub context_anchors: Vec<ContextAnchor>,
@@ -1070,6 +1110,9 @@ pub struct TaskPatch {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub agent_config: Option<AgentConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub schedule: Option<Schedule>,
 }
 
 // =============================================================================
