@@ -115,6 +115,9 @@ mod tests {
             title: title.into(), description: String::new(),
             executor: Executor::Agent, priority: TaskPriority::Medium,
             subtasks: Vec::new(),
+            label_ids: Vec::new(),
+            project_id: None,
+            cycle_id: None,
         }).unwrap()
     }
 
