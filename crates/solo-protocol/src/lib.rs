@@ -933,11 +933,11 @@ pub struct Task {
 
     /// `None` for manual tasks (Phase 1). Activated in Phase 2.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[ts(type = "unknown")]
+    #[ts(type = "unknown | null")]
     pub agent_config: Option<serde_json::Value>,
     /// `None` for one-shot tasks. Activated in Phase 4.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[ts(type = "unknown")]
+    #[ts(type = "unknown | null")]
     pub schedule: Option<serde_json::Value>,
 
     #[serde(default)]
@@ -1202,6 +1202,11 @@ pub enum BackendEvent {
     /// Voice model download progress
     #[serde(rename = "voice:model_progress")]
     VoiceModelProgress { progress: VoiceModelProgress },
+
+    /// Task allocator store mutated — frontend should refetch affected tasks.
+    /// `task_ids` lists the tasks that changed; empty slice means "refetch all".
+    #[serde(rename = "tasks:changed")]
+    TasksChanged { task_ids: Vec<String> },
 }
 
 // =============================================================================
