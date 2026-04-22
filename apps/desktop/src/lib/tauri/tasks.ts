@@ -15,6 +15,9 @@ export type { ContextAnchor } from '@/bindings/ContextAnchor';
 export type { AgentConfig } from '@/bindings/AgentConfig';
 export type { AgentPermissionMode } from '@/bindings/AgentPermissionMode';
 export type { ExecutionLocation } from '@/bindings/ExecutionLocation';
+export type { Schedule } from '@/bindings/Schedule';
+export type { PresetKind } from '@/bindings/PresetKind';
+export type { EventKind } from '@/bindings/EventKind';
 
 export const tasksApi = {
   list:   (filter?: TaskListFilters)               => invoke<Task[]>('task_list',   { filter }),
@@ -28,4 +31,5 @@ export const tasksApi = {
   reviewMerge:   (id: string, runId: string)       => invoke<string>('task_review_merge',   { id, runId }),
   reviewDiscard: (id: string, runId: string)       => invoke<void>('task_review_discard',   { id, runId }),
   reviewOpenPr:  (id: string, runId: string)       => invoke<string>('task_review_open_pr', { id, runId }),
+  schedulePreview: (schedule: import('@/bindings/Schedule').Schedule) => invoke<number[]>('task_schedule_preview', { schedule }),
 };
