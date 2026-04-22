@@ -3,8 +3,10 @@ import type { Task } from '@/bindings/Task';
 import type { TaskDraft } from '@/bindings/TaskDraft';
 import type { TaskPatch } from '@/bindings/TaskPatch';
 import type { TaskListFilters } from '@/bindings/TaskListFilters';
+import type { Subtask } from '@/bindings/Subtask';
+import type { SubtaskDraft } from '@/bindings/SubtaskDraft';
 
-export type { Task, TaskDraft, TaskPatch, TaskListFilters };
+export type { Task, TaskDraft, TaskPatch, TaskListFilters, Subtask, SubtaskDraft };
 export type { TaskStatus } from '@/bindings/TaskStatus';
 export type { Executor } from '@/bindings/Executor';
 export type { TaskPriority } from '@/bindings/TaskPriority';
@@ -37,4 +39,16 @@ export const tasksApi = {
   planAcceptDraft: (id: string) => invoke<void>('plan_accept_draft', { id }),
   planDismissDraft:(id: string) => invoke<void>('plan_dismiss_draft', { id }),
   planProactive:   () => invoke<string[]>('plan_proactive'),
+
+  // Subtasks
+  subtaskAdd:     (taskId: string, title: string) =>
+    invoke<Task>('task_subtask_add', { taskId, title }),
+  subtaskToggle:  (taskId: string, subtaskId: string, completed: boolean) =>
+    invoke<Task>('task_subtask_toggle', { taskId, subtaskId, completed }),
+  subtaskRename:  (taskId: string, subtaskId: string, title: string) =>
+    invoke<Task>('task_subtask_rename', { taskId, subtaskId, title }),
+  subtaskRemove:  (taskId: string, subtaskId: string) =>
+    invoke<Task>('task_subtask_remove', { taskId, subtaskId }),
+  subtaskReorder: (taskId: string, orderedIds: string[]) =>
+    invoke<Task>('task_subtask_reorder', { taskId, orderedIds }),
 };
