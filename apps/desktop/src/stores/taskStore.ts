@@ -18,6 +18,7 @@ interface TaskStoreState {
   error: string | null;
   selectedTaskId: string | null;
   runningTasks: Set<string>;
+  pendingReview: { taskId: string; runId: string; worktreeId: string; diffSummary: string } | null;
 
   // actions
   load: () => Promise<void>;
@@ -32,6 +33,11 @@ interface TaskStoreState {
   run: (id: string) => Promise<void>;
   cancel: (id: string) => Promise<void>;
   markRunning: (id: string, running: boolean) => void;
+  openReview: (payload: { taskId: string; runId: string; worktreeId: string; diffSummary: string }) => void;
+  closeReview: () => void;
+  reviewMerge: () => Promise<string>;
+  reviewDiscard: () => Promise<void>;
+  reviewOpenPr: () => Promise<string>;
 }
 
 export const useTaskStore = create<TaskStoreState>()(
@@ -43,6 +49,7 @@ export const useTaskStore = create<TaskStoreState>()(
     error: null,
     selectedTaskId: null,
     runningTasks: new Set(),
+    pendingReview: null,
 
     load: async () => {
       set((s) => { s.isLoading = true; s.error = null; });
@@ -123,6 +130,35 @@ export const useTaskStore = create<TaskStoreState>()(
         if (running) s.runningTasks.add(id);
         else s.runningTasks.delete(id);
       });
+    },
+
+    openReview: (payload) => {
+      set((s) => { s.pendingReview = payload; });
+    },
+
+    closeReview: () => {
+      set((s) => { s.pendingReview = null; });
+    },
+
+    reviewMerge: async () => {
+      const r = get().pendingReview;
+      if (!r) return '';
+      const branch = await tasksApi.reviewMerge(r.taskId, r.runId);
+      set((s) => { s.pendingReview = null; });
+      return branch;
+    },
+
+    reviewDiscard: async () => {
+      const r = get().pendingReview;
+      if (!r) return;
+      await tasksApi.reviewDiscard(r.taskId, r.runId);
+      set((s) => { s.pendingReview = null; });
+    },
+
+    reviewOpenPr: async () => {
+      const r = get().pendingReview;
+      if (!r) return '';
+      return await tasksApi.reviewOpenPr(r.taskId, r.runId);
     },
   })),
 );

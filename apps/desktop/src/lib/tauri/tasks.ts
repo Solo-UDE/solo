@@ -12,6 +12,9 @@ export type { TaskOrigin } from '@/bindings/TaskOrigin';
 export type { TaskRun } from '@/bindings/TaskRun';
 export type { RunOutcome } from '@/bindings/RunOutcome';
 export type { ContextAnchor } from '@/bindings/ContextAnchor';
+export type { AgentConfig } from '@/bindings/AgentConfig';
+export type { AgentPermissionMode } from '@/bindings/AgentPermissionMode';
+export type { ExecutionLocation } from '@/bindings/ExecutionLocation';
 
 export const tasksApi = {
   list:   (filter?: TaskListFilters)               => invoke<Task[]>('task_list',   { filter }),
@@ -22,4 +25,7 @@ export const tasksApi = {
   search: (query: string)                          => invoke<Task[]>('task_search', { query }),
   run:    (id: string)                             => invoke<string>('task_run',    { id }),
   cancel: (id: string)                             => invoke<void>('task_cancel',  { id }),
+  reviewMerge:   (id: string, runId: string)       => invoke<string>('task_review_merge',   { id, runId }),
+  reviewDiscard: (id: string, runId: string)       => invoke<void>('task_review_discard',   { id, runId }),
+  reviewOpenPr:  (id: string, runId: string)       => invoke<string>('task_review_open_pr', { id, runId }),
 };
