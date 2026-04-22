@@ -20,4 +20,6 @@ export const tasksApi = {
   update: (id: string, patch: TaskPatch)           => invoke<Task>('task_update',  { id, patch }),
   delete: (id: string)                             => invoke<void>('task_delete',  { id }),
   search: (query: string)                          => invoke<Task[]>('task_search', { query }),
+  run:    (id: string)                             => invoke<string>('task_run',    { id }),
+  cancel: (id: string)                             => invoke<void>('task_cancel',  { id }),
 };

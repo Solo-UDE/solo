@@ -17,6 +17,7 @@ interface TaskStoreState {
   isLoading: boolean;
   error: string | null;
   selectedTaskId: string | null;
+  runningTasks: Set<string>;
 
   // actions
   load: () => Promise<void>;
@@ -28,6 +29,9 @@ interface TaskStoreState {
   select: (id: string | null) => void;
   /** Called by the event hook on BackendEvent::TasksChanged. */
   patchFromEvent: (taskIds: readonly string[]) => Promise<void>;
+  run: (id: string) => Promise<void>;
+  cancel: (id: string) => Promise<void>;
+  markRunning: (id: string, running: boolean) => void;
 }
 
 export const useTaskStore = create<TaskStoreState>()(
@@ -38,6 +42,7 @@ export const useTaskStore = create<TaskStoreState>()(
     isLoading: false,
     error: null,
     selectedTaskId: null,
+    runningTasks: new Set(),
 
     load: async () => {
       set((s) => { s.isLoading = true; s.error = null; });
@@ -102,6 +107,22 @@ export const useTaskStore = create<TaskStoreState>()(
           set((s) => { s.tasks.delete(id); }); // presumably deleted
         }
       }
+    },
+
+    run: async (id) => {
+      await tasksApi.run(id);
+      // Store will be patched by TaskRunStarted event hook
+    },
+
+    cancel: async (id) => {
+      await tasksApi.cancel(id);
+    },
+
+    markRunning: (id, running) => {
+      set((s) => {
+        if (running) s.runningTasks.add(id);
+        else s.runningTasks.delete(id);
+      });
     },
   })),
 );
