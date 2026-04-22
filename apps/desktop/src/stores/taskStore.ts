@@ -9,6 +9,7 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import { tasksApi, type Task, type TaskDraft, type TaskPatch, type TaskListFilters } from '@/lib/tauri/tasks';
+import { labelsApi } from '@/lib/tauri/labels';
 
 interface TaskStoreState {
   tasks: Map<string, Task>;
@@ -46,6 +47,10 @@ interface TaskStoreState {
   renameSubtask: (taskId: string, subtaskId: string, title: string) => Promise<Task>;
   removeSubtask: (taskId: string, subtaskId: string) => Promise<Task>;
   reorderSubtasks: (taskId: string, subtaskIds: string[]) => Promise<Task>;
+  addLabel: (taskId: string, labelId: string) => Promise<Task>;
+  removeLabel: (taskId: string, labelId: string) => Promise<Task>;
+  setProject: (taskId: string, projectId: string | null) => Promise<Task>;
+  setCycle: (taskId: string, cycleId: string | null) => Promise<Task>;
 }
 
 export const useTaskStore = create<TaskStoreState>()(
@@ -207,6 +212,37 @@ export const useTaskStore = create<TaskStoreState>()(
 
     reorderSubtasks: async (taskId, subtaskIds) => {
       const task = await tasksApi.subtaskReorder(taskId, subtaskIds);
+      set((s) => { s.tasks.set(task.id, task); });
+      return task;
+    },
+
+    addLabel: async (taskId, labelId) => {
+      const task = await labelsApi.taskAdd(taskId, labelId);
+      set((s) => { s.tasks.set(task.id, task); });
+      return task;
+    },
+
+    removeLabel: async (taskId, labelId) => {
+      const task = await labelsApi.taskRemove(taskId, labelId);
+      set((s) => { s.tasks.set(task.id, task); });
+      return task;
+    },
+
+    setProject: async (taskId, projectId) => {
+      // TaskPatch uses `clear_project: true` for explicit null, else project_id.
+      const patch: TaskPatch = projectId === null
+        ? { clear_project: true }
+        : { project_id: projectId };
+      const task = await tasksApi.update(taskId, patch);
+      set((s) => { s.tasks.set(task.id, task); });
+      return task;
+    },
+
+    setCycle: async (taskId, cycleId) => {
+      const patch: TaskPatch = cycleId === null
+        ? { clear_cycle: true }
+        : { cycle_id: cycleId };
+      const task = await tasksApi.update(taskId, patch);
       set((s) => { s.tasks.set(task.id, task); });
       return task;
     },
