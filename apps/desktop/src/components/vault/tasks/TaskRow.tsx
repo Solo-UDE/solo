@@ -2,6 +2,7 @@ import type { FC, ComponentType } from 'react';
 import { Bot, User, Circle, CircleDot, CheckCircle2, XCircle, Archive } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Task, TaskStatus, TaskPriority, Executor } from '@/lib/tauri/tasks';
+import { useTaskStore } from '@/stores/taskStore';
 
 interface Props {
   readonly task: Task;
@@ -30,6 +31,7 @@ const PRIORITY_STYLE: Record<TaskPriority, string> = {
 export const TaskRow: FC<Props> = ({ task, isSelected, onSelect, onToggleDone }) => {
   const StatusIcon = STATUS_ICON[task.status];
   const isDone = task.status === 'done';
+  const isRunning = useTaskStore((s) => s.runningTasks.has(task.id));
   return (
     <button
       type="button"
@@ -78,6 +80,13 @@ export const TaskRow: FC<Props> = ({ task, isSelected, onSelect, onToggleDone })
       )}>
         {task.priority}
       </span>
+
+      {/* pulsing running indicator */}
+      {isRunning && (
+        <span className="grid h-2 w-2 shrink-0 place-items-center" aria-label="Running">
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-blue-500" />
+        </span>
+      )}
 
       {/* executor glyph */}
       <ExecutorGlyph executor={task.executor} />
