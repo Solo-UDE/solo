@@ -1,14 +1,28 @@
 import type { Task } from '@/lib/tauri/tasks';
+import type { Label } from '@/bindings/Label';
+import type { Project } from '@/bindings/Project';
+import type { Cycle } from '@/bindings/Cycle';
 
 export type GroupKey =
   | 'status' | 'priority' | 'executor' | 'cadence'
   | 'context_anchor' | 'agent_fingerprint' | 'last_run_health'
+  | 'label' | 'project' | 'cycle'
   | 'none';
 
 export interface TaskGroup {
   readonly id: string;
   readonly label: string;
   readonly tasks: readonly Task[];
+}
+
+/**
+ * Optional lookup context passed when grouping by label / project / cycle.
+ * Each map is keyed by id; missing keys fall back to the raw id as label.
+ */
+export interface GroupingContext {
+  readonly labels?: Map<string, Label>;
+  readonly projects?: Map<string, Project>;
+  readonly cycles?: Map<string, Cycle>;
 }
 
 export const GROUPING_LABELS: Record<GroupKey, string> = {
@@ -19,6 +33,9 @@ export const GROUPING_LABELS: Record<GroupKey, string> = {
   context_anchor:    'Context anchor',
   agent_fingerprint: 'Agent fingerprint',
   last_run_health:   'Last-run health',
+  label:             'Label',
+  project:           'Project',
+  cycle:             'Cycle',
   none:              'No grouping',
 };
 
@@ -28,7 +45,11 @@ const STATUS_ORDER: Task['status'][] = [
 const PRIORITY_ORDER: Task['priority'][] = ['urgent', 'high', 'medium', 'low'];
 const EXECUTOR_ORDER: Task['executor'][] = ['agent', 'manual'];
 
-export function groupTasks(tasks: readonly Task[], key: GroupKey): TaskGroup[] {
+export function groupTasks(
+  tasks: readonly Task[],
+  key: GroupKey,
+  ctx: GroupingContext = {},
+): TaskGroup[] {
   if (key === 'none') {
     return [{ id: 'all', label: `All (${tasks.length})`, tasks }];
   }
@@ -125,6 +146,59 @@ export function groupTasks(tasks: readonly Task[], key: GroupKey): TaskGroup[] {
     };
     return order.filter((k) => buckets.has(k))
       .map((k) => ({ id: k, label: labels[k], tasks: buckets.get(k) ?? [] }));
+  }
+
+  if (key === 'label') {
+    // A task with N labels appears in N groups; no-label tasks go to "none".
+    const buckets = new Map<string, Task[]>();
+    for (const t of tasks) {
+      if (t.label_ids.length === 0) {
+        const list = buckets.get('none') ?? [];
+        list.push(t);
+        buckets.set('none', list);
+      } else {
+        for (const lid of t.label_ids) {
+          const list = buckets.get(lid) ?? [];
+          list.push(t);
+          buckets.set(lid, list);
+        }
+      }
+    }
+    return Array.from(buckets.entries()).map(([id, tasks]) => ({
+      id,
+      label: id === 'none' ? 'No label' : (ctx.labels?.get(id)?.name ?? id),
+      tasks,
+    }));
+  }
+
+  if (key === 'project') {
+    const buckets = new Map<string, Task[]>();
+    for (const t of tasks) {
+      const k = t.project_id ?? 'none';
+      const list = buckets.get(k) ?? [];
+      list.push(t);
+      buckets.set(k, list);
+    }
+    return Array.from(buckets.entries()).map(([id, tasks]) => ({
+      id,
+      label: id === 'none' ? 'No project' : (ctx.projects?.get(id)?.name ?? id),
+      tasks,
+    }));
+  }
+
+  if (key === 'cycle') {
+    const buckets = new Map<string, Task[]>();
+    for (const t of tasks) {
+      const k = t.cycle_id ?? 'none';
+      const list = buckets.get(k) ?? [];
+      list.push(t);
+      buckets.set(k, list);
+    }
+    return Array.from(buckets.entries()).map(([id, tasks]) => ({
+      id,
+      label: id === 'none' ? 'No cycle' : (ctx.cycles?.get(id)?.name ?? id),
+      tasks,
+    }));
   }
 
   const buckets = new Map<string, Task[]>();
