@@ -464,6 +464,9 @@ pub fn run() {
             task_commands::task_search,
             task_commands::task_run,
             task_commands::task_cancel,
+            task_commands::task_review_merge,
+            task_commands::task_review_discard,
+            task_commands::task_review_open_pr,
             // Update commands
             update_commands::check_for_update,
             update_commands::install_update,

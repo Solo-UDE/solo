@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use solo_protocol::{
-    BackendEvent, Task, TaskDraft, TaskListFilters, TaskPatch,
+    BackendEvent, Task, TaskDraft, TaskListFilters, TaskPatch, TaskStatus,
 };
 use solo_tasks::TaskStore;
 use tauri::{AppHandle, Emitter as _, State};
@@ -159,6 +159,99 @@ pub async fn task_cancel(
         session_manager.inner().clone(),
         id,
     ).await
+}
+
+// =============================================================================
+// Phase 3 — Review commands
+// =============================================================================
+
+/// Discard a run: force-remove the worktree and mark the task Done.
+#[tauri::command]
+pub async fn task_review_discard(
+    id: String,
+    run_id: String,
+    app: AppHandle,
+    state: State<'_, TaskState>,
+    wt_state: State<'_, crate::worktree_commands::WorktreeState>,
+    fs_state: State<'_, crate::fs_commands::FsState>,
+) -> Result<(), String> {
+    let store = get_store(&state).await?;
+    let task = store.get(&id).map_err(|e| e.to_string())?;
+    let run = task
+        .runs
+        .into_iter()
+        .find(|r| r.id == run_id)
+        .ok_or_else(|| "run not found".to_string())?;
+    let wid = run.worktree_id.ok_or_else(|| "run has no worktree".to_string())?;
+
+    let request = solo_protocol::RemoveWorktreeRequest { id: wid, force: true };
+    crate::worktree_commands::worktree_remove(request, app.clone(), wt_state, fs_state).await?;
+
+    store.update(
+        &id,
+        TaskPatch { status: Some(TaskStatus::Done), ..Default::default() },
+    ).map_err(|e| e.to_string())?;
+    emit_changed(&app, vec![id]);
+    Ok(())
+}
+
+/// Promote the worktree branch to a stable name, remove the worktree directory,
+/// and mark the task Done. Returns the stable branch name for the user to merge manually.
+#[tauri::command]
+pub async fn task_review_merge(
+    id: String,
+    run_id: String,
+    app: AppHandle,
+    state: State<'_, TaskState>,
+    wt_state: State<'_, crate::worktree_commands::WorktreeState>,
+    fs_state: State<'_, crate::fs_commands::FsState>,
+) -> Result<String, String> {
+    let store = get_store(&state).await?;
+    let task = store.get(&id).map_err(|e| e.to_string())?;
+    let run = task
+        .runs
+        .into_iter()
+        .find(|r| r.id == run_id)
+        .ok_or_else(|| "run not found".to_string())?;
+    let wid = run.worktree_id.ok_or_else(|| "run has no worktree".to_string())?;
+
+    let stable_branch = format!("solo-review/{}", &wid);
+    crate::worktree_commands::worktree_promote(
+        wid.clone(),
+        stable_branch.clone(),
+        wt_state.clone(),
+        fs_state.clone(),
+    ).await?;
+
+    // Remove the worktree directory; the branch persists for manual git merge.
+    let request = solo_protocol::RemoveWorktreeRequest { id: wid, force: false };
+    let _ = crate::worktree_commands::worktree_remove(request, app.clone(), wt_state, fs_state).await;
+
+    store.update(
+        &id,
+        TaskPatch { status: Some(TaskStatus::Done), ..Default::default() },
+    ).map_err(|e| e.to_string())?;
+    emit_changed(&app, vec![id]);
+    Ok(stable_branch)
+}
+
+/// Return a GitHub compare URL for the run's worktree branch (v1 placeholder).
+/// The caller can open this URL to initiate a PR on their git host.
+#[tauri::command]
+pub async fn task_review_open_pr(
+    id: String,
+    run_id: String,
+    state: State<'_, TaskState>,
+) -> Result<String, String> {
+    let store = get_store(&state).await?;
+    let task = store.get(&id).map_err(|e| e.to_string())?;
+    let run = task
+        .runs
+        .into_iter()
+        .find(|r| r.id == run_id)
+        .ok_or_else(|| "run not found".to_string())?;
+    let wid = run.worktree_id.ok_or_else(|| "run has no worktree".to_string())?;
+    Ok(format!("https://github.com/compare/{}", wid))
 }
 
 /// Setup-time store opener (no State<'_> lifetime constraint).
