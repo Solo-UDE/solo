@@ -78,6 +78,26 @@ use std::env;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+async fn dispatch_fire(app: &tauri::AppHandle, task_id: String) {
+    use tauri::Manager as _;
+    let exec_map = app.state::<Arc<task_executor::ExecutorMap>>().inner().clone();
+    let session_mgr = app.state::<Arc<agent::SessionManager>>().inner().clone();
+    let Ok(store) = task_commands::get_store_for_setup(app).await else { return };
+
+    // Capacity gate: respect MAX_ACTIVE_SESSIONS (3). If at capacity, skip this
+    // tick; the task's next_fire already advanced, so this fire is dropped for
+    // the current window.
+    //
+    // TODO (v2): proper queueing persists dropped fires until capacity frees.
+    // For Phase 4 we accept skipped fires — they appear as missed days in the
+    // Runs history which the user can run manually.
+    if let Err(e) = task_executor::spawn_agent_for_task(
+        app, store, exec_map, session_mgr, task_id.clone(),
+    ).await {
+        tracing::warn!(task_id, error = %e, "scheduled fire: dispatch failed");
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     desktop_config::maybe_load_local_env();
@@ -198,6 +218,53 @@ pub fn run() {
                     task_executor::install_agent_listeners(&handle_for_listeners, store, map, sm_for_listeners);
                 }
             });
+
+            // Start the task scheduler tick loop (Phase 4)
+            {
+                let handle_for_scheduler = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    use std::sync::Arc;
+                    use tauri::Manager as _;
+                    // Wait a moment for stores to initialize
+                    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                    let Ok(store) = task_commands::get_store_for_setup(&handle_for_scheduler).await else {
+                        tracing::warn!("task scheduler: store unavailable");
+                        return;
+                    };
+                    let sched = Arc::new(solo_tasks::Scheduler::new(store));
+
+                    // Catch-up pass
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| i64::try_from(d.as_millis()).unwrap_or(0))
+                        .unwrap_or(0);
+                    if let Ok(fires) = sched.catch_up(now) {
+                        for fire in fires {
+                            tracing::info!(task_id = %fire.task_id, "catch-up fire");
+                            dispatch_fire(&handle_for_scheduler, fire.task_id).await;
+                        }
+                    }
+
+                    // Tick loop
+                    let mut ticker = tokio::time::interval(std::time::Duration::from_secs(15));
+                    loop {
+                        ticker.tick().await;
+                        let now_ms = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| i64::try_from(d.as_millis()).unwrap_or(0))
+                            .unwrap_or(0);
+                        match sched.tick(now_ms) {
+                            Ok(fires) => {
+                                for fire in fires {
+                                    tracing::info!(task_id = %fire.task_id, "scheduled fire");
+                                    dispatch_fire(&handle_for_scheduler, fire.task_id).await;
+                                }
+                            }
+                            Err(e) => tracing::warn!(error = %e, "scheduler tick failed"),
+                        }
+                    }
+                });
+            }
 
             // First-launch: extract the bundled UI skill into ~/.solo/skills/ui/
             // if not already present. Idempotent — subsequent launches are a no-op.
@@ -467,6 +534,7 @@ pub fn run() {
             task_commands::task_review_merge,
             task_commands::task_review_discard,
             task_commands::task_review_open_pr,
+            task_commands::task_schedule_preview,
             // Update commands
             update_commands::check_for_update,
             update_commands::install_update,

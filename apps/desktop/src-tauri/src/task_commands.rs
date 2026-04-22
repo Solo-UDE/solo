@@ -260,3 +260,18 @@ pub async fn get_store_for_setup(app: &AppHandle) -> Result<Arc<TaskStore>, Stri
     let state = app.state::<TaskState>();
     get_store(&state).await
 }
+
+// =============================================================================
+// Phase 4 — Schedule commands
+// =============================================================================
+
+#[tauri::command]
+pub async fn task_schedule_preview(
+    schedule: solo_protocol::Schedule,
+) -> Result<Vec<i64>, String> {
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| i64::try_from(d.as_millis()).unwrap_or(0))
+        .unwrap_or(0);
+    solo_tasks::next_fires(&schedule, now_ms, 5).map_err(|e| e.to_string())
+}
