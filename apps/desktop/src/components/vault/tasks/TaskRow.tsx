@@ -40,9 +40,9 @@ export const TaskRow: FC<Props> = ({ task, isSelected, onSelect, onToggleDone })
       onClick={() => onSelect(task.id)}
       aria-selected={isSelected}
       className={cn(
-        'group flex w-full items-center gap-3 rounded-[10px] border border-transparent px-3 py-2 text-left transition',
+        'group flex w-full items-center gap-3 rounded-[10px] border border-transparent px-3 py-2 text-left transition-all duration-200',
         'hover:bg-muted/50',
-        isSelected && 'border-border/70 bg-card shadow-[0_8px_16px_-14px_rgba(0,0,0,0.35)]',
+        isSelected && 'border-border/40 bg-card shadow-[0_4px_12px_-8px_rgba(0,0,0,0.25)]',
       )}
     >
       {/* status / tick or accept-dismiss for suggested */}
@@ -98,7 +98,7 @@ export const TaskRow: FC<Props> = ({ task, isSelected, onSelect, onToggleDone })
 
       {/* priority pill */}
       <span className={cn(
-        'shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider',
+        'shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium capitalize',
         PRIORITY_STYLE[task.priority],
       )}>
         {task.priority}

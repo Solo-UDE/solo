@@ -23,7 +23,7 @@ export const TasksSettingsModal: FC<Props> = ({ open, onClose }) => (
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 8 }}
           onClick={(e) => e.stopPropagation()}
-          className="flex w-full max-w-md flex-col rounded-[14px] border border-border/60 bg-card shadow-lg"
+          className="flex w-full max-w-md flex-col rounded-[14px] border border-border/40 bg-card/95 backdrop-blur-md shadow-[0_8px_32px_-8px_rgba(0,0,0,0.2)]"
         >
           <header className="flex items-center justify-between border-b border-border/50 px-4 py-3">
             <h2 className="text-[14px] font-semibold">Tasks settings</h2>
@@ -31,7 +31,7 @@ export const TasksSettingsModal: FC<Props> = ({ open, onClose }) => (
               type="button"
               onClick={onClose}
               aria-label="Close"
-              className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground hover:bg-muted/50"
+              className="grid h-8 w-8 place-items-center rounded-[10px] text-muted-foreground hover:bg-muted/60 transition-all duration-200"
             >
               <X className="h-4 w-4" />
             </button>

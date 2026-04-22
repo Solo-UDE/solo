@@ -54,7 +54,7 @@ export const NewPlanDialog: FC<Props> = ({ open, onClose }) => {
             initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}
             onClick={(e) => e.stopPropagation()}
             onSubmit={onSubmit}
-            className="flex w-full max-w-lg flex-col gap-4 rounded-[14px] border border-border/60 bg-card p-5 shadow-lg"
+            className="flex w-full max-w-lg flex-col gap-4 rounded-[14px] border border-border/40 bg-card/95 backdrop-blur-md p-5 shadow-[0_8px_32px_-8px_rgba(0,0,0,0.2)]"
           >
             <div className="flex items-center gap-2">
               <Sparkles className="h-4 w-4 text-foreground" />
@@ -69,16 +69,16 @@ export const NewPlanDialog: FC<Props> = ({ open, onClose }) => {
                 value={goal}
                 onChange={(e) => setGoal(e.target.value)}
                 placeholder="e.g. Prep for the demo this Friday — slides, rehearsal, backup plan"
-                className="resize-none overflow-y-auto whitespace-pre-wrap break-words rounded-md border border-border/60 bg-background px-2 py-1.5 text-[13px] text-foreground"
+                className="resize-none overflow-y-auto whitespace-pre-wrap break-words rounded-[10px] border border-border/40 bg-muted/40 px-2 py-1.5 text-[13px] text-foreground focus:bg-muted/60 focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:outline-none transition-all duration-200"
               />
             </label>
 
             <fieldset className="flex flex-col gap-1">
-              <legend className="text-[11px] uppercase tracking-wider text-muted-foreground">Context sources</legend>
+              <legend className="text-[11px] font-medium text-muted-foreground">Context sources</legend>
               <div className="flex flex-wrap gap-2 pt-1">
                 {SOURCES.map((s) => (
                   <label key={s.id} className={cn(
-                    'flex cursor-pointer items-center gap-1.5 rounded-md border border-border/60 px-2 py-1 text-[12px]',
+                    'flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-border/40 px-2.5 py-1 text-[12px] transition-all duration-200',
                     bundle.includes(s.id) ? 'bg-card' : 'bg-background text-muted-foreground',
                   )}>
                     <input
@@ -98,13 +98,13 @@ export const NewPlanDialog: FC<Props> = ({ open, onClose }) => {
             <div className="flex justify-end gap-2">
               <button
                 type="button" onClick={onClose} disabled={busy}
-                className="rounded-md border border-border/60 bg-background px-3 py-1.5 text-[12px] hover:bg-muted/60"
+                className="h-9 rounded-[10px] border border-border/40 bg-background px-3 text-[12px] hover:bg-muted/60 active:scale-[0.97] transition-all duration-200"
               >Cancel</button>
               <button
                 type="submit" disabled={busy || !goal.trim()}
                 className={cn(
-                  'flex items-center gap-1.5 rounded-md bg-foreground px-3 py-1.5 text-[12px] font-medium text-background',
-                  'disabled:opacity-50',
+                  'flex h-9 items-center gap-1.5 rounded-[10px] bg-foreground px-3 text-[12px] font-medium text-background',
+                  'active:scale-[0.97] transition-all duration-200 disabled:opacity-50',
                 )}
               >
                 {busy ? <><Loader2 className="h-3 w-3 animate-spin" />Planning…</> : <><Sparkles className="h-3 w-3" />Generate drafts</>}

@@ -25,7 +25,7 @@ export const AgentConfigTab: FC<Props> = ({ task }) => {
 
   return (
     <div className="flex flex-col gap-4 p-4 text-[12px]">
-      <label className="flex flex-col gap-1 text-muted-foreground">
+      <label className="flex flex-col gap-1 text-[11px] font-medium text-muted-foreground">
         Execution location
         <SelectDropdown
           value={cfg.execution_location}
@@ -37,7 +37,7 @@ export const AgentConfigTab: FC<Props> = ({ task }) => {
         />
       </label>
 
-      <label className="flex flex-col gap-1 text-muted-foreground">
+      <label className="flex flex-col gap-1 text-[11px] font-medium text-muted-foreground">
         Permission mode
         <SelectDropdown
           value={cfg.permission_mode}
@@ -56,13 +56,13 @@ export const AgentConfigTab: FC<Props> = ({ task }) => {
         )}
       </label>
 
-      <label className="flex flex-col gap-1 text-muted-foreground">
+      <label className="flex flex-col gap-1 text-[11px] font-medium text-muted-foreground">
         Extra deny-list patterns (one per line)
         <textarea
           rows={4}
           value={cfg.deny_list.join('\n')}
           onChange={(e) => patch({ deny_list: e.target.value.split('\n').filter(Boolean) })}
-          className="rounded-md border border-border/60 bg-background px-2 py-1.5 font-mono text-[12px] text-foreground"
+          className="rounded-[10px] border border-border/40 bg-muted/40 px-2 py-1.5 font-mono text-[12px] text-foreground focus:bg-muted/60 focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:outline-none transition-all duration-200"
           placeholder={'rm -rf /tmp\ngit push --force'}
         />
         <span className="mt-0.5 text-[10px]">Merged with the global deny-list.</span>

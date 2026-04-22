@@ -80,7 +80,7 @@ const DropColumn: FC<{
     <section
       ref={ref as React.RefObject<HTMLElement>}
       className={cn(
-        'flex min-w-[280px] max-w-[320px] shrink-0 flex-col gap-1.5 rounded-[12px] border border-border/50 bg-muted/20 p-2 transition-colors',
+        'flex min-w-[280px] max-w-[320px] shrink-0 flex-col gap-1.5 rounded-[12px] border border-border/40 bg-muted/20 p-2 transition-colors',
         hover && accept && 'border-primary/60 bg-primary/10',
       )}
     >

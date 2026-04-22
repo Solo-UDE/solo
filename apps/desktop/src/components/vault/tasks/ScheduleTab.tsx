@@ -13,7 +13,7 @@ export const ScheduleTab: FC<Props> = ({ task }) => {
         value={task.schedule ?? null}
         onChange={(next) => void update(task.id, { schedule: next ?? undefined })}
       />
-      <label className="flex items-center gap-2 px-4 text-[12px] text-muted-foreground">
+      <label className="flex items-center gap-2 px-4 text-[11px] font-medium text-muted-foreground">
         <input
           type="checkbox"
           checked={task.catch_up_on_launch}

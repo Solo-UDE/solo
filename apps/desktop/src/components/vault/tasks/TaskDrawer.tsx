@@ -35,7 +35,7 @@ export const TaskDrawer: FC = () => {
           transition={{ type: 'spring', stiffness: 380, damping: 38 }}
           className={cn(
             'flex h-full w-[480px] shrink-0 flex-col',
-            'border-l border-border/60 bg-background shadow-[0_-8px_32px_-16px_rgba(0,0,0,0.3)]',
+            'border-l border-border/40 bg-background shadow-[0_-8px_32px_-16px_rgba(0,0,0,0.3)]',
           )}
         >
           <header className="flex shrink-0 items-center gap-2 border-b border-border/50 px-4 py-3">
@@ -81,27 +81,27 @@ export const TaskDrawer: FC = () => {
 
           {tab === 'overview' && (
             <div className="min-h-0 flex-1 overflow-y-auto p-4">
-              <label className="mb-4 flex flex-col gap-1 text-[11px] uppercase tracking-wider text-muted-foreground">
+              <label className="mb-4 flex flex-col gap-1 text-[11px] font-medium text-muted-foreground">
                 Title
                 <input
                   value={task.title}
                   onChange={(e) => void update(task.id, { title: e.target.value })}
-                  className="rounded-md border border-border/60 bg-background px-2 py-1.5 text-[14px] font-medium text-foreground focus:outline-none focus:ring-1 focus:ring-border"
+                  className="rounded-[10px] border border-border/40 bg-muted/40 px-2 py-1.5 text-[14px] font-medium text-foreground focus:bg-muted/60 focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:outline-none transition-all duration-200"
                 />
               </label>
 
-              <label className="mb-4 flex flex-col gap-1 text-[11px] uppercase tracking-wider text-muted-foreground">
+              <label className="mb-4 flex flex-col gap-1 text-[11px] font-medium text-muted-foreground">
                 Description
                 <textarea
                   rows={6}
                   value={task.description}
                   onChange={(e) => void update(task.id, { description: e.target.value })}
-                  className="resize-y rounded-md border border-border/60 bg-background px-2 py-1.5 text-[13px] text-foreground focus:outline-none focus:ring-1 focus:ring-border"
+                  className="resize-y rounded-[10px] border border-border/40 bg-muted/40 px-2 py-1.5 text-[13px] text-foreground focus:bg-muted/60 focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:outline-none transition-all duration-200"
                 />
               </label>
 
               <div className="grid grid-cols-2 gap-3">
-                <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wider text-muted-foreground">
+                <label className="flex flex-col gap-1 text-[11px] font-medium text-muted-foreground">
                   Status
                   <SelectDropdown
                     value={task.status}
@@ -109,7 +109,7 @@ export const TaskDrawer: FC = () => {
                     onChange={(v) => void update(task.id, { status: v })}
                   />
                 </label>
-                <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wider text-muted-foreground">
+                <label className="flex flex-col gap-1 text-[11px] font-medium text-muted-foreground">
                   Priority
                   <SelectDropdown
                     value={task.priority}

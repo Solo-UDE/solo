@@ -54,18 +54,18 @@ export const TaskCalendarView: FC = () => {
         <button
           type="button"
           onClick={() => setCursor(new Date(year, month - 1, 1))}
-          className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground hover:bg-muted/50"
+          className="grid h-8 w-8 place-items-center rounded-[10px] text-muted-foreground hover:bg-muted/60 transition-all duration-200"
         ><ChevronLeft className="h-4 w-4" /></button>
         <span className="min-w-[140px] text-center text-[13px] font-medium">{label}</span>
         <button
           type="button"
           onClick={() => setCursor(new Date(year, month + 1, 1))}
-          className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground hover:bg-muted/50"
+          className="grid h-8 w-8 place-items-center rounded-[10px] text-muted-foreground hover:bg-muted/60 transition-all duration-200"
         ><ChevronRight className="h-4 w-4" /></button>
         <button
           type="button"
           onClick={() => setCursor(new Date())}
-          className="ml-2 rounded-md border border-border/60 bg-card px-2 py-0.5 text-[11px] font-medium hover:bg-muted/60"
+          className="ml-2 h-8 rounded-[10px] border border-border/40 bg-card px-2.5 text-[11px] font-medium hover:bg-muted/60 active:scale-[0.97] transition-all duration-200"
         >Today</button>
       </header>
 
@@ -84,7 +84,7 @@ export const TaskCalendarView: FC = () => {
               className={cn(
                 'flex min-h-[70px] flex-col gap-0.5 bg-background p-1',
                 !inMonth && 'opacity-40',
-                isToday && 'ring-1 ring-inset ring-blue-500/50',
+                isToday && 'ring-2 ring-inset ring-primary/30',
               )}
             >
               <span className="text-[10px] text-muted-foreground tabular-nums">{d.getDate()}</span>

@@ -43,7 +43,7 @@ export const ReviewModal: FC = () => {
           <motion.div
             initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-md rounded-[14px] border border-border/60 bg-card p-5 shadow-lg"
+            className="w-full max-w-md rounded-[14px] border border-border/40 bg-card/95 backdrop-blur-md p-5 shadow-[0_8px_32px_-8px_rgba(0,0,0,0.2)]"
           >
             <div className="flex items-start justify-between">
               <div>
@@ -55,7 +55,7 @@ export const ReviewModal: FC = () => {
               </div>
               <button
                 type="button" onClick={close} aria-label="Close"
-                className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground hover:bg-muted/50"
+                className="grid h-8 w-8 place-items-center rounded-[10px] text-muted-foreground hover:bg-muted/60 transition-all duration-200"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -85,10 +85,10 @@ const Action: FC<{
     disabled={busy}
     onClick={onClick}
     className={cn(
-      'flex items-center gap-2 rounded-md border px-3 py-2 text-[13px] font-medium',
-      'hover:bg-muted/60 disabled:opacity-50',
+      'flex h-9 items-center gap-2 rounded-[10px] border px-3 text-[13px] font-medium',
+      'hover:bg-muted/60 active:scale-[0.97] transition-all duration-200 disabled:opacity-50',
       tone === 'ok'     && 'border-green-500/40 text-green-600',
-      tone === 'neutral'&& 'border-border/60 text-foreground',
+      tone === 'neutral'&& 'border-border/40 text-foreground',
       tone === 'danger' && 'border-red-500/40 text-red-600',
     )}
   >

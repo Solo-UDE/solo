@@ -32,8 +32,8 @@ export const RunButton: FC<Props> = ({ task }) => {
       onClick={onClick}
       disabled={busy}
       className={cn(
-        'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-medium',
-        'border border-border/60 bg-card hover:bg-muted/60 disabled:opacity-50',
+        'flex h-9 items-center gap-1.5 rounded-[10px] px-3 text-[12px] font-medium',
+        'border border-border/40 bg-card hover:bg-muted/60 active:scale-[0.97] transition-all duration-200 disabled:opacity-50',
         isRunning ? 'text-red-500' : 'text-foreground',
       )}
     >

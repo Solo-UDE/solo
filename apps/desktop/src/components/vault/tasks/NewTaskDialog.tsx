@@ -56,7 +56,7 @@ export const NewTaskDialog: FC<Props> = ({ open, onClose }) => {
             onClick={(e) => e.stopPropagation()}
             onSubmit={onSubmit}
             className={cn(
-              'w-full max-w-md rounded-[14px] border border-border/60 bg-card p-5 shadow-lg',
+              'w-full max-w-md rounded-[14px] border border-border/40 bg-card/95 backdrop-blur-md p-5 shadow-[0_8px_32px_-8px_rgba(0,0,0,0.2)]',
               'flex flex-col gap-4',
             )}
           >
@@ -69,7 +69,7 @@ export const NewTaskDialog: FC<Props> = ({ open, onClose }) => {
                 required
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                className="rounded-md border border-border/60 bg-background px-2 py-1.5 text-[13px] text-foreground focus:outline-none focus:ring-1 focus:ring-border"
+                className="rounded-[10px] border border-border/40 bg-muted/40 px-2 py-1.5 text-[13px] text-foreground focus:bg-muted/60 focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:outline-none transition-all duration-200"
                 placeholder="e.g. Review the billing proposal"
               />
             </label>
@@ -80,7 +80,7 @@ export const NewTaskDialog: FC<Props> = ({ open, onClose }) => {
                 rows={3}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                className="resize-none rounded-md border border-border/60 bg-background px-2 py-1.5 text-[13px] text-foreground focus:outline-none focus:ring-1 focus:ring-border"
+                className="resize-none rounded-[10px] border border-border/40 bg-muted/40 px-2 py-1.5 text-[13px] text-foreground focus:bg-muted/60 focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:outline-none transition-all duration-200"
               />
             </label>
 
@@ -110,7 +110,7 @@ export const NewTaskDialog: FC<Props> = ({ open, onClose }) => {
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded-md border border-border/60 bg-background px-3 py-1.5 text-[12px] text-foreground hover:bg-muted/60"
+                className="h-9 rounded-[10px] border border-border/40 bg-background px-3 text-[12px] text-foreground hover:bg-muted/60 active:scale-[0.97] transition-all duration-200"
               >
                 Cancel
               </button>
@@ -118,8 +118,8 @@ export const NewTaskDialog: FC<Props> = ({ open, onClose }) => {
                 type="submit"
                 disabled={submitting || !title.trim()}
                 className={cn(
-                  'rounded-md bg-foreground px-3 py-1.5 text-[12px] font-medium text-background',
-                  'disabled:opacity-50',
+                  'h-9 rounded-[10px] bg-foreground px-3 text-[12px] font-medium text-background',
+                  'active:scale-[0.97] transition-all duration-200 disabled:opacity-50',
                 )}
               >
                 {submitting ? 'Creating…' : 'Create'}
