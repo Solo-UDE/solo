@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FC } from 'react';
+import { useEffect, useMemo, useRef, useState, type FC, type ReactNode } from 'react';
 import { draggable, dropTargetForElements } from '@atlaskit/pragmatic-drag-and-drop/element/adapter';
 import { useTaskStore } from '@/stores/taskStore';
 import type { TaskPatch } from '@/bindings/TaskPatch';
@@ -7,6 +7,8 @@ import type { TaskPriority } from '@/bindings/TaskPriority';
 import { TaskRow } from './TaskRow';
 import { groupTasks, type GroupKey } from './groupings';
 import { cn } from '@/lib/utils';
+import { StatusIcon } from './icons/StatusIcon';
+import { PriorityIcon, PRIORITY_CLASSNAME } from './icons/PriorityIcon';
 
 interface Props { readonly grouping: GroupKey; }
 
@@ -14,6 +16,23 @@ interface Props { readonly grouping: GroupKey; }
 type PatchableKey = 'status' | 'priority';
 const PATCHABLE: PatchableKey[] = ['status', 'priority'];
 const isPatchable = (k: string): k is PatchableKey => PATCHABLE.includes(k as PatchableKey);
+
+const STATUS_IDS: TaskStatus[] = ['suggested', 'queued', 'running', 'needs_review', 'done', 'failed', 'archived'];
+const PRIORITY_IDS: TaskPriority[] = ['urgent', 'high', 'medium', 'low'];
+
+function columnGlyph(groupingKey: GroupKey, groupId: string): ReactNode {
+  if (groupingKey === 'status' && STATUS_IDS.includes(groupId as TaskStatus)) {
+    return <StatusIcon status={groupId as TaskStatus} size={13} />;
+  }
+  if (groupingKey === 'priority' && PRIORITY_IDS.includes(groupId as TaskPriority)) {
+    return (
+      <span className={cn('inline-grid h-3.5 w-3.5 place-items-center', PRIORITY_CLASSNAME[groupId as TaskPriority])}>
+        <PriorityIcon priority={groupId as TaskPriority} size={13} />
+      </span>
+    );
+  }
+  return null;
+}
 
 // ---------------------------------------------------------------------------
 // DraggableRow — wraps a task card <li> with pragmatic-drag-and-drop
@@ -131,9 +150,12 @@ export const TaskKanbanView: FC<Props> = ({ grouping }) => {
             void update(taskId, patch);
           }}
         >
-          <header className="flex items-center justify-between px-1 py-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <header className="flex items-center gap-1.5 px-1 py-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            {columnGlyph(effectiveGrouping as GroupKey, g.id)}
             <span>{g.label}</span>
-            <span>{g.tasks.length}</span>
+            <span className="ml-auto rounded-full bg-muted/50 px-1.5 text-[10px] font-semibold normal-case tracking-normal text-muted-foreground">
+              {g.tasks.length}
+            </span>
           </header>
           <ul className="flex flex-col gap-1">
             {g.tasks.map((t) => (
