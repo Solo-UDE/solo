@@ -1216,6 +1216,18 @@ pub enum BackendEvent {
     /// `task_ids` lists the tasks that changed; empty slice means "refetch all".
     #[serde(rename = "tasks:changed")]
     TasksChanged { task_ids: Vec<String> },
+
+    /// A task run started (task_id → run_id).
+    #[serde(rename = "tasks:run_started")]
+    TaskRunStarted { task_id: String, run_id: String },
+
+    /// Incremental progress — summary text of latest event (truncated).
+    #[serde(rename = "tasks:run_progress")]
+    TaskRunProgress { task_id: String, run_id: String, summary: String },
+
+    /// Terminal — the run ended with an outcome.
+    #[serde(rename = "tasks:run_ended")]
+    TaskRunEnded { task_id: String, run_id: String, outcome: RunOutcome, summary: Option<String> },
 }
 
 // =============================================================================
