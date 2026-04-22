@@ -4,10 +4,13 @@ import { cn } from '@/lib/utils';
 import { useTaskStore } from '@/stores/taskStore';
 import { GroupByMenu } from './GroupByMenu';
 import type { GroupKey } from './groupings';
+import { ViewToggle, type ViewKind } from './ViewToggle';
 
 interface Props {
   readonly grouping: GroupKey;
   readonly onGroupingChange: (k: GroupKey) => void;
+  readonly view: ViewKind;
+  readonly onViewChange: (v: ViewKind) => void;
   readonly onNewTask: () => void;
   readonly onNewPlan: () => void;
   readonly onOpenSettings: () => void;
@@ -16,6 +19,8 @@ interface Props {
 export const FiltersBar: FC<Props> = ({
   grouping,
   onGroupingChange,
+  view,
+  onViewChange,
   onNewTask,
   onNewPlan,
   onOpenSettings,
@@ -38,6 +43,7 @@ export const FiltersBar: FC<Props> = ({
           )}
         />
       </div>
+      <ViewToggle value={view} onChange={onViewChange} />
       <GroupByMenu value={grouping} onChange={onGroupingChange} />
       <button
         type="button"
