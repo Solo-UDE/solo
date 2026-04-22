@@ -1,7 +1,7 @@
-import { type FC, type ComponentType, type KeyboardEvent } from 'react';
-import { Bot, User, Circle, CircleDot, CheckCircle2, XCircle, Archive, Check, X, Play, Trash2 } from 'lucide-react';
+import { type FC, type KeyboardEvent } from 'react';
+import { Bot, User, Check, X, Play, Trash2, ListChecks } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { Task, TaskStatus, TaskPriority, Executor } from '@/lib/tauri/tasks';
+import type { Task, TaskStatus, Executor } from '@/lib/tauri/tasks';
 import { useTaskStore } from '@/stores/taskStore';
 import {
   ContextMenu,
@@ -13,6 +13,8 @@ import {
   ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu';
+import { StatusIcon, STATUS_LABEL, STATUS_ORDER } from './icons/StatusIcon';
+import { PriorityIcon, PRIORITY_LABEL, PRIORITY_ORDER, PRIORITY_CLASSNAME } from './icons/PriorityIcon';
 
 interface Props {
   readonly task: Task;
@@ -21,29 +23,7 @@ interface Props {
   readonly onToggleDone: (id: string, next: TaskStatus) => void;
 }
 
-const STATUS_ICON: Record<TaskStatus, ComponentType<{ className?: string }>> = {
-  suggested:    Circle,
-  queued:       Circle,
-  running:      CircleDot,
-  needs_review: CircleDot,
-  done:         CheckCircle2,
-  failed:       XCircle,
-  archived:     Archive,
-};
-
-const PRIORITY_STYLE: Record<TaskPriority, string> = {
-  urgent: 'text-red-500   border-red-500/30   bg-red-500/10',
-  high:   'text-amber-500 border-amber-500/30 bg-amber-500/10',
-  medium: 'text-sky-500   border-sky-500/30   bg-sky-500/10',
-  low:    'text-muted-foreground border-border/50 bg-muted/40',
-};
-
-const STATUS_OPTIONS: TaskStatus[] = ['queued', 'running', 'needs_review', 'done', 'failed', 'archived'];
-const PRIORITY_OPTIONS: TaskPriority[] = ['low', 'medium', 'high', 'urgent'];
-const pretty = (v: string) => v.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
-
 export const TaskRow: FC<Props> = ({ task, isSelected, onSelect, onToggleDone }) => {
-  const StatusIcon = STATUS_ICON[task.status];
   const isDone = task.status === 'done';
   const isRunning = useTaskStore((s) => s.runningTasks.has(task.id));
   const accept = useTaskStore((s) => s.acceptDraft);
@@ -60,14 +40,16 @@ export const TaskRow: FC<Props> = ({ task, isSelected, onSelect, onToggleDone })
     }
   };
 
+  const completedSubs = task.subtasks.filter((s) => s.completed).length;
+  const totalSubs = task.subtasks.length;
+
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
         {/*
-         * Root is a <div role="button"> instead of <button> — WebKit intercepts
-         * mousedown on <button> before the native-drag system can see it, which
-         * was killing pragmatic-drag-and-drop on Tauri. Keyboard a11y preserved
-         * via tabIndex + onKeyDown (Enter/Space select).
+         * Root is a <div role="button"> (not <button>) — WebKit intercepts
+         * mousedown on <button> before pragmatic-drag-and-drop can see it.
+         * Keyboard a11y preserved via tabIndex + onKeyDown.
          */}
         <div
           role="button"
@@ -81,7 +63,7 @@ export const TaskRow: FC<Props> = ({ task, isSelected, onSelect, onToggleDone })
             isSelected && 'border-border/40 bg-card shadow-[0_4px_12px_-8px_rgba(0,0,0,0.25)]',
           )}
         >
-          {/* status / tick or accept-dismiss for suggested */}
+          {/* Status glyph. Suggested-drafts get Accept/Dismiss inline. */}
           {task.status === 'suggested' ? (
             <div className="flex shrink-0 gap-1">
               <button
@@ -106,21 +88,18 @@ export const TaskRow: FC<Props> = ({ task, isSelected, onSelect, onToggleDone })
               role="checkbox"
               aria-checked={isDone}
               tabIndex={-1}
+              title={STATUS_LABEL[task.status]}
               onClick={(e) => {
                 e.stopPropagation();
                 onToggleDone(task.id, isDone ? 'queued' : 'done');
               }}
-              className={cn(
-                'grid h-5 w-5 shrink-0 cursor-pointer place-items-center rounded-full text-muted-foreground',
-                'hover:text-foreground',
-                isDone && 'text-green-500',
-              )}
+              className="grid h-5 w-5 shrink-0 cursor-pointer place-items-center rounded-full"
             >
-              <StatusIcon className="h-4 w-4" />
+              <StatusIcon status={task.status} size={14} />
             </span>
           )}
 
-          {/* title — description intentionally omitted from row so heights stay uniform */}
+          {/* Title */}
           <span className={cn(
             'min-w-0 flex-1 truncate text-[13px] font-medium',
             isDone && 'text-muted-foreground line-through',
@@ -128,25 +107,38 @@ export const TaskRow: FC<Props> = ({ task, isSelected, onSelect, onToggleDone })
             {task.title}
           </span>
 
-          {/* priority pill */}
-          <span className={cn(
-            'shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium capitalize',
-            PRIORITY_STYLE[task.priority],
-          )}>
-            {task.priority}
+          {/* Subtask progress */}
+          {totalSubs > 0 && (
+            <span
+              className={cn(
+                'inline-flex shrink-0 items-center gap-1 rounded-md bg-muted/40 px-1.5 py-0.5 text-[10.5px] tabular-nums text-muted-foreground',
+                completedSubs === totalSubs && 'text-green-600',
+              )}
+              title={`${completedSubs} of ${totalSubs} subtasks completed`}
+            >
+              <ListChecks className="h-3 w-3" />
+              {completedSubs}/{totalSubs}
+            </span>
+          )}
+
+          {/* Priority icon */}
+          <span
+            title={PRIORITY_LABEL[task.priority]}
+            className={cn('shrink-0', PRIORITY_CLASSNAME[task.priority])}
+          >
+            <PriorityIcon priority={task.priority} size={14} />
           </span>
 
-          {/* pulsing running indicator */}
+          {/* Pulsing running indicator */}
           {isRunning && (
             <span className="grid h-2 w-2 shrink-0 place-items-center" aria-label="Running">
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-blue-500" />
             </span>
           )}
 
-          {/* executor glyph */}
           <ExecutorGlyph executor={task.executor} />
 
-          <span className="shrink-0 w-20 text-right text-[10px] tabular-nums text-muted-foreground">
+          <span className="shrink-0 w-16 text-right text-[10px] tabular-nums text-muted-foreground">
             {relativeTime(task.updated_at)}
           </span>
         </div>
@@ -167,17 +159,22 @@ export const TaskRow: FC<Props> = ({ task, isSelected, onSelect, onToggleDone })
 
         <ContextMenuSub>
           <ContextMenuSubTrigger>
-            <StatusIcon className="mr-2 h-3.5 w-3.5" />
+            <span className="mr-2 inline-grid h-3.5 w-3.5 place-items-center">
+              <StatusIcon status={task.status} size={12} />
+            </span>
             Change status
           </ContextMenuSubTrigger>
           <ContextMenuSubContent>
-            {STATUS_OPTIONS.map((s) => (
+            {STATUS_ORDER.filter((s) => s !== 'suggested').map((s) => (
               <ContextMenuItem
                 key={s}
                 disabled={s === task.status}
                 onSelect={() => void update(task.id, { status: s })}
               >
-                {pretty(s)}
+                <span className="mr-2 inline-grid h-3.5 w-3.5 place-items-center">
+                  <StatusIcon status={s} size={12} />
+                </span>
+                {STATUS_LABEL[s]}
               </ContextMenuItem>
             ))}
           </ContextMenuSubContent>
@@ -185,18 +182,22 @@ export const TaskRow: FC<Props> = ({ task, isSelected, onSelect, onToggleDone })
 
         <ContextMenuSub>
           <ContextMenuSubTrigger>
-            <span className={cn('mr-2 inline-block h-2 w-2 rounded-full', dotFor(task.priority))} />
+            <span className="mr-2 inline-grid h-3.5 w-3.5 place-items-center">
+              <PriorityIcon priority={task.priority} size={12} />
+            </span>
             Change priority
           </ContextMenuSubTrigger>
           <ContextMenuSubContent>
-            {PRIORITY_OPTIONS.map((p) => (
+            {PRIORITY_ORDER.map((p) => (
               <ContextMenuItem
                 key={p}
                 disabled={p === task.priority}
                 onSelect={() => void update(task.id, { priority: p })}
               >
-                <span className={cn('mr-2 inline-block h-2 w-2 rounded-full', dotFor(p))} />
-                {pretty(p)}
+                <span className="mr-2 inline-grid h-3.5 w-3.5 place-items-center">
+                  <PriorityIcon priority={p} size={12} />
+                </span>
+                {PRIORITY_LABEL[p]}
               </ContextMenuItem>
             ))}
           </ContextMenuSubContent>
@@ -216,15 +217,6 @@ export const TaskRow: FC<Props> = ({ task, isSelected, onSelect, onToggleDone })
       </ContextMenuContent>
     </ContextMenu>
   );
-};
-
-const dotFor = (p: TaskPriority): string => {
-  switch (p) {
-    case 'urgent': return 'bg-red-500';
-    case 'high':   return 'bg-amber-500';
-    case 'medium': return 'bg-sky-500';
-    case 'low':    return 'bg-muted-foreground/60';
-  }
 };
 
 const ExecutorGlyph: FC<{ executor: Executor }> = ({ executor }) => (
