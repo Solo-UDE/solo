@@ -1116,6 +1116,12 @@ pub enum ExecutionLocation {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../apps/desktop/src/bindings/")]
 pub struct AgentConfig {
+    /// Provider override; None → use the app's currently-active provider
+    /// (anthropic, openai, etc.).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub provider: Option<String>,
+
     /// Model override; None → system default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
@@ -1142,6 +1148,7 @@ pub struct AgentConfig {
 impl Default for AgentConfig {
     fn default() -> Self {
         Self {
+            provider: None,
             model: None,
             skills: None,
             permission_mode: AgentPermissionMode::Ask,
