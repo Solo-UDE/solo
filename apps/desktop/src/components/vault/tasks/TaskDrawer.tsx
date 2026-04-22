@@ -93,10 +93,11 @@ export const TaskDrawer: FC = () => {
               <label className="mb-4 flex flex-col gap-1 text-[11px] font-medium text-muted-foreground">
                 Description
                 <textarea
+                  wrap="soft"
                   rows={6}
                   value={task.description}
                   onChange={(e) => void update(task.id, { description: e.target.value })}
-                  className="resize-y rounded-[10px] border border-border/40 bg-muted/40 px-2 py-1.5 text-[13px] text-foreground focus:bg-muted/60 focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:outline-none transition-all duration-200"
+                  className="resize-y overflow-x-hidden overflow-y-auto whitespace-pre-wrap break-words rounded-[10px] border border-border/40 bg-muted/40 px-2 py-1.5 text-[13px] text-foreground focus:bg-muted/60 focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:outline-none transition-all duration-200"
                 />
               </label>
 

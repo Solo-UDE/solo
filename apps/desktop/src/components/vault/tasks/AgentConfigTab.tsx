@@ -59,10 +59,11 @@ export const AgentConfigTab: FC<Props> = ({ task }) => {
       <label className="flex flex-col gap-1 text-[11px] font-medium text-muted-foreground">
         Extra deny-list patterns (one per line)
         <textarea
+          wrap="soft"
           rows={4}
           value={cfg.deny_list.join('\n')}
           onChange={(e) => patch({ deny_list: e.target.value.split('\n').filter(Boolean) })}
-          className="rounded-[10px] border border-border/40 bg-muted/40 px-2 py-1.5 font-mono text-[12px] text-foreground focus:bg-muted/60 focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:outline-none transition-all duration-200"
+          className="resize-none overflow-x-hidden overflow-y-auto whitespace-pre-wrap break-words rounded-[10px] border border-border/40 bg-muted/40 px-2 py-1.5 font-mono text-[12px] text-foreground focus:bg-muted/60 focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:outline-none transition-all duration-200"
           placeholder={'rm -rf /tmp\ngit push --force'}
         />
         <span className="mt-0.5 text-[10px]">Merged with the global deny-list.</span>

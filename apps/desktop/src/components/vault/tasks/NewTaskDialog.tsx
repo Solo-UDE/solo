@@ -77,10 +77,11 @@ export const NewTaskDialog: FC<Props> = ({ open, onClose }) => {
             <label className="flex flex-col gap-1 text-[12px] text-muted-foreground">
               Description (optional)
               <textarea
+                wrap="soft"
                 rows={3}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                className="resize-none rounded-[10px] border border-border/40 bg-muted/40 px-2 py-1.5 text-[13px] text-foreground focus:bg-muted/60 focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:outline-none transition-all duration-200"
+                className="resize-none overflow-x-hidden overflow-y-auto whitespace-pre-wrap break-words rounded-[10px] border border-border/40 bg-muted/40 px-2 py-1.5 text-[13px] text-foreground focus:bg-muted/60 focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:outline-none transition-all duration-200"
               />
             </label>
 
