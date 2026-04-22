@@ -15,6 +15,9 @@ import {
 } from '@/components/ui/context-menu';
 import { StatusIcon, STATUS_LABEL, STATUS_ORDER } from './icons/StatusIcon';
 import { PriorityIcon, PRIORITY_LABEL, PRIORITY_ORDER, PRIORITY_CLASSNAME } from './icons/PriorityIcon';
+import { LabelBadge } from './LabelBadge';
+import { useLabelStore } from '@/stores/labelStore';
+import { useProjectStore } from '@/stores/projectStore';
 
 interface Props {
   readonly task: Task;
@@ -42,6 +45,13 @@ export const TaskRow: FC<Props> = ({ task, isSelected, onSelect, onToggleDone })
 
   const completedSubs = task.subtasks.filter((s) => s.completed).length;
   const totalSubs = task.subtasks.length;
+
+  const labels = useLabelStore((s) => s.labels);
+  const projects = useProjectStore((s) => s.projects);
+  // Show up to 2 labels inline; the rest surface as "+N".
+  const visibleLabels = task.label_ids.slice(0, 2).map((id) => labels.get(id)).filter(Boolean);
+  const overflowLabels = Math.max(0, task.label_ids.length - visibleLabels.length);
+  const project = task.project_id ? projects.get(task.project_id) : null;
 
   return (
     <ContextMenu>
@@ -106,6 +116,31 @@ export const TaskRow: FC<Props> = ({ task, isSelected, onSelect, onToggleDone })
           )}>
             {task.title}
           </span>
+
+          {/* Project badge */}
+          {project && (
+            <span
+              className="inline-flex shrink-0 items-center gap-1 rounded-md bg-muted/40 px-1.5 py-0.5 text-[10.5px] text-foreground"
+              title={`Project: ${project.name}`}
+            >
+              <span
+                aria-hidden="true"
+                className="h-1.5 w-1.5 rounded-full"
+                style={{ backgroundColor: project.color }}
+              />
+              <span className="max-w-[80px] truncate">{project.name}</span>
+            </span>
+          )}
+
+          {/* Label badges */}
+          {visibleLabels.map((l) => l && (
+            <LabelBadge key={l.id} label={l} className="shrink-0" />
+          ))}
+          {overflowLabels > 0 && (
+            <span className="shrink-0 rounded-full bg-muted/60 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+              +{overflowLabels}
+            </span>
+          )}
 
           {/* Subtask progress */}
           {totalSubs > 0 && (
