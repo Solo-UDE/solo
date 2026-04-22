@@ -36,7 +36,7 @@ impl Default for TaskState {
 }
 
 /// Lazy-open the store on first call. Stored under `~/.solo/tasks/tasks.db`.
-async fn get_store(state: &State<'_, TaskState>) -> Result<Arc<TaskStore>, String> {
+pub(crate) async fn get_store(state: &State<'_, TaskState>) -> Result<Arc<TaskStore>, String> {
     {
         let guard = state.inner.read().await;
         if let Some(s) = guard.as_ref() { return Ok(s.clone()); }
