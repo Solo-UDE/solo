@@ -26,4 +26,17 @@ schedule?: Schedule, context_anchors: Array<ContextAnchor>, runs: Array<TaskRun>
  * Ordered checklist items. Defaults to empty for tasks created before the
  * subtask feature; `ALTER TABLE ... DEFAULT '[]'` covers existing rows.
  */
-subtasks: Array<Subtask>, };
+subtasks: Array<Subtask>, 
+/**
+ * Label ids attached to this task. Labels themselves live in their own
+ * table keyed by id; the ids here are looked up to render badges.
+ */
+label_ids: Array<string>, 
+/**
+ * Optional project membership. `None` means "no project."
+ */
+project_id?: string, 
+/**
+ * Optional cycle membership. `None` means "no cycle."
+ */
+cycle_id?: string, };
