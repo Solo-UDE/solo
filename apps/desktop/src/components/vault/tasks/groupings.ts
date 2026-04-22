@@ -1,6 +1,9 @@
 import type { Task } from '@/lib/tauri/tasks';
 
-export type GroupKey = 'status' | 'priority' | 'executor' | 'cadence' | 'none';
+export type GroupKey =
+  | 'status' | 'priority' | 'executor' | 'cadence'
+  | 'context_anchor' | 'agent_fingerprint' | 'last_run_health'
+  | 'none';
 
 export interface TaskGroup {
   readonly id: string;
@@ -9,11 +12,14 @@ export interface TaskGroup {
 }
 
 export const GROUPING_LABELS: Record<GroupKey, string> = {
-  status:   'Status',
-  priority: 'Priority',
-  executor: 'Executor',
-  cadence:  'Cadence',
-  none:     'No grouping',
+  status:            'Status',
+  priority:          'Priority',
+  executor:          'Executor',
+  cadence:           'Cadence',
+  context_anchor:    'Context anchor',
+  agent_fingerprint: 'Agent fingerprint',
+  last_run_health:   'Last-run health',
+  none:              'No grouping',
 };
 
 const STATUS_ORDER: Task['status'][] = [
@@ -43,6 +49,82 @@ export function groupTasks(tasks: readonly Task[], key: GroupKey): TaskGroup[] {
         label: cadenceLabel(k),
         tasks: buckets.get(k) ?? [],
       }));
+  }
+
+  if (key === 'context_anchor') {
+    const buckets = new Map<string, Task[]>();
+    for (const t of tasks) {
+      // Each task may have N anchors; it appears in EACH bucket (a task can be in multiple groups here).
+      if (!t.context_anchors || t.context_anchors.length === 0) {
+        const list = buckets.get('none') ?? [];
+        list.push(t);
+        buckets.set('none', list);
+      } else {
+        for (const anchor of t.context_anchors) {
+          const k = `${anchor.kind}:${anchor.id}`;
+          const list = buckets.get(k) ?? [];
+          list.push(t);
+          buckets.set(k, list);
+        }
+      }
+    }
+    return Array.from(buckets.entries()).map(([id, tasks]) => ({
+      id,
+      label: id === 'none' ? 'No anchor' : id,
+      tasks,
+    }));
+  }
+
+  if (key === 'agent_fingerprint') {
+    const buckets = new Map<string, Task[]>();
+    for (const t of tasks) {
+      const k = t.agent_config
+        ? `${t.agent_config.model ?? 'default'} · ${t.agent_config.execution_location}`
+        : 'no-config';
+      const list = buckets.get(k) ?? [];
+      list.push(t);
+      buckets.set(k, list);
+    }
+    return Array.from(buckets.entries()).map(([id, tasks]) => ({
+      id, label: id === 'no-config' ? 'Manual / no config' : id, tasks,
+    }));
+  }
+
+  if (key === 'last_run_health') {
+    const buckets = new Map<string, Task[]>();
+    const now = Date.now();
+    const bucketFor = (t: Task): string => {
+      if (!t.runs || t.runs.length === 0) return 'never-run';
+      const last = t.runs[0]; // runs are sorted newest first
+      if (last.outcome === 'failed') return 'failed';
+      if (last.outcome === 'cancelled') return 'cancelled';
+      if (last.outcome === 'running') return 'running';
+      // Succeeded — check if scheduled and overdue
+      if (t.schedule) {
+        const nextFire = t.schedule.kind === 'cron' ? Number(t.schedule.data.next_fire)
+          : t.schedule.kind === 'preset' ? Number(t.schedule.data.next_fire)
+          : null;
+        if (nextFire && nextFire < now - 86_400_000) return 'overdue'; // >1 day overdue
+      }
+      return 'succeeded';
+    };
+    for (const t of tasks) {
+      const k = bucketFor(t);
+      const list = buckets.get(k) ?? [];
+      list.push(t);
+      buckets.set(k, list);
+    }
+    const order = ['failed', 'overdue', 'running', 'never-run', 'succeeded', 'cancelled'];
+    const labels: Record<string, string> = {
+      failed: 'Failed',
+      overdue: 'Overdue',
+      running: 'Running',
+      'never-run': 'Never run',
+      succeeded: 'Succeeded',
+      cancelled: 'Cancelled',
+    };
+    return order.filter((k) => buckets.has(k))
+      .map((k) => ({ id: k, label: labels[k], tasks: buckets.get(k) ?? [] }));
   }
 
   const buckets = new Map<string, Task[]>();
