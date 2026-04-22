@@ -1,8 +1,9 @@
 import { useMemo, useState, type FC } from 'react';
-import { ChevronLeft, ChevronRight, Bot, User } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useTaskStore } from '@/stores/taskStore';
 import type { Task } from '@/lib/tauri/tasks';
+import { StatusIcon } from './icons/StatusIcon';
 
 export const TaskCalendarView: FC = () => {
   const tasksMap = useTaskStore((s) => s.tasks);
@@ -95,7 +96,9 @@ export const TaskCalendarView: FC = () => {
                   onClick={() => select(t.id)}
                   className="flex items-center gap-1 truncate rounded bg-card px-1 py-0.5 text-left text-[10px] hover:bg-muted/60"
                 >
-                  {t.executor === 'agent' ? <Bot className="h-2.5 w-2.5 shrink-0" /> : <User className="h-2.5 w-2.5 shrink-0" />}
+                  <span className="grid h-2.5 w-2.5 shrink-0 place-items-center">
+                    <StatusIcon status={t.status} size={10} />
+                  </span>
                   <span className="truncate">{t.title}</span>
                 </button>
               ))}
