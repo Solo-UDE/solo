@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type FC, type ReactNode } from 'react';
 import { draggable, dropTargetForElements } from '@atlaskit/pragmatic-drag-and-drop/element/adapter';
 import { useTaskStore } from '@/stores/taskStore';
-import type { TaskPatch } from '@/bindings/TaskPatch';
+import { useLabelStore } from '@/stores/labelStore';
+import { useProjectStore } from '@/stores/projectStore';
+import { useCycleStore } from '@/stores/cycleStore';
 import type { TaskStatus } from '@/bindings/TaskStatus';
 import type { TaskPriority } from '@/bindings/TaskPriority';
 import { TaskRow } from './TaskRow';
@@ -12,9 +14,9 @@ import { PriorityIcon, PRIORITY_CLASSNAME } from './icons/PriorityIcon';
 
 interface Props { readonly grouping: GroupKey; }
 
-// Only groupings that map 1-to-1 to a patchable TaskPatch field.
-type PatchableKey = 'status' | 'priority';
-const PATCHABLE: PatchableKey[] = ['status', 'priority'];
+// Groupings that support drag-drop column moves.
+type PatchableKey = 'status' | 'priority' | 'project' | 'cycle' | 'label';
+const PATCHABLE: PatchableKey[] = ['status', 'priority', 'project', 'cycle', 'label'];
 const isPatchable = (k: string): k is PatchableKey => PATCHABLE.includes(k as PatchableKey);
 
 const STATUS_IDS: TaskStatus[] = ['suggested', 'queued', 'running', 'needs_review', 'done', 'failed', 'archived'];
@@ -75,7 +77,7 @@ const DraggableRow: FC<{
 const DropColumn: FC<{
   groupId: string;
   accept: boolean;
-  onDrop: (taskId: string) => void;
+  onDrop: (taskId: string, fromGroupId: string) => void;
   children: React.ReactNode;
 }> = ({ groupId, accept, onDrop, children }) => {
   const ref = useRef<HTMLElement | null>(null);
@@ -95,8 +97,10 @@ const DropColumn: FC<{
       onDragLeave: () => setHover(false),
       onDrop: ({ source }) => {
         setHover(false);
-        const data = source.data as { taskId?: string };
-        if (typeof data.taskId === 'string') onDrop(data.taskId);
+        const data = source.data as { taskId?: string; fromGroupId?: string };
+        if (typeof data.taskId === 'string' && typeof data.fromGroupId === 'string') {
+          onDrop(data.taskId, data.fromGroupId);
+        }
       },
     });
   }, [groupId, accept, onDrop]);
@@ -122,9 +126,19 @@ export const TaskKanbanView: FC<Props> = ({ grouping }) => {
   const selectedId = useTaskStore((s) => s.selectedTaskId);
   const select = useTaskStore((s) => s.select);
   const update = useTaskStore((s) => s.update);
+  const setProject = useTaskStore((s) => s.setProject);
+  const setCycle = useTaskStore((s) => s.setCycle);
+  const addLabel = useTaskStore((s) => s.addLabel);
+  const removeLabel = useTaskStore((s) => s.removeLabel);
+  const labels = useLabelStore((s) => s.labels);
+  const projects = useProjectStore((s) => s.projects);
+  const cycles = useCycleStore((s) => s.cycles);
   const tasks = useMemo(() => Array.from(tasksMap.values()), [tasksMap]);
   const effectiveGrouping = grouping === 'none' ? 'status' : grouping;
-  const groups = useMemo(() => groupTasks(tasks, effectiveGrouping as GroupKey), [tasks, effectiveGrouping]);
+  const groups = useMemo(
+    () => groupTasks(tasks, effectiveGrouping as GroupKey, { labels, projects, cycles }),
+    [tasks, effectiveGrouping, labels, projects, cycles],
+  );
 
   const canPatch = isPatchable(effectiveGrouping);
 
@@ -139,15 +153,25 @@ export const TaskKanbanView: FC<Props> = ({ grouping }) => {
           key={g.id}
           groupId={g.id}
           accept={canPatch}
-          onDrop={(taskId) => {
+          onDrop={(taskId, fromGroupId) => {
             if (!canPatch) return;
-            let patch: TaskPatch;
             if (effectiveGrouping === 'status') {
-              patch = { status: g.id as TaskStatus };
-            } else {
-              patch = { priority: g.id as TaskPriority };
+              void update(taskId, { status: g.id as TaskStatus });
+            } else if (effectiveGrouping === 'priority') {
+              void update(taskId, { priority: g.id as TaskPriority });
+            } else if (effectiveGrouping === 'project') {
+              void setProject(taskId, g.id === 'none' ? null : g.id);
+            } else if (effectiveGrouping === 'cycle') {
+              void setCycle(taskId, g.id === 'none' ? null : g.id);
+            } else if (effectiveGrouping === 'label') {
+              // Drag between label columns: remove the source label and add
+              // the target. Dragging from "none" only adds; dragging to "none"
+              // only removes.
+              void (async () => {
+                if (g.id !== 'none') await addLabel(taskId, g.id);
+                if (fromGroupId !== 'none') await removeLabel(taskId, fromGroupId);
+              })();
             }
-            void update(taskId, patch);
           }}
         >
           <header className="flex items-center gap-1.5 px-1 py-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
