@@ -51,6 +51,7 @@ mod skills_origin;
 mod stats_commands;
 mod task_commands;
 mod task_executor;
+mod task_planner;
 mod terminal_commands;
 mod update_commands;
 mod vault_commands;
