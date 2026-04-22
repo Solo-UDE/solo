@@ -113,6 +113,8 @@ export type { SoloSettings } from './SoloSettings';
 export type { StashEntry } from './StashEntry';
 export type { StatsDelta } from './StatsDelta';
 export type { StatsSnapshot } from './StatsSnapshot';
+export type { Subtask } from './Subtask';
+export type { SubtaskDraft } from './SubtaskDraft';
 export type { Symbol } from './Symbol';
 export type { SymbolKind } from './SymbolKind';
 export type { SymbolRange } from './SymbolRange';
