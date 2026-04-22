@@ -8,7 +8,7 @@ interface Props {
   readonly onChange: (k: GroupKey) => void;
 }
 
-const OPTIONS: GroupKey[] = ['status', 'priority', 'executor', 'none'];
+const OPTIONS: GroupKey[] = ['status', 'priority', 'executor', 'cadence', 'none'];
 
 export const GroupByMenu: FC<Props> = ({ value, onChange }) => (
   <label className="flex items-center gap-2 text-[11px] text-muted-foreground">
