@@ -73,6 +73,22 @@ impl TaskStore {
             CREATE INDEX IF NOT EXISTS idx_tasks_status    ON tasks(status);
             CREATE INDEX IF NOT EXISTS idx_tasks_updated   ON tasks(updated_at DESC);
             CREATE INDEX IF NOT EXISTS idx_task_runs_task  ON task_runs(task_id, started_at DESC);
+
+            CREATE VIRTUAL TABLE IF NOT EXISTS tasks_fts USING fts5(
+                title, description, content='tasks', content_rowid='rowid',
+                tokenize='porter unicode61'
+            );
+
+            CREATE TRIGGER IF NOT EXISTS tasks_ai AFTER INSERT ON tasks BEGIN
+                INSERT INTO tasks_fts(rowid, title, description) VALUES (new.rowid, new.title, new.description);
+            END;
+            CREATE TRIGGER IF NOT EXISTS tasks_ad AFTER DELETE ON tasks BEGIN
+                INSERT INTO tasks_fts(tasks_fts, rowid, title, description) VALUES('delete', old.rowid, old.title, old.description);
+            END;
+            CREATE TRIGGER IF NOT EXISTS tasks_au AFTER UPDATE ON tasks BEGIN
+                INSERT INTO tasks_fts(tasks_fts, rowid, title, description) VALUES('delete', old.rowid, old.title, old.description);
+                INSERT INTO tasks_fts(rowid, title, description) VALUES (new.rowid, new.title, new.description);
+            END;
             ",
         )?;
         Ok(())
@@ -189,6 +205,32 @@ impl TaskStore {
             return Err(TaskError::NotFound(id.to_string()));
         }
         Ok(())
+    }
+
+    pub fn search(&self, query: &str) -> TaskResult<Vec<Task>> {
+        if query.trim().len() < 3 {
+            return self.list(&TaskListFilters {
+                query: Some(query.into()),
+                ..Default::default()
+            });
+        }
+        let conn = self.conn.lock().expect("poisoned");
+        let safe = query.replace('"', "\"\"");
+        let match_expr = format!("\"{safe}\"*");
+        let mut stmt = conn.prepare(
+            "SELECT t.id FROM tasks_fts
+             JOIN tasks t ON t.rowid = tasks_fts.rowid
+             WHERE tasks_fts MATCH ?
+             ORDER BY rank"
+        )?;
+        let ids: Vec<String> = stmt
+            .query_map([match_expr], |row| row.get::<_, String>(0))?
+            .collect::<Result<_, _>>()?;
+        let mut out = Vec::with_capacity(ids.len());
+        for id in ids {
+            if let Some(t) = load_task_row(&conn, &id)? { out.push(t); }
+        }
+        Ok(out)
     }
 
     // ---- internals ------------------------------------------------------
@@ -479,5 +521,15 @@ mod tests {
     fn delete_missing_errors() {
         let store = TaskStore::open_in_memory().unwrap();
         assert!(matches!(store.delete("missing"), Err(TaskError::NotFound(_))));
+    }
+
+    #[test]
+    fn fts_search_matches_title_tokens() {
+        let store = TaskStore::open_in_memory().unwrap();
+        store.create(draft("refactor the authentication module")).unwrap();
+        store.create(draft("update deployment docs")).unwrap();
+        let hits = store.search("auth").unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].title, "refactor the authentication module");
     }
 }
