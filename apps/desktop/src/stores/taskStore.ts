@@ -38,6 +38,9 @@ interface TaskStoreState {
   reviewMerge: () => Promise<string>;
   reviewDiscard: () => Promise<void>;
   reviewOpenPr: () => Promise<string>;
+  planFromGoal: (goal: string, contextOverride?: string[]) => Promise<string[]>;
+  acceptDraft: (id: string) => Promise<void>;
+  dismissDraft: (id: string) => Promise<void>;
 }
 
 export const useTaskStore = create<TaskStoreState>()(
@@ -159,6 +162,18 @@ export const useTaskStore = create<TaskStoreState>()(
       const r = get().pendingReview;
       if (!r) return '';
       return await tasksApi.reviewOpenPr(r.taskId, r.runId);
+    },
+
+    planFromGoal: async (goal, contextOverride) => {
+      return await tasksApi.planFromGoal(goal, contextOverride);
+    },
+
+    acceptDraft: async (id) => {
+      await tasksApi.planAcceptDraft(id);
+    },
+
+    dismissDraft: async (id) => {
+      await tasksApi.planDismissDraft(id);
     },
   })),
 );

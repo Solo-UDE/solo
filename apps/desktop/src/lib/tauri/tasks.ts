@@ -32,4 +32,9 @@ export const tasksApi = {
   reviewDiscard: (id: string, runId: string)       => invoke<void>('task_review_discard',   { id, runId }),
   reviewOpenPr:  (id: string, runId: string)       => invoke<string>('task_review_open_pr', { id, runId }),
   schedulePreview: (schedule: import('@/bindings/Schedule').Schedule) => invoke<number[]>('task_schedule_preview', { schedule }),
+  planFromGoal:    (goal: string, contextOverride?: string[]) =>
+    invoke<string[]>('plan_from_goal', { goal, contextOverride: contextOverride ?? null }),
+  planAcceptDraft: (id: string) => invoke<void>('plan_accept_draft', { id }),
+  planDismissDraft:(id: string) => invoke<void>('plan_dismiss_draft', { id }),
+  planProactive:   () => invoke<string[]>('plan_proactive'),
 };
