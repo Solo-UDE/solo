@@ -56,6 +56,7 @@ export const NewTaskDialog: FC<Props> = ({ open, onClose }) => {
         executor,
         priority,
         subtasks: subtasks.map((s) => ({ title: s })),
+        label_ids: [],
       });
       reset();
       onClose();
