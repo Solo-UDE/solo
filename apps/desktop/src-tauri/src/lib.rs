@@ -49,6 +49,9 @@ mod skills_commands;
 mod skills_marketplace;
 mod skills_origin;
 mod stats_commands;
+mod cycles_commands;
+mod labels_commands;
+mod projects_commands;
 mod task_commands;
 mod task_executor;
 mod task_planner;
@@ -549,6 +552,24 @@ pub fn run() {
             task_commands::plan_accept_draft,
             task_commands::plan_dismiss_draft,
             task_commands::plan_proactive,
+            // Label commands
+            labels_commands::label_list,
+            labels_commands::label_create,
+            labels_commands::label_update,
+            labels_commands::label_delete,
+            labels_commands::task_label_add,
+            labels_commands::task_label_remove,
+            // Project commands
+            projects_commands::project_list,
+            projects_commands::project_get,
+            projects_commands::project_create,
+            projects_commands::project_update,
+            projects_commands::project_delete,
+            // Cycle commands
+            cycles_commands::cycle_list,
+            cycles_commands::cycle_create,
+            cycles_commands::cycle_update,
+            cycles_commands::cycle_delete,
             // Update commands
             update_commands::check_for_update,
             update_commands::install_update,
