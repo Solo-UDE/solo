@@ -940,6 +940,149 @@ pub struct SubtaskDraft {
     pub title: String,
 }
 
+/// A user-defined label. Tasks can carry any number of labels via
+/// `Task.label_ids`. Labels live in their own `labels` table keyed by id;
+/// removal cascades (ids are pruned from every task's `label_ids`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct Label {
+    pub id: String,
+    pub name: String,
+    /// Hex color (`#rrggbb`).
+    pub color: String,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct LabelDraft {
+    pub name: String,
+    pub color: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct LabelPatch {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub color: Option<String>,
+}
+
+/// A Project groups related tasks under a shared goal. Tasks carry a
+/// nullable `project_id` pointer.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectStatus {
+    Planned,
+    InProgress,
+    Paused,
+    Completed,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectHealth {
+    OnTrack,
+    AtRisk,
+    OffTrack,
+    Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct Project {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub status: ProjectStatus,
+    pub health: ProjectHealth,
+    /// Hex color used for the badge.
+    pub color: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub start_at: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub target_at: Option<i64>,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct ProjectDraft {
+    pub name: String,
+    pub description: String,
+    pub color: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct ProjectPatch {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub status: Option<ProjectStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub health: Option<ProjectHealth>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub color: Option<String>,
+    /// Use `Some(None)` sentinel semantics: pass explicit `null` from the
+    /// frontend to clear; omit to leave unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub start_at: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub target_at: Option<i64>,
+}
+
+/// A Cycle is a time-boxed span that bundles tasks (sprint, week, release).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct Cycle {
+    pub id: String,
+    pub name: String,
+    pub start_at: i64,
+    pub end_at: i64,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct CycleDraft {
+    pub name: String,
+    pub start_at: i64,
+    pub end_at: i64,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct CyclePatch {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub start_at: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub end_at: Option<i64>,
+}
+
 /// How the agent task execution session is constrained.
 /// Distinct from the settings-level `PermissionMode` (which controls the
 /// interactive agent permission pipeline). This type governs per-task
@@ -1085,6 +1228,18 @@ pub struct Task {
     /// subtask feature; `ALTER TABLE ... DEFAULT '[]'` covers existing rows.
     #[serde(default)]
     pub subtasks: Vec<Subtask>,
+    /// Label ids attached to this task. Labels themselves live in their own
+    /// table keyed by id; the ids here are looked up to render badges.
+    #[serde(default)]
+    pub label_ids: Vec<String>,
+    /// Optional project membership. `None` means "no project."
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub project_id: Option<String>,
+    /// Optional cycle membership. `None` means "no cycle."
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub cycle_id: Option<String>,
 }
 
 /// Filter applied on `task_list`.
@@ -1116,6 +1271,14 @@ pub struct TaskDraft {
     /// Optional initial subtasks. Each becomes a `Subtask` with a server-assigned id.
     #[serde(default)]
     pub subtasks: Vec<SubtaskDraft>,
+    #[serde(default)]
+    pub label_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub project_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub cycle_id: Option<String>,
 }
 
 /// Partial update for `task_update` — any `Some` field is written; `None` leaves alone.
@@ -1148,6 +1311,26 @@ pub struct TaskPatch {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub subtasks: Option<Vec<Subtask>>,
+    /// Bulk-replace label ids. Fine-grained operations live on
+    /// `task_label_add` / `task_label_remove`; this is for atomic sets.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub label_ids: Option<Vec<String>>,
+    /// Explicit-null semantics: omit to leave unchanged; pass `null` to clear.
+    /// `TaskPatchNullable<String>` encodes this via an outer Option of inner
+    /// Option; we keep it simple with a separate boolean flag.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub project_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub clear_project: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub cycle_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub clear_cycle: Option<bool>,
 }
 
 // =============================================================================
@@ -1387,6 +1570,18 @@ pub enum BackendEvent {
         worktree_id: String,
         diff_summary: String, // "N files changed, +X/-Y"
     },
+
+    /// Label store mutated. Empty slice = refetch all.
+    #[serde(rename = "labels:changed")]
+    LabelsChanged { label_ids: Vec<String> },
+
+    /// Project store mutated. Empty slice = refetch all.
+    #[serde(rename = "projects:changed")]
+    ProjectsChanged { project_ids: Vec<String> },
+
+    /// Cycle store mutated. Empty slice = refetch all.
+    #[serde(rename = "cycles:changed")]
+    CyclesChanged { cycle_ids: Vec<String> },
 }
 
 // =============================================================================
