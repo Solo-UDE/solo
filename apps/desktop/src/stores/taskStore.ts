@@ -33,7 +33,7 @@ interface TaskStoreState {
 export const useTaskStore = create<TaskStoreState>()(
   immer((set, get) => ({
     tasks: new Map(),
-    filter: { status: null, executor: null, priority: null, query: null },
+    filter: {},
     searchQuery: '',
     isLoading: false,
     error: null,

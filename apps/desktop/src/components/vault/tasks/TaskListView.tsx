@@ -66,7 +66,7 @@ export const TaskListView: FC<Props> = ({ grouping }) => {
                         task={t}
                         isSelected={selectedId === t.id}
                         onSelect={select}
-                        onToggleDone={(id, next) => void update(id, { title: null, description: null, status: next, priority: null, catch_up_on_launch: null })}
+                        onToggleDone={(id, next) => void update(id, { status: next })}
                       />
                     </li>
                   ))}

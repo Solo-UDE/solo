@@ -53,7 +53,7 @@ export const TaskDrawer: FC = () => {
               Title
               <input
                 value={task.title}
-                onChange={(e) => void update(task.id, { title: e.target.value, description: null, status: null, priority: null, catch_up_on_launch: null })}
+                onChange={(e) => void update(task.id, { title: e.target.value })}
                 className="rounded-md border border-border/60 bg-background px-2 py-1.5 text-[14px] font-medium text-foreground focus:outline-none focus:ring-1 focus:ring-border"
               />
             </label>
@@ -63,7 +63,7 @@ export const TaskDrawer: FC = () => {
               <textarea
                 rows={6}
                 value={task.description}
-                onChange={(e) => void update(task.id, { title: null, description: e.target.value, status: null, priority: null, catch_up_on_launch: null })}
+                onChange={(e) => void update(task.id, { description: e.target.value })}
                 className="resize-y rounded-md border border-border/60 bg-background px-2 py-1.5 text-[13px] text-foreground focus:outline-none focus:ring-1 focus:ring-border"
               />
             </label>
@@ -73,7 +73,7 @@ export const TaskDrawer: FC = () => {
                 Status
                 <select
                   value={task.status}
-                  onChange={(e) => void update(task.id, { title: null, description: null, status: e.target.value as TaskStatus, priority: null, catch_up_on_launch: null })}
+                  onChange={(e) => void update(task.id, { status: e.target.value as TaskStatus })}
                   className="rounded-md border border-border/60 bg-background px-2 py-1.5 text-[13px] text-foreground"
                 >
                   {STATUS_OPTIONS.map((s) => (
@@ -85,7 +85,7 @@ export const TaskDrawer: FC = () => {
                 Priority
                 <select
                   value={task.priority}
-                  onChange={(e) => void update(task.id, { title: null, description: null, status: null, priority: e.target.value as TaskPriority, catch_up_on_launch: null })}
+                  onChange={(e) => void update(task.id, { priority: e.target.value as TaskPriority })}
                   className="rounded-md border border-border/60 bg-background px-2 py-1.5 text-[13px] text-foreground"
                 >
                   {PRIORITY_OPTIONS.map((p) => (

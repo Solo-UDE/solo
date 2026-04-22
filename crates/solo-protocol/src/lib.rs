@@ -956,12 +956,16 @@ pub struct Task {
 #[ts(export, export_to = "../apps/desktop/src/bindings/")]
 pub struct TaskListFilters {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub status: Option<Vec<TaskStatus>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub executor: Option<Executor>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub priority: Option<Vec<TaskPriority>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub query: Option<String>,
 }
 
@@ -980,14 +984,19 @@ pub struct TaskDraft {
 #[ts(export, export_to = "../apps/desktop/src/bindings/")]
 pub struct TaskPatch {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub title: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub description: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub status: Option<TaskStatus>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub priority: Option<TaskPriority>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub catch_up_on_launch: Option<bool>,
 }
 
