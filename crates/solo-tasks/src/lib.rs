@@ -11,8 +11,10 @@
 //! Phase 1 ships `store` only (SQLite-backed CRUD + FTS search). Later
 //! phases add `context`, `planner`, `scheduler`, `executor`.
 
+pub mod deny_list;
 pub mod error;
 pub mod store;
 
+pub use deny_list::{is_denied, DEFAULT_DENY_LIST};
 pub use error::{TaskError, TaskResult};
 pub use store::TaskStore;
