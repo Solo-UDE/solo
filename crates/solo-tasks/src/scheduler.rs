@@ -114,6 +114,7 @@ mod tests {
         store.create(TaskDraft {
             title: title.into(), description: String::new(),
             executor: Executor::Agent, priority: TaskPriority::Medium,
+            subtasks: Vec::new(),
         }).unwrap()
     }
 
