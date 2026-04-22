@@ -1,5 +1,5 @@
 import type { FC } from 'react';
-import { Search, Plus } from 'lucide-react';
+import { Search, Plus, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useTaskStore } from '@/stores/taskStore';
 import { GroupByMenu } from './GroupByMenu';
@@ -9,9 +9,10 @@ interface Props {
   readonly grouping: GroupKey;
   readonly onGroupingChange: (k: GroupKey) => void;
   readonly onNewTask: () => void;
+  readonly onNewPlan: () => void;
 }
 
-export const FiltersBar: FC<Props> = ({ grouping, onGroupingChange, onNewTask }) => {
+export const FiltersBar: FC<Props> = ({ grouping, onGroupingChange, onNewTask, onNewPlan }) => {
   const searchQuery = useTaskStore((s) => s.searchQuery);
   const setSearchQuery = useTaskStore((s) => s.setSearchQuery);
 
@@ -31,6 +32,17 @@ export const FiltersBar: FC<Props> = ({ grouping, onGroupingChange, onNewTask })
         />
       </div>
       <GroupByMenu value={grouping} onChange={onGroupingChange} />
+      <button
+        type="button"
+        onClick={onNewPlan}
+        className={cn(
+          'flex items-center gap-1 rounded-md border border-border/60 bg-card px-2.5 py-1.5 text-[12px] font-medium',
+          'text-foreground hover:bg-muted/60',
+        )}
+      >
+        <Sparkles className="h-3.5 w-3.5" />
+        New Plan
+      </button>
       <button
         type="button"
         onClick={onNewTask}
