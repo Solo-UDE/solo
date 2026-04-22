@@ -235,6 +235,15 @@ impl TaskStore {
         Ok(out)
     }
 
+    /// Clear the schedule field for a task (sets `schedule_json` to NULL).
+    pub fn clear_schedule(&self, id: &str) -> TaskResult<Task> {
+        let mut task = self.get(id)?;
+        task.schedule = None;
+        task.updated_at = now_ms();
+        self.insert(&task)?;
+        Ok(task)
+    }
+
     /// List tasks eligible for scheduling (scheduled field set, status Queued or Done).
     pub fn list_scheduled(&self) -> TaskResult<Vec<Task>> {
         let conn = self.conn.lock().expect("poisoned");
