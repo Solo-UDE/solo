@@ -69,7 +69,7 @@ export const NewPlanDialog: FC<Props> = ({ open, onClose }) => {
                 value={goal}
                 onChange={(e) => setGoal(e.target.value)}
                 placeholder="e.g. Prep for the demo this Friday — slides, rehearsal, backup plan"
-                className="resize-none rounded-md border border-border/60 bg-background px-2 py-1.5 text-[13px] text-foreground"
+                className="resize-none overflow-y-auto whitespace-pre-wrap break-words rounded-md border border-border/60 bg-background px-2 py-1.5 text-[13px] text-foreground"
               />
             </label>
 
