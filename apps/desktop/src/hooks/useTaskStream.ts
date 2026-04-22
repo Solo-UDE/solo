@@ -2,11 +2,22 @@ import { useEffect } from 'react';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type { BackendEvent } from '@/bindings/BackendEvent';
 import { useTaskStore } from '@/stores/taskStore';
+import { useLabelStore } from '@/stores/labelStore';
+import { useProjectStore } from '@/stores/projectStore';
+import { useCycleStore } from '@/stores/cycleStore';
 
+/**
+ * Subscribes the task, label, project, and cycle stores to their respective
+ * `BackendEvent` streams. A single `backend-event` listener fan-outs to the
+ * stores via their `patchFromEvent` actions.
+ */
 export function useTaskStream(): void {
   const patchFromEvent = useTaskStore((s) => s.patchFromEvent);
   const markRunning = useTaskStore((s) => s.markRunning);
   const openReview = useTaskStore((s) => s.openReview);
+  const patchLabels = useLabelStore((s) => s.patchFromEvent);
+  const patchProjects = useProjectStore((s) => s.patchFromEvent);
+  const patchCycles = useCycleStore((s) => s.patchFromEvent);
 
   useEffect(() => {
     let unlisten: UnlistenFn | undefined;
@@ -37,6 +48,15 @@ export function useTaskStream(): void {
             });
             void patchFromEvent([ev.payload.task_id]);
             break;
+          case 'labels:changed':
+            void patchLabels(ev.payload.label_ids);
+            break;
+          case 'projects:changed':
+            void patchProjects(ev.payload.project_ids);
+            break;
+          case 'cycles:changed':
+            void patchCycles(ev.payload.cycle_ids);
+            break;
           default:
             break;
         }
@@ -44,5 +64,5 @@ export function useTaskStream(): void {
     };
     void setup();
     return () => { unlisten?.(); };
-  }, [patchFromEvent, markRunning, openReview]);
+  }, [patchFromEvent, markRunning, openReview, patchLabels, patchProjects, patchCycles]);
 }
