@@ -1,13 +1,34 @@
-import { useMemo, useState, type FC } from 'react';
+import { useMemo, useState, type FC, type ReactNode } from 'react';
 import { ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
 import { useTaskStore } from '@/stores/taskStore';
 import { TaskRow } from './TaskRow';
 import { groupTasks, type GroupKey } from './groupings';
+import { StatusIcon } from './icons/StatusIcon';
+import { PriorityIcon, PRIORITY_CLASSNAME } from './icons/PriorityIcon';
+import type { TaskStatus } from '@/bindings/TaskStatus';
+import type { TaskPriority } from '@/bindings/TaskPriority';
 
 interface Props {
   readonly grouping: GroupKey;
+}
+
+const STATUS_IDS: TaskStatus[] = ['suggested', 'queued', 'running', 'needs_review', 'done', 'failed', 'archived'];
+const PRIORITY_IDS: TaskPriority[] = ['urgent', 'high', 'medium', 'low'];
+
+function headerGlyph(groupingKey: GroupKey, groupId: string): ReactNode {
+  if (groupingKey === 'status' && STATUS_IDS.includes(groupId as TaskStatus)) {
+    return <StatusIcon status={groupId as TaskStatus} size={13} />;
+  }
+  if (groupingKey === 'priority' && PRIORITY_IDS.includes(groupId as TaskPriority)) {
+    return (
+      <span className={cn('inline-grid h-3.5 w-3.5 place-items-center', PRIORITY_CLASSNAME[groupId as TaskPriority])}>
+        <PriorityIcon priority={groupId as TaskPriority} size={13} />
+      </span>
+    );
+  }
+  return null;
 }
 
 export const TaskListView: FC<Props> = ({ grouping }) => {
@@ -41,6 +62,7 @@ export const TaskListView: FC<Props> = ({ grouping }) => {
     <div className="flex flex-col gap-4 p-3">
       {groups.map((g) => {
         const isCollapsed = collapsed.has(g.id);
+        const glyph = headerGlyph(grouping, g.id);
         return (
           <section key={g.id}>
             <button
@@ -51,8 +73,11 @@ export const TaskListView: FC<Props> = ({ grouping }) => {
               <ChevronRight
                 className={cn('h-3 w-3 transition-transform', !isCollapsed && 'rotate-90')}
               />
+              {glyph}
               <span>{g.label}</span>
-              <span className="text-muted-foreground/70">· {g.tasks.length}</span>
+              <span className="ml-auto rounded-full bg-muted/50 px-1.5 text-[10px] font-semibold normal-case tracking-normal text-muted-foreground">
+                {g.tasks.length}
+              </span>
             </button>
             <AnimatePresence initial={false}>
               {!isCollapsed && (
