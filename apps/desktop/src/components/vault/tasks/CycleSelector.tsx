@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState, type FC } from 'react';
-import { CalendarClock, Check, X } from 'lucide-react';
+import { CalendarClock, Check, Plus, X } from 'lucide-react';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { useCycleStore } from '@/stores/cycleStore';
+import { NewCycleDialog } from './NewCycleDialog';
 
 interface Props {
   value: string | null;
@@ -17,6 +18,7 @@ export const CycleSelector: FC<Props> = ({ value, onChange, compact = false }) =
   const cycles = useCycleStore((s) => s.cycles);
   const load = useCycleStore((s) => s.load);
   const [open, setOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
   const [query, setQuery] = useState('');
 
   useEffect(() => { if (open) void load(); }, [open, load]);
@@ -89,8 +91,21 @@ export const CycleSelector: FC<Props> = ({ value, onChange, compact = false }) =
               No cycles yet
             </div>
           )}
+          <button
+            type="button"
+            onClick={() => { setOpen(false); setCreateOpen(true); }}
+            className="mt-1 flex items-center gap-2 rounded-[6px] border-t border-border/40 px-1.5 py-1 pt-2 text-left text-[12px] text-muted-foreground hover:bg-muted/70 hover:text-foreground"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            <span>New cycle…</span>
+          </button>
         </div>
       </PopoverContent>
+      <NewCycleDialog
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={(id) => void onChange(id)}
+      />
     </Popover>
   );
 };
