@@ -13,6 +13,9 @@ use tauri::{AppHandle, Emitter as _, State};
 use tokio::sync::RwLock;
 use tracing::{debug, info};
 
+use crate::task_executor::{spawn_agent_for_task, cancel_task, ExecutorMap};
+use crate::agent::SessionManager;
+
 // =============================================================================
 // State
 // =============================================================================
@@ -120,4 +123,47 @@ pub async fn task_search(
 ) -> Result<Vec<Task>, String> {
     let store = get_store(&state).await?;
     store.search(&query).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn task_run(
+    id: String,
+    app: AppHandle,
+    state: State<'_, TaskState>,
+    executor_map: State<'_, Arc<ExecutorMap>>,
+    session_manager: State<'_, Arc<SessionManager>>,
+) -> Result<String, String> {
+    let store = get_store(&state).await?;
+    spawn_agent_for_task(
+        &app,
+        store,
+        executor_map.inner().clone(),
+        session_manager.inner().clone(),
+        id,
+    ).await
+}
+
+#[tauri::command]
+pub async fn task_cancel(
+    id: String,
+    app: AppHandle,
+    state: State<'_, TaskState>,
+    executor_map: State<'_, Arc<ExecutorMap>>,
+    session_manager: State<'_, Arc<SessionManager>>,
+) -> Result<(), String> {
+    let store = get_store(&state).await?;
+    cancel_task(
+        &app,
+        store,
+        executor_map.inner().clone(),
+        session_manager.inner().clone(),
+        id,
+    ).await
+}
+
+/// Setup-time store opener (no State<'_> lifetime constraint).
+pub async fn get_store_for_setup(app: &AppHandle) -> Result<Arc<TaskStore>, String> {
+    use tauri::Manager as _;
+    let state = app.state::<TaskState>();
+    get_store(&state).await
 }

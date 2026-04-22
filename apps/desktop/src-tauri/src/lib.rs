@@ -67,6 +67,7 @@ use provider_commands::ProviderAuthState;
 use stats_commands::StatsState;
 use tauri::Emitter;
 use task_commands::TaskState;
+use task_executor::ExecutorMap;
 use terminal_commands::TerminalState;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use vault_commands::VaultState;
@@ -187,6 +188,16 @@ pub fn run() {
             // Wire up agent event callbacks
             agent_commands::setup_event_callbacks(app.handle(), &session_manager);
 
+            // Install task allocator agent listeners
+            let handle_for_listeners = app.handle().clone();
+            tauri::async_runtime::block_on(async {
+                if let Ok(store) = task_commands::get_store_for_setup(&handle_for_listeners).await {
+                    use tauri::Manager as _;
+                    let map = handle_for_listeners.state::<std::sync::Arc<ExecutorMap>>().inner().clone();
+                    task_executor::install_agent_listeners(&handle_for_listeners, store, map);
+                }
+            });
+
             // First-launch: extract the bundled UI skill into ~/.solo/skills/ui/
             // if not already present. Idempotent — subsequent launches are a no-op.
             {
@@ -233,6 +244,7 @@ pub fn run() {
         .manage(WorktreeState::new())
         .manage(VaultState::new())
         .manage(TaskState::new())
+        .manage(ExecutorMap::new())
         .manage(VoiceState::new())
         .manage(std::sync::Arc::new(voice::hud::HudState::new()))
         .manage(StatsState::new())
@@ -449,6 +461,8 @@ pub fn run() {
             task_commands::task_update,
             task_commands::task_delete,
             task_commands::task_search,
+            task_commands::task_run,
+            task_commands::task_cancel,
             // Update commands
             update_commands::check_for_update,
             update_commands::install_update,
