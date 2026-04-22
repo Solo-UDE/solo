@@ -19,6 +19,8 @@ solo-protocol = { path = "../solo-protocol" }
 rusqlite = { version = "0.32", features = ["bundled"] }
 uuid = { version = "1.11", features = ["v4"] }
 dirs = "5.0"
+croner = "2"
+chrono = { version = "0.4", features = ["serde"] }
 
 [dev-dependencies]
 tempfile = "3.14"

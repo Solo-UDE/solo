@@ -13,8 +13,10 @@
 
 pub mod deny_list;
 pub mod error;
+pub mod schedule_preview;
 pub mod store;
 
 pub use deny_list::{is_denied, DEFAULT_DENY_LIST};
 pub use error::{TaskError, TaskResult};
+pub use schedule_preview::next_fires;
 pub use store::TaskStore;
