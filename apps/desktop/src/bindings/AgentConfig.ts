@@ -7,6 +7,11 @@ import type { ExecutionLocation } from "./ExecutionLocation";
  */
 export type AgentConfig = { 
 /**
+ * Provider override; None → use the app's currently-active provider
+ * (anthropic, openai, etc.).
+ */
+provider?: string, 
+/**
  * Model override; None → system default.
  */
 model?: string, 
