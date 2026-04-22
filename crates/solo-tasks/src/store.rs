@@ -4,7 +4,7 @@ use std::path::Path;
 use std::sync::Mutex;
 use rusqlite::{Connection, OptionalExtension, params};
 use solo_protocol::{
-    Executor, RunOutcome, Task, TaskDraft, TaskListFilters,
+    Executor, RunOutcome, Subtask, Task, TaskDraft, TaskListFilters,
     TaskOrigin, TaskPatch, TaskPriority, TaskRun, TaskStatus,
 };
 use uuid::Uuid;
@@ -91,6 +91,26 @@ impl TaskStore {
             END;
             ",
         )?;
+
+        // Versioned migrations (gated by PRAGMA user_version).
+        let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+
+        if version < 1 {
+            // v1: add subtasks_json column. ADD COLUMN with DEFAULT is O(1) in SQLite.
+            // Pre-existing rows read back with an empty list via the DEFAULT.
+            let has_column: bool = conn
+                .prepare("SELECT 1 FROM pragma_table_info('tasks') WHERE name = 'subtasks_json'")?
+                .query_map([], |_| Ok(()))?
+                .next()
+                .is_some();
+            if !has_column {
+                conn.execute_batch(
+                    "ALTER TABLE tasks ADD COLUMN subtasks_json TEXT NOT NULL DEFAULT '[]';",
+                )?;
+            }
+            conn.execute_batch("PRAGMA user_version = 1;")?;
+        }
+
         Ok(())
     }
 
@@ -99,6 +119,17 @@ impl TaskStore {
     pub fn create(&self, draft: TaskDraft) -> TaskResult<Task> {
         let now = now_ms();
         let id = Uuid::new_v4().to_string();
+        let subtasks = draft
+            .subtasks
+            .into_iter()
+            .map(|d| Subtask {
+                id: Uuid::new_v4().to_string(),
+                title: d.title,
+                completed: false,
+                created_at: now,
+                completed_at: None,
+            })
+            .collect();
         let task = Task {
             id: id.clone(),
             title: draft.title,
@@ -115,6 +146,7 @@ impl TaskStore {
             last_error: None,
             catch_up_on_launch: false,
             origin: TaskOrigin::Manual,
+            subtasks,
         };
         self.insert(&task)?;
         Ok(task)
@@ -195,8 +227,114 @@ impl TaskStore {
         if let Some(v) = patch.agent_config { task.agent_config = Some(v); }
         if let Some(v) = patch.schedule { task.schedule = Some(v); }
         if let Some(v) = patch.catch_up_on_launch { task.catch_up_on_launch = v; }
+        if let Some(v) = patch.subtasks { task.subtasks = v; }
         task.updated_at = now_ms();
         self.insert(&task)?;     // INSERT OR REPLACE — upsert semantics
+        Ok(task)
+    }
+
+    // ---- Subtasks -------------------------------------------------------
+
+    pub fn subtask_add(&self, task_id: &str, title: String) -> TaskResult<Task> {
+        let mut task = self.get(task_id)?;
+        let now = now_ms();
+        task.subtasks.push(Subtask {
+            id: Uuid::new_v4().to_string(),
+            title,
+            completed: false,
+            created_at: now,
+            completed_at: None,
+        });
+        task.updated_at = now;
+        self.insert(&task)?;
+        Ok(task)
+    }
+
+    pub fn subtask_toggle(
+        &self,
+        task_id: &str,
+        subtask_id: &str,
+        completed: bool,
+    ) -> TaskResult<Task> {
+        let mut task = self.get(task_id)?;
+        let now = now_ms();
+        let sub = task
+            .subtasks
+            .iter_mut()
+            .find(|s| s.id == subtask_id)
+            .ok_or_else(|| TaskError::NotFound(format!("subtask {subtask_id}")))?;
+        sub.completed = completed;
+        sub.completed_at = if completed { Some(now) } else { None };
+        task.updated_at = now;
+        self.insert(&task)?;
+        Ok(task)
+    }
+
+    pub fn subtask_rename(
+        &self,
+        task_id: &str,
+        subtask_id: &str,
+        title: String,
+    ) -> TaskResult<Task> {
+        let mut task = self.get(task_id)?;
+        let sub = task
+            .subtasks
+            .iter_mut()
+            .find(|s| s.id == subtask_id)
+            .ok_or_else(|| TaskError::NotFound(format!("subtask {subtask_id}")))?;
+        sub.title = title;
+        task.updated_at = now_ms();
+        self.insert(&task)?;
+        Ok(task)
+    }
+
+    pub fn subtask_remove(&self, task_id: &str, subtask_id: &str) -> TaskResult<Task> {
+        let mut task = self.get(task_id)?;
+        let before = task.subtasks.len();
+        task.subtasks.retain(|s| s.id != subtask_id);
+        if task.subtasks.len() == before {
+            return Err(TaskError::NotFound(format!("subtask {subtask_id}")));
+        }
+        task.updated_at = now_ms();
+        self.insert(&task)?;
+        Ok(task)
+    }
+
+    /// Reorder subtasks to match `ordered_ids` exactly. Must be a permutation
+    /// of the current subtask ids (same length, same set).
+    pub fn subtask_reorder(
+        &self,
+        task_id: &str,
+        ordered_ids: &[String],
+    ) -> TaskResult<Task> {
+        let mut task = self.get(task_id)?;
+        if ordered_ids.len() != task.subtasks.len() {
+            return Err(TaskError::Invalid(format!(
+                "subtask reorder length mismatch: got {}, expected {}",
+                ordered_ids.len(),
+                task.subtasks.len()
+            )));
+        }
+        let mut by_id: std::collections::HashMap<String, Subtask> = task
+            .subtasks
+            .drain(..)
+            .map(|s| (s.id.clone(), s))
+            .collect();
+        let mut next = Vec::with_capacity(ordered_ids.len());
+        for id in ordered_ids {
+            let s = by_id.remove(id).ok_or_else(|| {
+                TaskError::Invalid(format!("subtask reorder unknown id: {id}"))
+            })?;
+            next.push(s);
+        }
+        if !by_id.is_empty() {
+            return Err(TaskError::Invalid(
+                "subtask reorder missing ids in permutation".into(),
+            ));
+        }
+        task.subtasks = next;
+        task.updated_at = now_ms();
+        self.insert(&task)?;
         Ok(task)
     }
 
@@ -325,8 +463,9 @@ impl TaskStore {
             INSERT OR REPLACE INTO tasks
                 (id, title, description, status, executor, priority,
                  created_at, updated_at, agent_config_json, schedule_json,
-                 context_anchors_json, last_error, catch_up_on_launch, origin_json)
-            VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14)
+                 context_anchors_json, last_error, catch_up_on_launch, origin_json,
+                 subtasks_json)
+            VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15)
             ",
             params![
                 task.id,
@@ -343,6 +482,7 @@ impl TaskStore {
                 task.last_error,
                 i64::from(task.catch_up_on_launch),
                 serde_json::to_string(&task.origin)?,
+                serde_json::to_string(&task.subtasks)?,
             ],
         )?;
         Ok(())
@@ -420,17 +560,18 @@ fn load_task_row(conn: &Connection, id: &str) -> TaskResult<Option<Task>> {
     let row: Option<(
         String, String, String, String, String, String,
         i64, i64, Option<String>, Option<String>,
-        String, Option<String>, i64, String,
+        String, Option<String>, i64, String, String,
     )> = conn.query_row(
         "SELECT id, title, description, status, executor, priority,
                 created_at, updated_at, agent_config_json, schedule_json,
-                context_anchors_json, last_error, catch_up_on_launch, origin_json
+                context_anchors_json, last_error, catch_up_on_launch, origin_json,
+                subtasks_json
          FROM tasks WHERE id = ?",
         [id],
         |r| Ok((
             r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?,
             r.get(6)?, r.get(7)?, r.get(8)?, r.get(9)?,
-            r.get(10)?, r.get(11)?, r.get(12)?, r.get(13)?,
+            r.get(10)?, r.get(11)?, r.get(12)?, r.get(13)?, r.get(14)?,
         ))
     ).optional()?;
 
@@ -465,6 +606,7 @@ fn load_task_row(conn: &Connection, id: &str) -> TaskResult<Option<Task>> {
         last_error: r.11,
         catch_up_on_launch: r.12 != 0,
         origin: serde_json::from_str(&r.13)?,
+        subtasks: serde_json::from_str(&r.14)?,
     }))
 }
 
@@ -501,6 +643,7 @@ mod tests {
             description: String::new(),
             executor: Executor::Manual,
             priority: TaskPriority::Medium,
+            subtasks: Vec::new(),
         }
     }
 
@@ -645,6 +788,7 @@ mod tests {
         let t = store.create(TaskDraft {
             title: "run".into(), description: String::new(),
             executor: Executor::Agent, priority: TaskPriority::Medium,
+            subtasks: Vec::new(),
         }).unwrap();
         assert!(t.agent_config.is_none());
 
@@ -675,5 +819,183 @@ mod tests {
         let list = store.list_scheduled().unwrap();
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].id, scheduled.id);
+    }
+
+    // ---- Subtasks ------------------------------------------------------
+
+    #[test]
+    fn subtask_add_appends_and_persists() {
+        let store = TaskStore::open_in_memory().unwrap();
+        let t = store.create(draft("parent")).unwrap();
+        assert!(t.subtasks.is_empty());
+
+        let after_one = store.subtask_add(&t.id, "first".into()).unwrap();
+        assert_eq!(after_one.subtasks.len(), 1);
+        assert_eq!(after_one.subtasks[0].title, "first");
+        assert!(!after_one.subtasks[0].completed);
+
+        let after_two = store.subtask_add(&t.id, "second".into()).unwrap();
+        assert_eq!(after_two.subtasks.len(), 2);
+        assert_eq!(after_two.subtasks[1].title, "second");
+
+        let reloaded = store.get(&t.id).unwrap();
+        assert_eq!(reloaded.subtasks.len(), 2);
+        assert_eq!(reloaded.subtasks[0].title, "first");
+        assert_eq!(reloaded.subtasks[1].title, "second");
+    }
+
+    #[test]
+    fn subtask_toggle_sets_and_clears_completed_at() {
+        let store = TaskStore::open_in_memory().unwrap();
+        let t = store.create(draft("parent")).unwrap();
+        let t = store.subtask_add(&t.id, "do it".into()).unwrap();
+        let sub_id = t.subtasks[0].id.clone();
+
+        let toggled_on = store.subtask_toggle(&t.id, &sub_id, true).unwrap();
+        assert!(toggled_on.subtasks[0].completed);
+        assert!(toggled_on.subtasks[0].completed_at.is_some());
+
+        let toggled_off = store.subtask_toggle(&t.id, &sub_id, false).unwrap();
+        assert!(!toggled_off.subtasks[0].completed);
+        assert!(toggled_off.subtasks[0].completed_at.is_none());
+    }
+
+    #[test]
+    fn subtask_toggle_missing_id_returns_not_found() {
+        let store = TaskStore::open_in_memory().unwrap();
+        let t = store.create(draft("parent")).unwrap();
+        let err = store.subtask_toggle(&t.id, "no-such-id", true).unwrap_err();
+        assert!(matches!(err, TaskError::NotFound(_)));
+    }
+
+    #[test]
+    fn subtask_rename_changes_title() {
+        let store = TaskStore::open_in_memory().unwrap();
+        let t = store.create(draft("parent")).unwrap();
+        let t = store.subtask_add(&t.id, "old name".into()).unwrap();
+        let sub_id = t.subtasks[0].id.clone();
+
+        let renamed = store.subtask_rename(&t.id, &sub_id, "new name".into()).unwrap();
+        assert_eq!(renamed.subtasks[0].title, "new name");
+        assert_eq!(renamed.subtasks[0].id, sub_id);
+    }
+
+    #[test]
+    fn subtask_remove_preserves_other_order() {
+        let store = TaskStore::open_in_memory().unwrap();
+        let t = store.create(draft("parent")).unwrap();
+        let t = store.subtask_add(&t.id, "a".into()).unwrap();
+        let t = store.subtask_add(&t.id, "b".into()).unwrap();
+        let t = store.subtask_add(&t.id, "c".into()).unwrap();
+        let middle_id = t.subtasks[1].id.clone();
+
+        let after = store.subtask_remove(&t.id, &middle_id).unwrap();
+        assert_eq!(after.subtasks.len(), 2);
+        assert_eq!(after.subtasks[0].title, "a");
+        assert_eq!(after.subtasks[1].title, "c");
+    }
+
+    #[test]
+    fn subtask_remove_missing_is_not_found() {
+        let store = TaskStore::open_in_memory().unwrap();
+        let t = store.create(draft("parent")).unwrap();
+        let err = store.subtask_remove(&t.id, "nope").unwrap_err();
+        assert!(matches!(err, TaskError::NotFound(_)));
+    }
+
+    #[test]
+    fn subtask_reorder_valid_permutation() {
+        let store = TaskStore::open_in_memory().unwrap();
+        let t = store.create(draft("parent")).unwrap();
+        let t = store.subtask_add(&t.id, "a".into()).unwrap();
+        let t = store.subtask_add(&t.id, "b".into()).unwrap();
+        let t = store.subtask_add(&t.id, "c".into()).unwrap();
+        let ids = [
+            t.subtasks[0].id.clone(),
+            t.subtasks[1].id.clone(),
+            t.subtasks[2].id.clone(),
+        ];
+        // Reverse order: c, b, a
+        let reversed = store
+            .subtask_reorder(&t.id, &[ids[2].clone(), ids[1].clone(), ids[0].clone()])
+            .unwrap();
+        assert_eq!(reversed.subtasks[0].title, "c");
+        assert_eq!(reversed.subtasks[1].title, "b");
+        assert_eq!(reversed.subtasks[2].title, "a");
+    }
+
+    #[test]
+    fn subtask_reorder_rejects_non_permutation() {
+        let store = TaskStore::open_in_memory().unwrap();
+        let t = store.create(draft("parent")).unwrap();
+        let t = store.subtask_add(&t.id, "a".into()).unwrap();
+        let t = store.subtask_add(&t.id, "b".into()).unwrap();
+
+        // Wrong length
+        let err = store.subtask_reorder(&t.id, &[t.subtasks[0].id.clone()]).unwrap_err();
+        assert!(matches!(err, TaskError::Invalid(_)));
+
+        // Unknown id
+        let err = store
+            .subtask_reorder(&t.id, &["bogus".into(), t.subtasks[0].id.clone()])
+            .unwrap_err();
+        assert!(matches!(err, TaskError::Invalid(_)));
+    }
+
+    #[test]
+    fn draft_subtasks_create_with_ids_and_timestamps() {
+        let store = TaskStore::open_in_memory().unwrap();
+        let d = TaskDraft {
+            title: "parent".into(),
+            description: String::new(),
+            executor: Executor::Manual,
+            priority: TaskPriority::Medium,
+            subtasks: vec![
+                solo_protocol::SubtaskDraft { title: "one".into() },
+                solo_protocol::SubtaskDraft { title: "two".into() },
+            ],
+        };
+        let t = store.create(d).unwrap();
+        assert_eq!(t.subtasks.len(), 2);
+        assert!(!t.subtasks[0].id.is_empty());
+        assert!(!t.subtasks[1].id.is_empty());
+        assert_ne!(t.subtasks[0].id, t.subtasks[1].id);
+        assert_eq!(t.subtasks[0].title, "one");
+        assert_eq!(t.subtasks[1].title, "two");
+    }
+
+    #[test]
+    fn subtasks_survive_reload() {
+        // Confirm subtasks_json column round-trips through disk.
+        let path = std::env::temp_dir().join(format!("solo-subtask-reload-{}.db", Uuid::new_v4()));
+        let store = TaskStore::open(&path).unwrap();
+        let t = store.create(draft("parent")).unwrap();
+        let t = store.subtask_add(&t.id, "persist me".into()).unwrap();
+        let sub_id = t.subtasks[0].id.clone();
+        drop(store);
+
+        let reopen = TaskStore::open(&path).unwrap();
+        let reloaded = reopen.get(&t.id).unwrap();
+        assert_eq!(reloaded.subtasks.len(), 1);
+        assert_eq!(reloaded.subtasks[0].id, sub_id);
+        assert_eq!(reloaded.subtasks[0].title, "persist me");
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn migration_is_idempotent() {
+        // Opening twice must not error on the ALTER TABLE re-check.
+        let path = std::env::temp_dir().join(format!("solo-migrate-{}.db", Uuid::new_v4()));
+        {
+            let s = TaskStore::open(&path).unwrap();
+            let _ = s.create(draft("x")).unwrap();
+        }
+        {
+            let s = TaskStore::open(&path).unwrap();
+            let list = s.list(&TaskListFilters::default()).unwrap();
+            assert_eq!(list.len(), 1);
+        }
+        let _ = std::fs::remove_file(&path);
     }
 }
