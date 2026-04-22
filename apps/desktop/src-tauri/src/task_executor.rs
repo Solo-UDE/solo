@@ -288,49 +288,88 @@ pub fn install_agent_listeners(
         let map__ = map_.clone();
 
         tauri::async_runtime::spawn(async move {
-            let Some(run) = map__.get(&session_id).await else { return };
-
-            match message_type.as_str() {
-                "assistant" | "tool_use" | "tool_result" => {
-                    let summary = truncate(&message.to_string(), 200);
-                    let _ = store__.update_run_summary(&run.run_id, &summary);
+            if let Some(run) = map__.get(&session_id).await {
+                // Task-owned session — existing lifecycle handling.
+                match message_type.as_str() {
+                    "assistant" | "tool_use" | "tool_result" => {
+                        let summary = truncate(&message.to_string(), 200);
+                        let _ = store__.update_run_summary(&run.run_id, &summary);
+                        let _ = app__.emit(
+                            "backend-event",
+                            BackendEvent::TaskRunProgress {
+                                task_id: run.task_id.clone(),
+                                run_id: run.run_id.clone(),
+                                summary,
+                            },
+                        );
+                    }
+                    "result" => {
+                        let fs = final_summary(&message);
+                        finalize_run(
+                            &app__,
+                            &store__,
+                            &map__,
+                            &session_id,
+                            RunOutcome::Succeeded,
+                            Some(&fs),
+                        )
+                        .await;
+                    }
+                    "error" => {
+                        let msg = message
+                            .get("message")
+                            .and_then(|v| v.as_str())
+                            .map(ToString::to_string);
+                        finalize_run(
+                            &app__,
+                            &store__,
+                            &map__,
+                            &session_id,
+                            RunOutcome::Failed,
+                            msg.as_deref(),
+                        )
+                        .await;
+                    }
+                    _ => {}
+                }
+            } else if message_type == "result" {
+                // Non-task session ended — check proactive gate and maybe fire planner.
+                let gate = app__
+                    .state::<std::sync::Arc<crate::task_planner::ProactiveGate>>()
+                    .inner()
+                    .clone();
+                if gate.try_fire().await {
+                    tracing::info!(session_id, "proactive planner: firing after non-task session-end");
                     let _ = app__.emit(
                         "backend-event",
-                        BackendEvent::TaskRunProgress {
-                            task_id: run.task_id.clone(),
-                            run_id: run.run_id.clone(),
-                            summary,
-                        },
+                        serde_json::json!({"type": "planner:proactive_triggered"}),
                     );
+                    let app_cloned = app__.clone();
+                    tauri::async_runtime::spawn(async move {
+                        match crate::task_commands::get_store_for_setup(&app_cloned).await {
+                            Ok(store) => {
+                                let sess_mgr = app_cloned
+                                    .state::<std::sync::Arc<crate::agent::SessionManager>>()
+                                    .inner()
+                                    .clone();
+                                let _ = crate::task_planner::plan_from_goal(
+                                    &app_cloned,
+                                    store,
+                                    sess_mgr,
+                                    "Suggest 3 follow-up tasks based on my recent work."
+                                        .to_string(),
+                                    vec![],
+                                )
+                                .await;
+                            }
+                            Err(e) => {
+                                tracing::warn!(error = %e, "proactive planner: could not open task store");
+                            }
+                        }
+                    });
+                } else {
+                    tracing::debug!(session_id, "proactive planner: rate-limited");
                 }
-                "result" => {
-                    let fs = final_summary(&message);
-                    finalize_run(
-                        &app__,
-                        &store__,
-                        &map__,
-                        &session_id,
-                        RunOutcome::Succeeded,
-                        Some(&fs),
-                    )
-                    .await;
-                }
-                "error" => {
-                    let msg = message
-                        .get("message")
-                        .and_then(|v| v.as_str())
-                        .map(ToString::to_string);
-                    finalize_run(
-                        &app__,
-                        &store__,
-                        &map__,
-                        &session_id,
-                        RunOutcome::Failed,
-                        msg.as_deref(),
-                    )
-                    .await;
-                }
-                _ => {}
             }
         });
     });
