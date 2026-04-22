@@ -18,7 +18,7 @@ use std::sync::Arc;
 
 use serde_json::Value;
 use solo_protocol::{
-    AgentPermissionMode, BackendEvent, ExecutionLocation, RunOutcome, TaskStatus,
+    AgentPermissionMode, BackendEvent, ExecutionLocation, RunOutcome, Task, TaskStatus,
 };
 use solo_tasks::TaskStore;
 use tauri::{AppHandle, Emitter as _, Listener as _, Manager as _};
@@ -116,6 +116,38 @@ async fn create_worktree_for_run(
 
 /// Extract the shell command string from a permission request's tool input,
 /// for tools that run shell commands.
+/// Build the first-message prompt sent to the agent when running a task.
+/// Appends a markdown checklist when the task has subtasks, so the agent works
+/// through them in order. Already-completed subtasks render as `[x]` so a
+/// partial re-run does not redo them. The user still ticks subtasks manually
+/// from the drawer; we do NOT auto-parse agent responses for completion claims.
+fn build_agent_prompt(task: &Task) -> String {
+    let description = if task.description.is_empty() {
+        "(no description)"
+    } else {
+        task.description.as_str()
+    };
+    let mut prompt = format!(
+        "TASK: {title}\n\n{description}\n",
+        title = task.title,
+        description = description,
+    );
+    if !task.subtasks.is_empty() {
+        prompt.push_str(
+            "\n## Checklist\n\
+             Work through these subtasks in order. Report completion of each \
+             explicitly in your response so the user can tick them off.\n\n",
+        );
+        for s in &task.subtasks {
+            let mark = if s.completed { "x" } else { " " };
+            prompt.push_str(&format!("- [{mark}] {}\n", s.title));
+        }
+        prompt.push_str("\nDo NOT skip subtasks. Do NOT add new ones.\n");
+    }
+    prompt.push_str("\n[Run this task. Report progress concisely.]");
+    prompt
+}
+
 fn extract_command(tool_name: &str, tool_input: &Value) -> Option<String> {
     match tool_name {
         "Bash" | "bash" | "shell" | "Shell" => {
@@ -170,15 +202,7 @@ pub async fn spawn_agent_for_task(
         };
 
     // Build the prompt for the agent
-    let prompt = format!(
-        "TASK: {title}\n\n{description}\n\n[Run this task. Report progress concisely.]",
-        title = task.title,
-        description = if task.description.is_empty() {
-            "(no description)"
-        } else {
-            &task.description
-        },
-    );
+    let prompt = build_agent_prompt(&task);
 
     // Create the agent session (UUID)
     let session_id = uuid::Uuid::new_v4().to_string();
