@@ -13,4 +13,15 @@ export type TaskPatch = { title?: string, description?: string, status?: TaskSta
  * Bulk-replace subtasks. Rarely used from the UI (we prefer fine-grained
  * `task_subtask_*` commands); kept for completeness.
  */
-subtasks?: Array<Subtask>, };
+subtasks?: Array<Subtask>, 
+/**
+ * Bulk-replace label ids. Fine-grained operations live on
+ * `task_label_add` / `task_label_remove`; this is for atomic sets.
+ */
+label_ids?: Array<string>, 
+/**
+ * Explicit-null semantics: omit to leave unchanged; pass `null` to clear.
+ * `TaskPatchNullable<String>` encodes this via an outer Option of inner
+ * Option; we keep it simple with a separate boolean flag.
+ */
+project_id?: string, clear_project?: boolean, cycle_id?: string, clear_cycle?: boolean, };
