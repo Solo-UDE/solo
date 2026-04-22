@@ -10,6 +10,9 @@
 import { useEffect, useState, type FC } from 'react';
 import { useTaskStream } from '@/hooks/useTaskStream';
 import { useTaskStore } from '@/stores/taskStore';
+import { useLabelStore } from '@/stores/labelStore';
+import { useProjectStore } from '@/stores/projectStore';
+import { useCycleStore } from '@/stores/cycleStore';
 import { FiltersBar } from '@/components/vault/tasks/FiltersBar';
 import { TaskListView } from '@/components/vault/tasks/TaskListView';
 import { TaskKanbanView } from '@/components/vault/tasks/TaskKanbanView';
@@ -25,6 +28,9 @@ import type { ViewKind } from '@/components/vault/tasks/ViewToggle';
 export const TasksSection: FC = () => {
   useTaskStream();
   const load = useTaskStore((s) => s.load);
+  const loadLabels = useLabelStore((s) => s.load);
+  const loadProjects = useProjectStore((s) => s.load);
+  const loadCycles = useCycleStore((s) => s.load);
 
   const [grouping, setGrouping] = useState<GroupKey>('status');
   const [view, setView] = useState<ViewKind>('list');
@@ -34,7 +40,10 @@ export const TasksSection: FC = () => {
 
   useEffect(() => {
     void load();
-  }, [load]);
+    void loadLabels();
+    void loadProjects();
+    void loadCycles();
+  }, [load, loadLabels, loadProjects, loadCycles]);
 
   return (
     <div className="relative flex h-full min-h-0 flex-col">
