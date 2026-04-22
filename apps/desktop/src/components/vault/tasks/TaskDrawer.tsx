@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
 import { useTaskStore } from '@/stores/taskStore';
 import type { Task, TaskPriority, TaskStatus } from '@/lib/tauri/tasks';
+import { SelectDropdown } from '@/components/settings/controls/SelectDropdown';
 import { RunButton } from './RunButton';
 import { TaskRunsTab } from './TaskRunsTab';
 import { AgentConfigTab } from './AgentConfigTab';
@@ -11,6 +12,8 @@ import { ScheduleTab } from './ScheduleTab';
 
 const STATUS_OPTIONS: TaskStatus[] = ['queued', 'running', 'needs_review', 'done', 'failed', 'archived'];
 const PRIORITY_OPTIONS: TaskPriority[] = ['low', 'medium', 'high', 'urgent'];
+
+const pretty = (v: string) => v.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
 
 type DrawerTab = 'overview' | 'runs' | 'agent' | 'schedule';
 
@@ -31,7 +34,7 @@ export const TaskDrawer: FC = () => {
           exit={{ x: '100%' }}
           transition={{ type: 'spring', stiffness: 380, damping: 38 }}
           className={cn(
-            'fixed right-0 top-0 z-40 flex h-full w-[480px] flex-col',
+            'absolute right-0 top-0 z-40 flex h-full w-[480px] flex-col',
             'border-l border-border/60 bg-background shadow-[0_0_40px_-16px_rgba(0,0,0,0.4)]',
           )}
         >
@@ -100,27 +103,19 @@ export const TaskDrawer: FC = () => {
               <div className="grid grid-cols-2 gap-3">
                 <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wider text-muted-foreground">
                   Status
-                  <select
+                  <SelectDropdown
                     value={task.status}
-                    onChange={(e) => void update(task.id, { status: e.target.value as TaskStatus })}
-                    className="rounded-md border border-border/60 bg-background px-2 py-1.5 text-[13px] text-foreground"
-                  >
-                    {STATUS_OPTIONS.map((s) => (
-                      <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>
-                    ))}
-                  </select>
+                    options={STATUS_OPTIONS.map((s) => ({ label: pretty(s), value: s }))}
+                    onChange={(v) => void update(task.id, { status: v })}
+                  />
                 </label>
                 <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wider text-muted-foreground">
                   Priority
-                  <select
+                  <SelectDropdown
                     value={task.priority}
-                    onChange={(e) => void update(task.id, { priority: e.target.value as TaskPriority })}
-                    className="rounded-md border border-border/60 bg-background px-2 py-1.5 text-[13px] text-foreground"
-                  >
-                    {PRIORITY_OPTIONS.map((p) => (
-                      <option key={p} value={p}>{p}</option>
-                    ))}
-                  </select>
+                    options={PRIORITY_OPTIONS.map((p) => ({ label: pretty(p), value: p }))}
+                    onChange={(v) => void update(task.id, { priority: v })}
+                  />
                 </label>
               </div>
             </div>

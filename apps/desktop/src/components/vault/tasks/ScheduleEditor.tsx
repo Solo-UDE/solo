@@ -1,6 +1,7 @@
 import { useEffect, useState, type FC } from 'react';
 import { cn } from '@/lib/utils';
 import { tasksApi, type Schedule, type PresetKind } from '@/lib/tauri/tasks';
+import { SelectDropdown } from '@/components/settings/controls/SelectDropdown';
 
 interface Props {
   readonly value: Schedule | null;
@@ -81,16 +82,16 @@ const PresetFields: FC<{
 }> = ({ value, onChange }) => (
   <div className="grid grid-cols-2 gap-2">
     <label className="flex flex-col gap-1 text-muted-foreground">Kind
-      <select
+      <SelectDropdown
         value={value.kind}
-        onChange={(e) => onChange({ ...value, kind: e.target.value as PresetKind })}
-        className="rounded-md border border-border/60 bg-background px-2 py-1 text-[12px] text-foreground"
-      >
-        <option value="hourly">Hourly</option>
-        <option value="daily">Daily</option>
-        <option value="weekly">Weekly</option>
-        <option value="monthly">Monthly</option>
-      </select>
+        options={[
+          { label: 'Hourly', value: 'hourly' as PresetKind },
+          { label: 'Daily', value: 'daily' as PresetKind },
+          { label: 'Weekly', value: 'weekly' as PresetKind },
+          { label: 'Monthly', value: 'monthly' as PresetKind },
+        ]}
+        onChange={(v) => onChange({ ...value, kind: v })}
+      />
     </label>
     <label className="flex flex-col gap-1 text-muted-foreground">At (UTC)
       <div className="flex gap-1">
@@ -111,15 +112,11 @@ const PresetFields: FC<{
     </label>
     {value.kind === 'weekly' && (
       <label className="flex flex-col gap-1 text-muted-foreground col-span-2">Weekday
-        <select
+        <SelectDropdown
           value={value.weekday ?? 0}
-          onChange={(e) => onChange({ ...value, weekday: Number(e.target.value) })}
-          className="rounded-md border border-border/60 bg-background px-2 py-1 text-[12px] text-foreground"
-        >
-          {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((wd, idx) => (
-            <option key={idx} value={idx}>{wd}</option>
-          ))}
-        </select>
+          options={['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((wd, idx) => ({ label: wd, value: idx }))}
+          onChange={(v) => onChange({ ...value, weekday: v })}
+        />
       </label>
     )}
   </div>

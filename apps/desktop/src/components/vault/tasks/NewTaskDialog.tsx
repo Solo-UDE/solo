@@ -3,6 +3,9 @@ import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
 import { useTaskStore } from '@/stores/taskStore';
 import type { Executor, TaskPriority } from '@/lib/tauri/tasks';
+import { SelectDropdown } from '@/components/settings/controls/SelectDropdown';
+
+const pretty = (v: string) => v.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
 
 interface Props {
   readonly open: boolean;
@@ -84,27 +87,22 @@ export const NewTaskDialog: FC<Props> = ({ open, onClose }) => {
             <div className="grid grid-cols-2 gap-3">
               <label className="flex flex-col gap-1 text-[12px] text-muted-foreground">
                 Executor
-                <select
+                <SelectDropdown
                   value={executor}
-                  onChange={(e) => setExecutor(e.target.value as Executor)}
-                  className="rounded-md border border-border/60 bg-background px-2 py-1.5 text-[13px] text-foreground"
-                >
-                  <option value="manual">You</option>
-                  <option value="agent">Agent</option>
-                </select>
+                  options={[
+                    { label: 'You', value: 'manual' as Executor },
+                    { label: 'Agent', value: 'agent' as Executor },
+                  ]}
+                  onChange={(v) => setExecutor(v)}
+                />
               </label>
               <label className="flex flex-col gap-1 text-[12px] text-muted-foreground">
                 Priority
-                <select
+                <SelectDropdown
                   value={priority}
-                  onChange={(e) => setPriority(e.target.value as TaskPriority)}
-                  className="rounded-md border border-border/60 bg-background px-2 py-1.5 text-[13px] text-foreground"
-                >
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                  <option value="urgent">Urgent</option>
-                </select>
+                  options={(['low', 'medium', 'high', 'urgent'] as TaskPriority[]).map((p) => ({ label: pretty(p), value: p }))}
+                  onChange={(v) => setPriority(v)}
+                />
               </label>
             </div>
 
