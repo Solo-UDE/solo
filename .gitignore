@@ -15,6 +15,7 @@ bun.lockb
 
 # Generated files
 /apps/desktop/src/bindings/*.ts
+/apps/desktop/src-tauri/binaries/agent-bridge-*
 # ts-rs intermediate outputs (generated at wrong path during cargo test)
 crates/*/apps/
 

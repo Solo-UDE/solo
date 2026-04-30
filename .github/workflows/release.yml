@@ -209,6 +209,11 @@ jobs:
                 --options runtime --timestamp "{}"
           fi
 
+          while IFS= read -r -d '' SIDECAR; do
+            codesign --force --sign "$APPLE_SIGN_IDENTITY" \
+              --options runtime --timestamp "$SIDECAR"
+          done < <(find "$APP_PATH/Contents/MacOS" -maxdepth 1 -type f \( -name "agent-bridge" -o -name "agent-bridge-*" \) -print0)
+
           codesign --force --sign "$APPLE_SIGN_IDENTITY" \
             --options runtime --timestamp \
             --entitlements apps/desktop/src-tauri/Entitlements.plist \

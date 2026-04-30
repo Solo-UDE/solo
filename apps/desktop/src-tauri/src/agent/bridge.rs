@@ -2,8 +2,10 @@
 //!
 //! Uses stdin/stdout JSON IPC to communicate with the agent-bridge Node.js process.
 
+use std::env;
 use std::fmt;
 use std::io::{BufRead as _, BufReader, Write as _};
+use std::path::Path;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::result;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -86,7 +88,7 @@ impl AgentBridge {
     }
 
     /// Spawn the sidecar process
-    pub fn spawn(&mut self, node_script_path: &str) -> Result<()> {
+    pub fn spawn(&mut self, sidecar_path: &str) -> Result<()> {
         if self.child.is_some() && self.ready.load(Ordering::SeqCst) {
             return Ok(()); // Already running
         }
@@ -100,16 +102,15 @@ impl AgentBridge {
             self.response_rx = None;
         }
 
-        tracing::info!("Spawning agent bridge sidecar: {node_script_path}");
+        tracing::info!("Spawning agent bridge sidecar: {sidecar_path}");
 
-        // Spawn the Node.js process
-        let mut child = Command::new("node")
-            .arg(node_script_path)
+        let mut command = Self::sidecar_command(sidecar_path);
+        let mut child = command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit()) // Let stderr go to parent's stderr for debugging
             .spawn()
-            .map_err(|e| BridgeError::SpawnError(e.to_string()))?;
+            .map_err(|e| BridgeError::SpawnError(format!("{e} ({sidecar_path})")))?;
 
         // Take ownership of stdin
         let stdin = child
@@ -155,6 +156,40 @@ impl AgentBridge {
 
         tracing::info!("Agent bridge sidecar ready");
         Ok(())
+    }
+
+    fn sidecar_command(sidecar_path: &str) -> Command {
+        let path = Path::new(sidecar_path);
+        let is_node_script = path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("js"));
+
+        if is_node_script {
+            let mut command = Command::new(Self::bun_binary());
+            command.arg(sidecar_path);
+            command
+        } else {
+            Command::new(sidecar_path)
+        }
+    }
+
+    fn bun_binary() -> String {
+        let mut candidates = Vec::new();
+        if let Some(home) = env::var_os("HOME") {
+            candidates.push(Path::new(&home).join(".bun/bin/bun"));
+        }
+        candidates.extend([
+            Path::new("/opt/homebrew/bin/bun").to_path_buf(),
+            Path::new("/usr/local/bin/bun").to_path_buf(),
+        ]);
+
+        for candidate in candidates {
+            if candidate.exists() {
+                return candidate.to_string_lossy().into_owned();
+            }
+        }
+        "bun".to_owned()
     }
 
     /// Reader thread - reads JSON lines from stdout

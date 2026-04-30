@@ -41,6 +41,7 @@ import { HTML5Backend } from "react-dnd-html5-backend";
 import { Toaster } from "@solo/ui";
 import { TitlebarButton } from "./components/titlebar/TitlebarButton";
 import { WelcomeScreen } from "./components/welcome";
+import { stopStartupSound } from "./hooks/useStartupSound";
 import { KeyboardShortcutsOverlay } from "./components/KeyboardShortcutsOverlay";
 import { BugReportDialog } from "./components/bug-report/BugReportDialog";
 import { TabSwitcher } from "./components/panels/TabSwitcher";
@@ -182,6 +183,13 @@ function AppContent() {
   useWorktreeStream();
   useUpdateStream();
   useVaultStream();
+
+  useEffect(() => {
+    if (!splashComplete && (rootPath !== null || hasRepos)) {
+      stopStartupSound();
+      setSplashComplete(true);
+    }
+  }, [hasRepos, rootPath, splashComplete]);
 
   // Load GitHub token from keychain so the header shows auth status
   useEffect(() => {

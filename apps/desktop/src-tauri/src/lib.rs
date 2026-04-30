@@ -83,6 +83,32 @@ use std::env;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+fn resolve_agent_bridge_path() -> PathBuf {
+    if let Ok(exe_path) = env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            for candidate in [
+                exe_dir.join("agent-bridge"),
+                exe_dir.join("agent-bridge-aarch64-apple-darwin"),
+            ] {
+                if candidate.exists() {
+                    return candidate;
+                }
+            }
+        }
+    }
+
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let dev_path = manifest_dir.join("../../../agent-bridge/dist/index.js");
+    if dev_path.exists() {
+        return dev_path;
+    }
+
+    env::current_dir().map_or_else(
+        |_| PathBuf::from("agent-bridge/dist/index.js"),
+        |p| p.join("agent-bridge/dist/index.js"),
+    )
+}
+
 async fn dispatch_fire(app: &tauri::AppHandle, task_id: String) {
     use tauri::Manager as _;
     let exec_map = app.state::<Arc<task_executor::ExecutorMap>>().inner().clone();
@@ -118,22 +144,10 @@ pub fn run() {
 
     tracing::info!("Starting Solo IDE...");
 
-    // Initialize agent session manager
-    // Resolve agent-bridge path from the Cargo manifest directory (compile-time)
-    let sidecar_path = {
-        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        // manifest_dir = apps/desktop/src-tauri → go up 3 levels to workspace root
-        let dev_path = manifest_dir.join("../../../agent-bridge/dist/index.js");
-        if dev_path.exists() {
-            dev_path
-        } else {
-            // Fallback: try relative to cwd (for production bundles)
-            env::current_dir().map_or_else(
-                |_| PathBuf::from("agent-bridge/dist/index.js"),
-                |p| p.join("agent-bridge/dist/index.js"),
-            )
-        }
-    };
+    // Initialize agent session manager.
+    // Release builds bundle a standalone sidecar next to the app executable.
+    // Dev builds keep using the Bun-built script from the workspace.
+    let sidecar_path = resolve_agent_bridge_path();
     tracing::info!("Agent bridge sidecar path: {}", sidecar_path.display());
     let session_manager = Arc::new(agent::SessionManager::new(sidecar_path));
     let session_manager_for_state = Arc::clone(&session_manager);

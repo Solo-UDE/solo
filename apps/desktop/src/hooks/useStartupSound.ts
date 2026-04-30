@@ -10,14 +10,15 @@ import { useEffect } from 'react';
 const SESSION_KEY = 'solo:startup-sound:played';
 const DURATION_MS = 5_000;
 const FADE_OUT_MS = 3_000;
-const FADE_STEPS = 1000;
+const HARD_STOP_GRACE_MS = 1_000;
 
 // Module-level singleton so the playback state survives React re-renders,
 // StrictMode double-mounts, and Vite HMR swaps. This lets callers stop the
 // audio imperatively without relying on component unmount timing.
 let currentAudio: HTMLAudioElement | null = null;
-let fadeInterval: number | null = null;
 let fadeTimer: number | null = null;
+let fadeFrame: number | null = null;
+let hardStopTimer: number | null = null;
 
 const hasPlayedThisSession = () => {
   try {
@@ -44,9 +45,13 @@ export const stopStartupSound = () => {
     clearTimeout(fadeTimer);
     fadeTimer = null;
   }
-  if (fadeInterval !== null) {
-    clearInterval(fadeInterval);
-    fadeInterval = null;
+  if (fadeFrame !== null) {
+    cancelAnimationFrame(fadeFrame);
+    fadeFrame = null;
+  }
+  if (hardStopTimer !== null) {
+    clearTimeout(hardStopTimer);
+    hardStopTimer = null;
   }
   const el = currentAudio;
   if (el) {
@@ -76,6 +81,7 @@ export const useStartupSound = () => {
     audio.loop = false;
     audio.volume = 0.5;
     currentAudio = audio;
+    audio.addEventListener('ended', stopStartupSound, { once: true });
 
     audio.play().catch((err) => {
       console.warn('[startup-sound] Playback failed:', err);
@@ -83,23 +89,26 @@ export const useStartupSound = () => {
 
     const beginFade = () => {
       const el = currentAudio;
-      if (!el || fadeInterval !== null) return;
+      if (!el || fadeFrame !== null) return;
 
       const startVol = el.volume;
-      const stepMs = FADE_OUT_MS / FADE_STEPS;
-      const volStep = startVol / FADE_STEPS;
-      let step = 0;
+      const startTime = performance.now();
 
-      fadeInterval = window.setInterval(() => {
-        step++;
-        el.volume = Math.max(0, startVol - volStep * step);
-        if (step >= FADE_STEPS) {
+      const tick = (now: number) => {
+        const progress = Math.min(1, (now - startTime) / FADE_OUT_MS);
+        el.volume = Math.max(0, startVol * (1 - progress));
+        if (progress >= 1) {
           stopStartupSound();
+          return;
         }
-      }, stepMs);
+        fadeFrame = requestAnimationFrame(tick);
+      };
+
+      fadeFrame = requestAnimationFrame(tick);
     };
 
     fadeTimer = window.setTimeout(beginFade, DURATION_MS - FADE_OUT_MS);
+    hardStopTimer = window.setTimeout(stopStartupSound, DURATION_MS + HARD_STOP_GRACE_MS);
 
     return () => {
       // On unmount, cut immediately regardless of fade progress.
