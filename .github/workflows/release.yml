@@ -4,6 +4,11 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Optional: must match apps/desktop/src-tauri/tauri.conf.json'
+        required: false
+        type: string
 
 jobs:
   build-and-release:
@@ -26,12 +31,47 @@ jobs:
       SOLO_COGNITO_CLIENT_ID: ${{ vars.SOLO_PROD_COGNITO_CLIENT_ID }}
       SOLO_AWS_REGION: ${{ vars.SOLO_PROD_AWS_REGION }}
       SOLO_API_ENDPOINT: ${{ vars.SOLO_PROD_API_ENDPOINT }}
+      RELEASE_INPUT_VERSION: ${{ github.event.inputs.version }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Validate release source
+        run: |
+          set -euo pipefail
+
+          git fetch origin master --tags
+
+          CONFIG_VERSION="$(jq -r .version apps/desktop/src-tauri/tauri.conf.json)"
+          test -n "$CONFIG_VERSION" && test "$CONFIG_VERSION" != "null"
+
+          if [ -n "${RELEASE_INPUT_VERSION:-}" ] && [ "$RELEASE_INPUT_VERSION" != "$CONFIG_VERSION" ]; then
+            echo "Workflow input version '$RELEASE_INPUT_VERSION' does not match tauri.conf.json version '$CONFIG_VERSION'" >&2
+            exit 1
+          fi
+
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            if [ "$GITHUB_REF_NAME" != "master" ]; then
+              echo "Manual releases must be run from the master branch, not '$GITHUB_REF_NAME'." >&2
+              exit 1
+            fi
+            exit 0
+          fi
+
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            TAG_VERSION="${GITHUB_REF_NAME#v}"
+            if [ "$TAG_VERSION" != "$CONFIG_VERSION" ]; then
+              echo "Tag version '$TAG_VERSION' does not match tauri.conf.json version '$CONFIG_VERSION'" >&2
+              exit 1
+            fi
+            if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/master; then
+              echo "Release tag '$GITHUB_REF_NAME' must point to a commit reachable from origin/master." >&2
+              exit 1
+            fi
+          fi
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable

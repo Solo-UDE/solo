@@ -45,10 +45,11 @@ Why the two-repo split: Tauri's updater does an anonymous `GET` for `latest.json
 |---|---|---|
 | `APPLE_CERTIFICATE_P12` | base64-encoded `.p12` | `base64 -i cert.p12 \| pbcopy` |
 | `APPLE_CERTIFICATE_PASSWORD` | `.p12` export password | set during Keychain export |
-| `APPLE_ID` | Apple ID email | — |
-| `APPLE_APP_PASSWORD` | app-specific password | appleid.apple.com → Sign-In and Security |
 | `APPLE_TEAM_ID` | Apple team identifier | developer.apple.com → Membership |
 | `APPLE_SIGN_IDENTITY` | `Developer ID Application: Name (TEAM)` | `security find-identity -v -p codesigning` |
+| `APPLE_API_KEY_ID` | App Store Connect API key ID | App Store Connect → Users and Access → Integrations |
+| `APPLE_API_ISSUER` | App Store Connect issuer UUID | App Store Connect → Users and Access → Integrations |
+| `APPLE_API_KEY_P8_BASE64` | base64-encoded App Store Connect `.p8` key | `base64 -i AuthKey_XXXXXXXXXX.p8 \| pbcopy` |
 | `TAURI_SIGNING_PRIVATE_KEY` | contents of `~/.tauri/solo-ide.key` | `cat ~/.tauri/solo-ide.key` |
 | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | empty string | (key generated without password) |
 | `RELEASE_PAT` | fine-grained PAT with `Contents: write` on Solo-UDE/solo-releases | github.com/settings/personal-access-tokens/new |
@@ -90,37 +91,36 @@ Back up `~/.tauri/solo-ide.key` to a password manager or encrypted archive.
 
 ## How to release
 
+Preferred path: release from `master` with the helper script.
+
 ```bash
-# 1. Bump version across Cargo.toml, tauri.conf.json, apps/desktop/package.json
-bun run version:bump 0.3.0           # or 0.3.0-beta.1 for a beta
+# 1. Make sure the release workflow change is already merged to master.
+git switch master
+git pull --ff-only origin master
 
-# 2. Commit the 3-file bump (one commit per file is the project convention)
-git add Cargo.toml
-git commit -m "release: bump workspace version to 0.3.0"
-git add apps/desktop/src-tauri/tauri.conf.json
-git commit -m "release: bump tauri.conf.json version to 0.3.0"
-git add apps/desktop/package.json
-git commit -m "release: bump desktop app version to 0.3.0"
+# 2. Cut the release. This bumps version files, commits the bump, creates an
+#    annotated v* tag, pushes master + the tag, then watches GitHub Actions.
+bun run release:master 0.3.0 --notes-file ./release-notes.md
 
-# 3. Draft a changelog and annotate the tag with it
-git tag -a v0.3.0 -m "$(cat <<'EOF'
-Solo v0.3.0
-
-- Feature X
-- Fix Y
-EOF
-)"
-
-# 4. Push master and the tag (tag push triggers release.yml)
-git push origin master
-git push origin v0.3.0
-
-# 5. Monitor the build
-gh run watch --repo Solo-UDE/solo
-
-# 6. Verify the release on solo-releases
+# 3. Verify the release on the public download repo.
 gh release view v0.3.0 --repo Solo-UDE/solo-releases
 ```
+
+The helper intentionally refuses to run unless:
+
+- the current branch is `master`
+- tracked files are clean
+- local `master` exactly matches `origin/master`
+- the requested tag does not already exist
+
+The tag push triggers `.github/workflows/release.yml`, which builds from the
+tagged master commit, signs/notarizes/staples the `.app`, signs/notarizes/staples
+the DMG, creates the updater archive/signature, writes `latest.json`, and
+publishes everything to `Solo-UDE/solo-releases`.
+
+Manual fallback: use the GitHub Actions `Release` workflow dispatch from the
+`master` branch. The optional `version` input must match
+`apps/desktop/src-tauri/tauri.conf.json`.
 
 ---
 
@@ -151,9 +151,9 @@ If you want a gated beta channel where only opted-in users see betas, that is a 
 ```bash
 export TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/solo-ide.key)"
 export SOLO_COGNITO_DOMAIN="solo-ide-dev.auth.us-east-1.amazoncognito.com"
-export SOLO_COGNITO_CLIENT_ID="3lvjbkkev35ejmm927rkfn13d3"
+export SOLO_COGNITO_CLIENT_ID="4rcj8gv02gj3t5tlhv3gnqrvq1"
 export SOLO_AWS_REGION="us-east-1"
-export SOLO_API_ENDPOINT="https://vd8wm2yqle.execute-api.us-east-1.amazonaws.com"
+export SOLO_API_ENDPOINT="https://9qpve9xe1b.execute-api.us-east-1.amazonaws.com"
 
 bun tauri build
 
@@ -218,7 +218,7 @@ Read the submission log for the specific rejection:
 
 ```bash
 xcrun notarytool log <submission-id> \
-  --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" --team-id "$APPLE_TEAM_ID"
+  --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER"
 ```
 
 Common causes: unsigned `.dylib` inside Frameworks (workflow should have caught it), entitlements mismatch, expired cert.
