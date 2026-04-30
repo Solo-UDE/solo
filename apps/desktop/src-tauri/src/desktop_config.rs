@@ -16,17 +16,26 @@ use url::Url;
 
 pub const REDIRECT_URL: &str = "soloide://auth/callback";
 pub const SIGNOUT_URL: &str = "soloide://auth/signout";
+/// Loopback redirect used by the localhost server approach (browser-agnostic).
+pub const LOOPBACK_REDIRECT_URL: &str = "http://127.0.0.1:7891/auth/callback";
+pub const LOOPBACK_PORT: u16 = 7891;
 
 pub const COGNITO_DOMAIN_ENV_KEYS: &[&str] = &["SOLO_COGNITO_DOMAIN"];
 pub const COGNITO_CLIENT_ID_ENV_KEYS: &[&str] = &["SOLO_COGNITO_CLIENT_ID"];
 pub const COGNITO_REGION_ENV_KEYS: &[&str] = &["SOLO_AWS_REGION", "AWS_REGION"];
 pub const API_ENDPOINT_ENV_KEYS: &[&str] = &["SOLO_API_ENDPOINT"];
+pub const GITHUB_OIDC_ENDPOINT_ENV_KEYS: &[&str] = &["SOLO_GITHUB_OIDC_ENDPOINT"];
 
 const DEFAULT_AWS_REGION: &str = "us-east-1";
 const DEFAULT_API_ENDPOINT: &str = "https://vd8wm2yqle.execute-api.us-east-1.amazonaws.com";
+/// GitHub OIDC wrapper Lambda — fronts GitHub's OAuth as an OIDC IdP for Cognito.
+/// Dev endpoint; prod overrides via `SOLO_GITHUB_OIDC_ENDPOINT`.
+const DEFAULT_GITHUB_OIDC_ENDPOINT: &str =
+    "https://3b7g774mq7.execute-api.us-east-1.amazonaws.com";
 
 static COGNITO_CONFIG: OnceLock<Result<CognitoConfig, String>> = OnceLock::new();
 static API_ENDPOINT: OnceLock<String> = OnceLock::new();
+static GITHUB_OIDC_ENDPOINT: OnceLock<String> = OnceLock::new();
 
 #[cfg(debug_assertions)]
 static DEV_ENV_LOADED: OnceLock<()> = OnceLock::new();
@@ -86,6 +95,22 @@ pub fn api_endpoint() -> &'static str {
                 option_env!("SOLO_API_ENDPOINT"),
                 read_env(API_ENDPOINT_ENV_KEYS),
             )
+        })
+        .as_str()
+}
+
+/// Base URL for the GitHub OIDC wrapper Lambda. Used by sign-out to call
+/// `POST /revoke-grant`, which deletes the user's GitHub OAuth grant so the
+/// next sign-in shows GitHub's "Authorize Solo IDE" page again.
+pub fn github_oidc_endpoint() -> &'static str {
+    maybe_load_local_env();
+    GITHUB_OIDC_ENDPOINT
+        .get_or_init(|| {
+            resolve_value(
+                option_env!("SOLO_GITHUB_OIDC_ENDPOINT"),
+                read_env(GITHUB_OIDC_ENDPOINT_ENV_KEYS),
+            )
+            .unwrap_or_else(|| DEFAULT_GITHUB_OIDC_ENDPOINT.to_string())
         })
         .as_str()
 }

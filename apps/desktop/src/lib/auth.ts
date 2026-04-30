@@ -65,10 +65,92 @@ export interface OAuthLaunchResult {
 }
 
 /**
+ * Start OAuth using a localhost loopback server (browser-agnostic).
+ * Works with Arc, Chrome, Firefox, Safari — no OS scheme registration needed.
+ * Rust binds 127.0.0.1:7891, returns the authorize URL, and emits
+ * "auth-callback" once the browser hits the loopback redirect.
+ */
+// Force Safari for the OAuth hop on macOS. Chromium-based browsers (Arc in
+// particular) silently drop the `cognito → http://127.0.0.1:7891` redirect
+// after the user approves on GitHub — Arc's Tracker Blocking treats the
+// cross-origin localhost redirect as a tracking attempt and either lands on
+// about:blank or never connects to the loopback. Safari has none of these
+// blocks. The user only sees Safari for ~5 seconds during auth, then the
+// app catches the callback and they're back in Solo. On non-macOS the OS
+// default browser is fine.
+const isMac =
+  typeof navigator !== "undefined" &&
+  navigator.platform.toLowerCase().startsWith("mac");
+
+async function openForOAuth(authUrl: string): Promise<void> {
+  if (isMac) {
+    // First attempt: Safari directly.
+    try {
+      await open(authUrl, "Safari");
+      return;
+    } catch (e) {
+      console.warn("[auth] Safari open failed, falling back to default browser:", e);
+    }
+  }
+  await open(authUrl);
+}
+
+export async function signInWithOAuthLoopback(
+  provider: OAuthProvider,
+): Promise<OAuthLaunchResult> {
+  console.debug("[auth.signInWithOAuthLoopback] invoking auth_start_oauth_loopback", { provider });
+  const authUrl = await invoke<string>("auth_start_oauth_loopback", { provider });
+  if (!authUrl || authUrl.length === 0) {
+    return { authUrl, opened: false, error: "auth_start_oauth_loopback returned empty URL" };
+  }
+  try {
+    await openForOAuth(authUrl);
+    console.debug("[auth.signInWithOAuthLoopback] browser opened");
+    return { authUrl, opened: true };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error("[auth.signInWithOAuthLoopback] shell.open failed:", msg);
+    return { authUrl, opened: false, error: msg };
+  }
+}
+
+/**
+ * Cancel an in-flight loopback OAuth listener. Frees port 7891 immediately
+ * so the next sign-in attempt can re-bind it. Idempotent — safe to call when
+ * no listener is running.
+ */
+export async function cancelOAuthLoopback(): Promise<void> {
+  try {
+    await invoke("auth_cancel_oauth_loopback");
+  } catch (error) {
+    console.warn("[auth.cancelOAuthLoopback] failed:", error);
+  }
+}
+
+/**
+ * Open github.com/logout in the same browser our OAuth flow uses (Safari on
+ * macOS). GitHub's OAuth has no `prompt=select_account` equivalent, so the
+ * only way to make GitHub forget which account is signed in is to clear
+ * github.com's session in *the browser that's about to do the OAuth*. If we
+ * cleared Arc's session but OAuth runs in Safari, the user would still be
+ * auto-signed-in as Safari's last account — defeating the point.
+ */
+export async function openGitHubLogout(): Promise<void> {
+  try {
+    await openForOAuth("https://github.com/logout");
+  } catch (error) {
+    console.warn("[auth.openGitHubLogout] failed:", error);
+  }
+}
+
+/**
  * Start OAuth sign-in flow. Returns the generated auth URL and whether the
  * browser open succeeded. Callers should surface `authUrl` to the user if
  * `opened` is false so they can navigate manually.
  */
+// On macOS, Chromium-based browsers (Arc, Chrome) silently drop soloide://
+// redirects after OAuth instead of passing them to the OS scheme handler.
+// Safari correctly routes them — we reuse the `isMac` flag declared above.
 export async function signInWithOAuth(
   provider: OAuthProvider,
 ): Promise<OAuthLaunchResult> {
@@ -84,7 +166,9 @@ export async function signInWithOAuth(
     return { authUrl, opened: false, error: msg };
   }
   try {
-    await open(authUrl);
+    // On macOS use Safari explicitly — Arc/Chrome swallow soloide:// redirects.
+    // On other platforms the default browser handles custom schemes correctly.
+    await open(authUrl, isMac ? "Safari" : undefined);
     console.debug("[auth.signInWithOAuth] shell.open resolved");
     return { authUrl, opened: true };
   } catch (error) {

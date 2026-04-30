@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { AnimatePresence, motion } from "motion/react";
-import { GearIcon, ExitIcon } from "@radix-ui/react-icons";
+import { GearIcon, ExitIcon, GitHubLogoIcon } from "@radix-ui/react-icons";
 import { Bug, Terminal, PanelLeft } from "lucide-react";
 import { PrimarySidebar } from "./components/sidebar";
 import { RepoRail } from "./components/sidebar/RepoRail";
@@ -629,10 +629,15 @@ function AppContent() {
         <div className="flex-1" data-tauri-drag-region />
 
         <div className="flex min-w-0 items-center justify-end gap-1.5" data-tauri-drag-region="false">
-            {user?.email && (
-              <span className="max-w-32 truncate px-1 text-xs text-muted-foreground/70">
-                {user.email}
-              </span>
+            {user && (
+              <div className="flex items-center gap-1 max-w-40 px-1">
+                {(user.user_metadata?.sign_in_provider as string | undefined) === 'github' && (
+                  <GitHubLogoIcon className="w-3 h-3 text-muted-foreground/70 shrink-0" aria-label="Signed in with GitHub" />
+                )}
+                <span className="truncate text-xs text-muted-foreground/70">
+                  {user.email ?? ''}
+                </span>
+              </div>
             )}
             {splashComplete && (rootPath !== null || hasRepos) && (
               <TitlebarButton

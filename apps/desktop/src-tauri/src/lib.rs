@@ -308,6 +308,8 @@ pub fn run() {
             embedding_commands::embedding_get_stats,
             // Auth commands
             auth_commands::auth_start_oauth,
+            auth_commands::auth_start_oauth_loopback,
+            auth_commands::auth_cancel_oauth_loopback,
             auth_commands::auth_start_magic_link,
             auth_commands::auth_exchange_code,
             auth_commands::auth_get_session,
