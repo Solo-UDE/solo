@@ -16,7 +16,7 @@ use solo_protocol::{
     BackendEvent, EntryKind, MemoryType, PlacementMode, PlacementResult, PlacementSuggestion,
     VaultEntry, VaultListFilters, VaultScope, VaultSearchMode, VaultSearchResult,
 };
-use solo_vault::{BackfillProgress, BackfillStats, Vault};
+use solo_vault::{BackfillProgress, BackfillStats, ReextractProgress, ReextractStats, Vault};
 use tauri::{AppHandle, Emitter, State};
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
@@ -331,6 +331,61 @@ pub async fn vault_pending_embeddings_count(
     vault.pending_embeddings_count().map_err(|e| e.to_string())
 }
 
+/// Re-run local text extraction for legacy entries that are marked indexed
+/// but have zero chunks or raw binary-garbage chunks. This is the migration
+/// path for PDFs/documents/data files dropped before binary extractors existed.
+#[tauri::command]
+pub async fn vault_reextract(
+    batch_size: Option<u32>,
+    app: AppHandle,
+    state: State<'_, VaultState>,
+) -> Result<VaultReextractResult, String> {
+    let vault = get_vault(&state).await?;
+    let app_handle = app.clone();
+    let batch = batch_size.unwrap_or(16).max(1) as usize;
+    info!(batch, "vault_reextract.start");
+
+    let stats: ReextractStats = vault
+        .reextract_legacy_entries(batch, move |progress: ReextractProgress| {
+            let _ = app_handle.emit(
+                "backend-event",
+                BackendEvent::VaultReextractProgress {
+                    total: progress.total,
+                    completed: progress.completed,
+                    recovered: progress.recovered,
+                    failed: progress.failed,
+                    elapsed_ms: progress.elapsed_ms,
+                    done: progress.done,
+                },
+            );
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+
+    info!(
+        total = stats.total,
+        recovered = stats.recovered,
+        failed = stats.failed,
+        embedded = stats.embedded,
+        total_ms = stats.total_ms,
+        "vault_reextract.done"
+    );
+
+    Ok(VaultReextractResult {
+        total: stats.total,
+        recovered: stats.recovered,
+        failed: stats.failed,
+        embedded: stats.embedded,
+        total_ms: stats.total_ms,
+    })
+}
+
+#[tauri::command]
+pub async fn vault_pending_reextract_count(state: State<'_, VaultState>) -> Result<u64, String> {
+    let vault = get_vault(&state).await?;
+    vault.pending_reextract_count().map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub async fn vault_log_classifier_correction(
     _entry_id: String,
@@ -361,5 +416,15 @@ pub struct VaultBackfillResult {
     pub embedded: u64,
     pub failed: u64,
     pub retries: u64,
+    pub total_ms: u64,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VaultReextractResult {
+    pub total: u64,
+    pub recovered: u64,
+    pub failed: u64,
+    pub embedded: u64,
     pub total_ms: u64,
 }
