@@ -64,6 +64,19 @@ export function useVaultStream(): void {
           });
           break;
         }
+        case 'vault:reextract_progress': {
+          const toNumber = (v: bigint | number) =>
+            typeof v === 'bigint' ? Number(v) : v;
+          store.updateReextractProgress({
+            total: toNumber(evt.payload.total),
+            completed: toNumber(evt.payload.completed),
+            recovered: toNumber(evt.payload.recovered),
+            failed: toNumber(evt.payload.failed),
+            elapsedMs: toNumber(evt.payload.elapsed_ms),
+            done: evt.payload.done,
+          });
+          break;
+        }
         default:
           break;
       }
