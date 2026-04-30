@@ -15,12 +15,19 @@ export const DESKTOP_AUTH_ENV_KEYS = [
 export const CALLBACK_URI = "soloide://auth/callback";
 export const SIGNOUT_URI = "soloide://auth/signout";
 
-export const candidateEnvFiles = [
-  path.join(WORKSPACE_ROOT, "infra/.env"),
-  path.join(WORKSPACE_ROOT, "infra/.env.dev"),
-  path.join(WORKSPACE_ROOT, ".env"),
-  path.join(WORKSPACE_ROOT, ".env.local"),
-];
+export function resolveAuthStage(baseEnv = process.env) {
+  const stage = baseEnv.SOLO_AUTH_STAGE ?? baseEnv.SOLO_STAGE ?? "dev";
+  return stage === "prod" ? "prod" : "dev";
+}
+
+export function candidateEnvFilesForStage(stage = resolveAuthStage()) {
+  return [
+    path.join(WORKSPACE_ROOT, "infra/.env"),
+    path.join(WORKSPACE_ROOT, `infra/.env.${stage}`),
+    path.join(WORKSPACE_ROOT, ".env"),
+    path.join(WORKSPACE_ROOT, ".env.local"),
+  ];
+}
 
 function parseEnvLine(rawLine) {
   const match = rawLine.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/);
@@ -55,11 +62,12 @@ function parseEnvFile(contents) {
 }
 
 export function resolveDesktopAuthEnv(baseEnv = process.env) {
+  const stage = resolveAuthStage(baseEnv);
   const envFromFiles = {};
   const sources = {};
   const loadedFiles = [];
 
-  for (const filePath of candidateEnvFiles) {
+  for (const filePath of candidateEnvFilesForStage(stage)) {
     if (!fs.existsSync(filePath)) continue;
     loadedFiles.push(filePath);
     const parsed = parseEnvFile(fs.readFileSync(filePath, "utf8"));

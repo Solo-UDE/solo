@@ -8,10 +8,19 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { resolveDesktopAuthEnv, CALLBACK_URI, SIGNOUT_URI } from "./desktop-auth-env.mjs";
+import {
+  resolveAuthStage,
+  resolveDesktopAuthEnv,
+  CALLBACK_URI,
+  SIGNOUT_URI,
+} from "./desktop-auth-env.mjs";
 
 const profile = process.env.AWS_PROFILE ?? "solo";
 const region = process.env.AWS_REGION ?? "us-east-1";
+const requestedStage =
+  process.argv[2] === "prod" || process.argv[2] === "dev"
+    ? process.argv[2]
+    : resolveAuthStage(process.env);
 
 function section(title) {
   console.log("");
@@ -52,7 +61,11 @@ async function probe(url, label) {
 
 // 1. Local env
 section("LOCAL ENV (resolved by desktop-auth-env.mjs)");
-const { effective, sources, missing, loadedFiles } = resolveDesktopAuthEnv();
+const { effective, sources, missing, loadedFiles } = resolveDesktopAuthEnv({
+  ...process.env,
+  SOLO_AUTH_STAGE: requestedStage,
+});
+fmt("requested stage", requestedStage);
 if (loadedFiles.length === 0) {
   console.log("  (no env files found)");
 }
@@ -73,7 +86,7 @@ for (const [key, src] of Object.entries(sources)) {
 section("AWS COGNITO LIVE STATE");
 const stack = runAws([
   "cloudformation", "describe-stacks",
-  "--stack-name", "SoloAuth-dev",
+  "--stack-name", `SoloAuth-${requestedStage}`,
   "--query", "Stacks[0].Outputs",
   "--output", "json",
 ]);
@@ -107,7 +120,7 @@ if (drift.length === 0) {
   console.log("  ✓ no drift — local env matches deployed stack");
 } else {
   for (const d of drift) console.log(`  ⚠ ${d}`);
-  console.log("\n  Fix: cd infra && bun run sync-env:dev");
+  console.log(`\n  Fix: cd infra && bun run sync-env:${requestedStage}`);
 }
 
 // 4. Deployed URL allowlist
