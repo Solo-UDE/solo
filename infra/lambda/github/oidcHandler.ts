@@ -1,5 +1,5 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2 } from "aws-lambda";
-import { PutCommand } from "@aws-sdk/lib-dynamodb";
+import { DeleteCommand, GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import {
   b64urlDecode,
   ddb,
@@ -17,6 +17,7 @@ const GITHUB_AUTHORIZE_URL = "https://github.com/login/oauth/authorize";
 const GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token";
 const GITHUB_USER_URL = "https://api.github.com/user";
 const GITHUB_EMAILS_URL = "https://api.github.com/user/emails";
+const GITHUB_GRANT_REVOKE_BASE = "https://api.github.com/applications";
 const REQUESTED_SCOPES = "read:user user:email repo workflow";
 
 export const handler = async (
@@ -37,6 +38,8 @@ export const handler = async (
         return await token(event);
       case "GET /userinfo":
         return await userinfo(event);
+      case "POST /revoke-grant":
+        return await revokeGrant(event);
       default:
         return json(404, { error: "not_found", route });
     }
@@ -77,8 +80,9 @@ async function authorize(event: APIGatewayProxyEventV2): Promise<APIGatewayProxy
   }
   const { clientId } = await getGitHubOauthCreds();
   const ownCallback = `${env("OIDC_ISSUER")}/callback`;
+  const nonce = qs.nonce;
   const ourState = encodeURIComponent(
-    JSON.stringify({ redirect_uri: cognitoRedirect, cognito_state: cognitoState }),
+    JSON.stringify({ redirect_uri: cognitoRedirect, cognito_state: cognitoState, nonce }),
   );
   const u = new URL(GITHUB_AUTHORIZE_URL);
   u.searchParams.set("client_id", clientId);
@@ -114,7 +118,21 @@ function isSignInState(state: string): boolean {
 
 async function signInCallback(state: string, code: string): Promise<APIGatewayProxyStructuredResultV2> {
   const wrapperState = JSON.parse(decodeURIComponent(state));
-  const { redirect_uri: cognitoRedirect, cognito_state: cognitoState } = wrapperState;
+  const { redirect_uri: cognitoRedirect, cognito_state: cognitoState, nonce } = wrapperState;
+
+  // Store nonce keyed by GitHub code so /token can include it in the ID token.
+  // Cognito only forwards the nonce in its own token if the federated IdP's
+  // token contains a matching nonce — without this, NextAuth's nonce check fails.
+  if (nonce && code) {
+    const ttl = Math.floor(Date.now() / 1000) + 300;
+    await ddb.send(
+      new PutCommand({
+        TableName: env("PENDING_TABLE"),
+        Item: { github_user_id: `nonce#${code}`, nonce, ttl },
+      }),
+    );
+  }
+
   const u = new URL(cognitoRedirect);
   u.searchParams.set("code", code);
   u.searchParams.set("state", cognitoState);
@@ -251,6 +269,26 @@ async function token(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyStru
   const nowSeconds = Math.floor(Date.now() / 1000);
   const issuer = env("OIDC_ISSUER");
 
+  // Retrieve and consume the nonce stored at /callback time so we can include
+  // it in the ID token. Cognito will only forward the nonce to NextAuth if
+  // this token contains a matching nonce claim.
+  let idTokenNonce: string | undefined;
+  if (code) {
+    try {
+      const nonceItem = await ddb.send(
+        new GetCommand({ TableName: env("PENDING_TABLE"), Key: { github_user_id: `nonce#${code}` } }),
+      );
+      if (nonceItem.Item?.nonce) {
+        idTokenNonce = nonceItem.Item.nonce as string;
+        await ddb.send(
+          new DeleteCommand({ TableName: env("PENDING_TABLE"), Key: { github_user_id: `nonce#${code}` } }),
+        );
+      }
+    } catch (e) {
+      console.warn("[token] nonce lookup failed (non-fatal):", e);
+    }
+  }
+
   const ttl = Math.floor(Date.now() / 1000) + 15 * 60;
   await ddb.send(
     new PutCommand({
@@ -274,6 +312,7 @@ async function token(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyStru
       aud: rpClientId,
       iat: nowSeconds,
       exp: nowSeconds + 3600,
+      ...(idTokenNonce ? { nonce: idTokenNonce } : {}),
       email: verifiedEmail ?? `${ghUser.login}@users.noreply.github.com`,
       email_verified: emailVerified,
       name: ghUser.name ?? ghUser.login,
@@ -288,6 +327,68 @@ async function token(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyStru
     token_type: "Bearer",
     expires_in: 3600,
     scope: "openid email profile",
+  });
+}
+
+/**
+ * Revoke the user's GitHub OAuth grant for this app. The desktop calls this
+ * on sign-out so the next GitHub sign-in shows GitHub's "Authorize Solo IDE"
+ * page again instead of GitHub silently auto-approving (which is what makes
+ * sign-outs feel sticky — the Cognito session ends but GitHub's grant
+ * persists).
+ *
+ * Body: `{ "access_token": "<user's GitHub OAuth token>" }`
+ *
+ * After this call succeeds GitHub:
+ *   1. Invalidates every token that was issued under this grant
+ *   2. Removes the app from the user's "Authorized OAuth Apps" list
+ *
+ * The Cognito user, the linked identities, and the postAuth DynamoDB row are
+ * all left intact — re-signing in re-creates a fresh grant against the same
+ * Cognito sub.
+ */
+async function revokeGrant(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyStructuredResultV2> {
+  let body: { access_token?: string };
+  try {
+    const raw = event.body ?? "";
+    const decoded = event.isBase64Encoded ? b64urlDecode(raw).toString("utf-8") : raw;
+    body = decoded ? JSON.parse(decoded) : {};
+  } catch {
+    return json(400, { error: "invalid_request", error_description: "body must be JSON" });
+  }
+  const accessToken = body.access_token;
+  if (!accessToken) {
+    return json(400, { error: "invalid_request", error_description: "missing access_token" });
+  }
+
+  const { clientId, clientSecret } = await getGitHubOauthCreds();
+  const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+
+  const resp = await fetch(`${GITHUB_GRANT_REVOKE_BASE}/${clientId}/grant`, {
+    method: "DELETE",
+    headers: {
+      authorization: `Basic ${basicAuth}`,
+      accept: "application/vnd.github+json",
+      "content-type": "application/json",
+      "user-agent": "solo-ide-oidc-wrapper",
+    },
+    body: JSON.stringify({ access_token: accessToken }),
+  });
+
+  // GitHub returns 204 on success, 422 if the token doesn't match a grant
+  // (e.g. the user already revoked it manually). Both should be reported as
+  // success to the caller — sign-out is idempotent.
+  if (resp.status === 204 || resp.status === 422 || resp.status === 404) {
+    console.log(`[revokeGrant] github responded ${resp.status} — grant cleared`);
+    return json(200, { revoked: true, github_status: resp.status });
+  }
+
+  const errBody = await resp.text();
+  console.error(`[revokeGrant] github returned ${resp.status}: ${errBody}`);
+  return json(502, {
+    error: "github_revoke_failed",
+    github_status: resp.status,
+    detail: errBody.slice(0, 500),
   });
 }
 
