@@ -7,6 +7,7 @@ import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
 import type { AuthCallbackPayload, User } from "../lib/auth";
 import * as auth from "../lib/auth";
+import { signInWithOAuthLoopback } from "../lib/auth";
 import { useCloudStatsStore } from "./cloudStatsStore";
 
 // =============================================================================
@@ -37,6 +38,7 @@ interface AuthActions {
 
   // OAuth
   signInWithGitHub: () => Promise<void>;
+  signInWithDifferentGitHubAccount: () => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   signInWithEmail: (email: string) => Promise<void>;
   signInWithMagicLink: (email: string) => Promise<void>;
@@ -48,6 +50,7 @@ interface AuthActions {
 
   // Error handling
   clearError: () => void;
+  cancelAuth: () => void;
 }
 
 type AuthStore = AuthState & AuthActions;
@@ -109,7 +112,7 @@ export const useAuthStore = create<AuthStore>()(
       });
 
       try {
-        const result = await auth.signInWithOAuth("github");
+        const result = await signInWithOAuthLoopback("github");
         set((state) => {
           state.pendingAuthUrl = result.authUrl || null;
           if (!result.opened) {
@@ -126,7 +129,52 @@ export const useAuthStore = create<AuthStore>()(
           state.error =
             error instanceof Error
               ? error.message
-              : "Failed to start authentication";
+              : typeof error === "string"
+                ? error
+                : "Failed to start authentication";
+        });
+      }
+    },
+
+    signInWithDifferentGitHubAccount: async () => {
+      // GitHub's OAuth has no `prompt=select_account` — the only way to let
+      // the user switch GitHub identities is to clear github.com's session
+      // first, then run the normal OAuth flow. We open the logout URL in
+      // the same browser, wait briefly for it to land, then start OAuth.
+      // The user will see GitHub's login page and can pick any account.
+      set((state) => {
+        state.isAuthenticating = true;
+        state.error = null;
+        state.pendingAuthUrl = null;
+      });
+
+      try {
+        await auth.openGitHubLogout();
+        // Give the browser ~1.2s to actually navigate to the logout page so
+        // the next tab doesn't race the logout. Without this delay the OAuth
+        // tab can open while github.com is still serving the previous
+        // session cookie, defeating the point.
+        await new Promise((r) => setTimeout(r, 1200));
+        const result = await signInWithOAuthLoopback("github");
+        set((state) => {
+          state.pendingAuthUrl = result.authUrl || null;
+          if (!result.opened) {
+            state.error =
+              result.error ??
+              "We couldn't open your browser automatically. Copy the URL below and open it manually.";
+            state.isAuthenticating = false;
+          }
+        });
+      } catch (error) {
+        console.error("Failed to start GitHub OAuth (different account):", error);
+        set((state) => {
+          state.isAuthenticating = false;
+          state.error =
+            error instanceof Error
+              ? error.message
+              : typeof error === "string"
+                ? error
+                : "Failed to start authentication";
         });
       }
     },
@@ -139,7 +187,7 @@ export const useAuthStore = create<AuthStore>()(
       });
 
       try {
-        const result = await auth.signInWithOAuth("google");
+        const result = await signInWithOAuthLoopback("google");
         set((state) => {
           state.pendingAuthUrl = result.authUrl || null;
           if (!result.opened) {
@@ -154,7 +202,11 @@ export const useAuthStore = create<AuthStore>()(
         set((state) => {
           state.isAuthenticating = false;
           state.error =
-            error instanceof Error ? error.message : "Failed to start Google sign-in";
+            error instanceof Error
+              ? error.message
+              : typeof error === "string"
+                ? error
+                : "Failed to start Google sign-in";
         });
       }
     },
@@ -288,6 +340,18 @@ export const useAuthStore = create<AuthStore>()(
       set((state) => {
         state.error = null;
       });
+    },
+
+    cancelAuth: () => {
+      set((state) => {
+        state.isAuthenticating = false;
+        state.error = null;
+        state.pendingAuthUrl = null;
+      });
+      // Fire-and-forget: release the loopback port on the Rust side so the
+      // user can immediately start another sign-in attempt without waiting
+      // for the 5-minute timeout.
+      void auth.cancelOAuthLoopback();
     },
   }))
 );

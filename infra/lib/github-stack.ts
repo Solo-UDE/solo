@@ -208,6 +208,7 @@ export class SoloGitHubStack extends cdk.Stack {
     addRoute(apigw.HttpMethod.GET, "/callback", oidcHandler);
     addRoute(apigw.HttpMethod.POST, "/token", oidcHandler);
     addRoute(apigw.HttpMethod.GET, "/userinfo", oidcHandler);
+    addRoute(apigw.HttpMethod.POST, "/revoke-grant", oidcHandler);
 
     oidcHandler.addEnvironment("OIDC_ISSUER", this.oidcApi.apiEndpoint);
     this.linkStartLambda.addEnvironment("OIDC_ISSUER", this.oidcApi.apiEndpoint);

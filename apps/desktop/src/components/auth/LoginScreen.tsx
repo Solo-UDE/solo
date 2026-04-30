@@ -26,9 +26,13 @@ export function LoginScreen() {
   const [urlCopied, setUrlCopied] = useState(false);
 
   const signInWithGitHub = useAuthStore((state) => state.signInWithGitHub);
+  const signInWithDifferentGitHubAccount = useAuthStore(
+    (state) => state.signInWithDifferentGitHubAccount,
+  );
   const signInWithGoogle = useAuthStore((state) => state.signInWithGoogle);
   const signInWithEmail = useAuthStore((state) => state.signInWithEmail);
   const clearError = useAuthStore((state) => state.clearError);
+  const cancelAuth = useAuthStore((state) => state.cancelAuth);
 
   const isAuthenticating = useIsAuthenticating();
   const error = useAuthError();
@@ -71,6 +75,11 @@ export function LoginScreen() {
     clearError();
     await signInWithGitHub();
   }, [signInWithGitHub, clearError]);
+
+  const handleDifferentGitHubClick = useCallback(async () => {
+    clearError();
+    await signInWithDifferentGitHubAccount();
+  }, [signInWithDifferentGitHubAccount, clearError]);
 
   const handleGoogleClick = useCallback(async () => {
     clearError();
@@ -124,6 +133,18 @@ export function LoginScreen() {
           Continue with GitHub
         </Button>
 
+        {/* Switch GitHub account — GitHub OAuth has no account picker, so the
+            only reliable way to use a different account is to log out of
+            github.com first. This link does that, then auto-starts OAuth. */}
+        <button
+          type="button"
+          onClick={handleDifferentGitHubClick}
+          disabled={isAuthenticating}
+          className="mt-1.5 w-full text-[11px] text-muted-foreground hover:text-foreground underline underline-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Use a different GitHub account
+        </button>
+
         {/* Google OAuth button */}
         <Button
           variant="secondary"
@@ -140,12 +161,21 @@ export function LoginScreen() {
           Continue with Google
         </Button>
 
-        {/* Browser notice */}
+        {/* Browser notice + cancel */}
         {isAuthenticating && (
-          <p className="mt-3 text-center text-xs text-muted-foreground flex items-center justify-center gap-1">
-            <ExternalLinkIcon className="w-3 h-3" />
-            Complete sign in in your browser
-          </p>
+          <div className="mt-3 flex items-center justify-center gap-3">
+            <p className="text-xs text-muted-foreground flex items-center gap-1">
+              <ExternalLinkIcon className="w-3 h-3" />
+              Complete sign in in your browser
+            </p>
+            <button
+              type="button"
+              onClick={cancelAuth}
+              className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+            >
+              Cancel
+            </button>
+          </div>
         )}
 
         {/* Divider */}
