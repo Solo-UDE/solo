@@ -1,0 +1,175 @@
+import { useState, type FC } from 'react';
+import { X, Trash2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { cn } from '@/lib/utils';
+import { useTaskStore } from '@/stores/taskStore';
+import type { Task } from '@/lib/tauri/tasks';
+import { RunButton } from './RunButton';
+import { TaskRunsTab } from './TaskRunsTab';
+import { AgentConfigTab } from './AgentConfigTab';
+import { ScheduleTab } from './ScheduleTab';
+import { StatusSelector } from './StatusSelector';
+import { PrioritySelector } from './PrioritySelector';
+import { SubtaskList } from './SubtaskList';
+import { LabelSelector } from './LabelSelector';
+import { LabelBadge } from './LabelBadge';
+import { ProjectSelector } from './ProjectSelector';
+import { CycleSelector } from './CycleSelector';
+import { useLabelStore } from '@/stores/labelStore';
+import { StatusIcon, STATUS_LABEL } from './icons/StatusIcon';
+
+type DrawerTab = 'overview' | 'runs' | 'agent' | 'schedule';
+
+export const TaskDrawer: FC = () => {
+  const taskId = useTaskStore((s) => s.selectedTaskId);
+  const task = useTaskStore((s) => (taskId ? s.tasks.get(taskId) : undefined));
+  const select = useTaskStore((s) => s.select);
+  const update = useTaskStore((s) => s.update);
+  const remove = useTaskStore((s) => s.remove);
+  const addLabel = useTaskStore((s) => s.addLabel);
+  const removeLabel = useTaskStore((s) => s.removeLabel);
+  const setProject = useTaskStore((s) => s.setProject);
+  const setCycle = useTaskStore((s) => s.setCycle);
+  const labels = useLabelStore((s) => s.labels);
+  const [tab, setTab] = useState<DrawerTab>('overview');
+
+  return (
+    <AnimatePresence>
+      {task && (
+        <motion.aside
+          initial={{ x: '100%' }}
+          animate={{ x: 0 }}
+          exit={{ x: '100%' }}
+          transition={{ type: 'spring', stiffness: 380, damping: 38 }}
+          className={cn(
+            'flex h-full w-[480px] shrink-0 flex-col',
+            'border-l border-border/40 bg-background shadow-[0_-8px_32px_-16px_rgba(0,0,0,0.3)]',
+          )}
+        >
+          <header className="flex shrink-0 items-center gap-2 border-b border-border/50 px-4 py-3">
+            <Detail task={task} />
+            <RunButton task={task} />
+            <button
+              type="button"
+              onClick={() => void remove(task.id)}
+              aria-label="Delete task"
+              className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground hover:bg-muted/50 hover:text-red-500"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => select(null)}
+              aria-label="Close drawer"
+              className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground hover:bg-muted/50"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </header>
+
+          <nav className="flex shrink-0 gap-1 border-b border-border/50 px-3 py-1.5">
+            {(task.executor === 'agent'
+              ? (['overview', 'runs', 'agent', 'schedule'] as const)
+              : (['overview', 'runs', 'schedule'] as const)
+            ).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setTab(t)}
+                className={cn(
+                  'rounded-md px-2.5 py-1 text-[11px] font-medium capitalize',
+                  tab === t ? 'bg-card text-foreground border border-border/70' : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {t}
+                {t === 'runs' && task.runs?.length ? ` · ${task.runs.length}` : ''}
+              </button>
+            ))}
+          </nav>
+
+          {tab === 'overview' && (
+            <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
+              <label className="flex flex-col gap-1 text-[11px] font-medium text-muted-foreground">
+                Title
+                <input
+                  value={task.title}
+                  onChange={(e) => void update(task.id, { title: e.target.value })}
+                  className="rounded-[10px] border border-border/40 bg-muted/40 px-2 py-1.5 text-[14px] font-medium text-foreground focus:bg-muted/60 focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:outline-none transition-all duration-200"
+                />
+              </label>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <StatusSelector
+                  value={task.status}
+                  onChange={(s) => void update(task.id, { status: s })}
+                  exclude={['suggested']}
+                />
+                <PrioritySelector
+                  value={task.priority}
+                  onChange={(p) => void update(task.id, { priority: p })}
+                />
+                <ProjectSelector
+                  value={task.project_id ?? null}
+                  onChange={(pid) => void setProject(task.id, pid)}
+                />
+                <CycleSelector
+                  value={task.cycle_id ?? null}
+                  onChange={(cid) => void setCycle(task.id, cid)}
+                />
+                <LabelSelector
+                  selected={task.label_ids}
+                  onAdd={(lid) => void addLabel(task.id, lid)}
+                  onRemove={(lid) => void removeLabel(task.id, lid)}
+                />
+              </div>
+
+              {task.label_ids.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {task.label_ids.map((lid) => {
+                    const l = labels.get(lid);
+                    return l ? (
+                      <LabelBadge
+                        key={lid}
+                        label={l}
+                        onRemove={() => void removeLabel(task.id, lid)}
+                      />
+                    ) : null;
+                  })}
+                </div>
+              )}
+
+              <label className="flex flex-col gap-1 text-[11px] font-medium text-muted-foreground">
+                Description
+                <textarea
+                  wrap="soft"
+                  rows={6}
+                  value={task.description}
+                  onChange={(e) => void update(task.id, { description: e.target.value })}
+                  className="resize-y overflow-x-hidden overflow-y-auto whitespace-pre-wrap break-words rounded-[10px] border border-border/40 bg-muted/40 px-2 py-1.5 text-[13px] text-foreground focus:bg-muted/60 focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:outline-none transition-all duration-200"
+                />
+              </label>
+
+              <SubtaskList task={task} />
+            </div>
+          )}
+
+          {tab === 'runs' && <TaskRunsTab task={task} />}
+          {tab === 'agent' && task.executor === 'agent' && <AgentConfigTab task={task} />}
+          {tab === 'schedule' && <ScheduleTab task={task} />}
+        </motion.aside>
+      )}
+    </AnimatePresence>
+  );
+};
+
+const Detail: FC<{ task: Task }> = ({ task }) => (
+  <div className="min-w-0 flex-1">
+    <div className="flex items-center gap-1.5 truncate text-[13px] font-semibold">
+      <StatusIcon status={task.status} size={13} />
+      <span className="truncate">{task.title || 'Untitled'}</span>
+    </div>
+    <div className="text-[10px] text-muted-foreground">
+      {task.executor === 'agent' ? 'Agent · ' : 'Manual · '}{STATUS_LABEL[task.status]}
+    </div>
+  </div>
+);

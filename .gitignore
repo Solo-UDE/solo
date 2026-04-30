@@ -11,6 +11,7 @@ bun.lockb
 
 # Build outputs
 /apps/desktop/dist
+/dist
 
 # Generated files
 /apps/desktop/src/bindings/*.ts
@@ -32,6 +33,7 @@ Thumbs.db
 .env
 .env.local
 .env.*.local
+scripts/.env.release
 
 # Logs
 *.log

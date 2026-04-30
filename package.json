@@ -23,6 +23,7 @@
     "test": "cargo test && node scripts/run-workspace-tests.mjs",
     "test:desktop-auth": "bun run gen:bindings && bun run --filter @solo/desktop build:vite && cargo test -p solo-desktop desktop_config::tests -- --nocapture && cargo test -p solo-desktop auth_commands::tests -- --nocapture",
     "premerge:master": "bash scripts/premerge-master.sh",
+    "release:master": "node scripts/release-master.mjs",
     "extract:codex": "bun scripts/codex-extract/launch.ts",
     "extract:codex:dry": "bun scripts/codex-extract/launch.ts --dry-run",
     "extract:codex:post": "bun scripts/codex-extract/post-process.ts",

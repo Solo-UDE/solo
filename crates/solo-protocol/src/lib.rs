@@ -824,6 +824,524 @@ pub struct VoiceModelProgress {
 }
 
 // =============================================================================
+// Task Allocator
+// =============================================================================
+
+/// Lifecycle status of a task. Phase 1 uses a subset; later phases activate
+/// the remainder without enum changes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "snake_case")]
+pub enum TaskStatus {
+    /// LLM-proposed draft awaiting user accept/dismiss (Phase 5).
+    Suggested,
+    /// Accepted and ready to run (manual) or waiting for next fire (scheduled).
+    Queued,
+    /// Currently executing (Phase 2+).
+    Running,
+    /// Agent finished; awaiting user review (Phase 3+).
+    NeedsReview,
+    /// Completed successfully or ticked off manually.
+    Done,
+    /// Execution or scheduling failed.
+    Failed,
+    /// User-archived.
+    Archived,
+}
+
+/// Who executes the task. Phase 1 ships `Manual` only; `Agent` activates in Phase 2.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "snake_case")]
+pub enum Executor {
+    Manual,
+    Agent,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "snake_case")]
+pub enum TaskPriority {
+    Low,
+    Medium,
+    High,
+    Urgent,
+}
+
+/// Where a task came from. Distinguishes user-authored vs planner-emitted.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(tag = "kind", content = "data", rename_all = "snake_case")]
+pub enum TaskOrigin {
+    Manual,
+    /// goal-plan id — the submission that produced the batch (Phase 5).
+    GoalPlan(String),
+    Proactive,
+}
+
+/// Planner-attached tags enabling the "Context anchor" grouping (§7 of spec).
+/// Phase 1 accepts the enum but does not produce any values — the UI renders
+/// whatever is present.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(tag = "kind", content = "id", rename_all = "snake_case")]
+pub enum ContextAnchor {
+    VaultEntry(String),
+    Skill(String),
+    Branch(String),
+    File(String),
+    Session(String),
+    Topic(String),
+}
+
+/// A single execution of a task. Populated by the Executor (Phase 2+). Phase 1
+/// persists an empty `Vec<TaskRun>` on every task.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct TaskRun {
+    pub id: String,
+    pub started_at: i64,
+    pub ended_at: Option<i64>,
+    pub outcome: RunOutcome,
+    pub session_id: Option<String>,
+    pub worktree_id: Option<String>,
+    pub summary: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "snake_case")]
+pub enum RunOutcome {
+    Running,
+    Succeeded,
+    Failed,
+    Cancelled,
+}
+
+/// A checklist item on a `Task`. Order is the containing `Vec`'s index — there
+/// is no `position` field. Reordering is a full array rewrite via
+/// `task_subtask_reorder`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct Subtask {
+    pub id: String,
+    pub title: String,
+    pub completed: bool,
+    pub created_at: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub completed_at: Option<i64>,
+}
+
+/// Payload shape for creating a subtask via `TaskDraft.subtasks` or the
+/// dedicated `task_subtask_add` command. Server assigns id/timestamps.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct SubtaskDraft {
+    pub title: String,
+}
+
+/// A user-defined label. Tasks can carry any number of labels via
+/// `Task.label_ids`. Labels live in their own `labels` table keyed by id;
+/// removal cascades (ids are pruned from every task's `label_ids`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct Label {
+    pub id: String,
+    pub name: String,
+    /// Hex color (`#rrggbb`).
+    pub color: String,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct LabelDraft {
+    pub name: String,
+    pub color: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct LabelPatch {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub color: Option<String>,
+}
+
+/// A Project groups related tasks under a shared goal. Tasks carry a
+/// nullable `project_id` pointer.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectStatus {
+    Planned,
+    InProgress,
+    Paused,
+    Completed,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectHealth {
+    OnTrack,
+    AtRisk,
+    OffTrack,
+    Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct Project {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub status: ProjectStatus,
+    pub health: ProjectHealth,
+    /// Hex color used for the badge.
+    pub color: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub start_at: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub target_at: Option<i64>,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct ProjectDraft {
+    pub name: String,
+    pub description: String,
+    pub color: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct ProjectPatch {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub status: Option<ProjectStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub health: Option<ProjectHealth>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub color: Option<String>,
+    /// Use `Some(None)` sentinel semantics: pass explicit `null` from the
+    /// frontend to clear; omit to leave unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub start_at: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub target_at: Option<i64>,
+}
+
+/// A Cycle is a time-boxed span that bundles tasks (sprint, week, release).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct Cycle {
+    pub id: String,
+    pub name: String,
+    pub start_at: i64,
+    pub end_at: i64,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct CycleDraft {
+    pub name: String,
+    pub start_at: i64,
+    pub end_at: i64,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct CyclePatch {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub start_at: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub end_at: Option<i64>,
+}
+
+/// How the agent task execution session is constrained.
+/// Distinct from the settings-level `PermissionMode` (which controls the
+/// interactive agent permission pipeline). This type governs per-task
+/// autonomous execution safety.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "snake_case")]
+pub enum AgentPermissionMode {
+    /// User confirms every tool use. Default for manual runs.
+    Ask,
+    /// Agent plans but does not execute.
+    Plan,
+    /// Auto-accept file edits; confirm shell writes.
+    AcceptEdits,
+    /// No prompts. REQUIRES ExecutionLocation::Worktree.
+    Bypass,
+}
+
+/// Where the agent runs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "snake_case")]
+pub enum ExecutionLocation {
+    /// The user's live workspace. Default for manual runs.
+    MainWorkspace,
+    /// An isolated git worktree (auto-created, auto-cleaned after review).
+    Worktree,
+}
+
+/// Per-task executor configuration.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct AgentConfig {
+    /// Provider override; None → use the app's currently-active provider
+    /// (anthropic, openai, etc.).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub provider: Option<String>,
+
+    /// Model override; None → system default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub model: Option<String>,
+
+    /// Explicit skill allow-list; None → planner/default picks.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub skills: Option<Vec<String>>,
+
+    pub permission_mode: AgentPermissionMode,
+    pub execution_location: ExecutionLocation,
+
+    /// Extra command patterns to block (merged with global deny-list).
+    #[serde(default)]
+    pub deny_list: Vec<String>,
+
+    /// Optional network allow-list. None = open; Some([]) = offline.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub network_allow_list: Option<Vec<String>>,
+}
+
+impl Default for AgentConfig {
+    fn default() -> Self {
+        Self {
+            provider: None,
+            model: None,
+            skills: None,
+            permission_mode: AgentPermissionMode::Ask,
+            execution_location: ExecutionLocation::MainWorkspace,
+            deny_list: Vec::new(),
+            network_allow_list: None,
+        }
+    }
+}
+
+/// Preset cadence for scheduled tasks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "snake_case")]
+pub enum PresetKind {
+    Hourly,
+    Daily,
+    Weekly,
+    Monthly,
+}
+
+/// Event trigger kinds. v1 ships one variant; enum lets Phase 5+ add more without migration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "snake_case")]
+pub enum EventKind {
+    AgentSessionEnded,
+}
+
+/// How a task fires automatically. `None` on Task = one-shot / manual.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(tag = "kind", content = "data", rename_all = "snake_case")]
+pub enum Schedule {
+    /// Fire once at the given UTC millis.
+    OneShot { at: i64 },
+    /// Fire on a raw cron expression (UTC).
+    Cron { expr: String, next_fire: i64 },
+    /// Preset kind — hour/minute interpreted in UTC; weekday is 0..=6 (Mon=0).
+    Preset {
+        kind: PresetKind,
+        hour: u8,
+        minute: u8,
+        weekday: Option<u8>,
+        next_fire: i64,
+    },
+    /// Event-driven. v1 populates this shape but the scheduler wires it up in Phase 5.
+    EventTriggered { event: EventKind },
+}
+
+/// The core task entity. `agent_config` + `schedule` are `Option` so Phase 1
+/// (manual-only) persists `None` without schema churn.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct Task {
+    pub id: String,
+    pub title: String,
+    pub description: String,
+    pub status: TaskStatus,
+    pub executor: Executor,
+    pub priority: TaskPriority,
+    pub created_at: i64,
+    pub updated_at: i64,
+
+    /// `None` for manual tasks (Phase 1). Activated in Phase 2.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub agent_config: Option<AgentConfig>,
+    /// `None` for one-shot tasks. Activated in Phase 4.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub schedule: Option<Schedule>,
+
+    #[serde(default)]
+    pub context_anchors: Vec<ContextAnchor>,
+    #[serde(default)]
+    pub runs: Vec<TaskRun>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_error: Option<String>,
+    #[serde(default)]
+    pub catch_up_on_launch: bool,
+    pub origin: TaskOrigin,
+    /// Ordered checklist items. Defaults to empty for tasks created before the
+    /// subtask feature; `ALTER TABLE ... DEFAULT '[]'` covers existing rows.
+    #[serde(default)]
+    pub subtasks: Vec<Subtask>,
+    /// Label ids attached to this task. Labels themselves live in their own
+    /// table keyed by id; the ids here are looked up to render badges.
+    #[serde(default)]
+    pub label_ids: Vec<String>,
+    /// Optional project membership. `None` means "no project."
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub project_id: Option<String>,
+    /// Optional cycle membership. `None` means "no cycle."
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub cycle_id: Option<String>,
+}
+
+/// Filter applied on `task_list`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct TaskListFilters {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub status: Option<Vec<TaskStatus>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub executor: Option<Executor>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub priority: Option<Vec<TaskPriority>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub query: Option<String>,
+}
+
+/// Payload for `task_create` — minimal fields; server fills id/timestamps.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct TaskDraft {
+    pub title: String,
+    pub description: String,
+    pub executor: Executor,
+    pub priority: TaskPriority,
+    /// Optional initial subtasks. Each becomes a `Subtask` with a server-assigned id.
+    #[serde(default)]
+    pub subtasks: Vec<SubtaskDraft>,
+    #[serde(default)]
+    pub label_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub project_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub cycle_id: Option<String>,
+}
+
+/// Partial update for `task_update` — any `Some` field is written; `None` leaves alone.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct TaskPatch {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub status: Option<TaskStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub priority: Option<TaskPriority>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub catch_up_on_launch: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub agent_config: Option<AgentConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub schedule: Option<Schedule>,
+    /// Bulk-replace subtasks. Rarely used from the UI (we prefer fine-grained
+    /// `task_subtask_*` commands); kept for completeness.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub subtasks: Option<Vec<Subtask>>,
+    /// Bulk-replace label ids. Fine-grained operations live on
+    /// `task_label_add` / `task_label_remove`; this is for atomic sets.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub label_ids: Option<Vec<String>>,
+    /// Explicit-null semantics: omit to leave unchanged; pass `null` to clear.
+    /// `TaskPatchNullable<String>` encodes this via an outer Option of inner
+    /// Option; we keep it simple with a separate boolean flag.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub project_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub clear_project: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub cycle_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub clear_cycle: Option<bool>,
+}
+
+// =============================================================================
 // Backend Events (sent from Rust to TypeScript)
 // =============================================================================
 
@@ -1052,6 +1570,44 @@ pub enum BackendEvent {
     /// Voice model download progress
     #[serde(rename = "voice:model_progress")]
     VoiceModelProgress { progress: VoiceModelProgress },
+
+    /// Task allocator store mutated — frontend should refetch affected tasks.
+    /// `task_ids` lists the tasks that changed; empty slice means "refetch all".
+    #[serde(rename = "tasks:changed")]
+    TasksChanged { task_ids: Vec<String> },
+
+    /// A task run started (task_id → run_id).
+    #[serde(rename = "tasks:run_started")]
+    TaskRunStarted { task_id: String, run_id: String },
+
+    /// Incremental progress — summary text of latest event (truncated).
+    #[serde(rename = "tasks:run_progress")]
+    TaskRunProgress { task_id: String, run_id: String, summary: String },
+
+    /// Terminal — the run ended with an outcome.
+    #[serde(rename = "tasks:run_ended")]
+    TaskRunEnded { task_id: String, run_id: String, outcome: RunOutcome, summary: Option<String> },
+
+    /// A task in a worktree finished with pending changes; show review modal.
+    #[serde(rename = "tasks:review_ready")]
+    TaskReviewReady {
+        task_id: String,
+        run_id: String,
+        worktree_id: String,
+        diff_summary: String, // "N files changed, +X/-Y"
+    },
+
+    /// Label store mutated. Empty slice = refetch all.
+    #[serde(rename = "labels:changed")]
+    LabelsChanged { label_ids: Vec<String> },
+
+    /// Project store mutated. Empty slice = refetch all.
+    #[serde(rename = "projects:changed")]
+    ProjectsChanged { project_ids: Vec<String> },
+
+    /// Cycle store mutated. Empty slice = refetch all.
+    #[serde(rename = "cycles:changed")]
+    CyclesChanged { cycle_ids: Vec<String> },
 }
 
 // =============================================================================
@@ -1346,6 +1902,10 @@ pub struct SoloSettings {
     pub skills: SkillsConfig,
     #[serde(default)]
     pub plugins: PluginsConfig,
+    /// Free-form notes the planner injects into every goal-plan run.
+    /// Stored at user scope so it applies across all workspaces.
+    #[serde(default)]
+    pub planner_notes: String,
 }
 
 /// Outcome of a permission check. Mirrors Claude Code's `PermissionResult`.

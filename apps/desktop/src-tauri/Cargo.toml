@@ -25,9 +25,11 @@ solo-parse = { path = "../../../crates/solo-parse" }
 solo-embeddings = { path = "../../../crates/solo-embeddings" }
 solo-git = { path = "../../../crates/solo-git" }
 solo-plugins = { path = "../../../crates/solo-plugins" }
+solo-tasks = { path = "../../../crates/solo-tasks" }
 solo-vault = { path = "../../../crates/solo-vault" }
 solo-stats = { path = "../../../crates/solo-stats" }
 solo-voice = { path = "../../../crates/solo-voice" }
+dirs = "5.0"
 chrono = { version = "0.4", features = ["serde"] }
 
 tauri = { workspace = true, features = ["macos-private-api"] }

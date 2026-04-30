@@ -1,0 +1,26 @@
+[package]
+name = "solo-tasks"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Task allocator — persistence, planner, scheduler, executor"
+
+[dependencies]
+tokio.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+solo-core = { path = "../solo-core" }
+solo-protocol = { path = "../solo-protocol" }
+
+rusqlite = { version = "0.32", features = ["bundled"] }
+uuid = { version = "1.11", features = ["v4"] }
+dirs = "5.0"
+croner = "2"
+chrono = { version = "0.4", features = ["serde"] }
+
+[dev-dependencies]
+tempfile = "3.14"

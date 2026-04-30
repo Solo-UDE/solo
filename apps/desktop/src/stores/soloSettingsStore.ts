@@ -44,6 +44,7 @@ const EMPTY_SETTINGS: SoloSettings = {
 		adapterClaudePlugins: true,
 		adapterCodexUser: true,
 	},
+	plannerNotes: '',
 };
 
 interface SoloSettingsState {

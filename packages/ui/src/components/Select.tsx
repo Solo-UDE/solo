@@ -111,9 +111,13 @@ export const SelectContent = forwardRef<
       )}
       {...props}
     >
-      <SelectScrollUpButton />
-      <Viewport className="p-1">{children}</Viewport>
-      <SelectScrollDownButton />
+      {/*
+       * Radix Viewport handles scroll natively — we drop the custom
+       * SelectScrollUp/DownButton because they render unconditionally in
+       * this impl and leave visible chevron artifacts at the top/bottom of
+       * short menus. Lists >~10 items will scroll via max-height + overflow.
+       */}
+      <Viewport className="max-h-[18rem] overflow-y-auto p-1">{children}</Viewport>
     </Content>
   </Portal>
 ));
@@ -126,7 +130,7 @@ export const SelectItem = forwardRef<
   <Item
     ref={ref}
     className={cn(
-      "relative flex items-center gap-2 rounded-sm py-1 pl-6 pr-2 text-[13px] cursor-default select-none",
+      "flex items-center gap-2 rounded-sm px-2 py-1 text-[13px] cursor-default select-none",
       "outline-none transition-colors",
       "hover:bg-muted/70 hover:text-foreground",
       "data-[highlighted]:bg-muted/70 data-[highlighted]:text-foreground",
@@ -135,9 +139,16 @@ export const SelectItem = forwardRef<
     )}
     {...props}
   >
-    <span className="absolute left-1.5 flex size-3 items-center justify-center">
+    {/*
+     * Indicator renders in flex flow (NOT absolute) with a reserved width,
+     * so every row is aligned whether a checkmark is shown or not. The
+     * previous absolute+pl-6 pattern caused the check to visually collide
+     * with the first character of the item text on some font-rendering
+     * paths.
+     */}
+    <span className="flex size-4 shrink-0 items-center justify-center text-muted-foreground">
       <ItemIndicator>
-        <svg width="10" height="10" viewBox="0 0 14 14" className="stroke-current" strokeWidth="2" fill="none">
+        <svg width="12" height="12" viewBox="0 0 14 14" className="stroke-current" strokeWidth="2" fill="none">
           <path d="M3 8L6 11L11 3.5" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </ItemIndicator>

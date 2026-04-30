@@ -106,6 +106,11 @@ fn merge_into(dst: &mut SoloSettings, src: SoloSettings) {
     {
         dst.plugins = src.plugins;
     }
+
+    // planner_notes — higher scope wins when non-empty
+    if !src.planner_notes.is_empty() {
+        dst.planner_notes = src.planner_notes;
+    }
 }
 
 /// Shorthand: load only the `skills` section (merged).
