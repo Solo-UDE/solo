@@ -8,6 +8,7 @@
  *  - `searchMode` — persisted Fts/Semantic toggle
  *  - `backfill`   — progress state for the rebuild-embeddings run
  *  - `pendingEmbeddings` — badge count on the Rebuild button
+ *  - `reextract` — progress state for legacy document recovery
  */
 
 import { create } from 'zustand';
@@ -20,6 +21,8 @@ import {
   vaultSearch,
   vaultBackfillEmbeddings,
   vaultPendingEmbeddingsCount,
+  vaultReextract,
+  vaultPendingReextractCount,
   type VaultEntry,
   type VaultScope,
   type VaultListFilters,
@@ -62,6 +65,26 @@ const EMPTY_BACKFILL: BackfillState = {
   finishedAt: null,
 };
 
+interface ReextractState {
+  running: boolean;
+  total: number;
+  completed: number;
+  recovered: number;
+  failed: number;
+  elapsedMs: number;
+  finishedAt: number | null;
+}
+
+const EMPTY_REEXTRACT: ReextractState = {
+  running: false,
+  total: 0,
+  completed: 0,
+  recovered: 0,
+  failed: 0,
+  elapsedMs: 0,
+  finishedAt: null,
+};
+
 interface VaultState {
   entries: Map<string, VaultEntry>;
   unsortedCount: number;
@@ -74,7 +97,9 @@ interface VaultState {
   isSearching: boolean;
   error: string | null;
   backfill: BackfillState;
+  reextract: ReextractState;
   pendingEmbeddings: number;
+  pendingReextract: number;
   /** Entry currently open in the detail drawer, or null when closed. */
   selectedEntryId: string | null;
 }
@@ -88,6 +113,7 @@ interface VaultActions {
   fetchEntries: () => Promise<void>;
   fetchUnsortedCount: () => Promise<void>;
   fetchPendingEmbeddings: () => Promise<void>;
+  fetchPendingReextract: () => Promise<void>;
   upsertEntry: (entry: VaultEntry) => void;
   removeEntry: (entryId: string) => void;
   togglePinned: (entryId: string) => Promise<void>;
@@ -104,6 +130,16 @@ interface VaultActions {
     done: boolean;
   }) => void;
   dismissBackfillToast: () => void;
+  runReextract: () => Promise<void>;
+  updateReextractProgress: (update: {
+    total: number;
+    completed: number;
+    recovered: number;
+    failed: number;
+    elapsedMs: number;
+    done: boolean;
+  }) => void;
+  dismissReextractToast: () => void;
 }
 
 const initialScope: VaultScope = { type: 'global' };
@@ -127,7 +163,9 @@ export const useVaultStore = create<VaultState & VaultActions>()(
     isSearching: false,
     error: null,
     backfill: EMPTY_BACKFILL,
+    reextract: EMPTY_REEXTRACT,
     pendingEmbeddings: 0,
+    pendingReextract: 0,
     selectedEntryId: null,
 
     setScope: (scope) =>
@@ -198,6 +236,18 @@ export const useVaultStore = create<VaultState & VaultActions>()(
         const count = typeof n === 'bigint' ? Number(n) : n;
         set((s) => {
           s.pendingEmbeddings = Number.isFinite(count) ? count : 0;
+        });
+      } catch {
+        // Non-fatal
+      }
+    },
+
+    fetchPendingReextract: async () => {
+      try {
+        const n = await vaultPendingReextractCount();
+        const count = typeof n === 'bigint' ? Number(n) : n;
+        set((s) => {
+          s.pendingReextract = Number.isFinite(count) ? count : 0;
         });
       } catch {
         // Non-fatal
@@ -338,6 +388,71 @@ export const useVaultStore = create<VaultState & VaultActions>()(
     dismissBackfillToast: () =>
       set((s) => {
         s.backfill = EMPTY_BACKFILL;
+      }),
+
+    runReextract: async () => {
+      if (get().reextract.running) return;
+      set((s) => {
+        s.reextract = {
+          running: true,
+          total: 0,
+          completed: 0,
+          recovered: 0,
+          failed: 0,
+          elapsedMs: 0,
+          finishedAt: null,
+        };
+      });
+      try {
+        const result = await vaultReextract();
+        set((s) => {
+          s.reextract = {
+            running: false,
+            total: Number(result.total),
+            completed: Number(result.total),
+            recovered: Number(result.recovered),
+            failed: Number(result.failed),
+            elapsedMs: Number(result.totalMs),
+            finishedAt: Date.now(),
+          };
+          s.pendingReextract = 0;
+          s.pendingEmbeddings = Math.max(
+            0,
+            s.pendingEmbeddings + Number(result.recovered) - Number(result.embedded),
+          );
+        });
+        await get().fetchEntries();
+      } catch (err) {
+        set((s) => {
+          s.reextract = {
+            ...s.reextract,
+            running: false,
+            finishedAt: Date.now(),
+          };
+          s.error = String(err);
+        });
+      }
+    },
+
+    updateReextractProgress: ({ total, completed, recovered, failed, elapsedMs, done }) =>
+      set((s) => {
+        s.reextract = {
+          running: !done,
+          total,
+          completed,
+          recovered,
+          failed,
+          elapsedMs,
+          finishedAt: done ? Date.now() : null,
+        };
+        if (done) {
+          s.pendingReextract = 0;
+        }
+      }),
+
+    dismissReextractToast: () =>
+      set((s) => {
+        s.reextract = EMPTY_REEXTRACT;
       }),
   })),
 );
