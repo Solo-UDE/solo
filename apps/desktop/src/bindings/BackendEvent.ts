@@ -45,4 +45,28 @@ elapsed_ms: bigint,
 /**
  * `true` on the last event for this run; `false` for ticks.
  */
+done: boolean, } } | { "type": "vault:reextract_progress", "payload": { 
+/**
+ * Total legacy entries pending at start of this run.
+ */
+total: bigint, 
+/**
+ * Entries attempted so far.
+ */
+completed: bigint, 
+/**
+ * Entries that produced at least one chunk.
+ */
+recovered: bigint, 
+/**
+ * Entries that still produced no searchable text.
+ */
+failed: bigint, 
+/**
+ * Wall-clock milliseconds elapsed since re-extract started.
+ */
+elapsed_ms: bigint, 
+/**
+ * `true` on the last event for this run; `false` for ticks.
+ */
 done: boolean, } } | { "type": "settings:changed", "payload": { settings: SoloSettings, } } | { "type": "session:goal_captured", "payload": { goal: SessionGoal, } } | { "type": "session:mode_changed", "payload": { session_id: string, mode: PermissionMode, } } | { "type": "voice:state", "payload": { mode: VoiceMode, state: VoicePipelineState, } } | { "type": "voice:level", "payload": { rms: number, } } | { "type": "voice:transcript", "payload": { result: VoiceTranscriptResult, } } | { "type": "voice:error", "payload": { message: string, } } | { "type": "voice:model_progress", "payload": { progress: VoiceModelProgress, } } | { "type": "tasks:changed", "payload": { task_ids: Array<string>, } } | { "type": "tasks:run_started", "payload": { task_id: string, run_id: string, } } | { "type": "tasks:run_progress", "payload": { task_id: string, run_id: string, summary: string, } } | { "type": "tasks:run_ended", "payload": { task_id: string, run_id: string, outcome: RunOutcome, summary: string | null, } } | { "type": "tasks:review_ready", "payload": { task_id: string, run_id: string, worktree_id: string, diff_summary: string, } } | { "type": "labels:changed", "payload": { label_ids: Array<string>, } } | { "type": "projects:changed", "payload": { project_ids: Array<string>, } } | { "type": "cycles:changed", "payload": { cycle_ids: Array<string>, } };

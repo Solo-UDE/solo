@@ -629,6 +629,7 @@ pub enum IndexStatus {
     Embedding,
     Storing,
     Indexed,
+    ExtractionFailed,
     Failed,
 }
 
@@ -1497,6 +1498,24 @@ pub enum BackendEvent {
         /// Chunks that failed (dim mismatch, corrupt BLOB, provider error).
         failed: u64,
         /// Wall-clock milliseconds elapsed since backfill started.
+        elapsed_ms: u64,
+        /// `true` on the last event for this run; `false` for ticks.
+        done: bool,
+    },
+
+    /// Progress for re-extracting legacy entries after new local extractors
+    /// are installed.
+    #[serde(rename = "vault:reextract_progress")]
+    VaultReextractProgress {
+        /// Total legacy entries pending at start of this run.
+        total: u64,
+        /// Entries attempted so far.
+        completed: u64,
+        /// Entries that produced at least one chunk.
+        recovered: u64,
+        /// Entries that still produced no searchable text.
+        failed: u64,
+        /// Wall-clock milliseconds elapsed since re-extract started.
         elapsed_ms: u64,
         /// `true` on the last event for this run; `false` for ticks.
         done: bool,

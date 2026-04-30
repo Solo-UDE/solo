@@ -1,6 +1,7 @@
 //! Local indexing pipeline — validate → extract → chunk → store → embed → notify.
 //!
-//! V1: text-only extraction. PDF/image/OCR land in V2.
+//! V1.3: pluggable local-first extraction for documents, data, web, and
+//!       archives. OCR/transcription can be supplied by a cloud extractor.
 //! V1.2: best-effort embedding during ingest. Failures are logged and
 //!       recoverable via `vault_backfill_embeddings`.
 
@@ -17,6 +18,7 @@ use solo_protocol::{
 use tracing::{debug, info, warn};
 
 use crate::classifier;
+use crate::extractors::{ExtractionInput, TextExtractor};
 use crate::store::{Store, EMBEDDING_DIM};
 use crate::{Result, VaultError};
 
@@ -37,11 +39,12 @@ pub struct Ingested {
 /// Copy a dropped file into the vault blob store and produce a full entry +
 /// chunks ready to persist. This does not touch the Store itself — the
 /// caller is responsible for `upsert_entry` + `insert_chunk`.
-pub fn ingest_file(
+pub async fn ingest_file(
     src: &Path,
     blobs_dir: &Path,
     scope: VaultScope,
     memory_type: MemoryType,
+    extractor: &dyn TextExtractor,
 ) -> Result<Ingested> {
     // 1. Validate
     let meta = fs::metadata(src).map_err(VaultError::Io)?;
@@ -67,11 +70,40 @@ pub fn ingest_file(
     let blob_path = blobs_dir.join(&blob_name);
     fs::copy(src, &blob_path).map_err(VaultError::Io)?;
 
-    // 3. Extract text (best-effort; non-text kinds simply have no chunks)
-    let extracted = extract_text(src, classification.kind);
+    // 3. Extract text from the stored blob. The extractor is pluggable so the
+    // same ingest path can use local parsers today and a cloud service later.
+    let extracted = extractor
+        .extract(ExtractionInput {
+            path: blob_path.clone(),
+            kind: classification.kind,
+            subkind: classification.subkind.clone(),
+            mime: classification.mime.clone(),
+        })
+        .await;
 
     // 4. Chunk
-    let chunks = chunk_text(&extracted);
+    let chunks = chunk_text(&extracted.text);
+    let index_status = if extracted.marks_extraction_failed(chunks.len()) {
+        warn!(
+            path = %src.display(),
+            kind = ?classification.kind,
+            subkind = ?classification.subkind,
+            extractor = extracted.extractor,
+            message = ?extracted.message,
+            "vault.extract.failed"
+        );
+        IndexStatus::ExtractionFailed
+    } else {
+        debug!(
+            path = %src.display(),
+            kind = ?classification.kind,
+            subkind = ?classification.subkind,
+            extractor = extracted.extractor,
+            chunks_n = chunks.len(),
+            "vault.extract.done"
+        );
+        IndexStatus::Indexed
+    };
 
     // 5. Build entry
     let now = unix_now();
@@ -95,7 +127,7 @@ pub fn ingest_file(
         tags: Vec::new(),
         mime: classification.mime.clone(),
         size_bytes: Some(meta.len()),
-        index_status: IndexStatus::Indexed,
+        index_status,
         cloud_sync_state: CloudSyncState::Offline,
         classifier_confidence: classification.confidence,
         retrieval_stats: RetrievalStats::default(),
@@ -103,17 +135,7 @@ pub fn ingest_file(
         updated_at: now,
     };
 
-    let chunk_records = chunks
-        .into_iter()
-        .enumerate()
-        .map(|(i, content)| VaultChunk {
-            id: uuid::Uuid::new_v4().to_string(),
-            entry_id: id.clone(),
-            chunk_index: i as u32,
-            token_count: Some(approx_token_count(&content)),
-            content,
-        })
-        .collect();
+    let chunk_records = chunk_records_for_entry(&id, chunks);
 
     Ok(Ingested {
         entry,
@@ -134,8 +156,10 @@ pub async fn ingest_and_store(
     scope: VaultScope,
     memory_type: MemoryType,
     embed_provider: Option<Arc<dyn EmbeddingProvider>>,
+    extractor: Arc<dyn TextExtractor>,
 ) -> Result<VaultEntry> {
-    let Ingested { entry, chunks } = ingest_file(src, blobs_dir, scope, memory_type)?;
+    let Ingested { entry, chunks } =
+        ingest_file(src, blobs_dir, scope, memory_type, extractor.as_ref()).await?;
 
     // Persist entry + chunk rows (FTS index rebuilt transactionally by insert_chunk).
     store.upsert_entry(&entry)?;
@@ -301,24 +325,35 @@ pub async fn embed_chunks(
     (vectors, stats)
 }
 
-fn extract_text(src: &Path, kind: EntryKind) -> String {
-    match kind {
-        EntryKind::Document
-        | EntryKind::Code
-        | EntryKind::Snippet
-        | EntryKind::Data
-        | EntryKind::Config
-        | EntryKind::Web
-        | EntryKind::Note
-        | EntryKind::Keyvalue => read_utf8_lossy(src).unwrap_or_default(),
-        // Binary kinds: no text in V1; V2 will wire pdf-parse/OCR.
-        _ => String::new(),
+pub(crate) async fn extract_chunks_for_entry(
+    entry_id: &str,
+    blob_path: &Path,
+    kind: EntryKind,
+    subkind: Option<String>,
+    mime: Option<String>,
+    extractor: &dyn TextExtractor,
+) -> (Vec<VaultChunk>, bool) {
+    let extracted = extractor
+        .extract(ExtractionInput {
+            path: blob_path.to_path_buf(),
+            kind,
+            subkind,
+            mime,
+        })
+        .await;
+    let chunks = chunk_text(&extracted.text);
+    let failed = extracted.marks_extraction_failed(chunks.len());
+    if failed {
+        warn!(
+            entry_id,
+            blob_path = %blob_path.display(),
+            kind = ?kind,
+            extractor = extracted.extractor,
+            message = ?extracted.message,
+            "vault.reextract.extract_failed"
+        );
     }
-}
-
-fn read_utf8_lossy(src: &Path) -> Option<String> {
-    let bytes = fs::read(src).ok()?;
-    Some(String::from_utf8_lossy(&bytes).into_owned())
+    (chunk_records_for_entry(entry_id, chunks), failed)
 }
 
 fn chunk_text(text: &str) -> Vec<String> {
@@ -341,6 +376,20 @@ fn chunk_text(text: &str) -> Vec<String> {
         i += step;
     }
     out
+}
+
+fn chunk_records_for_entry(entry_id: &str, chunks: Vec<String>) -> Vec<VaultChunk> {
+    chunks
+        .into_iter()
+        .enumerate()
+        .map(|(i, content)| VaultChunk {
+            id: uuid::Uuid::new_v4().to_string(),
+            entry_id: entry_id.to_string(),
+            chunk_index: i as u32,
+            token_count: Some(approx_token_count(&content)),
+            content,
+        })
+        .collect()
 }
 
 fn approx_token_count(chunk: &str) -> u32 {

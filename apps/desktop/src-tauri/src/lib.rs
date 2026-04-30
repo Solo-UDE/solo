@@ -587,6 +587,8 @@ pub fn run() {
             vault_commands::vault_accept_placement,
             vault_commands::vault_backfill_embeddings,
             vault_commands::vault_pending_embeddings_count,
+            vault_commands::vault_reextract,
+            vault_commands::vault_pending_reextract_count,
             vault_commands::vault_log_classifier_correction,
             vault_commands::vault_unsorted_count,
         ])

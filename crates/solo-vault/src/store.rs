@@ -83,6 +83,50 @@ CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
 );
 ";
 
+const REEXTRACTABLE_LEGACY_ENTRY_WHERE: &str = r"
+    vault_blob_path IS NOT NULL
+    AND index_status = 'indexed'
+    AND (
+        (
+            NOT EXISTS (SELECT 1 FROM chunks c WHERE c.entry_id = entries.id)
+            AND (
+                (kind = 'document' AND subkind IN ('pdf', 'word', 'rtf', 'epub'))
+                OR (kind = 'data' AND subkind IN ('excel', 'parquet'))
+                OR (kind = 'image' AND subkind = 'svg')
+                OR (kind = 'archive' AND subkind IN ('zip', 'tar', 'gzip', 'bzip2'))
+            )
+        )
+        OR EXISTS (
+            SELECT 1 FROM chunks c
+            WHERE c.entry_id = entries.id
+              AND c.chunk_index = 0
+              AND (
+                  (kind = 'document' AND subkind = 'pdf' AND (
+                      c.content LIKE '%PDF-%'
+                      OR c.content LIKE '%/FlateDecode%'
+                      OR c.content LIKE '%' || char(65533) || '%'
+                  ))
+                  OR (kind = 'document' AND subkind IN ('word', 'epub') AND (
+                      c.content LIKE 'PK%'
+                      OR c.content LIKE '%' || char(65533) || '%'
+                  ))
+                  OR (kind = 'document' AND subkind = 'rtf' AND (
+                      c.content LIKE '{%'
+                      AND c.content LIKE '%rtf%'
+                  ))
+                  OR (kind = 'data' AND subkind = 'excel' AND (
+                      c.content LIKE 'PK%'
+                      OR c.content LIKE '%' || char(65533) || '%'
+                  ))
+                  OR (kind = 'data' AND subkind = 'parquet' AND (
+                      c.content LIKE 'PAR1%'
+                      OR c.content LIKE '%' || char(65533) || '%'
+                  ))
+              )
+        )
+    )
+";
+
 pub struct Store {
     conn: Mutex<Connection>,
     db_path: PathBuf,
@@ -293,6 +337,71 @@ impl Store {
             params![chunk.content, chunk.entry_id, chunk.id],
         ).map_err(to_vault)?;
         Ok(())
+    }
+
+    pub fn replace_chunks_for_entry(&self, entry_id: &str, chunks: &[VaultChunk]) -> Result<()> {
+        let mut conn = self.conn.lock().expect("vault store mutex poisoned");
+        let tx = conn.transaction().map_err(to_vault)?;
+        tx.execute(
+            "DELETE FROM chunks_fts WHERE entry_id = ?1",
+            params![entry_id],
+        )
+        .map_err(to_vault)?;
+        tx.execute("DELETE FROM chunks WHERE entry_id = ?1", params![entry_id])
+            .map_err(to_vault)?;
+        for chunk in chunks {
+            tx.execute(
+                "INSERT OR REPLACE INTO chunks (id, entry_id, chunk_index, content, token_count)
+                 VALUES (?,?,?,?,?)",
+                params![
+                    chunk.id,
+                    chunk.entry_id,
+                    i64::from(chunk.chunk_index),
+                    chunk.content,
+                    chunk.token_count.map(i64::from),
+                ],
+            )
+            .map_err(to_vault)?;
+            tx.execute(
+                "INSERT INTO chunks_fts (content, entry_id, chunk_id) VALUES (?, ?, ?)",
+                params![chunk.content, chunk.entry_id, chunk.id],
+            )
+            .map_err(to_vault)?;
+        }
+        tx.commit().map_err(to_vault)?;
+        Ok(())
+    }
+
+    pub fn update_index_status(&self, entry_id: &str, status: IndexStatus, now: u64) -> Result<()> {
+        let conn = self.conn.lock().expect("vault store mutex poisoned");
+        conn.execute(
+            "UPDATE entries SET index_status = ?1, updated_at = ?2 WHERE id = ?3",
+            params![status_to_str(status), now as i64, entry_id],
+        )
+        .map_err(to_vault)?;
+        Ok(())
+    }
+
+    pub fn count_reextractable_legacy_entries(&self) -> Result<u64> {
+        let conn = self.conn.lock().expect("vault store mutex poisoned");
+        let sql = format!("SELECT COUNT(*) FROM entries WHERE {REEXTRACTABLE_LEGACY_ENTRY_WHERE}");
+        let n: i64 = conn.query_row(&sql, [], |r| r.get(0)).map_err(to_vault)?;
+        Ok(n.max(0) as u64)
+    }
+
+    pub fn reextractable_legacy_entries(&self, limit: usize) -> Result<Vec<VaultEntry>> {
+        let conn = self.conn.lock().expect("vault store mutex poisoned");
+        let sql = format!(
+            "SELECT * FROM entries WHERE {REEXTRACTABLE_LEGACY_ENTRY_WHERE}
+             ORDER BY updated_at DESC
+             LIMIT ?1"
+        );
+        let mut stmt = conn.prepare(&sql).map_err(to_vault)?;
+        let rows: rusqlite::Result<Vec<VaultEntry>> = stmt
+            .query_map(params![limit as i64], row_to_entry)
+            .map_err(to_vault)?
+            .collect();
+        rows.map_err(to_vault)
     }
 
     pub fn fts_search(&self, query: &str, scope: &VaultScope, top_k: usize) -> Result<Vec<(VaultChunk, VaultEntry, f32)>> {
@@ -730,6 +839,7 @@ fn status_to_str(s: IndexStatus) -> &'static str {
         IndexStatus::Embedding => "embedding",
         IndexStatus::Storing => "storing",
         IndexStatus::Indexed => "indexed",
+        IndexStatus::ExtractionFailed => "extraction_failed",
         IndexStatus::Failed => "failed",
     }
 }
@@ -741,6 +851,7 @@ fn str_to_status(s: &str) -> IndexStatus {
         "embedding" => IndexStatus::Embedding,
         "storing" => IndexStatus::Storing,
         "indexed" => IndexStatus::Indexed,
+        "extraction_failed" => IndexStatus::ExtractionFailed,
         "failed" => IndexStatus::Failed,
         _ => IndexStatus::Pending,
     }
