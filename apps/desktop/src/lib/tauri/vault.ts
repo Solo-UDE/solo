@@ -96,6 +96,24 @@ export const vaultBackfillEmbeddings = (batchSize?: number) =>
 export const vaultPendingEmbeddingsCount = () =>
   invoke<number>('vault_pending_embeddings_count');
 
+/**
+ * Result from re-running extraction over legacy entries.
+ * The backend also streams `vault:reextract_progress` ticks while it runs.
+ */
+export interface VaultReextractResult {
+  total: number;
+  recovered: number;
+  failed: number;
+  embedded: number;
+  totalMs: number;
+}
+
+export const vaultReextract = (batchSize?: number) =>
+  invoke<VaultReextractResult>('vault_reextract', { batchSize: batchSize ?? null });
+
+export const vaultPendingReextractCount = () =>
+  invoke<number>('vault_pending_reextract_count');
+
 export const vaultLogClassifierCorrection = (
   entryId: string,
   oldKind: EntryKind,

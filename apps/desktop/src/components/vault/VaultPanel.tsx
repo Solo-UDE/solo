@@ -15,6 +15,7 @@ import {
   RefreshCw,
   Sparkles,
   Type,
+  FileSearch,
 } from 'lucide-react';
 import { useVaultStore } from '@/stores/vaultStore';
 import { useVaultDragDrop } from '@/hooks/useVaultDragDrop';
@@ -38,13 +39,18 @@ export const VaultPanel: FC = () => {
   const fetchEntries = useVaultStore((s) => s.fetchEntries);
   const fetchUnsortedCount = useVaultStore((s) => s.fetchUnsortedCount);
   const fetchPendingEmbeddings = useVaultStore((s) => s.fetchPendingEmbeddings);
+  const fetchPendingReextract = useVaultStore((s) => s.fetchPendingReextract);
   const runSearch = useVaultStore((s) => s.runSearch);
   const clearSearch = useVaultStore((s) => s.clearSearch);
   const runBackfill = useVaultStore((s) => s.runBackfill);
+  const runReextract = useVaultStore((s) => s.runReextract);
   const dismissBackfillToast = useVaultStore((s) => s.dismissBackfillToast);
+  const dismissReextractToast = useVaultStore((s) => s.dismissReextractToast);
   const activeScope = useVaultStore((s) => s.activeScope);
   const pendingEmbeddings = useVaultStore((s) => s.pendingEmbeddings);
+  const pendingReextract = useVaultStore((s) => s.pendingReextract);
   const backfill = useVaultStore((s) => s.backfill);
+  const reextract = useVaultStore((s) => s.reextract);
   const isSearchingState = useVaultStore((s) => s.isSearching);
   const selectedEntryId = useVaultStore((s) => s.selectedEntryId);
   const setSelectedEntry = useVaultStore((s) => s.setSelectedEntry);
@@ -59,7 +65,14 @@ export const VaultPanel: FC = () => {
     void fetchEntries();
     void fetchUnsortedCount();
     void fetchPendingEmbeddings();
-  }, [activeScope, fetchEntries, fetchUnsortedCount, fetchPendingEmbeddings]);
+    void fetchPendingReextract();
+  }, [
+    activeScope,
+    fetchEntries,
+    fetchUnsortedCount,
+    fetchPendingEmbeddings,
+    fetchPendingReextract,
+  ]);
 
   // Auto-dismiss the backfill toast ~5s after completion.
   useEffect(() => {
@@ -70,12 +83,24 @@ export const VaultPanel: FC = () => {
     return () => window.clearTimeout(id);
   }, [backfill.finishedAt, backfill.running, dismissBackfillToast]);
 
+  useEffect(() => {
+    if (!reextract.finishedAt || reextract.running) return;
+    const id = window.setTimeout(() => {
+      dismissReextractToast();
+    }, 5000);
+    return () => window.clearTimeout(id);
+  }, [reextract.finishedAt, reextract.running, dismissReextractToast]);
+
   const hasEntries = entries.size > 0;
   const isSearching = searchQuery.trim().length > 0 && searchResults.length >= 0;
 
   const pct =
     backfill.total > 0
       ? Math.min(100, Math.round((backfill.completed / backfill.total) * 100))
+      : 0;
+  const reextractPct =
+    reextract.total > 0
+      ? Math.min(100, Math.round((reextract.completed / reextract.total) * 100))
       : 0;
 
   const selectedEntry = selectedEntryId ? entries.get(selectedEntryId) ?? null : null;
@@ -113,6 +138,18 @@ export const VaultPanel: FC = () => {
           )}
 
           {/* Rebuild embeddings button — only when there's work to do */}
+          {pendingReextract > 0 && !reextract.running && (
+            <button
+              type="button"
+              onClick={() => void runReextract()}
+              title={`Recover ${pendingReextract} legacy entr${pendingReextract === 1 ? 'y' : 'ies'}`}
+              className="h-6 px-2 rounded-md bg-muted/40 hover:bg-muted/60 flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-all duration-150 active:scale-[0.97]"
+            >
+              <FileSearch className="w-3 h-3" />
+              <span>{pendingReextract}</span>
+            </button>
+          )}
+
           {pendingEmbeddings > 0 && !backfill.running && (
             <button
               type="button"
@@ -264,6 +301,57 @@ export const VaultPanel: FC = () => {
           <div className="text-[10px] text-muted-foreground/70 flex justify-between">
             <span>{pct}%</span>
             <span>{(backfill.elapsedMs / 1000).toFixed(1)}s elapsed</span>
+          </div>
+        </div>
+      )}
+
+      {(reextract.running || reextract.finishedAt) && (
+        <div
+          className={cn(
+            'absolute left-2 right-2 rounded-lg bg-card/95 backdrop-blur-md shadow-xl p-3 flex flex-col gap-2',
+            backfill.running || backfill.finishedAt ? 'bottom-[104px]' : 'bottom-2',
+          )}
+          role="status"
+          aria-live="polite"
+        >
+          <div className="flex items-center gap-2 text-xs">
+            {reextract.running ? (
+              <FileSearch className="w-3.5 h-3.5 text-primary animate-pulse" />
+            ) : reextract.failed > 0 ? (
+              <FileSearch className="w-3.5 h-3.5 text-amber-500" />
+            ) : (
+              <FileSearch className="w-3.5 h-3.5 text-primary" />
+            )}
+            <span className="font-medium">
+              {reextract.running
+                ? 'Recovering documents…'
+                : reextract.failed > 0
+                  ? `${reextract.recovered} recovered, ${reextract.failed} failed`
+                  : 'Documents recovered'}
+            </span>
+            <span className="ml-auto text-[10px] text-muted-foreground">
+              {reextract.completed} / {reextract.total}
+            </span>
+            {!reextract.running && (
+              <button
+                type="button"
+                onClick={dismissReextractToast}
+                className="w-4 h-4 rounded-sm flex items-center justify-center text-muted-foreground/60 hover:text-foreground hover:bg-muted/80 transition-colors duration-150"
+                aria-label="Dismiss"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+          <div className="h-1 rounded-full bg-muted/40 overflow-hidden">
+            <div
+              className="h-full bg-primary transition-[width] duration-300"
+              style={{ width: `${reextractPct}%` }}
+            />
+          </div>
+          <div className="text-[10px] text-muted-foreground/70 flex justify-between">
+            <span>{reextractPct}%</span>
+            <span>{(reextract.elapsedMs / 1000).toFixed(1)}s elapsed</span>
           </div>
         </div>
       )}

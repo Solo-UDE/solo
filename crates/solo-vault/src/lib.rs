@@ -19,6 +19,7 @@
 //! `backfill_embeddings`. Cloud sync and OCR land later.
 
 pub mod classifier;
+pub mod extractors;
 pub mod local_embed;
 pub mod memory;
 pub mod pipeline;
@@ -41,6 +42,7 @@ pub use solo_protocol::{
     VaultSearchMode, VaultSearchResult,
 };
 
+use crate::extractors::{LocalTextExtractor, TextExtractor};
 pub use crate::pipeline::EmbedStats;
 use crate::store::Store;
 
@@ -80,9 +82,33 @@ pub struct BackfillStats {
     pub total_ms: u64,
 }
 
+/// Progress tick emitted by `reextract_legacy_entries`.
+#[derive(Debug, Clone, Copy)]
+pub struct ReextractProgress {
+    pub total: u64,
+    pub completed: u64,
+    pub recovered: u64,
+    pub failed: u64,
+    pub elapsed_ms: u64,
+    pub done: bool,
+}
+
+/// Terminal stats for a re-extraction run.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ReextractStats {
+    pub total: u64,
+    pub recovered: u64,
+    pub failed: u64,
+    pub embedded: u64,
+    pub total_ms: u64,
+}
+
 pub struct Vault {
     pub root: PathBuf,
     store: Store,
+    /// Pluggable text extractor. Defaults to local parsers; cloud sync can
+    /// install a remote/chained extractor without changing ingest callers.
+    text_extractor: RwLock<Arc<dyn TextExtractor>>,
     /// Interior-mutable so `vault_commands` can inject / swap the provider
     /// after the vault has been wrapped in an `Arc` (e.g. when the user
     /// adds their `OpenAI` key mid-session).
@@ -100,6 +126,7 @@ impl Vault {
         Ok(Self {
             root,
             store,
+            text_extractor: RwLock::new(Arc::new(LocalTextExtractor)),
             embed_provider: RwLock::new(None),
             no_provider_warned: AtomicBool::new(false),
         })
@@ -134,6 +161,21 @@ impl Vault {
         self.embed_provider
             .read()
             .expect("vault provider lock poisoned")
+            .clone()
+    }
+
+    pub fn set_text_extractor(&self, extractor: Arc<dyn TextExtractor>) {
+        info!(extractor = extractor.name(), "vault.extractor.attached");
+        *self
+            .text_extractor
+            .write()
+            .expect("vault extractor lock poisoned") = extractor;
+    }
+
+    fn current_text_extractor(&self) -> Arc<dyn TextExtractor> {
+        self.text_extractor
+            .read()
+            .expect("vault extractor lock poisoned")
             .clone()
     }
 
@@ -191,6 +233,7 @@ impl Vault {
     ) -> Vec<Result<VaultEntry>> {
         let blobs = self.blobs_dir();
         let provider = self.current_provider();
+        let extractor = self.current_text_extractor();
         let mut out = Vec::with_capacity(paths.len());
         for p in paths {
             let res = pipeline::ingest_and_store(
@@ -200,6 +243,7 @@ impl Vault {
                 scope.clone(),
                 memory_type,
                 provider.clone(),
+                extractor.clone(),
             )
             .await;
             out.push(res);
@@ -470,6 +514,129 @@ impl Vault {
     /// badge a "rebuild index" button.
     pub fn pending_embeddings_count(&self) -> Result<u64> {
         self.store.count_chunks_missing_embeddings()
+    }
+
+    pub fn pending_reextract_count(&self) -> Result<u64> {
+        self.store.count_reextractable_legacy_entries()
+    }
+
+    /// Re-run extraction for legacy entries that were previously marked
+    /// indexed with zero chunks or raw binary-garbage chunks. This recovers
+    /// PDFs/documents/data files after adding new local extractors.
+    pub async fn reextract_legacy_entries(
+        &self,
+        batch_size: usize,
+        mut on_progress: impl FnMut(ReextractProgress),
+    ) -> Result<ReextractStats> {
+        let total = self.store.count_reextractable_legacy_entries()?;
+        let extractor = self.current_text_extractor();
+        let provider = self.current_provider();
+        let chunk_budget = batch_size.max(1);
+        let start = Instant::now();
+        let mut completed = 0;
+        let mut recovered = 0;
+        let mut failed = 0;
+        let mut embedded = 0;
+
+        info!(total, batch_size = chunk_budget, "vault.reextract.start");
+        on_progress(ReextractProgress {
+            total,
+            completed,
+            recovered,
+            failed,
+            elapsed_ms: 0,
+            done: false,
+        });
+
+        loop {
+            let entries = self.store.reextractable_legacy_entries(chunk_budget)?;
+            if entries.is_empty() {
+                break;
+            }
+
+            for entry in entries {
+                completed += 1;
+                let Some(blob_path) = entry.vault_blob_path.as_deref() else {
+                    failed += 1;
+                    continue;
+                };
+                let blob_path = PathBuf::from(blob_path);
+                let (chunks, extraction_failed) = pipeline::extract_chunks_for_entry(
+                    &entry.id,
+                    &blob_path,
+                    entry.kind,
+                    entry.subkind.clone(),
+                    entry.mime.clone(),
+                    extractor.as_ref(),
+                )
+                .await;
+
+                let status = if extraction_failed {
+                    IndexStatus::ExtractionFailed
+                } else {
+                    IndexStatus::Indexed
+                };
+                self.store.replace_chunks_for_entry(&entry.id, &chunks)?;
+                self.store
+                    .update_index_status(&entry.id, status, unix_now())?;
+
+                if extraction_failed || chunks.is_empty() {
+                    failed += 1;
+                } else {
+                    recovered += 1;
+                    if let Some(provider) = provider.as_deref() {
+                        let (vectors, stats) = pipeline::embed_chunks(&chunks, provider).await;
+                        for (chunk_id, emb) in vectors {
+                            if self
+                                .store
+                                .update_chunk_embedding(&chunk_id, &emb.values)
+                                .is_ok()
+                            {
+                                embedded += 1;
+                            }
+                        }
+                        if stats.failed > 0 {
+                            warn!(
+                                entry_id = %entry.id,
+                                failed = stats.failed,
+                                "vault.reextract.embed_partial_failure"
+                            );
+                        }
+                    }
+                }
+            }
+
+            on_progress(ReextractProgress {
+                total,
+                completed,
+                recovered,
+                failed,
+                elapsed_ms: start.elapsed().as_millis() as u64,
+                done: false,
+            });
+        }
+
+        let total_ms = start.elapsed().as_millis() as u64;
+        info!(
+            total,
+            completed, recovered, failed, embedded, total_ms, "vault.reextract.done"
+        );
+        on_progress(ReextractProgress {
+            total,
+            completed,
+            recovered,
+            failed,
+            elapsed_ms: total_ms,
+            done: true,
+        });
+
+        Ok(ReextractStats {
+            total,
+            recovered,
+            failed,
+            embedded,
+            total_ms,
+        })
     }
 
     pub fn unsorted_count(&self) -> u32 {
