@@ -20,7 +20,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import type { FC } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { Inbox } from 'lucide-react';
+import { ChevronDown, ChevronUp, Inbox } from 'lucide-react';
 import type { WorktreeInfo } from '@/bindings';
 import {
   useAgentStore,
@@ -41,6 +41,7 @@ import { WorktreeGroupHeader } from './WorktreeGroupHeader';
 
 const MAIN_GROUP_KEY = '__main__';
 const EMPTY_OPEN_IDS: ReadonlySet<string> = new Set();
+const COLLAPSED_SESSION_LIMIT = 5;
 
 /**
  * Zustand selector helper: subscribe to panelTabsStore and return a stable
@@ -117,9 +118,21 @@ export const SessionThreadList: FC<SessionThreadListProps> = ({ onSessionSelect 
   // Worktree groups are collapsed by default — only groups the user has
   // explicitly opened are in the set.
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set());
+  const [expandedSessionGroups, setExpandedSessionGroups] = useState<Set<string>>(
+    () => new Set(),
+  );
 
   const toggleGroup = useCallback((key: string) => {
     setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
+  const toggleSessionLimit = useCallback((key: string) => {
+    setExpandedSessionGroups((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
       else next.add(key);
@@ -200,6 +213,11 @@ export const SessionThreadList: FC<SessionThreadListProps> = ({ onSessionSelect 
               : activeWorktreeId === worktree.id
             : isMainGroup && activeWorktreeId === null;
           const expanded = expandedGroups.has(group.key);
+          const sessionsExpanded = expandedSessionGroups.has(group.key);
+          const visibleSessions = sessionsExpanded
+            ? group.sessions
+            : group.sessions.slice(0, COLLAPSED_SESSION_LIMIT);
+          const hiddenSessionCount = group.sessions.length - visibleSessions.length;
           const headerWorktree: WorktreeInfo | null =
             worktree ??
             (isMainGroup
@@ -223,7 +241,6 @@ export const SessionThreadList: FC<SessionThreadListProps> = ({ onSessionSelect 
           return (
             <motion.div
               key={group.key}
-              layout
               initial={{ opacity: 0, y: -2 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
@@ -245,14 +262,13 @@ export const SessionThreadList: FC<SessionThreadListProps> = ({ onSessionSelect 
                 {expanded && group.sessions.length > 0 && (
                   <motion.div
                     key="sessions"
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                    transition={{ duration: 0.15 }}
-                    className="overflow-hidden"
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -2 }}
+                    transition={{ type: 'spring', duration: 0.22, bounce: 0 }}
                   >
                     <div className="mt-0.5 space-y-0.5">
-                      {group.sessions.map((session) => {
+                      {visibleSessions.map((session) => {
                         const streaming =
                           sessionStreaming.get(session.id)?.isStreaming ?? false;
                         return (
@@ -281,6 +297,25 @@ export const SessionThreadList: FC<SessionThreadListProps> = ({ onSessionSelect 
                           />
                         );
                       })}
+                      {group.sessions.length > COLLAPSED_SESSION_LIMIT && (
+                        <button
+                          type="button"
+                          onClick={() => toggleSessionLimit(group.key)}
+                          aria-expanded={sessionsExpanded}
+                          className="group/view-more ml-6 flex min-h-8 w-[calc(100%-1.5rem)] items-center gap-1.5 rounded-[8px] px-2 text-[11px] text-muted-foreground/65 transition-[background-color,color] duration-150 hover:bg-background/55 hover:text-foreground active:scale-[0.96]"
+                        >
+                          {sessionsExpanded ? (
+                            <ChevronUp className="size-3 text-muted-foreground/55 transition-colors duration-150 group-hover/view-more:text-foreground/75" />
+                          ) : (
+                            <ChevronDown className="size-3 text-muted-foreground/55 transition-colors duration-150 group-hover/view-more:text-foreground/75" />
+                          )}
+                          <span>
+                            {sessionsExpanded
+                              ? 'Show less'
+                              : `View ${hiddenSessionCount} more`}
+                          </span>
+                        </button>
+                      )}
                     </div>
                   </motion.div>
                 )}
