@@ -89,8 +89,8 @@ That unlocks four meaningful product advantages:
 From the existing Solo repository:
 
 - there is a native desktop app in `apps/desktop`
-- there is a lightweight Bun/Hono server in `server`
-- there is already agent communication over WebSockets in the server
+- the historical Bun/Hono `server/` backend has been removed from the active desktop path
+- agent communication now flows through the Tauri Rust bridge and Node `agent-bridge` sidecar
 - there is already a `solo-auth` crate and desktop auth plumbing
 - the current auth path is product-adjacent but not yet a full cloud identity and authorization platform
 - the current server is primarily agent-focused, not a multi-tenant application backend
@@ -1294,7 +1294,7 @@ Mitigation:
 
 ### Risk: the current server gets overloaded conceptually
 
-The Bun/Hono `server` in this repo is agent-centric and not the right place to grow an entire multi-tenant backend casually.
+The removed Bun/Hono `server` was agent-centric and was not the right place to grow an entire multi-tenant backend casually.
 
 Mitigation:
 
