@@ -25,7 +25,9 @@ use tauri::{AppHandle, Emitter as _, Listener as _, Manager as _};
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
 
-use crate::agent::{PermissionDecision, PermissionResponse, SessionConfig, SessionManager};
+use crate::agent::{
+    PermissionDecision, PermissionResponse, SessionConfig, SessionManager, ToolPolicyConfig,
+};
 
 /// Maps active agent sessions to the task run they power.
 #[derive(Default)]
@@ -58,7 +60,12 @@ impl ExecutorMap {
     ) {
         self.inner.write().await.insert(
             session_id,
-            ActiveRun { task_id, run_id, worktree_id, deny_patterns },
+            ActiveRun {
+                task_id,
+                run_id,
+                worktree_id,
+                deny_patterns,
+            },
         );
     }
 
@@ -101,14 +108,9 @@ async fn create_worktree_for_run(
         base: None,
     };
 
-    let info = crate::worktree_commands::worktree_create(
-        request,
-        app.clone(),
-        wt_state,
-        fs_state,
-        stats,
-    )
-    .await?;
+    let info =
+        crate::worktree_commands::worktree_create(request, app.clone(), wt_state, fs_state, stats)
+            .await?;
 
     // Return (worktree_id, worktree_path)
     Ok((info.id, info.path))
@@ -176,7 +178,9 @@ fn parse_subtask_markers(serialized: &str) -> Vec<String> {
     while let Some(rel) = serialized[i..].find(pattern) {
         let start = i + rel + pattern.len();
         // Find the closing `>` of this tag.
-        let Some(end_rel) = serialized[start..].find('>') else { break; };
+        let Some(end_rel) = serialized[start..].find('>') else {
+            break;
+        };
         let tag_inner = &serialized[start..start + end_rel];
         i = start + end_rel + 1;
         // Extract id="..." — accept both raw " and JSON-escaped \".
@@ -185,7 +189,9 @@ fn parse_subtask_markers(serialized: &str) -> Vec<String> {
                 out.push(id);
             }
         }
-        if i >= bytes.len() { break; }
+        if i >= bytes.len() {
+            break;
+        }
     }
     out
 }
@@ -199,8 +205,12 @@ fn extract_id_attr(tag_inner: &str) -> Option<String> {
     let bytes = rest.as_bytes();
     let mut idx = 0;
     // Optional backslash before the opening quote (JSON-escaped form).
-    if idx < bytes.len() && bytes[idx] == b'\\' { idx += 1; }
-    if idx >= bytes.len() || bytes[idx] != b'"' { return None; }
+    if idx < bytes.len() && bytes[idx] == b'\\' {
+        idx += 1;
+    }
+    if idx >= bytes.len() || bytes[idx] != b'"' {
+        return None;
+    }
     idx += 1;
     let start = idx;
     while idx < bytes.len() {
@@ -219,12 +229,10 @@ fn extract_id_attr(tag_inner: &str) -> Option<String> {
 
 fn extract_command(tool_name: &str, tool_input: &Value) -> Option<String> {
     match tool_name {
-        "Bash" | "bash" | "shell" | "Shell" => {
-            tool_input
-                .get("command")
-                .and_then(|v| v.as_str())
-                .map(ToString::to_string)
-        }
+        "Bash" | "bash" | "shell" | "Shell" => tool_input
+            .get("command")
+            .and_then(|v| v.as_str())
+            .map(ToString::to_string),
         _ => None,
     }
 }
@@ -244,31 +252,37 @@ pub async fn spawn_agent_for_task(
 
     // Resolve agent config
     let cfg = task.agent_config.clone().unwrap_or_default();
+    let provider = cfg
+        .provider
+        .clone()
+        .unwrap_or_else(|| "anthropic".to_string());
+    if provider != "anthropic" {
+        return Err(format!(
+            "{provider} is chat-only in Solo v1; agent task execution requires an Anthropic/Claude model"
+        ));
+    }
 
     // Enforce bypass-requires-worktree constraint
     if cfg.permission_mode == AgentPermissionMode::Bypass
         && cfg.execution_location != ExecutionLocation::Worktree
     {
-        return Err(
-            "bypass permission mode requires execution_location = worktree".into(),
-        );
+        return Err("bypass permission mode requires execution_location = worktree".into());
     }
 
     // Create a run row first so we have the run_id for the worktree branch name
     let run_id = store.create_run(&task_id).map_err(|e| e.to_string())?;
 
     // Create worktree if requested
-    let (worktree_id, worktree_path) =
-        if cfg.execution_location == ExecutionLocation::Worktree {
-            let (id, path) = create_worktree_for_run(app, &task.id, &run_id).await?;
-            // Record worktree on the run row
-            if let Err(e) = store.record_worktree_for_run(&run_id, &id) {
-                warn!(error = %e, "record_worktree_for_run failed (non-fatal)");
-            }
-            (Some(id), Some(path))
-        } else {
-            (None, None)
-        };
+    let (worktree_id, worktree_path) = if cfg.execution_location == ExecutionLocation::Worktree {
+        let (id, path) = create_worktree_for_run(app, &task.id, &run_id).await?;
+        // Record worktree on the run row
+        if let Err(e) = store.record_worktree_for_run(&run_id, &id) {
+            warn!(error = %e, "record_worktree_for_run failed (non-fatal)");
+        }
+        (Some(id), Some(path))
+    } else {
+        (None, None)
+    };
 
     // Build the prompt for the agent
     let prompt = build_agent_prompt(&task);
@@ -276,16 +290,42 @@ pub async fn spawn_agent_for_task(
     // Create the agent session (UUID)
     let session_id = uuid::Uuid::new_v4().to_string();
 
+    // Merge deny-lists: global defaults + per-task patterns. These are passed
+    // into the bridge policy before the session starts and also retained in
+    // the Rust listener as a second guardrail for permission prompts.
+    let all_deny: Vec<String> = solo_tasks::DEFAULT_DENY_LIST
+        .iter()
+        .map(|s| (*s).to_string())
+        .chain(cfg.deny_list.iter().cloned())
+        .collect();
+    let bash_deny_rules: Vec<String> = all_deny
+        .iter()
+        .map(|pattern| format!("Bash({pattern})"))
+        .collect();
+
     // Build session config — thread the task's AgentConfig through to the
     // bridge so the LLM actually honors per-ticket model/provider/skills/
     // permission-mode preferences. Without this, the bridge uses global
     // defaults regardless of what the ticket asked for.
     let session_config = Some(SessionConfig {
         cwd: worktree_path.clone(),
-        provider: cfg.provider.clone(),
+        provider: Some(provider),
         model: cfg.model.clone(),
-        // Skill allow-list → bridge's allowed_tools.
-        allowed_tools: cfg.skills.clone(),
+        selected_skills: cfg.skills.clone(),
+        tool_policy: Some(ToolPolicyConfig {
+            deny: bash_deny_rules,
+            bypass_enabled: Some(cfg.permission_mode == AgentPermissionMode::Bypass),
+            is_worktree_session: Some(cfg.execution_location == ExecutionLocation::Worktree),
+            ..Default::default()
+        }),
+        permission_mode: Some(
+            match cfg.permission_mode {
+                AgentPermissionMode::Ask => "default",
+                AgentPermissionMode::Plan => "plan",
+                AgentPermissionMode::AcceptEdits | AgentPermissionMode::Bypass => "accept",
+            }
+            .to_string(),
+        ),
         // Permission-mode hints: accept_enabled for AcceptEdits/Bypass,
         // plan_enabled for Plan. Bypass also implies accept-all; deny-list
         // enforcement happens in the listener regardless.
@@ -315,13 +355,6 @@ pub async fn spawn_agent_for_task(
         )
         .map_err(|e| e.to_string())?;
 
-    // Merge deny-lists: global defaults + per-task patterns
-    let all_deny: Vec<String> = solo_tasks::DEFAULT_DENY_LIST
-        .iter()
-        .map(|s| (*s).to_string())
-        .chain(cfg.deny_list.iter().cloned())
-        .collect();
-
     // Register the mapping
     executor_map
         .insert(
@@ -343,7 +376,9 @@ pub async fn spawn_agent_for_task(
     );
     let _ = app.emit(
         "backend-event",
-        BackendEvent::TasksChanged { task_ids: vec![task_id] },
+        BackendEvent::TasksChanged {
+            task_ids: vec![task_id],
+        },
     );
 
     info!(session_id, run_id, worktree = ?worktree_id, "agent task run started");
@@ -395,7 +430,7 @@ pub fn install_agent_listeners(
             if let Some(run) = map__.get(&session_id).await {
                 // Task-owned session — existing lifecycle handling.
                 match message_type.as_str() {
-                    "assistant" | "tool_use" | "tool_result" => {
+                    "text" | "thinking" | "tool_use" | "tool_result" => {
                         let serialized = message.to_string();
                         // Scan for `<subtask-done id="..." />` markers and
                         // auto-tick. Unknown ids silently fail at the store
@@ -423,7 +458,11 @@ pub fn install_agent_listeners(
                             }
                         }
 
-                        let summary = truncate(&serialized, 200);
+                        let summary = message
+                            .get("content")
+                            .and_then(|v| v.as_str())
+                            .map(|s| truncate(s, 200))
+                            .unwrap_or_else(|| truncate(&serialized, 200));
                         let _ = store__.update_run_summary(&run.run_id, &summary);
                         let _ = app__.emit(
                             "backend-event",
@@ -549,8 +588,7 @@ pub fn install_agent_listeners(
                 return;
             };
 
-            let patterns: Vec<&str> =
-                run.deny_patterns.iter().map(String::as_str).collect();
+            let patterns: Vec<&str> = run.deny_patterns.iter().map(String::as_str).collect();
 
             if let Some(matched) = solo_tasks::is_denied(&cmd, &patterns) {
                 warn!(
@@ -626,7 +664,9 @@ async fn finalize_run(
 
         let _ = app.emit(
             "backend-event",
-            BackendEvent::TasksChanged { task_ids: vec![run.task_id.clone()] },
+            BackendEvent::TasksChanged {
+                task_ids: vec![run.task_id.clone()],
+            },
         );
 
         info!(session_id, "task run routed to NeedsReview (worktree mode)");
@@ -658,7 +698,9 @@ async fn finalize_run(
     );
     let _ = app.emit(
         "backend-event",
-        BackendEvent::TasksChanged { task_ids: vec![run.task_id] },
+        BackendEvent::TasksChanged {
+            task_ids: vec![run.task_id],
+        },
     );
 
     info!(session_id, outcome = ?outcome, "task run finalized");
@@ -673,9 +715,18 @@ fn truncate(s: &str, max: usize) -> String {
 }
 
 fn final_summary(message: &Value) -> String {
-    message
-        .get("result")
+    if let Some(summary) = message
+        .get("structuredOutput")
+        .and_then(|v| v.get("summary"))
         .and_then(|v| v.as_str())
+    {
+        return truncate(summary, 500);
+    }
+
+    message
+        .get("content")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.trim().is_empty())
         .map(|s| truncate(s, 500))
         .unwrap_or_else(|| "(no summary)".into())
 }
@@ -711,6 +762,32 @@ pub async fn cancel_task(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn final_summary_prefers_structured_output_summary() {
+        let message = json!({
+            "content": "fallback",
+            "structuredOutput": { "summary": "structured summary" }
+        });
+        assert_eq!(final_summary(&message), "structured summary");
+    }
+
+    #[test]
+    fn final_summary_falls_back_to_content() {
+        let message = json!({
+            "content": "content summary"
+        });
+        assert_eq!(final_summary(&message), "content summary");
+    }
+
+    #[test]
+    fn final_summary_ignores_missing_legacy_result_field() {
+        let message = json!({
+            "result": "legacy field should not be used"
+        });
+        assert_eq!(final_summary(&message), "(no summary)");
+    }
 
     #[test]
     fn parse_marker_plain() {
@@ -797,28 +874,46 @@ mod tests {
             status: solo_protocol::TaskStatus::Queued,
             executor: solo_protocol::Executor::Agent,
             priority: solo_protocol::TaskPriority::Medium,
-            created_at: 0, updated_at: 0,
-            agent_config: None, schedule: None,
-            context_anchors: Vec::new(), runs: Vec::new(),
-            last_error: None, catch_up_on_launch: false,
+            created_at: 0,
+            updated_at: 0,
+            agent_config: None,
+            schedule: None,
+            context_anchors: Vec::new(),
+            runs: Vec::new(),
+            last_error: None,
+            catch_up_on_launch: false,
             origin: solo_protocol::TaskOrigin::Manual,
             subtasks: vec![
                 solo_protocol::Subtask {
-                    id: "alpha".into(), title: "a".into(), completed: true,
-                    created_at: 0, completed_at: Some(1),
+                    id: "alpha".into(),
+                    title: "a".into(),
+                    completed: true,
+                    created_at: 0,
+                    completed_at: Some(1),
                 },
                 solo_protocol::Subtask {
-                    id: "beta".into(), title: "b".into(), completed: false,
-                    created_at: 0, completed_at: None,
+                    id: "beta".into(),
+                    title: "b".into(),
+                    completed: false,
+                    created_at: 0,
+                    completed_at: None,
                 },
             ],
-            label_ids: Vec::new(), project_id: None, cycle_id: None,
+            label_ids: Vec::new(),
+            project_id: None,
+            cycle_id: None,
         };
         let prompt = build_agent_prompt(&task);
         assert!(prompt.contains("(id=alpha)"));
         assert!(prompt.contains("(id=beta)"));
-        assert!(prompt.contains("- [x]"), "completed subtask renders with [x]");
-        assert!(prompt.contains("- [ ]"), "incomplete subtask renders with [ ]");
+        assert!(
+            prompt.contains("- [x]"),
+            "completed subtask renders with [x]"
+        );
+        assert!(
+            prompt.contains("- [ ]"),
+            "incomplete subtask renders with [ ]"
+        );
     }
 
     #[test]
