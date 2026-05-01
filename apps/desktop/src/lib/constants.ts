@@ -81,15 +81,31 @@ export interface ModelOptionConfig {
   /** Short description */
   description: string;
   /** Provider type for grouping */
-  provider: 'anthropic' | 'openai' | 'google';
+  provider: 'anthropic' | 'openai' | 'gemini';
   /** Icon type for rendering */
   iconType: ProviderIconType;
   /**
-   * When true, the model's UI surfaces a "Text only" badge and the chat
-   * input shows a capability banner. Set on all OpenAI entries in v1
-   * because the sidecar's OpenAI adapter doesn't support tool calls yet.
+   * When true, the model's UI surfaces a "Chat only" badge and the input
+   * shows a capability banner. Set on non-Anthropic entries in v1 because
+   * those adapters don't support tool calls yet.
    */
   textOnly?: boolean;
+}
+
+export const PROVIDER_CAPABILITIES = {
+  anthropic: { chat: true, agent: true, tools: true, mcp: true, resume: true },
+  openai: { chat: true, agent: false, tools: false, mcp: false, resume: false },
+  gemini: { chat: true, agent: false, tools: false, mcp: false, resume: false },
+} as const;
+
+export type ModelProvider = keyof typeof PROVIDER_CAPABILITIES;
+
+export function providerForModel(modelId: string): ModelProvider {
+  return MODEL_OPTIONS.find((option) => option.value === modelId)?.provider ?? 'anthropic';
+}
+
+export function capabilitiesForModel(modelId: string) {
+  return PROVIDER_CAPABILITIES[providerForModel(modelId)];
 }
 
 export const MODEL_OPTIONS: ModelOptionConfig[] = [
@@ -145,14 +161,16 @@ export const MODEL_OPTIONS: ModelOptionConfig[] = [
     value: GEMINI_3_PRO,
     label: '3 Pro',
     description: 'Advanced reasoning',
-    provider: 'google',
+    provider: 'gemini',
     iconType: 'gemini',
+    textOnly: true,
   },
   {
     value: GEMINI_3_FLASH,
     label: '3 Flash',
     description: 'Fast multimodal model',
-    provider: 'google',
+    provider: 'gemini',
     iconType: 'gemini',
+    textOnly: true,
   },
 ];
