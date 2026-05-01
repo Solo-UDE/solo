@@ -74,6 +74,14 @@ function main(): void {
     });
   });
 
+  sessionManager.onTurnStart((data) => {
+    sendEvent({
+      type: 'turn_start',
+      sessionId: data.sessionId,
+      turnNumber: data.turnNumber,
+    });
+  });
+
   sessionManager.onPlanModeChanged((data) => {
     sendEvent({
       type: 'plan_mode_changed',

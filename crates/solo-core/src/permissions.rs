@@ -7,19 +7,18 @@
 //! The decision pipeline, in order:
 //!
 //! 1. A matching `deny` rule  → `Deny`   (bypass-immune, even under Accept mode)
-//! 2. A matching `ask` rule   → `Ask`    (bypass-immune under Accept mode)
-//! 3. Tool tier is `Destructive` → `Ask` (bypass-immune under Accept mode)
-//! 4. Mode is `Plan` + tier is `Mutate` → `Deny` ("exit plan mode")
-//! 5. Mode is `Accept`        → `Allow` (we've already handled bypass-immune cases)
-//! 6. A matching `allow` rule → `Allow`
-//! 7. Tool tier is `Read`     → `Allow`
-//! 8. Fall-through            → `Ask`
+//! 2. A built-in dangerous Bash rule → `Deny`
+//! 3. A matching `allow` rule → `Allow`
+//! 4. A matching `ask` rule   → `Ask`    (bypass-immune under Accept mode)
+//! 5. Tool tier is `Destructive` → `Ask` (bypass-immune under Accept mode)
+//! 6. Mode is `Plan` + tier is `Mutate` → `Deny` ("exit plan mode")
+//! 7. Mode is `Accept` + file edit tool → `Allow`
+//! 8. Tool tier is `Read`     → `Allow`
+//! 9. Fall-through            → `Ask`
 
 use globset::{Glob, GlobMatcher};
 use serde_json::Value;
-use solo_protocol::{
-    PermissionDecision, PermissionMode, PermissionsConfig, ToolTier,
-};
+use solo_protocol::{PermissionDecision, PermissionMode, PermissionsConfig, ToolTier};
 
 /// Default classification for every tool exposed via the Claude Agent SDK.
 ///
@@ -36,10 +35,14 @@ pub const DEFAULT_TOOL_TIERS: &[(&str, ToolTier)] = &[
     ("AskUserQuestion", ToolTier::Read),
     ("TodoWrite", ToolTier::Read),
     ("ExitPlanMode", ToolTier::Read),
-    ("Task", ToolTier::Read),
     ("ToolSearch", ToolTier::Read),
     ("Skill", ToolTier::Read),
+    ("TaskCreate", ToolTier::Read),
+    ("TaskUpdate", ToolTier::Read),
+    ("TaskGet", ToolTier::Read),
+    ("TaskList", ToolTier::Read),
     // Mutating
+    ("Task", ToolTier::Mutate),
     ("Write", ToolTier::Mutate),
     ("Edit", ToolTier::Mutate),
     ("NotebookEdit", ToolTier::Mutate),
@@ -50,12 +53,50 @@ pub const DEFAULT_TOOL_TIERS: &[(&str, ToolTier)] = &[
 /// Classify a tool using the default table. Unknown tools default to `Mutate`.
 #[must_use]
 pub fn default_tier(tool_name: &str) -> ToolTier {
+    if matches!(
+        tool_name,
+        "mcp__vault__vault_search"
+            | "mcp__solo_skills__skill_list"
+            | "mcp__solo_skills__skill_read"
+    ) {
+        return ToolTier::Read;
+    }
     for (name, tier) in DEFAULT_TOOL_TIERS {
         if *name == tool_name {
             return *tier;
         }
     }
     ToolTier::Mutate
+}
+
+const DEFAULT_BASH_DENY_PATTERNS: &[&str] = &[
+    "rm -rf *",
+    "sudo rm *",
+    "chmod -R *",
+    "chown -R *",
+    "dd *",
+    "mkfs*",
+    "diskutil erase*",
+    "git reset --hard*",
+    "git clean -fd*",
+    "curl * | sh*",
+    "curl * | bash*",
+    "wget * | sh*",
+    "wget * | bash*",
+];
+
+fn matches_any_glob(input: &str, patterns: &[&str]) -> Option<String> {
+    patterns.iter().find_map(|pattern| {
+        Glob::new(pattern)
+            .ok()
+            .map(|glob| glob.compile_matcher())
+            .filter(|matcher| matcher.is_match(input))
+            .map(|_| (*pattern).to_string())
+    })
+}
+
+fn is_edit_tool(tool_name: &str) -> bool {
+    matches!(tool_name, "Write" | "Edit" | "NotebookEdit")
 }
 
 /// Parsed form of a permission rule string.
@@ -166,8 +207,8 @@ pub fn check(
     let tier = default_tier(tool_name);
 
     let deny_rules: Vec<Rule> = config.deny.iter().map(|s| Rule::parse(s)).collect();
-    let ask_rules: Vec<Rule> = config.ask.iter().map(|s| Rule::parse(s)).collect();
     let allow_rules: Vec<Rule> = config.allow.iter().map(|s| Rule::parse(s)).collect();
+    let ask_rules: Vec<Rule> = config.ask.iter().map(|s| Rule::parse(s)).collect();
 
     // 1. Deny rules — bypass-immune.
     for r in &deny_rules {
@@ -182,7 +223,28 @@ pub fn check(
         }
     }
 
-    // 2. Ask rules — bypass-immune under Accept mode.
+    // 2. Built-in Bash deny rules — bypass-immune.
+    if tool_name == "Bash" {
+        if let Some(matched) = matches_any_glob(&content, DEFAULT_BASH_DENY_PATTERNS) {
+            return PermissionDecision::Deny {
+                message: format!(
+                    "Bash command is denied by built-in safety rule '{}'.",
+                    matched
+                ),
+            };
+        }
+    }
+
+    // 3. Allow rules.
+    for r in &allow_rules {
+        if r.matches(tool_name, &content) {
+            return PermissionDecision::Allow {
+                reason: Some(format!("Allowed by rule '{}'.", format_rule(r))),
+            };
+        }
+    }
+
+    // 4. Ask rules — bypass-immune under Accept mode.
     for r in &ask_rules {
         if r.matches(tool_name, &content) {
             return PermissionDecision::Ask {
@@ -196,15 +258,18 @@ pub fn check(
         }
     }
 
-    // 3. Destructive tier — always prompt, bypass-immune.
+    // 5. Destructive tier — always prompt, bypass-immune.
     if tier == ToolTier::Destructive {
         return PermissionDecision::Ask {
-            message: format!("'{}' is a destructive operation and requires approval.", tool_name),
+            message: format!(
+                "'{}' is a destructive operation and requires approval.",
+                tool_name
+            ),
             tier: Some(tier),
         };
     }
 
-    // 4. Plan mode: block any mutation.
+    // 6. Plan mode: block any mutation.
     if mode == PermissionMode::Plan && tier == ToolTier::Mutate {
         return PermissionDecision::Deny {
             message: format!(
@@ -214,30 +279,21 @@ pub fn check(
         };
     }
 
-    // 5. Accept mode: auto-approve everything still here.
-    if mode == PermissionMode::Accept && !config.disable_accept_mode {
+    // 7. Accept mode: auto-approve file edits only. Bash still needs an allow rule or prompt.
+    if mode == PermissionMode::Accept && !config.disable_accept_mode && is_edit_tool(tool_name) {
         return PermissionDecision::Allow {
-            reason: Some("Accept mode (bypass permissions).".into()),
+            reason: Some("Accept mode (file edit).".into()),
         };
     }
 
-    // 6. Allow rules.
-    for r in &allow_rules {
-        if r.matches(tool_name, &content) {
-            return PermissionDecision::Allow {
-                reason: Some(format!("Allowed by rule '{}'.", format_rule(r))),
-            };
-        }
-    }
-
-    // 7. Read tier — always allow.
+    // 8. Read tier — always allow.
     if tier == ToolTier::Read {
         return PermissionDecision::Allow {
             reason: Some("Read-only tool.".into()),
         };
     }
 
-    // 8. Fall-through — prompt.
+    // 9. Fall-through — prompt.
     PermissionDecision::Ask {
         message: format!("Approval required for '{}'.", tool_name),
         tier: Some(tier),
@@ -301,12 +357,34 @@ mod tests {
     }
 
     #[test]
+    fn accept_mode_does_not_auto_allow_bash() {
+        let d = check(
+            "Bash",
+            &json!({"command": "git status"}),
+            PermissionMode::Accept,
+            &cfg(&[], &[], &[]),
+        );
+        assert!(matches!(d, PermissionDecision::Ask { .. }));
+    }
+
+    #[test]
     fn deny_rule_is_bypass_immune_under_accept() {
         let d = check(
             "Bash",
             &json!({"command": "rm -rf /tmp/test"}),
             PermissionMode::Accept,
             &cfg(&[], &["Bash(rm -rf *)"], &[]),
+        );
+        assert!(matches!(d, PermissionDecision::Deny { .. }));
+    }
+
+    #[test]
+    fn built_in_bash_deny_beats_allow_rule() {
+        let d = check(
+            "Bash",
+            &json!({"command": "git reset --hard HEAD"}),
+            PermissionMode::Default,
+            &cfg(&["Bash(git *)"], &[], &[]),
         );
         assert!(matches!(d, PermissionDecision::Deny { .. }));
     }
@@ -373,6 +451,29 @@ mod tests {
             &cfg,
         );
         assert!(matches!(prompted, PermissionDecision::Ask { .. }));
+    }
+
+    #[test]
+    fn task_requires_approval_by_default() {
+        let d = check(
+            "Task",
+            &json!({"prompt": "delegate work"}),
+            PermissionMode::Default,
+            &cfg(&[], &[], &[]),
+        );
+        assert!(matches!(d, PermissionDecision::Ask { .. }));
+    }
+
+    #[test]
+    fn solo_skills_mcp_reads_are_read_only() {
+        assert_eq!(default_tier("mcp__solo_skills__skill_list"), ToolTier::Read);
+        let d = check(
+            "mcp__solo_skills__skill_read",
+            &json!({"name": "ui"}),
+            PermissionMode::Default,
+            &cfg(&[], &[], &[]),
+        );
+        assert!(matches!(d, PermissionDecision::Allow { .. }));
     }
 
     #[test]

@@ -25,10 +25,14 @@ A Rust-based IDE with AI-first capabilities, inspired by Orbit IDE's patterns bu
 │  ┌───────────────────────────────────────────────────────────┐  │
 │  │                   Rust Backend (Tauri Core)                │  │
 │  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────┐ │  │
-│  │  │ Terminal │ │  Editor  │ │    AI    │ │  Filesystem  │ │  │
-│  │  │ Service  │ │ Service  │ │ Service  │ │   Service    │ │  │
-│  │  └──────────┘ └──────────┘ └──────────┘ └──────────────┘ │  │
-│  │                      App State (tokio)                    │  │
+│  │  │ Terminal │ │  Editor  │ │  Agent   │ │  Filesystem  │ │  │
+│  │  │ Service  │ │ Service  │ │ Bridge   │ │   Service    │ │  │
+│  │  └──────────┘ └──────────┘ └────┬─────┘ └──────────────┘ │  │
+│  │                      App State (tokio) │                  │  │
+│  └───────────────────────────────────────┼───────────────────┘  │
+│                                          │ stdin/stdout JSON      │
+│  ┌───────────────────────────────────────▼───────────────────┐  │
+│  │      Node agent-bridge sidecar -> Claude Agent SDK          │  │
 │  └───────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -49,7 +53,6 @@ solo/
 │   ├── solo-protocol/            # IPC protocol (generates TS types)
 │   ├── solo-terminal/            # PTY management (portable-pty)
 │   ├── solo-fs/                  # Filesystem ops, watchers
-│   ├── solo-ai/                  # Claude API client
 │   └── solo-editor/              # Editor engine (future)
 │
 ├── apps/
@@ -70,8 +73,9 @@ solo/
 │           └── lib/tauri.ts      # Tauri invoke wrappers
 │
 ├── packages/                     # Shared TypeScript
-│   ├── ui/                       # Shared React components
-│   └── protocol/                 # Generated TS types from Rust
+│   └── ui/                       # Shared React components
+│
+├── agent-bridge/                 # Node sidecar for agent/chat runtime
 │
 ├── tools/
 │   └── scripts/                  # Build scripts
@@ -110,11 +114,17 @@ solo/
 - File watching via `notify`
 - Glob pattern matching
 
-### `solo-ai`
-- Anthropic API client
-- Streaming response handling
-- Tool definition & execution
-- Session/conversation management
+### Agent Runtime
+
+Solo does not use the deleted Hono `server/` backend for agent execution. The active runtime path is:
+
+```
+React UI -> Tauri IPC -> Rust bridge -> Node agent-bridge -> Claude Agent SDK
+```
+
+The Node bridge owns provider gating, event normalization, permission callbacks, MCP server registration, selected skills, and session ledger metadata. The Claude Agent SDK remains the Anthropic execution engine for tool-running sessions. OpenAI and Gemini are chat-only, and non-Anthropic providers are rejected before agent/task sessions start.
+
+See [AGENT_RUNTIME_CONTRACT.md](./AGENT_RUNTIME_CONTRACT.md) for the wire contract and supported behavior.
 
 ---
 
@@ -166,7 +176,7 @@ Following Orbit-web's warm aesthetic:
 | Styling | Tailwind CSS v4 |
 | State Management | Zustand |
 | Terminal | xterm.js + portable-pty |
-| AI Integration | Anthropic API (direct) |
+| AI Integration | Node `agent-bridge` sidecar, Claude Agent SDK, OpenAI/Gemini chat adapters |
 | Build (Rust) | Cargo |
 | Build (JS) | Bun + Vite |
 

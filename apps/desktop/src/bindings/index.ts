@@ -161,6 +161,8 @@ export type {
 	AttachmentContentBlock,
 	BridgeAgentMessage,
 	PermissionRequest,
+	ProviderCapabilities,
 	SessionConfig,
 	TokenUsage,
+	ToolPolicyConfig,
 } from '../types/agent-protocol';

@@ -49,6 +49,19 @@ export async function openGitAgentSessionForDirtySwitch(
   // file edits or shell commands outside git.
   const sessionId = await store.createSession(undefined, {
     allowedTools: GIT_AGENT_TOOL_ALLOWLIST,
+    toolPolicy: {
+      bashAllowPrefixes: [
+        'git ',
+        'gh ',
+        'pwd',
+        'ls',
+      ],
+      ask: [
+        'Bash(git reset *)',
+        'Bash(git clean *)',
+        'Bash(git push --force*)',
+      ],
+    },
   });
   if (!sessionId) return null;
 

@@ -13,11 +13,7 @@ import { loadMergedSettings } from './permission-pipeline.js';
 import { PermissionManager } from './permissions.js';
 import { generatePlanName, getPlanFilePath, ensurePlanDirectory } from './plan-names.js';
 import { getAllowedToolsForMode } from './session-mode.js';
-// Option D UX: skills are injected per-message as content blocks from the
-// desktop frontend (see agentStore.toContentBlocks). The session-level
-// `loadSkills` import is intentionally removed so unchipped skills don't
-// leak into the system prompt. The helper file still exists for the
-// Skills settings UI and future callers.
+import { createSkillsMcpServer } from './skills-mcp.js';
 import { buildIdentityAppend } from './identity-grounding.js';
 import { buildContentBlocks } from './utils/content.js';
 import { formatToolResult } from './utils/formatter.js';
@@ -145,6 +141,12 @@ export interface OrbitAgentConfig {
   sessionMode?: OrbitSessionMode;
   /** MCP servers to register with the agent (e.g., DevTools, custom tools) */
   mcpServers?: Record<string, McpServerConfig>;
+  /** Skill names selected for the whole session. Empty/undefined means all discovered skills are visible via MCP. */
+  selectedSkills?: string[];
+  /** Per-session tool policy layered before settings/default permission mode. */
+  toolPolicy?: ToolPolicyConfig;
+  /** Initial permission mode requested by the caller. */
+  permissionMode?: 'default' | 'plan' | 'accept' | 'debug';
   /**
    * Structured output format - when set, the agent will return validated JSON
    * matching the provided JSON Schema in the result message's structured_output field.
@@ -155,6 +157,15 @@ export interface OrbitAgentConfig {
    * Keys are agent names, values are agent definitions with description, prompt, and optional tools/model.
    */
   agents?: Record<string, AgentDefinition>;
+}
+
+export interface ToolPolicyConfig {
+  allow?: string[];
+  deny?: string[];
+  ask?: string[];
+  bashAllowPrefixes?: string[];
+  bypassEnabled?: boolean;
+  isWorktreeSession?: boolean;
 }
 
 /**
@@ -276,6 +287,7 @@ export class OrbitAgent {
 
   // MCP servers (DevTools, custom tools, etc.)
   private _mcpServers: Record<string, McpServerConfig>;
+  private _selectedSkills?: string[];
 
   // Structured output format (JSON Schema)
   private _outputFormat?: OutputFormat;
@@ -291,12 +303,13 @@ export class OrbitAgent {
       () => this._planMode,   // Plan mode (dynamic)
       () => this._planFilePath, // Plan file path for Plan-mode write special case
       () => this.cwd, // Workspace for loading .solo/settings.json
-      () => this._debugMode // Debug mode (dynamic)
+      () => this._debugMode, // Debug mode (dynamic)
+      config.toolPolicy
     );
     this.cwd = config.cwd ?? process.cwd();
     this._thinkingMode = config.thinkingEnabled ?? false;
     this._thinkingBudget = config.maxThinkingTokens ?? 0; // 0=off, 4096=think, 10240=hard, 32768=ultra
-    this._planMode = config.planEnabled ?? false;
+    this._planMode = config.planEnabled ?? (config.permissionMode === 'plan');
     // Generate plan file path if plan mode is already enabled (e.g., from stored preferences)
     if (this._planMode) {
       const planName = generatePlanName();
@@ -304,8 +317,8 @@ export class OrbitAgent {
       ensurePlanDirectory(this.cwd);
       logger.info({ planName, planFilePath: this._planFilePath }, 'Plan file path generated during construction');
     }
-    this._acceptMode = config.acceptEnabled ?? false;
-    this._debugMode = config.debugEnabled ?? false;
+    this._acceptMode = config.acceptEnabled ?? (config.permissionMode === 'accept');
+    this._debugMode = config.debugEnabled ?? (config.permissionMode === 'debug');
     this._critiqueMode = config.critiqueEnabled ?? false;
     this._sessionMode = config.sessionMode ?? 'agent';
     this._resumeSessionId = config.resumeSessionId;
@@ -324,6 +337,7 @@ export class OrbitAgent {
       this._allowedTools = [...config.allowedTools];
     }
     this._mcpServers = config.mcpServers ?? {};
+    this._selectedSkills = config.selectedSkills ? [...config.selectedSkills] : undefined;
     this._outputFormat = config.outputFormat;
     this._agents = config.agents;
 
@@ -342,6 +356,7 @@ export class OrbitAgent {
       {
         sessionMode: this._sessionMode,
         mcpServerCount: Object.keys(this._mcpServers).length,
+        selectedSkillCount: this._selectedSkills?.length ?? 0,
         hasOutputFormat: !!this._outputFormat,
         agentCount: this._agents ? Object.keys(this._agents).length : 0,
       },
@@ -607,12 +622,13 @@ data, screenshots, notes). It functions as your durable memory across sessions.
         'Grep',
         'WebSearch',
         'WebFetch',
-        'Task',
-        'TodoWrite',
         'ListMcpResourcesTool',
         'ReadMcpResourceTool',
         // Vault memory tool — read-only, safe to auto-approve
         'mcp__vault__vault_search',
+        // Skill discovery is read-only and session-scoped
+        'mcp__solo_skills__skill_list',
+        'mcp__solo_skills__skill_read',
       ]);
 
       options.hooks = {
@@ -1011,7 +1027,8 @@ Do NOT overwhelm the user with a full checklist every time — pick the most imp
       version: '0.1.0',
       tools: [vaultSearchTool],
     });
-    const mergedMcp = { ...this._mcpServers, vault: vaultMcp };
+    const skillsMcp = createSkillsMcpServer(this.cwd, this._selectedSkills);
+    const mergedMcp = { ...this._mcpServers, vault: vaultMcp, solo_skills: skillsMcp };
     options.mcpServers = mergedMcp;
     logger.info({ servers: Object.keys(mergedMcp) }, 'MCP servers configured');
 
@@ -1061,6 +1078,9 @@ Do NOT overwhelm the user with a full checklist every time — pick the most imp
       '/opt/homebrew/bin', // Homebrew on Apple Silicon
       '/usr/local/bin', // Homebrew on Intel Macs
       '/usr/bin', // System binaries
+      `${homeDir}/.local/bin`, // Claude Code self-managed install path
+      `${homeDir}/.bun/bin`, // Bun-installed CLIs
+      `${homeDir}/.npm-global/bin`, // npm prefix configured under HOME
       `${homeDir}/.nvm/versions/node/v22.11.0/bin`, // Common nvm path
       `${homeDir}/.nvm/versions/node/v20.18.0/bin`, // Another common nvm path
       `${homeDir}/.fnm/node-versions/v22.11.0/installation/bin`, // fnm path

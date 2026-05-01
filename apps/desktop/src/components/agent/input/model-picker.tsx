@@ -97,7 +97,7 @@ export const ModelPicker: FC<ModelPickerProps> = ({
       const providerMap: Record<string, string> = {
         anthropic: 'anthropic',
         openai: 'openai',
-        google: 'google',
+        gemini: 'gemini',
       };
       const providerKey = providerMap[model.provider];
       if (providerKey) {
@@ -164,14 +164,21 @@ export const ModelPicker: FC<ModelPickerProps> = ({
                   {renderModelIcon(option.iconType, 14)}
                 </div>
                 <div className="flex flex-col gap-0 flex-1">
-                  <span
-                    className={cn(
-                      'text-[13px] leading-tight',
-                      isSelected ? 'text-foreground' : 'text-foreground/90'
-                    )}
-                  >
-                    {option.label}
-                  </span>
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    <span
+                      className={cn(
+                        'min-w-0 truncate text-[13px] leading-tight',
+                        isSelected ? 'text-foreground' : 'text-foreground/90'
+                      )}
+                    >
+                      {option.label}
+                    </span>
+                    {option.textOnly ? (
+                      <span className="shrink-0 rounded-sm border border-border px-1 py-0 text-[10px] leading-4 text-muted-foreground">
+                        Chat only
+                      </span>
+                    ) : null}
+                  </div>
                   <span className="text-[11px] text-muted-foreground leading-tight">
                     {option.description}
                   </span>

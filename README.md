@@ -16,7 +16,7 @@ This project is licensed under a custom Source Available - Evaluation Only licen
 Rust + Tauri 2 backend. Async I/O with zero UI blocking. macOS vibrancy and platform-native window controls.
 
 ### Agent-First, Not Copilot-Bolted
-Multi-provider AI agent (Anthropic, OpenAI, Gemini) built into the core. Tool approval workflow with plan and accept modes. Runs as a sandboxed sidecar process.
+Anthropic-first coding agent built into the core. OpenAI and Gemini sessions are chat-only, not tool-running agent sessions. Tool approval workflows, plan mode, and accept mode are owned by Solo and enforced through the sidecar runtime.
 
 ### All-in-One Workspace
 Monaco editor, multi-tab terminal, file explorer, and source control in a tiled panel layout. Native git via libgit2. Tree-sitter parsing and semantic code search.
@@ -48,14 +48,14 @@ All IPC types are defined once in Rust (`solo-protocol`) and auto-generated into
 | Git | libgit2 (git2 crate) |
 | Code Parsing | Tree-sitter (8 languages) |
 | Auth | OAuth 2.0 PKCE, macOS Keychain |
-| AI Providers | Anthropic, OpenAI, Gemini |
+| AI Providers | Anthropic agent runtime, OpenAI/Gemini chat |
 
 ## Features
 
 - **Code Editor** -- Monaco-based with multi-tab support, symbol outline, and markdown preview
 - **Terminal** -- Multi-session PTY terminals with xterm.js, custom shell configs
 - **File Explorer** -- Tree view with file watching, inline create/rename, Finder reveal
-- **AI Agent** -- Multi-provider agentic loop with tool approval, plan mode, and session persistence
+- **AI Agent** -- Anthropic-backed agent loop with tool approval, plan mode, accept mode, MCP, skills, and session persistence metadata
 - **Git Integration** -- Staging, diffing, branching, push/pull, and worktree support via native libgit2
 - **Code Intelligence** -- Tree-sitter parsing across Rust, TypeScript, JavaScript, Python, JSON, HTML, CSS, Markdown
 - **Semantic Search** -- Vector embeddings for RAG-powered code search

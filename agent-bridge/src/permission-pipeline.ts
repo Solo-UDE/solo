@@ -70,9 +70,13 @@ const DEFAULT_TOOL_TIERS: ReadonlyMap<string, ToolTier> = new Map([
   ['AskUserQuestion', 'read'],
   ['TodoWrite', 'read'],
   ['ExitPlanMode', 'read'],
-  ['Task', 'read'],
   ['ToolSearch', 'read'],
   ['Skill', 'read'],
+  ['Task', 'mutate'],
+  ['TaskCreate', 'read'],
+  ['TaskUpdate', 'read'],
+  ['TaskGet', 'read'],
+  ['TaskList', 'read'],
   ['ListMcpResourcesTool', 'read'],
   ['ReadMcpResourceTool', 'read'],
   // Mutating
@@ -84,6 +88,13 @@ const DEFAULT_TOOL_TIERS: ReadonlyMap<string, ToolTier> = new Map([
 ] as const);
 
 export function defaultTier(toolName: string): ToolTier {
+  if (
+    toolName === 'mcp__vault__vault_search' ||
+    toolName === 'mcp__solo_skills__skill_list' ||
+    toolName === 'mcp__solo_skills__skill_read'
+  ) {
+    return 'read';
+  }
   return DEFAULT_TOOL_TIERS.get(toolName) ?? 'mutate';
 }
 
@@ -126,6 +137,33 @@ function compileGlob(pattern: string): (input: string) => boolean {
   re += '$';
   const compiled = new RegExp(re);
   return (input) => compiled.test(input);
+}
+
+const DEFAULT_BASH_DENY_PATTERNS = [
+  'rm -rf *',
+  'sudo rm *',
+  'chmod -R *',
+  'chown -R *',
+  'dd *',
+  'mkfs*',
+  'diskutil erase*',
+  'git reset --hard*',
+  'git clean -fd*',
+  'curl * | sh*',
+  'curl * | bash*',
+  'wget * | sh*',
+  'wget * | bash*',
+];
+
+function matchesAnyGlob(input: string, patterns: readonly string[]): string | null {
+  for (const pattern of patterns) {
+    if (compileGlob(pattern)(input)) return pattern;
+  }
+  return null;
+}
+
+function isEditTool(toolName: string): boolean {
+  return toolName === 'Write' || toolName === 'Edit' || toolName === 'NotebookEdit';
 }
 
 function parseRule(raw: string): ParsedRule {
@@ -216,7 +254,28 @@ export function checkPermission(
     }
   }
 
-  // 2. Ask rules — bypass-immune under Accept mode.
+  // 2. Built-in Bash deny rules — bypass-immune.
+  if (toolName === 'Bash') {
+    const matched = matchesAnyGlob(content, DEFAULT_BASH_DENY_PATTERNS);
+    if (matched) {
+      return {
+        behavior: 'deny',
+        message: `Bash command is denied by built-in safety rule '${matched}'.`,
+      };
+    }
+  }
+
+  // 3. Allow rules.
+  for (const r of allowRules) {
+    if (ruleMatches(r, toolName, content)) {
+      return {
+        behavior: 'allow',
+        reason: `Allowed by rule '${formatRule(r)}'.`,
+      };
+    }
+  }
+
+  // 4. Ask rules — bypass-immune under Accept mode.
   for (const r of askRules) {
     if (ruleMatches(r, toolName, content)) {
       return {
@@ -227,7 +286,7 @@ export function checkPermission(
     }
   }
 
-  // 3. Destructive tier — always prompt, bypass-immune.
+  // 5. Destructive tier — always prompt, bypass-immune.
   if (tier === 'destructive') {
     return {
       behavior: 'ask',
@@ -236,7 +295,7 @@ export function checkPermission(
     };
   }
 
-  // 4. Plan mode: block any mutation.
+  // 6. Plan mode: block any mutation.
   if (mode === 'plan' && tier === 'mutate') {
     return {
       behavior: 'deny',
@@ -244,30 +303,20 @@ export function checkPermission(
     };
   }
 
-  // 5. Accept mode: auto-approve everything still here.
-  if (mode === 'accept' && !config.disableAcceptMode) {
+  // 7. Accept mode: auto-approve file edits only. Bash still needs an allow rule or prompt.
+  if (mode === 'accept' && !config.disableAcceptMode && isEditTool(toolName)) {
     return {
       behavior: 'allow',
-      reason: 'Accept mode (bypass permissions).',
+      reason: 'Accept mode (file edit).',
     };
   }
 
-  // 6. Allow rules.
-  for (const r of allowRules) {
-    if (ruleMatches(r, toolName, content)) {
-      return {
-        behavior: 'allow',
-        reason: `Allowed by rule '${formatRule(r)}'.`,
-      };
-    }
-  }
-
-  // 7. Read tier — always allow.
+  // 8. Read tier — always allow.
   if (tier === 'read') {
     return { behavior: 'allow', reason: 'Read-only tool.' };
   }
 
-  // 8. Fall-through — prompt.
+  // 9. Fall-through — prompt.
   return { behavior: 'ask', message: `Approval required for '${toolName}'.`, tier };
 }
 
