@@ -2,17 +2,13 @@
 
 export type { AIModel } from './AIModel';
 export type { AgentConfig } from './AgentConfig';
-export type { AgentMessage } from './AgentMessage';
 export type { AgentPermissionMode } from './AgentPermissionMode';
-export type { AgentSendMessageRequest } from './AgentSendMessageRequest';
-export type { AgentToolCall } from './AgentToolCall';
 export type { AuthMethodInfo } from './AuthMethodInfo';
 export type { AuthType } from './AuthType';
 export type { BackendEvent } from './BackendEvent';
 export type { BranchInfo } from './BranchInfo';
 export type { ClaudeSetupStatus } from './ClaudeSetupStatus';
 export type { CloudSyncState } from './CloudSyncState';
-export type { ContentBlock } from './ContentBlock';
 export type { ContextAnchor } from './ContextAnchor';
 export type { CreateWorktreeRequest } from './CreateWorktreeRequest';
 export type { CredentialSource } from './CredentialSource';
@@ -26,11 +22,6 @@ export type { DiffHunk } from './DiffHunk';
 export type { DiffLine } from './DiffLine';
 export type { DirectoryReadRequest } from './DirectoryReadRequest';
 export type { DirectoryReadResponse } from './DirectoryReadResponse';
-export type { ElevenLabsSttCommittedEvent } from './ElevenLabsSttCommittedEvent';
-export type { ElevenLabsSttPartialEvent } from './ElevenLabsSttPartialEvent';
-export type { ElevenLabsSttStatusEvent } from './ElevenLabsSttStatusEvent';
-export type { ElevenLabsTtsAudioEvent } from './ElevenLabsTtsAudioEvent';
-export type { ElevenLabsTtsStatusEvent } from './ElevenLabsTtsStatusEvent';
 export type { EntryKind } from './EntryKind';
 export type { EventKind } from './EventKind';
 export type { ExecutionLocation } from './ExecutionLocation';
@@ -142,10 +133,6 @@ export type { TerminalCreateResponse } from './TerminalCreateResponse';
 export type { TerminalResizeRequest } from './TerminalResizeRequest';
 export type { TerminalWriteRequest } from './TerminalWriteRequest';
 export type { TierInfo } from './TierInfo';
-export type { ToolCallStatus } from './ToolCallStatus';
-export type { ToolCallWithStatus } from './ToolCallWithStatus';
-export type { ToolDefinitionProto } from './ToolDefinitionProto';
-export type { ToolResult } from './ToolResult';
 export type { ToolTier } from './ToolTier';
 export type { VaultChunk } from './VaultChunk';
 export type { VaultEntry } from './VaultEntry';
@@ -174,6 +161,8 @@ export type {
 	AttachmentContentBlock,
 	BridgeAgentMessage,
 	PermissionRequest,
+	ProviderCapabilities,
 	SessionConfig,
 	TokenUsage,
+	ToolPolicyConfig,
 } from '../types/agent-protocol';
