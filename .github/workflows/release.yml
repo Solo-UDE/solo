@@ -43,7 +43,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          git fetch origin master --tags
+          git fetch origin master
 
           CONFIG_VERSION="$(jq -r .version apps/desktop/src-tauri/tauri.conf.json)"
           test -n "$CONFIG_VERSION" && test "$CONFIG_VERSION" != "null"
