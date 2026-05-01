@@ -5,6 +5,8 @@
 //! permissions, streaming) while Rust is a thin process manager.
 
 use std::fmt::Display;
+use std::fs;
+use std::path::PathBuf;
 use std::result;
 use std::sync::Arc;
 
@@ -12,12 +14,16 @@ use tauri::{AppHandle, Emitter as _, State};
 
 use crate::agent::{
     AttachmentContentBlock, PermissionDecision, PermissionResponse, SessionConfig,
-    SessionCredentials, SessionManager,
+    SessionCredentials, SessionManager, SessionMode,
 };
 use crate::fs_commands::FsState;
+use crate::plugins_commands::PluginsState;
 use crate::provider_commands::ProviderAuthState;
-use solo_auth::provider::ProviderType;
 use git2::{DiffOptions, Repository};
+use serde_json::{Map as JsonMap, Value as JsonValue};
+use solo_auth::provider::ProviderType;
+use solo_core::settings as settings_io;
+use solo_plugins::{list_plugins, LoaderConfig, PluginRecord};
 
 /// Result type for agent commands
 type Result<T> = result::Result<T, String>;
@@ -25,6 +31,117 @@ type Result<T> = result::Result<T, String>;
 /// Convert bridge error to string
 fn to_error<E: Display>(e: E) -> String {
     e.to_string()
+}
+
+fn normalize_mcp_servers(value: JsonValue, source: &str) -> Result<JsonMap<String, JsonValue>> {
+    if let Some(servers) = value.get("mcpServers").and_then(JsonValue::as_object) {
+        return Ok(servers.clone());
+    }
+
+    if let Some(servers) = value.as_object() {
+        return Ok(servers.clone());
+    }
+
+    Err(format!(
+        "{source} must be a JSON object or contain a top-level mcpServers object"
+    ))
+}
+
+fn prefixed_plugin_mcp_name(record: &PluginRecord, name: &str) -> String {
+    format!(
+        "plugin__{}__{}__{}",
+        record.id.marketplace, record.id.name, name
+    )
+}
+
+fn add_mcp_servers(
+    target: &mut JsonMap<String, JsonValue>,
+    servers: JsonMap<String, JsonValue>,
+    conflict_prefix: impl Fn(&str) -> String,
+) {
+    for (name, config) in servers {
+        if target.contains_key(&name) {
+            target.insert(conflict_prefix(&name), config);
+        } else {
+            target.insert(name, config);
+        }
+    }
+}
+
+fn collect_enabled_plugin_mcp_servers(
+    cwd: &str,
+    plugins_state: &PluginsState,
+) -> Result<Option<JsonValue>> {
+    let workspace = PathBuf::from(cwd);
+    let config = settings_io::load_plugins_config(&workspace).unwrap_or_default();
+    let solo_home = plugins_state.solo_home();
+    let claude_plugins_dir = {
+        let dir = plugins_state.claude_plugins_dir();
+        dir.exists().then_some(dir)
+    };
+    let codex_cache_dir = {
+        let dir = plugins_state.codex_cache_dir();
+        dir.exists().then_some(dir)
+    };
+
+    let outcome = list_plugins(LoaderConfig {
+        solo_home: &solo_home,
+        claude_plugins_dir,
+        codex_cache_dir,
+        adapter_claude_plugins: config.adapter_claude_plugins,
+        adapter_codex_user: config.adapter_codex_user,
+    });
+
+    let mut merged = JsonMap::new();
+    for record in outcome.plugins.into_iter().filter(|record| record.enabled) {
+        let Some(mcp_path) = record
+            .manifest
+            .as_ref()
+            .and_then(|manifest| manifest.paths.mcp_servers.as_ref())
+        else {
+            continue;
+        };
+
+        let source = format!(
+            "plugin MCP config {} ({})",
+            record.id.as_key(),
+            mcp_path.as_path().display()
+        );
+        let raw = fs::read_to_string(mcp_path.as_path())
+            .map_err(|err| format!("failed to read {source}: {err}"))?;
+        let value: JsonValue =
+            serde_json::from_str(&raw).map_err(|err| format!("failed to parse {source}: {err}"))?;
+        let servers = normalize_mcp_servers(value, &source)?;
+        add_mcp_servers(&mut merged, servers, |name| {
+            prefixed_plugin_mcp_name(&record, name)
+        });
+    }
+
+    Ok((!merged.is_empty()).then_some(JsonValue::Object(merged)))
+}
+
+fn merge_session_mcp_servers(
+    plugin_servers: Option<JsonValue>,
+    session_servers: Option<JsonValue>,
+) -> Result<Option<JsonValue>> {
+    let mut merged = JsonMap::new();
+
+    if let Some(plugin_servers) = plugin_servers {
+        add_mcp_servers(
+            &mut merged,
+            normalize_mcp_servers(plugin_servers, "plugin MCP servers")?,
+            |name| format!("plugin__{name}"),
+        );
+    }
+
+    if let Some(session_servers) = session_servers {
+        let servers = normalize_mcp_servers(session_servers, "session mcpServers")?;
+        for (name, config) in servers {
+            merged.insert(name, config);
+        }
+    }
+
+    Ok((!merged.is_empty()).then_some(JsonValue::Object(merged)))
 }
 
 // ============================================================================
@@ -50,11 +167,22 @@ pub(crate) async fn create_session_internal(
 ) -> Result<String> {
     use tauri::Manager as _;
     let session_manager = app.state::<Arc<SessionManager>>();
+    let plugins_state = app.state::<PluginsState>();
     let stats = app.state::<crate::stats_commands::StatsState>();
 
     let session_id = uuid::Uuid::new_v4().to_string();
+    let cwd = std::env::current_dir()
+        .ok()
+        .map(|path| path.to_string_lossy().into_owned())
+        .unwrap_or_else(|| ".".to_string());
+    let config = SessionConfig {
+        provider: Some("anthropic".to_string()),
+        cwd: Some(cwd.clone()),
+        mcp_servers: collect_enabled_plugin_mcp_servers(&cwd, &plugins_state)?,
+        ..Default::default()
+    };
     session_manager
-        .create_session(&session_id, None)
+        .create_session(&session_id, Some(config))
         .map_err(to_error)?;
     stats.record(solo_stats::StatsEvent::SessionCreated).await;
 
@@ -73,6 +201,7 @@ pub async fn agent_create_session(
     config: Option<SessionConfig>,
     state: State<'_, Arc<SessionManager>>,
     provider_state: State<'_, ProviderAuthState>,
+    plugins_state: State<'_, PluginsState>,
     stats: State<'_, crate::stats_commands::StatsState>,
 ) -> Result<()> {
     let mut config = config.unwrap_or_default();
@@ -83,6 +212,15 @@ pub async fn agent_create_session(
         config.provider = Some(active.as_str().to_string());
     }
 
+    let provider_str_for_mode = config.provider.as_deref().unwrap_or("anthropic");
+    if provider_str_for_mode != "anthropic"
+        && config.session_mode.unwrap_or(SessionMode::Agent) == SessionMode::Agent
+    {
+        return Err(format!(
+            "{provider_str_for_mode} is chat-only in Solo v1; select a Claude model for agent mode"
+        ));
+    }
+
     // Resolve credentials iff the caller didn't already pass them.
     if config.credentials.is_none() {
         let provider_str = config.provider.as_deref().unwrap_or("anthropic");
@@ -90,8 +228,9 @@ pub async fn agent_create_session(
             .ok_or_else(|| format!("unknown provider {:?}", provider_str))?;
 
         match provider_type {
-            ProviderType::OpenAI => {
-                // Prefer OAuth, fall back to API key, fall back to env.
+            ProviderType::OpenAI | ProviderType::Gemini => {
+                // OpenAI: prefer OAuth, fall back to API key/env.
+                // Gemini: API key/env only.
                 let resolved = provider_state
                     .credentials
                     .get_credentials_with_source(provider_type)
@@ -100,19 +239,23 @@ pub async fn agent_create_session(
 
                 if let Some(info) = resolved {
                     use solo_auth::credentials::CredentialSource as CS;
-                    let account_id = provider_state
-                        .credentials
-                        .get_openai_account_id()
-                        .await
-                        .map_err(to_error)?;
-
-                    config.credentials = Some(match info.source {
-                        CS::SoloOAuth => SessionCredentials::OAuth {
-                            token: info.api_key,
-                            account_id,
+                    config.credentials = Some(
+                        if provider_type == ProviderType::OpenAI && info.source == CS::SoloOAuth {
+                            let account_id = provider_state
+                                .credentials
+                                .get_openai_account_id()
+                                .await
+                                .map_err(to_error)?;
+                            SessionCredentials::OAuth {
+                                token: info.api_key,
+                                account_id,
+                            }
+                        } else {
+                            SessionCredentials::ApiKey {
+                                token: info.api_key,
+                            }
                         },
-                        _ => SessionCredentials::ApiKey { token: info.api_key },
-                    });
+                    );
                 } else {
                     return Err(format!(
                         "No credentials configured for {}",
@@ -125,16 +268,26 @@ pub async fn agent_create_session(
                 // has its own ClaudeCredentials resolver (file, keychain,
                 // env) that works well and we don't want to break it.
             }
-            ProviderType::Gemini => {
-                return Err(format!(
-                    "{} is not supported by the chat agent",
-                    provider_type.as_str()
-                ));
-            }
         }
     }
 
-    state.create_session(&session_id, Some(config)).map_err(to_error)?;
+    if provider_str_for_mode == "anthropic" {
+        let cwd = config
+            .cwd
+            .clone()
+            .or_else(|| {
+                std::env::current_dir()
+                    .ok()
+                    .map(|path| path.to_string_lossy().into_owned())
+            })
+            .unwrap_or_else(|| ".".to_string());
+        let plugin_mcp_servers = collect_enabled_plugin_mcp_servers(&cwd, &plugins_state)?;
+        config.mcp_servers = merge_session_mcp_servers(plugin_mcp_servers, config.mcp_servers)?;
+    }
+
+    state
+        .create_session(&session_id, Some(config))
+        .map_err(to_error)?;
     stats.record(solo_stats::StatsEvent::SessionCreated).await;
     Ok(())
 }
@@ -464,10 +617,8 @@ pub fn setup_event_callbacks(app: &AppHandle, session_manager: &Arc<SessionManag
         } => {
             if tracing::enabled!(tracing::Level::DEBUG) {
                 let type_str = format!("{:?}", message.message_type);
-                let mut pairs: Vec<(&str, &str)> = vec![
-                    ("session", &session_id),
-                    ("type", &type_str),
-                ];
+                let mut pairs: Vec<(&str, &str)> =
+                    vec![("session", &session_id), ("type", &type_str)];
                 let tool_name;
                 let tool_id;
                 let status_str;
@@ -653,20 +804,14 @@ pub fn setup_event_callbacks(app: &AppHandle, session_manager: &Arc<SessionManag
                 }),
             ));
         }
-        BridgeEvent::DebugEvent {
-            session_id,
-            event,
-        } => {
+        BridgeEvent::DebugEvent { session_id, event } => {
             if tracing::enabled!(tracing::Level::TRACE) {
                 let data_str = serde_json::to_string_pretty(&event.data).unwrap_or_default();
                 tracing::trace!(
                     "[agent:debug] {}::{}\n{}",
                     event.category,
                     event.name,
-                    fmt_kv(&[
-                        ("session", &session_id),
-                        ("data", &data_str),
-                    ])
+                    fmt_kv(&[("session", &session_id), ("data", &data_str),])
                 );
             }
             drop(app_handle.emit(
@@ -682,4 +827,50 @@ pub fn setup_event_callbacks(app: &AppHandle, session_manager: &Arc<SessionManag
             drop(app_handle.emit("agent:ready", ()));
         }
     }));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn normalizes_wrapped_mcp_servers() {
+        let servers = normalize_mcp_servers(
+            json!({
+                "mcpServers": {
+                    "github": { "command": "node", "args": ["server.js"] }
+                }
+            }),
+            "test",
+        )
+        .unwrap();
+
+        assert_eq!(servers["github"]["command"], "node");
+    }
+
+    #[test]
+    fn session_mcp_servers_override_plugin_conflicts() {
+        let plugin = json!({
+            "github": { "command": "plugin" },
+            "vault": { "command": "vault" }
+        });
+        let session = json!({
+            "mcpServers": {
+                "github": { "command": "session" }
+            }
+        });
+
+        let merged = merge_session_mcp_servers(Some(plugin), Some(session)).unwrap();
+        let merged = merged.unwrap();
+
+        assert_eq!(merged["github"]["command"], "session");
+        assert_eq!(merged["vault"]["command"], "vault");
+    }
+
+    #[test]
+    fn invalid_mcp_config_is_rejected() {
+        let err = normalize_mcp_servers(json!(["not", "an", "object"]), "bad").unwrap_err();
+        assert!(err.contains("mcpServers"));
+    }
 }
