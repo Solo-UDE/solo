@@ -1078,6 +1078,9 @@ Do NOT overwhelm the user with a full checklist every time — pick the most imp
       '/opt/homebrew/bin', // Homebrew on Apple Silicon
       '/usr/local/bin', // Homebrew on Intel Macs
       '/usr/bin', // System binaries
+      `${homeDir}/.local/bin`, // Claude Code self-managed install path
+      `${homeDir}/.bun/bin`, // Bun-installed CLIs
+      `${homeDir}/.npm-global/bin`, // npm prefix configured under HOME
       `${homeDir}/.nvm/versions/node/v22.11.0/bin`, // Common nvm path
       `${homeDir}/.nvm/versions/node/v20.18.0/bin`, // Another common nvm path
       `${homeDir}/.fnm/node-versions/v22.11.0/installation/bin`, // fnm path
