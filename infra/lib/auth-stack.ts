@@ -41,21 +41,19 @@ export class SoloAuthStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: SoloAuthStackProps) {
     super(scope, id, props);
     const { config } = props;
+    const replaceLegacyImmutableEmailPool = config.stage === "prod";
+    const userPoolConstructId = replaceLegacyImmutableEmailPool ? "UserPoolMutableEmail" : "UserPool";
+    const cognitoDomain = `${config.cognitoDomainPrefix}.auth.${config.region}.amazoncognito.com`;
 
-    this.userPool = new cognito.UserPool(this, "UserPool", {
+    this.userPool = new cognito.UserPool(this, userPoolConstructId, {
       userPoolName: `solo-users-${config.stage}`,
       selfSignUpEnabled: true,
       signInAliases: { email: true },
       autoVerify: { email: true },
       standardAttributes: {
-        // Standard-attribute mutability cannot be changed on an existing user
-        // pool — Cognito's UpdateUserPool API rejects the change. The live
-        // pool was provisioned with `email.mutable: false`, so keep it here
-        // to match; redeploying with `true` would roll back the whole stack.
-        // Cross-IdP sign-in (GitHub + Google on the same email) is handled by
-        // the PreSignUp trigger below, which calls AdminLinkProviderForUser
-        // instead of relying on mutable email.
-        email: { required: true, mutable: false },
+        // Federated IdP mappings write mapped attributes during sign-in.
+        // Cognito rejects Google/GitHub sign-in when `email` is immutable.
+        email: { required: true, mutable: true },
         givenName: { required: false, mutable: true },
         familyName: { required: false, mutable: true },
       },
@@ -76,15 +74,6 @@ export class SoloAuthStack extends cdk.Stack {
       mfaSecondFactor: { sms: false, otp: true },
       removalPolicy: config.removalPolicy,
     });
-
-    // NB: intentionally NOT touching the L2 userPool's LambdaConfig or Schema
-    // from this stack. Cognito's UpdateUserPool API rejects any payload that
-    // mutates Schema (even setting it to the same values produces a diff
-    // against the 20+ OIDC standard attributes Cognito auto-creates). Any
-    // subsequent UserPool update here would send the full resource, including
-    // Schema, and fail. Lambda triggers for this pool are attached
-    // out-of-band via `aws cognito-idp update-user-pool --lambda-config …`
-    // after the Lambda is deployed.
 
     this.userPoolDomain = this.userPool.addDomain("HostedDomain", {
       cognitoDomain: { domainPrefix: config.cognitoDomainPrefix },
@@ -259,13 +248,7 @@ export class SoloAuthStack extends cdk.Stack {
         resources: [`arn:aws:cognito-idp:${config.region}:${this.account}:userpool/*`],
       }),
     );
-    // Grant Cognito permission to invoke the function. The actual trigger
-    // wiring (UpdateUserPool LambdaConfig) happens out-of-band — see comment
-    // on `userPool` construct above.
-    preSignUpFn.addPermission("AllowCognitoInvoke", {
-      principal: new iam.ServicePrincipal("cognito-idp.amazonaws.com"),
-      sourceArn: this.userPool.userPoolArn,
-    });
+    this.userPool.addTrigger(cognito.UserPoolOperation.PRE_SIGN_UP, preSignUpFn);
 
     new cdk.CfnOutput(this, "PreSignUpFnArn", {
       value: preSignUpFn.functionArn,
@@ -379,7 +362,7 @@ export class SoloAuthStack extends cdk.Stack {
       exportName: `solo-${config.stage}-user-pool-client-id`,
     });
     new cdk.CfnOutput(this, "CognitoDomain", {
-      value: `${this.userPoolDomain.domainName}.auth.${config.region}.amazoncognito.com`,
+      value: cognitoDomain,
       exportName: `solo-${config.stage}-cognito-domain`,
     });
     new cdk.CfnOutput(this, "IdentityPoolId", {

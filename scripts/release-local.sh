@@ -69,6 +69,7 @@ fi
 [[ "$(uname -s)" == "Darwin" ]] || { echo "release-local.sh requires macOS" >&2; exit 1; }
 command -v jq   >/dev/null || { echo "jq required (brew install jq)"   >&2; exit 1; }
 command -v bun  >/dev/null || { echo "bun required"                     >&2; exit 1; }
+command -v brew >/dev/null || { echo "brew required"                    >&2; exit 1; }
 
 : "${SOLO_COGNITO_DOMAIN:?missing (embedded at build time)}"
 : "${SOLO_COGNITO_CLIENT_ID:?missing}"
@@ -92,7 +93,10 @@ fi
 
 if [[ $SKIP_UPDATER -eq 0 ]]; then
   : "${TAURI_SIGNING_PRIVATE_KEY:?missing (or pass --skip-updater)}"
-  : "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:?missing}"
+  if [[ -z "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD+x}" ]]; then
+    echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD missing (set to empty string if the key has no password)" >&2
+    exit 1
+  fi
 fi
 
 if [[ $PUBLISH -eq 1 ]]; then
@@ -131,11 +135,59 @@ rm -rf "$APP_PATH"
     --config '{"bundle":{"createUpdaterArtifacts":false}}' )
 [[ -d "$APP_PATH" ]] || { echo "App bundle missing at $APP_PATH" >&2; exit 1; }
 
+# -------- [2b/7] runtime dylibs --------
+echo "==> [2b/7] Bundling macOS runtime dylibs"
+brew list openssl@3 >/dev/null 2>&1 || brew install openssl@3
+
+BIN_PATH="$APP_PATH/Contents/MacOS/solo-desktop"
+FRAMEWORKS="$APP_PATH/Contents/Frameworks"
+RELEASE_DIR="target/$TARGET/release"
+mkdir -p "$FRAMEWORKS"
+
+for name in libonnxruntime.1.17.1.dylib libsherpa-onnx-c-api.dylib libsherpa-onnx-cxx-api.dylib; do
+  src=""
+  for dir in "$RELEASE_DIR" "$RELEASE_DIR/deps"; do
+    if [[ -f "$dir/$name" ]]; then
+      src="$dir/$name"
+      break
+    fi
+  done
+  [[ -n "$src" ]] || { echo "Missing required dylib: $name" >&2; exit 1; }
+  cp -f "$src" "$FRAMEWORKS/$name"
+done
+
+ln -sf libonnxruntime.1.17.1.dylib "$FRAMEWORKS/libonnxruntime.dylib"
+
+OPENSSL_PREFIX="$(brew --prefix openssl@3)"
+cp -f "$OPENSSL_PREFIX/lib/libssl.3.dylib" "$FRAMEWORKS/libssl.3.dylib"
+cp -f "$OPENSSL_PREFIX/lib/libcrypto.3.dylib" "$FRAMEWORKS/libcrypto.3.dylib"
+chmod u+w "$FRAMEWORKS"/*.dylib
+
+if ! otool -l "$BIN_PATH" | awk '/cmd LC_RPATH/{flag=1} flag && /path @executable_path\/\.\.\/Frameworks/{found=1} END{exit found?0:1}'; then
+  install_name_tool -add_rpath @executable_path/../Frameworks "$BIN_PATH"
+fi
+
+rewrite_dependency() {
+  local file="$1"
+  local dylib_name="$2"
+  local replacement="$3"
+  otool -L "$file" | awk -v suffix="/${dylib_name}" '$1 ~ suffix "$" { print $1 }' | while IFS= read -r dep; do
+    if [[ "$dep" != "$replacement" ]]; then
+      install_name_tool -change "$dep" "$replacement" "$file"
+    fi
+  done
+}
+
+install_name_tool -id @rpath/libssl.3.dylib "$FRAMEWORKS/libssl.3.dylib"
+install_name_tool -id @rpath/libcrypto.3.dylib "$FRAMEWORKS/libcrypto.3.dylib"
+rewrite_dependency "$BIN_PATH" libssl.3.dylib @rpath/libssl.3.dylib
+rewrite_dependency "$BIN_PATH" libcrypto.3.dylib @rpath/libcrypto.3.dylib
+rewrite_dependency "$FRAMEWORKS/libssl.3.dylib" libcrypto.3.dylib @rpath/libcrypto.3.dylib
+
 # -------- [3/7] inside-out codesign --------
 # Frameworks/dylibs first, then the outer .app with entitlements; signing outer
 # before inner invalidates the outer bundle's resource hashes.
 echo "==> [3/7] Code-signing"
-FRAMEWORKS="$APP_PATH/Contents/Frameworks"
 if [[ -d "$FRAMEWORKS" ]]; then
   find "$FRAMEWORKS" -type f \( -name "*.dylib" -o -name "*.so" \) -print0 | \
     xargs -0 -I {} codesign --force --sign "$APPLE_SIGN_IDENTITY" \
@@ -144,6 +196,10 @@ if [[ -d "$FRAMEWORKS" ]]; then
     xargs -0 -I {} codesign --force --sign "$APPLE_SIGN_IDENTITY" \
       --options runtime --timestamp "{}"
 fi
+while IFS= read -r -d '' SIDECAR; do
+  codesign --force --sign "$APPLE_SIGN_IDENTITY" \
+    --options runtime --timestamp "$SIDECAR"
+done < <(find "$APP_PATH/Contents/MacOS" -maxdepth 1 -type f \( -name "agent-bridge" -o -name "agent-bridge-*" \) -print0)
 codesign --force --deep --sign "$APPLE_SIGN_IDENTITY" \
   --options runtime --timestamp \
   --entitlements apps/desktop/src-tauri/Entitlements.plist \
@@ -188,6 +244,18 @@ for attempt in 1 2 3; do
   rm -f "$DMG_PATH"; sleep 5
 done
 codesign --force --sign "$APPLE_SIGN_IDENTITY" --timestamp "$DMG_PATH"
+
+if [[ $SKIP_NOTARIZE -eq 0 ]]; then
+  echo "==> [5b/7] Notarizing DMG"
+  xcrun notarytool submit "$DMG_PATH" \
+    --apple-id "$APPLE_ID" \
+    --password "$APPLE_APP_PASSWORD" \
+    --team-id "$APPLE_TEAM_ID" \
+    --wait
+  xcrun stapler staple "$DMG_PATH"
+  xcrun stapler validate "$DMG_PATH"
+  spctl -a -vvv -t open --context context:primary-signature "$DMG_PATH"
+fi
 
 # -------- [6/7] updater tarball + latest.json --------
 if [[ $SKIP_UPDATER -eq 0 ]]; then
@@ -250,4 +318,6 @@ if [[ $SKIP_UPDATER -eq 0 ]]; then
   echo "    Updater  : $DIST_DIR/Solo.app.tar.gz (+ .sig)"
   echo "    Manifest : $DIST_DIR/latest.json"
 fi
-[[ $PUBLISH -eq 0 ]] && echo "    (dry build — nothing uploaded)"
+if [[ $PUBLISH -eq 0 ]]; then
+  echo "    (dry build — nothing uploaded)"
+fi

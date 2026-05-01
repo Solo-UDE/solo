@@ -43,7 +43,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          git fetch origin master --tags
+          git fetch origin master
 
           CONFIG_VERSION="$(jq -r .version apps/desktop/src-tauri/tauri.conf.json)"
           test -n "$CONFIG_VERSION" && test "$CONFIG_VERSION" != "null"
@@ -208,6 +208,11 @@ jobs:
               xargs -0 -I {} codesign --force --sign "$APPLE_SIGN_IDENTITY" \
                 --options runtime --timestamp "{}"
           fi
+
+          while IFS= read -r -d '' SIDECAR; do
+            codesign --force --sign "$APPLE_SIGN_IDENTITY" \
+              --options runtime --timestamp "$SIDECAR"
+          done < <(find "$APP_PATH/Contents/MacOS" -maxdepth 1 -type f \( -name "agent-bridge" -o -name "agent-bridge-*" \) -print0)
 
           codesign --force --sign "$APPLE_SIGN_IDENTITY" \
             --options runtime --timestamp \

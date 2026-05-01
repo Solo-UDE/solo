@@ -16,6 +16,7 @@
     "auth:doctor": "bun scripts/auth-doctor.mjs",
     "auth:diagnose": "bun scripts/auth-diagnose.mjs",
     "bridge:build": "bun run --filter @solo/agent-bridge build",
+    "bridge:compile:mac": "mkdir -p apps/desktop/src-tauri/binaries && bun build --compile --target=bun-darwin-arm64 --outfile apps/desktop/src-tauri/binaries/agent-bridge-aarch64-apple-darwin agent-bridge/src/index.ts",
     "bridge:dev": "bun run --filter @solo/agent-bridge dev",
     "build": "bun run --filter @solo/agent-bridge build && bun run --filter @solo/desktop build:vite && cargo build --release",
     "tauri": "bun run --filter @solo/desktop tauri",
