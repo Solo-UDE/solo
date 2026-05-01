@@ -3,7 +3,10 @@
  * Manages Claude Agent SDK sessions and message streaming
  */
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { appendFileSync, mkdirSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 
 import { OrbitAgent } from './agent.js';
 import { Disposable, Emitter } from './events.js';
@@ -14,6 +17,21 @@ import type { AttachmentContentBlock } from './messages.js';
 
 const logger = createLogger('SessionManager');
 
+const LEDGER_DIR = join(homedir(), '.solo', 'agent-ledger');
+
+type ProviderId = 'anthropic' | 'openai' | 'google' | 'gemini';
+
+const PROVIDER_CAPABILITIES: Record<ProviderId, ProviderCapabilities> = {
+  anthropic: { chat: true, agent: true, tools: true, mcp: true, resume: true },
+  openai: { chat: true, agent: false, tools: false, mcp: false, resume: false },
+  google: { chat: true, agent: false, tools: false, mcp: false, resume: false },
+  gemini: { chat: true, agent: false, tools: false, mcp: false, resume: false },
+};
+
+function configHash(config: unknown): string {
+  return createHash('sha256').update(JSON.stringify(config ?? {})).digest('hex').slice(0, 16);
+}
+
 // =============================================================================
 // Agent Message Types
 // =============================================================================
@@ -22,8 +40,11 @@ const logger = createLogger('SessionManager');
  * Agent message types sent to the frontend
  */
 export interface AgentMessage {
-  type: 'text' | 'thinking' | 'tool_use' | 'result' | 'error';
+  type: 'turn_start' | 'text' | 'thinking' | 'tool_use' | 'tool_result' | 'result' | 'error';
   content: string;
+  eventId?: string;
+  turnNumber?: number;
+  sdkSessionId?: string;
   metadata?: {
     toolName?: string;
     toolId?: string;
@@ -73,6 +94,23 @@ export interface SessionInitEvent {
   isForked: boolean;
 }
 
+export interface ProviderCapabilities {
+  chat: boolean;
+  agent: boolean;
+  tools: boolean;
+  mcp: boolean;
+  resume: boolean;
+}
+
+export interface ToolPolicyConfig {
+  allow?: string[];
+  deny?: string[];
+  ask?: string[];
+  bashAllowPrefixes?: string[];
+  bypassEnabled?: boolean;
+  isWorktreeSession?: boolean;
+}
+
 /**
  * Serializable error for IPC
  */
@@ -100,13 +138,20 @@ export interface SessionConfig {
    * Agent harness to restrict the model to git + read-only file operations.
    */
   allowedTools?: string[];
+  selectedSkills?: string[];
+  mcpServers?: Record<string, unknown>;
+  outputFormat?: unknown;
+  agents?: Record<string, unknown>;
+  toolPolicy?: ToolPolicyConfig;
+  permissionMode?: 'default' | 'plan' | 'accept' | 'debug';
+  providerCapabilities?: ProviderCapabilities;
   sessionMode?: 'chat' | 'agent';
   resumeSessionId?: string;
   forkSession?: boolean;
   /**
    * Provider for this session. When absent, defaults to 'anthropic'.
    */
-  provider?: 'anthropic' | 'openai';
+  provider?: ProviderId;
 
   /**
    * Credentials handed from Rust. When absent, the Anthropic adapter falls
@@ -309,13 +354,17 @@ export class SessionManager extends Disposable {
   private readonly _onSessionInit = this._register(new Emitter<SessionInitEvent>());
   readonly onSessionInit = this._onSessionInit.event;
 
+  private readonly _onTurnStart = this._register(
+    new Emitter<{ sessionId: string; turnNumber: number }>()
+  );
+  readonly onTurnStart = this._onTurnStart.event;
+
   // Session tracking
   private activeSessions = new Map<string, OrbitAgent>();
 
   /**
-   * Parallel map of OpenAI provider sessions, keyed by sessionId. These
-   * do NOT share state with the Anthropic `activeSessions` map —
-   * every lookup in the manager checks both and dispatches accordingly.
+   * Parallel map of chat-only provider sessions, keyed by sessionId. These
+   * do NOT share state with the Anthropic `activeSessions` map.
    */
   private readonly openAISessions = new Map<
     string,
@@ -355,6 +404,9 @@ export class SessionManager extends Disposable {
   private goalPollers = new Map<string, NodeJS.Timeout>();
   private sessionResumeState = new Map<string, { isResumed: boolean; isForked: boolean }>();
   private sessionInitFired = new Set<string>();
+  private sessionTurns = new Map<string, number>();
+  private sessionSdkIds = new Map<string, string>();
+  private sessionConfigHashes = new Map<string, string>();
 
   /**
    * Per-session tool use maps — shared between the background consumer
@@ -367,6 +419,53 @@ export class SessionManager extends Disposable {
   // Session Lifecycle
   // ==========================================================================
 
+  private appendLedger(sessionId: string, entry: Record<string, unknown>): void {
+    try {
+      mkdirSync(LEDGER_DIR, { recursive: true });
+      appendFileSync(
+        join(LEDGER_DIR, `${sessionId}.jsonl`),
+        `${JSON.stringify({
+          ts: new Date().toISOString(),
+          sessionId,
+          configHash: this.sessionConfigHashes.get(sessionId),
+          ...entry,
+        })}\n`
+      );
+    } catch (error) {
+      logger.warn({ sessionId, error: String(error) }, 'Failed to append agent ledger');
+    }
+  }
+
+  private emitAgentMessage(sessionId: string, message: AgentMessage): void {
+    const enriched: AgentMessage = {
+      ...message,
+      eventId: message.eventId ?? randomUUID(),
+      turnNumber: message.turnNumber ?? this.sessionTurns.get(sessionId),
+      sdkSessionId: message.sdkSessionId ?? this.sessionSdkIds.get(sessionId),
+    };
+    this.appendLedger(sessionId, { type: 'agent_message', message: enriched });
+    this._onAgentMessage.fire({ sessionId, message: enriched });
+  }
+
+  private emitSessionInit(event: SessionInitEvent): void {
+    this.sessionSdkIds.set(event.sessionId, event.sdkSessionId);
+    this.appendLedger(event.sessionId, { type: 'session_init', event });
+    this._onSessionInit.fire(event);
+  }
+
+  private emitTurnStart(sessionId: string): number {
+    const turnNumber = (this.sessionTurns.get(sessionId) ?? 0) + 1;
+    this.sessionTurns.set(sessionId, turnNumber);
+    this.appendLedger(sessionId, { type: 'turn_start', turnNumber });
+    this._onTurnStart.fire({ sessionId, turnNumber });
+    this.emitAgentMessage(sessionId, {
+      type: 'turn_start',
+      content: `Turn ${turnNumber} started`,
+      turnNumber,
+    });
+    return turnNumber;
+  }
+
   /**
    * Create a new agent session
    */
@@ -376,6 +475,25 @@ export class SessionManager extends Disposable {
     }
 
     const provider = config?.provider ?? 'anthropic';
+    const sessionMode = config?.sessionMode ?? 'agent';
+    const capabilities = config?.providerCapabilities ?? PROVIDER_CAPABILITIES[provider];
+
+    this.sessionConfigHashes.set(sessionId, configHash({ ...config, provider, sessionMode }));
+    this.appendLedger(sessionId, {
+      type: 'session_create',
+      provider,
+      sessionMode,
+      capabilities,
+      cwd: config?.cwd,
+      model: config?.model,
+      resumeSessionId: config?.resumeSessionId,
+    });
+
+    if (sessionMode === 'agent' && !capabilities.agent) {
+      throw new Error(
+        `${provider} is chat-only in Solo v1 and cannot create agent-mode sessions. Select a Claude model for tool-running agent sessions.`
+      );
+    }
 
     if (provider === 'openai') {
       if (!config?.credentials) {
@@ -396,9 +514,36 @@ export class SessionManager extends Disposable {
       });
       this.openAISessions.set(sessionId, openaiSession);
 
-      this._onSessionInit.fire({
+      this.emitSessionInit({
         sessionId,
         sdkSessionId: sessionId, // no separate SDK id for OpenAI
+        isResumed: false,
+        isForked: false,
+      });
+      return;
+    }
+
+    if (provider === 'google' || provider === 'gemini') {
+      if (!config?.credentials) {
+        throw new Error(
+          'Gemini session requires credentials — Rust side must pass them via SessionConfig.credentials'
+        );
+      }
+      if (!config?.model) {
+        throw new Error('Gemini session requires a model');
+      }
+
+      const { createGeminiSession } = await import('./providers/gemini.js');
+      const geminiSession = await createGeminiSession({
+        model: config.model,
+        credentials: config.credentials,
+        maxTokens: config.maxTokens,
+      });
+      this.openAISessions.set(sessionId, geminiSession);
+
+      this.emitSessionInit({
+        sessionId,
+        sdkSessionId: sessionId,
         isResumed: false,
         isForked: false,
       });
@@ -474,17 +619,14 @@ export class SessionManager extends Disposable {
           for (const [toolId, entry] of sessionMap) {
             if (entry.name === toolName && !entry.permissionResolved) {
               entry.permissionResolved = true;
-              this._onAgentMessage.fire({
-                sessionId,
-                message: {
-                  type: 'tool_use',
-                  content: `Tool ${toolName} running`,
-                  metadata: {
-                    toolName,
-                    toolId,
-                    toolInput: entry.input,
-                    status: 'running',
-                  },
+              this.emitAgentMessage(sessionId, {
+                type: 'tool_use',
+                content: `Tool ${toolName} running`,
+                metadata: {
+                  toolName,
+                  toolId,
+                  toolInput: entry.input,
+                  status: 'running',
                 },
               });
               break;
@@ -508,8 +650,14 @@ export class SessionManager extends Disposable {
       model: storedPrefs?.model ?? config?.model,
       maxTokens: storedPrefs?.maxTokens ?? config?.maxTokens,
       allowedTools: config?.allowedTools,
+      selectedSkills: config?.selectedSkills,
+      mcpServers: config?.mcpServers as OrbitAgentConfig['mcpServers'],
+      outputFormat: config?.outputFormat as OrbitAgentConfig['outputFormat'],
+      agents: config?.agents as OrbitAgentConfig['agents'],
+      toolPolicy: config?.toolPolicy,
+      permissionMode: config?.permissionMode,
       cwd: config?.cwd,
-      sessionMode: config?.sessionMode ?? 'agent',
+      sessionMode,
       permissionRequestCallback: permissionCallback,
       resumeSessionId: config?.resumeSessionId,
       forkSession: config?.forkSession,
@@ -582,7 +730,7 @@ export class SessionManager extends Disposable {
                 isResumed: false,
                 isForked: false,
               };
-              this._onSessionInit.fire({
+              this.emitSessionInit({
                 sessionId,
                 sdkSessionId: sdkMessage.session_id,
                 isResumed: resumeState.isResumed,
@@ -605,18 +753,12 @@ export class SessionManager extends Disposable {
               if (deltaType === 'text_delta') {
                 const textDelta = event.delta?.text;
                 if (textDelta !== undefined) {
-                  this._onAgentMessage.fire({
-                    sessionId,
-                    message: { type: 'text', content: textDelta },
-                  });
+                  this.emitAgentMessage(sessionId, { type: 'text', content: textDelta });
                 }
               } else if (deltaType === 'thinking_delta') {
                 const thinkingDelta = event.delta?.thinking;
                 if (thinkingDelta !== undefined) {
-                  this._onAgentMessage.fire({
-                    sessionId,
-                    message: { type: 'thinking', content: thinkingDelta },
-                  });
+                  this.emitAgentMessage(sessionId, { type: 'thinking', content: thinkingDelta });
                 }
               }
             }
@@ -636,12 +778,9 @@ export class SessionManager extends Disposable {
                 continue;
               }
               if (block.type === 'thinking') {
-                this._onAgentMessage.fire({
-                  sessionId,
-                  message: {
-                    type: 'thinking',
-                    content: block.thinking ?? '',
-                  },
+                this.emitAgentMessage(sessionId, {
+                  type: 'thinking',
+                  content: block.thinking ?? '',
                 });
                 continue;
               }
@@ -694,7 +833,7 @@ export class SessionManager extends Disposable {
                 permissionResolved: false,
               });
 
-              this._onAgentMessage.fire({ sessionId, message: toolMessage });
+              this.emitAgentMessage(sessionId, toolMessage);
             }
           } else if (sdkMessage.type === 'user') {
             // =================================================================
@@ -726,20 +865,17 @@ export class SessionManager extends Disposable {
                     'Tool result received'
                   );
 
-                  this._onAgentMessage.fire({
-                    sessionId,
-                    message: {
-                      type: 'tool_use',
-                      content: isError
-                        ? `Tool ${toolInfo.name} failed`
-                        : `Tool ${toolInfo.name} completed`,
-                      metadata: {
-                        toolName: toolInfo.name,
-                        toolId: toolUseId,
-                        toolInput: toolInfo.input,
-                        toolOutput,
-                        status: isError ? 'error' : 'success',
-                      },
+                  this.emitAgentMessage(sessionId, {
+                    type: 'tool_result',
+                    content: isError
+                      ? `Tool ${toolInfo.name} failed`
+                      : `Tool ${toolInfo.name} completed`,
+                    metadata: {
+                      toolName: toolInfo.name,
+                      toolId: toolUseId,
+                      toolInput: toolInfo.input,
+                      toolOutput,
+                      status: isError ? 'error' : 'success',
                     },
                   });
 
@@ -765,28 +901,25 @@ export class SessionManager extends Disposable {
               );
             }
 
-            this._onAgentMessage.fire({
-              sessionId,
-              message: {
-                type: 'result',
-                content:
-                  resultMsg.subtype === 'error_max_structured_output_retries'
-                    ? 'Failed to produce valid structured output'
-                    : 'Turn complete',
-                usage:
-                  resultMsg.usage !== undefined
-                    ? {
-                        inputTokens: resultMsg.usage.input_tokens ?? 0,
-                        outputTokens: resultMsg.usage.output_tokens ?? 0,
-                        cacheReadInputTokens: resultMsg.usage.cache_read_input_tokens,
-                        cacheCreationInputTokens: resultMsg.usage.cache_creation_input_tokens,
-                      }
-                    : undefined,
-                totalCostUsd: resultMsg.total_cost_usd,
-                durationMs: resultMsg.duration_ms,
-                structuredOutput: resultMsg.structured_output,
-                resultSubtype: resultMsg.subtype,
-              },
+            this.emitAgentMessage(sessionId, {
+              type: 'result',
+              content:
+                resultMsg.subtype === 'error_max_structured_output_retries'
+                  ? 'Failed to produce valid structured output'
+                  : 'Turn complete',
+              usage:
+                resultMsg.usage !== undefined
+                  ? {
+                      inputTokens: resultMsg.usage.input_tokens ?? 0,
+                      outputTokens: resultMsg.usage.output_tokens ?? 0,
+                      cacheReadInputTokens: resultMsg.usage.cache_read_input_tokens,
+                      cacheCreationInputTokens: resultMsg.usage.cache_creation_input_tokens,
+                    }
+                  : undefined,
+              totalCostUsd: resultMsg.total_cost_usd,
+              durationMs: resultMsg.duration_ms,
+              structuredOutput: resultMsg.structured_output,
+              resultSubtype: resultMsg.subtype,
             });
 
             setCorrelationId(undefined);
@@ -809,6 +942,9 @@ export class SessionManager extends Disposable {
     if (openaiSession) {
       await openaiSession.close();
       this.openAISessions.delete(sessionId);
+      this.sessionTurns.delete(sessionId);
+      this.sessionSdkIds.delete(sessionId);
+      this.sessionConfigHashes.delete(sessionId);
       return;
     }
 
@@ -827,6 +963,9 @@ export class SessionManager extends Disposable {
     this.sessionToolUseMaps.delete(sessionId);
     this.sessionResumeState.delete(sessionId);
     this.sessionInitFired.delete(sessionId);
+    this.sessionTurns.delete(sessionId);
+    this.sessionSdkIds.delete(sessionId);
+    this.sessionConfigHashes.delete(sessionId);
   }
 
   /**
@@ -870,9 +1009,10 @@ export class SessionManager extends Disposable {
   sendMessage(message: string, sessionId: string, attachments?: AttachmentContentBlock[]): void {
     const openaiSession = this.openAISessions.get(sessionId);
     if (openaiSession) {
+      this.emitTurnStart(sessionId);
       openaiSession.sendMessage(message, attachments);
       // Fire the run loop without awaiting — it emits events as it streams.
-      void this.runOpenAILoop(sessionId, openaiSession);
+      void this.runChatProviderLoop(sessionId, openaiSession);
       return;
     }
 
@@ -887,6 +1027,7 @@ export class SessionManager extends Disposable {
 
     const correlationId = randomUUID();
     setCorrelationId(correlationId);
+    this.emitTurnStart(sessionId);
 
     logger.info(
       {
@@ -921,7 +1062,7 @@ export class SessionManager extends Disposable {
    */
   async setThinkingMode(sessionId: string, enabled: boolean, maxTokens?: number): Promise<void> {
     if (this.openAISessions.has(sessionId)) {
-      logger.warn({ sessionId, method: 'setThinkingMode' }, 'not supported on OpenAI sessions');
+      logger.warn({ sessionId, method: 'setThinkingMode' }, 'not supported on chat-only sessions');
       return;
     }
     const agent = this.activeSessions.get(sessionId);
@@ -957,7 +1098,7 @@ export class SessionManager extends Disposable {
    */
   async setModel(sessionId: string, model: string): Promise<void> {
     if (this.openAISessions.has(sessionId)) {
-      logger.warn({ sessionId, method: 'setModel' }, 'not supported on OpenAI sessions');
+      logger.warn({ sessionId, method: 'setModel' }, 'not supported on chat-only sessions');
       return;
     }
     const agent = this.activeSessions.get(sessionId);
@@ -1029,7 +1170,7 @@ export class SessionManager extends Disposable {
    */
   setPlanMode(sessionId: string, enabled: boolean): void {
     if (this.openAISessions.has(sessionId)) {
-      logger.warn({ sessionId, method: 'setPlanMode' }, 'not supported on OpenAI sessions');
+      logger.warn({ sessionId, method: 'setPlanMode' }, 'not supported on chat-only sessions');
       return;
     }
     const agent = this.activeSessions.get(sessionId);
@@ -1070,7 +1211,7 @@ export class SessionManager extends Disposable {
    */
   setAcceptMode(sessionId: string, enabled: boolean): void {
     if (this.openAISessions.has(sessionId)) {
-      logger.warn({ sessionId, method: 'setAcceptMode' }, 'not supported on OpenAI sessions');
+      logger.warn({ sessionId, method: 'setAcceptMode' }, 'not supported on chat-only sessions');
       return;
     }
     const agent = this.activeSessions.get(sessionId);
@@ -1114,7 +1255,7 @@ export class SessionManager extends Disposable {
    */
   setDebugMode(sessionId: string, enabled: boolean): void {
     if (this.openAISessions.has(sessionId)) {
-      logger.warn({ sessionId, method: 'setDebugMode' }, 'not supported on OpenAI sessions');
+      logger.warn({ sessionId, method: 'setDebugMode' }, 'not supported on chat-only sessions');
       return;
     }
     const agent = this.activeSessions.get(sessionId);
@@ -1190,13 +1331,13 @@ export class SessionManager extends Disposable {
 
   /**
    * Set tool permission policy for a session.
-   * - 'approve-all': auto-approve everything (sets accept mode)
+   * - 'approve-all': enable accept mode, which auto-approves file edits only
    * - 'smart': auto-approve read-only tools, prompt for writes
    * - 'ask-all': prompt for every tool (default)
    */
   setToolPolicy(sessionId: string, mode: string, _isWorktreeSession: boolean): void {
     if (this.openAISessions.has(sessionId)) {
-      logger.warn({ sessionId, method: 'setToolPolicy' }, 'not supported on OpenAI sessions');
+      logger.warn({ sessionId, method: 'setToolPolicy' }, 'not supported on chat-only sessions');
       return;
     }
     const agent = this.activeSessions.get(sessionId);
@@ -1215,8 +1356,14 @@ export class SessionManager extends Disposable {
     if (mode === 'smart' && agent) {
       // Pre-populate always-allowed list with read-only tools
       const readOnlyTools = [
-        'Read', 'Glob', 'Grep', 'WebSearch', 'WebFetch',
-        'Task', 'TodoRead', 'TodoWrite',
+        'Read',
+        'Glob',
+        'Grep',
+        'WebSearch',
+        'WebFetch',
+        'mcp__vault__vault_search',
+        'mcp__solo_skills__skill_list',
+        'mcp__solo_skills__skill_read',
       ];
       const pm = agent.getPermissionManager();
       for (const tool of readOnlyTools) {
@@ -1226,13 +1373,13 @@ export class SessionManager extends Disposable {
   }
 
   /**
-   * Drive an OpenAI session's receiveResponse() loop and emit AgentMessage
-   * events through the same channel the Anthropic path uses.
+   * Drive a chat-only provider session's receiveResponse() loop and emit
+   * AgentMessage events through the same channel the Anthropic path uses.
    *
-   * Much simpler than the Anthropic path — no tool calls, no permissions,
-   * no hooks. Each event type maps directly to an AgentMessage.
+   * Much simpler than the Anthropic path — no tool calls, no permissions, no
+   * hooks. Each event type maps directly to an AgentMessage.
    */
-  private async runOpenAILoop(
+  private async runChatProviderLoop(
     sessionId: string,
     session: import('./providers/types.js').ProviderSession
   ): Promise<void> {
@@ -1264,13 +1411,13 @@ export class SessionManager extends Disposable {
           case 'done':
             this.emitAgentMessage(sessionId, {
               type: 'result',
-              content: '',
+              content: 'Turn complete',
               resultSubtype: ev.stopReason,
               totalCostUsd: ev.totalCostUsd,
               durationMs: ev.durationMs,
             });
             break;
-          // v1 doesn't emit tool_call / tool_result from OpenAI.
+          // v1 chat providers don't emit tool_call / tool_result.
           default:
             break;
         }
@@ -1279,14 +1426,6 @@ export class SessionManager extends Disposable {
       const msg = err instanceof Error ? err.message : String(err);
       this.emitAgentMessage(sessionId, { type: 'error', content: msg });
     }
-  }
-
-  /**
-   * Thin helper that centralizes agent message emission for the OpenAI path,
-   * matching the exact emitter pattern used throughout this file.
-   */
-  private emitAgentMessage(sessionId: string, message: AgentMessage): void {
-    this._onAgentMessage.fire({ sessionId, message });
   }
 
   /**
@@ -1314,10 +1453,10 @@ export class SessionManager extends Disposable {
     this.activeSessions.clear();
     this.sessionToolUseMaps.clear();
 
-    // Close all OpenAI sessions
+    // Close all chat-only provider sessions
     for (const [sessionId, session] of this.openAISessions.entries()) {
       void session.close().catch((err: unknown) => {
-        logger.error({ sessionId, error: err }, 'Error closing OpenAI session');
+        logger.error({ sessionId, error: err }, 'Error closing chat-only provider session');
       });
     }
     this.openAISessions.clear();
