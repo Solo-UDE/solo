@@ -33,7 +33,7 @@ pub struct AttachmentContentBlock {
     pub timestamp: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum AttachmentType {
     Document,
@@ -68,6 +68,33 @@ pub enum SessionCredentials {
     ApiKey { token: String },
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderCapabilities {
+    pub chat: bool,
+    pub agent: bool,
+    pub tools: bool,
+    pub mcp: bool,
+    pub resume: bool,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolPolicyConfig {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub allow: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub deny: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ask: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub bash_allow_prefixes: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bypass_enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub is_worktree_session: Option<bool>,
+}
+
 /// Session configuration
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -95,6 +122,20 @@ pub struct SessionConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub allowed_tools: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub selected_skills: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mcp_servers: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_format: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agents: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_policy: Option<ToolPolicyConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub permission_mode: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_capabilities: Option<ProviderCapabilities>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub session_mode: Option<SessionMode>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resume_session_id: Option<String>,
@@ -112,7 +153,7 @@ pub struct SessionConfig {
     pub credentials: Option<SessionCredentials>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum SessionMode {
     Chat,
@@ -131,6 +172,12 @@ pub struct AgentMessage {
     pub message_type: AgentMessageType,
     pub content: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub turn_number: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sdk_session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<ToolMetadata>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usage: Option<TokenUsage>,
@@ -147,9 +194,11 @@ pub struct AgentMessage {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentMessageType {
+    TurnStart,
     Text,
     Thinking,
     ToolUse,
+    ToolResult,
     Result,
     Error,
 }
@@ -520,5 +569,86 @@ mod tests {
         println!("AgentMessage parse result: {result:?}");
         let resp = result.expect("should parse agent message event");
         assert!(resp.as_event().is_some(), "should be event");
+    }
+
+    #[test]
+    fn test_expanded_session_config_roundtrip() {
+        let json = r#"{
+            "cwd":"/tmp/project",
+            "provider":"anthropic",
+            "providerCapabilities":{"chat":true,"agent":true,"tools":true,"mcp":true,"resume":true},
+            "sessionMode":"agent",
+            "selectedSkills":["ui"],
+            "mcpServers":{"example":{"command":"node","args":["server.js"]}},
+            "outputFormat":{"type":"json_schema","schema":{"type":"object"}},
+            "agents":{"reviewer":{"description":"Review code"}},
+            "toolPolicy":{"deny":["Bash(git reset --hard*)"],"bashAllowPrefixes":["git "]},
+            "permissionMode":"plan"
+        }"#;
+
+        let config: SessionConfig = serde_json::from_str(json).expect("config should parse");
+        assert_eq!(config.provider.as_deref(), Some("anthropic"));
+        assert_eq!(config.session_mode, Some(SessionMode::Agent));
+        assert_eq!(
+            config.selected_skills.as_deref(),
+            Some(&["ui".to_string()][..])
+        );
+        assert_eq!(
+            config
+                .provider_capabilities
+                .as_ref()
+                .map(|capabilities| capabilities.agent),
+            Some(true)
+        );
+        assert_eq!(
+            config
+                .tool_policy
+                .as_ref()
+                .map(|policy| policy.bash_allow_prefixes.as_slice()),
+            Some(&["git ".to_string()][..])
+        );
+
+        let value = serde_json::to_value(config).expect("config should serialize");
+        assert_eq!(value["provider"], "anthropic");
+        assert_eq!(value["selectedSkills"][0], "ui");
+        assert_eq!(value["permissionMode"], "plan");
+    }
+
+    #[test]
+    fn test_tool_result_message_with_runtime_metadata_deser() {
+        let json = r#"{
+            "type":"agent_message",
+            "sessionId":"test-123",
+            "message":{
+                "type":"tool_result",
+                "content":"ok",
+                "eventId":"evt-1",
+                "turnNumber":2,
+                "sdkSessionId":"sdk-1",
+                "metadata":{"toolName":"Read","toolId":"tool-1","toolOutput":"contents","status":"success"}
+            }
+        }"#;
+
+        let resp: BridgeResponse = serde_json::from_str(json).expect("message should parse");
+        match resp.as_event().expect("event") {
+            BridgeEvent::AgentMessage {
+                session_id,
+                message,
+            } => {
+                assert_eq!(session_id, "test-123");
+                assert_eq!(message.message_type, AgentMessageType::ToolResult);
+                assert_eq!(message.event_id.as_deref(), Some("evt-1"));
+                assert_eq!(message.turn_number, Some(2));
+                assert_eq!(message.sdk_session_id.as_deref(), Some("sdk-1"));
+                assert_eq!(
+                    message
+                        .metadata
+                        .as_ref()
+                        .and_then(|m| m.tool_name.as_deref()),
+                    Some("Read")
+                );
+            }
+            other => panic!("unexpected event: {other:?}"),
+        }
     }
 }
