@@ -300,6 +300,12 @@ export interface SessionInitEventMessage {
   event: SessionInitEvent;
 }
 
+export interface TurnStartEvent {
+  type: 'turn_start';
+  sessionId: string;
+  turnNumber: number;
+}
+
 /**
  * Plan mode changed event
  */
@@ -361,6 +367,7 @@ export type BridgeEvent =
   | AgentMessageEvent
   | PermissionRequestEvent
   | SessionInitEventMessage
+  | TurnStartEvent
   | PlanModeChangedEvent
   | AcceptModeChangedEvent
   | DebugModeChangedEvent
