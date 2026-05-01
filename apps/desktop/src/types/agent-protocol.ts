@@ -20,8 +20,11 @@ export interface TokenUsage {
 }
 
 export interface BridgeAgentMessage {
-	type: 'text' | 'thinking' | 'tool_use' | 'result' | 'error';
+	type: 'turn_start' | 'text' | 'thinking' | 'tool_use' | 'tool_result' | 'result' | 'error';
 	content: string;
+	eventId?: string;
+	turnNumber?: number;
+	sdkSessionId?: string;
 	metadata?: {
 		toolName?: string;
 		toolId?: string;
@@ -59,6 +62,23 @@ export interface AttachmentContentBlock {
 	timestamp?: string;
 }
 
+export interface ProviderCapabilities {
+	chat: boolean;
+	agent: boolean;
+	tools: boolean;
+	mcp: boolean;
+	resume: boolean;
+}
+
+export interface ToolPolicyConfig {
+	allow?: string[];
+	deny?: string[];
+	ask?: string[];
+	bashAllowPrefixes?: string[];
+	bypassEnabled?: boolean;
+	isWorktreeSession?: boolean;
+}
+
 export interface SessionConfig {
 	cwd?: string;
 	thinkingEnabled?: boolean;
@@ -72,6 +92,13 @@ export interface SessionConfig {
 	 * read-only file operations so a prompt-escape can't run arbitrary code.
 	 */
 	allowedTools?: string[];
+	selectedSkills?: string[];
+	mcpServers?: Record<string, unknown>;
+	outputFormat?: unknown;
+	agents?: Record<string, unknown>;
+	toolPolicy?: ToolPolicyConfig;
+	permissionMode?: 'default' | 'plan' | 'accept' | 'debug';
+	providerCapabilities?: ProviderCapabilities;
 	planEnabled?: boolean;
 	acceptEnabled?: boolean;
 	critiqueEnabled?: boolean;
@@ -79,6 +106,7 @@ export interface SessionConfig {
 	sessionMode?: 'chat' | 'agent';
 	resumeSessionId?: string;
 	forkSession?: boolean;
+	provider?: 'anthropic' | 'openai' | 'google' | 'gemini';
 }
 
 // =============================================================================
