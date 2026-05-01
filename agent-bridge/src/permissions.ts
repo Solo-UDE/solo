@@ -6,7 +6,8 @@ import { createLogger } from './logger.js';
 import { localize } from './nls.js';
 import { checkPermission, loadMergedSettings } from './permission-pipeline.js';
 
-import type { PermissionDecision, PermissionMode } from './permission-pipeline.js';
+import type { ToolPolicyConfig } from './agent.js';
+import type { PermissionDecision, PermissionMode, PermissionsConfig } from './permission-pipeline.js';
 import type { PermissionResult, PermissionUpdate } from '@anthropic-ai/claude-agent-sdk';
 
 const logger = createLogger('PermissionManager');
@@ -55,6 +56,7 @@ export class PermissionManager {
   private workspaceGetter?: () => string;
   /** Resolver for an optional Debug-mode flag. */
   private debugModeGetter?: () => boolean;
+  private toolPolicy?: ToolPolicyConfig;
   /** Small in-memory cache of parsed settings, keyed by workspace path. */
   private settingsCache = new Map<
     string,
@@ -81,7 +83,8 @@ export class PermissionManager {
     planModeGetter?: () => boolean,
     planFilePathGetter?: () => string | null,
     workspaceGetter?: () => string,
-    debugModeGetter?: () => boolean
+    debugModeGetter?: () => boolean,
+    toolPolicy?: ToolPolicyConfig
   ) {
     if (requestCallback !== undefined) {
       this.requestCallback = requestCallback;
@@ -104,6 +107,17 @@ export class PermissionManager {
     if (debugModeGetter !== undefined) {
       this.debugModeGetter = debugModeGetter;
     }
+    if (toolPolicy !== undefined) {
+      this.toolPolicy = {
+        ...toolPolicy,
+        allow: toolPolicy.allow ? [...toolPolicy.allow] : undefined,
+        deny: toolPolicy.deny ? [...toolPolicy.deny] : undefined,
+        ask: toolPolicy.ask ? [...toolPolicy.ask] : undefined,
+        bashAllowPrefixes: toolPolicy.bashAllowPrefixes
+          ? [...toolPolicy.bashAllowPrefixes]
+          : undefined,
+      };
+    }
   }
 
   /**
@@ -116,7 +130,44 @@ export class PermissionManager {
     if (this.acceptModeGetter?.()) return 'accept';
     if (this.planModeGetter?.()) return 'plan';
     if (this.debugModeGetter?.()) return 'debug';
+    const settings = this.loadSettings();
+    const defaultMode = settings?.permissions.defaultMode;
+    if (defaultMode) return defaultMode;
     return 'default';
+  }
+
+  private effectivePermissions(settings: ReturnType<typeof loadMergedSettings> | null): PermissionsConfig {
+    const base = settings?.permissions ?? {
+      defaultMode: null,
+      allow: [],
+      deny: [],
+      ask: [],
+      additionalDirectories: [],
+      disableAcceptMode: false,
+    };
+
+    const bashPrefixRules =
+      this.toolPolicy?.bashAllowPrefixes?.map((prefix) => `Bash(${prefix}*)`) ?? [];
+
+    return {
+      defaultMode: base.defaultMode,
+      allow: [...(this.toolPolicy?.allow ?? []), ...bashPrefixRules, ...base.allow],
+      deny: [...(this.toolPolicy?.deny ?? []), ...base.deny],
+      ask: [...(this.toolPolicy?.ask ?? []), ...base.ask],
+      additionalDirectories: [...base.additionalDirectories],
+      disableAcceptMode: base.disableAcceptMode,
+    };
+  }
+
+  private shouldBypassAskDecision(decision: PermissionDecision): boolean {
+    if (decision.behavior !== 'ask') return false;
+    if (!this.toolPolicy?.bypassEnabled || this.toolPolicy.isWorktreeSession !== true) {
+      return false;
+    }
+
+    // Only bypass the pipeline's generic fall-through prompt. Ask rules and
+    // destructive prompts remain approval-gated even in task worktree bypass.
+    return decision.message.startsWith('Approval required for ');
   }
 
   /**
@@ -223,15 +274,16 @@ export class PermissionManager {
 
     // Stage 2: Settings-driven pipeline.
     const settings = this.loadSettings();
-    if (settings !== null) {
+    {
       const decision = checkPermission(
         toolName,
         toolInput,
         mode,
-        settings.permissions
+        this.effectivePermissions(settings)
       );
       if (decision.behavior === 'allow') return 'allow';
       if (decision.behavior === 'deny') return 'deny';
+      if (this.shouldBypassAskDecision(decision)) return 'allow';
       // decision.behavior === 'ask' — fall through to legacy checks below.
     }
 
@@ -307,39 +359,42 @@ export class PermissionManager {
         // with an mtime-cached load so external edits to `.solo/settings.json`
         // are picked up without a session restart.
         const settings = this.loadSettings();
-        if (settings !== null) {
-          const decision: PermissionDecision = checkPermission(
-            toolName,
-            toolInput,
-            mode,
-            settings.permissions
-          );
-          logger.debug({ toolName, mode, decision }, 'Pipeline decision');
+        const decision: PermissionDecision = checkPermission(
+          toolName,
+          toolInput,
+          mode,
+          this.effectivePermissions(settings)
+        );
+        logger.debug({ toolName, mode, decision }, 'Pipeline decision');
 
-          if (decision.behavior === 'allow') {
-            // Capture snapshot for Write/Edit even when auto-allowed — this
-            // preserves checkpointing semantics so "undo" still works under
-            // Accept mode.
-            if ((toolName === 'Write' || toolName === 'Edit') && this.snapshotCallback) {
-              try {
-                await this.snapshotCallback(toolName, toolInput, null);
-              } catch (err) {
-                logger.warn({ toolName, err }, 'Snapshot capture failed — continuing anyway');
-              }
+        if (decision.behavior === 'allow') {
+          // Capture snapshot for Write/Edit even when auto-allowed — this
+          // preserves checkpointing semantics so "undo" still works under
+          // Accept mode.
+          if ((toolName === 'Write' || toolName === 'Edit') && this.snapshotCallback) {
+            try {
+              await this.snapshotCallback(toolName, toolInput, null);
+            } catch (err) {
+              logger.warn({ toolName, err }, 'Snapshot capture failed — continuing anyway');
             }
-            return { behavior: 'allow', updatedInput: toolInput };
           }
-
-          if (decision.behavior === 'deny') {
-            return {
-              behavior: 'deny',
-              message: decision.message,
-              interrupt: false,
-            };
-          }
-
-          // decision.behavior === 'ask' — fall through to the UI prompt.
+          return { behavior: 'allow', updatedInput: toolInput };
         }
+
+        if (decision.behavior === 'deny') {
+          return {
+            behavior: 'deny',
+            message: decision.message,
+            interrupt: false,
+          };
+        }
+
+        if (this.shouldBypassAskDecision(decision)) {
+          logger.info({ toolName }, 'Bypass policy in worktree — auto-approving non-denied tool');
+          return { behavior: 'allow', updatedInput: toolInput };
+        }
+
+        // decision.behavior === 'ask' — fall through to the UI prompt.
 
         // Also keep the legacy Plan-mode deny for non-write tools that aren't
         // in the plan-allowed set. This was the previous behavior and is
