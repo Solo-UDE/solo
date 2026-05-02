@@ -58,6 +58,7 @@ mod task_planner;
 mod terminal_commands;
 mod update_commands;
 mod vault_commands;
+mod vault_sync_commands;
 mod voice;
 mod voice_commands;
 mod worktree_commands;

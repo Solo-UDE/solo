@@ -13,8 +13,9 @@
 use std::sync::Arc;
 
 use solo_protocol::{
-    BackendEvent, EntryKind, MemoryType, PlacementMode, PlacementResult, PlacementSuggestion,
-    VaultEntry, VaultListFilters, VaultScope, VaultSearchMode, VaultSearchResult,
+    BackendEvent, CloudSyncState, EntryKind, MemoryType, PlacementMode, PlacementResult,
+    PlacementSuggestion, VaultEntry, VaultListFilters, VaultScope, VaultSearchMode,
+    VaultSearchResult,
 };
 use solo_vault::{BackfillProgress, BackfillStats, ReextractProgress, ReextractStats, Vault};
 use tauri::{AppHandle, Emitter, State};
@@ -77,6 +78,7 @@ pub async fn vault_drop_paths(
     memory_type: MemoryType,
     app: AppHandle,
     state: State<'_, VaultState>,
+    provider_auth: State<'_, crate::provider_commands::ProviderAuthState>,
 ) -> Result<Vec<String>, String> {
     let vault = get_vault(&state).await?;
     debug!(
@@ -87,6 +89,7 @@ pub async fn vault_drop_paths(
 
     let results = vault.drop_paths(&paths, scope, memory_type).await;
     let mut ids = Vec::with_capacity(results.len());
+    let mut ingested_entries: Vec<VaultEntry> = Vec::new();
 
     for res in results {
         match res {
@@ -95,7 +98,8 @@ pub async fn vault_drop_paths(
                     "backend-event",
                     BackendEvent::VaultEntryAdded { entry_id: entry.id.clone() },
                 );
-                ids.push(entry.id);
+                ids.push(entry.id.clone());
+                ingested_entries.push(entry);
             }
             Err(e) => {
                 warn!("vault_drop_paths: ingestion failed: {}", e);
@@ -109,6 +113,52 @@ pub async fn vault_drop_paths(
         "backend-event",
         BackendEvent::VaultUnsortedCountChanged { count },
     );
+
+    // fire-and-forget: best-effort remote sync
+    let token = crate::auth_commands::id_token_snapshot(&provider_auth).await;
+    if token.is_none() {
+        warn!("vault_sync: no access token, skipping remote sync");
+    }
+    let vault_clone = vault.clone();
+    tauri::async_runtime::spawn(async move {
+        if let Some(token) = token {
+            for entry in &ingested_entries {
+                match crate::vault_sync_commands::remote_create_entry(&token, entry).await {
+                    Ok(remote_id) => {
+                        info!(entry_id = %entry.id, %remote_id, "vault_sync: remote create ok");
+                        // Upload file to S3 if there is a local blob
+                        if let Some(blob_path) = &entry.vault_blob_path {
+                            let filename = std::path::Path::new(blob_path)
+                                .file_name()
+                                .and_then(|n| n.to_str())
+                                .unwrap_or("file");
+                            match crate::vault_sync_commands::remote_request_upload_url(
+                                &token, &remote_id, filename, "application/octet-stream",
+                            ).await {
+                                Ok((presigned_url, content_type)) => {
+                                    match crate::vault_sync_commands::upload_file_to_s3(
+                                        &presigned_url, blob_path, &content_type,
+                                    ).await {
+                                        Ok(()) => {
+                                            info!(entry_id = %entry.id, "vault_sync: s3 upload ok");
+                                            let _ = vault_clone.update_cloud_sync_state(&entry.id, CloudSyncState::Synced);
+                                        }
+                                        Err(e) => warn!(entry_id = %entry.id, error = %e, "vault_sync: s3 upload failed"),
+                                    }
+                                }
+                                Err(e) => warn!(entry_id = %entry.id, error = %e, "vault_sync: upload url failed"),
+                            }
+                        } else {
+                            let _ = vault_clone.update_cloud_sync_state(&entry.id, CloudSyncState::Synced);
+                        }
+                    }
+                    Err(e) => {
+                        warn!(entry_id = %entry.id, error = %e, "vault_sync: remote create failed");
+                    }
+                }
+            }
+        }
+    });
 
     Ok(ids)
 }

@@ -382,6 +382,21 @@ impl Store {
         Ok(())
     }
 
+    pub fn update_cloud_sync_state(
+        &self,
+        entry_id: &str,
+        state: CloudSyncState,
+        now: u64,
+    ) -> Result<()> {
+        let conn = self.conn.lock().expect("vault store mutex poisoned");
+        conn.execute(
+            "UPDATE entries SET cloud_sync_state = ?1, updated_at = ?2 WHERE id = ?3",
+            params![sync_to_str(state), now as i64, entry_id],
+        )
+        .map_err(to_vault)?;
+        Ok(())
+    }
+
     pub fn count_reextractable_legacy_entries(&self) -> Result<u64> {
         let conn = self.conn.lock().expect("vault store mutex poisoned");
         let sql = format!("SELECT COUNT(*) FROM entries WHERE {REEXTRACTABLE_LEGACY_ENTRY_WHERE}");
@@ -420,10 +435,11 @@ impl Store {
             LIMIT ?3
         ";
 
+        let safe_query = fts5_escape(query);
         let (_scope_type, scope_project_id) = split_scope(scope);
         let mut stmt = conn.prepare(sql).map_err(to_vault)?;
         let raw: rusqlite::Result<Vec<(VaultChunk, String, f64)>> = stmt
-            .query_map(params![query, scope_project_id, top_k as i64], |row| {
+            .query_map(params![safe_query, scope_project_id, top_k as i64], |row| {
                 let chunk = VaultChunk {
                     id: row.get::<_, String>(0)?,
                     entry_id: row.get::<_, String>(1)?,
@@ -880,6 +896,16 @@ fn str_to_sync(s: &str) -> CloudSyncState {
 }
 
 #[allow(clippy::needless_pass_by_value)]
+/// Wrap a raw user query so FTS5 treats it as a plain phrase search rather than
+/// trying to parse column filters (`col:term`), boolean operators, or wildcards.
+/// FTS5 accepts a double-quoted string literal as a verbatim phrase; internal
+/// double-quotes are escaped by doubling them.
+fn fts5_escape(query: &str) -> String {
+    // Truncate to a safe length so very long prompts don't stress the FTS engine.
+    let truncated: String = query.chars().take(500).collect();
+    format!("\"{}\"", truncated.replace('"', "\"\""))
+}
+
 fn to_vault(err: rusqlite::Error) -> VaultError {
     VaultError::Io(std::io::Error::other(err.to_string()))
 }

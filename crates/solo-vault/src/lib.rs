@@ -275,6 +275,10 @@ impl Vault {
         self.store.move_bucket(id, new_kind, unix_now())
     }
 
+    pub fn update_cloud_sync_state(&self, id: &str, state: CloudSyncState) -> Result<()> {
+        self.store.update_cloud_sync_state(id, state, unix_now())
+    }
+
     pub fn delete(&self, id: &str) -> Result<()> {
         if let Some(entry) = self.store.get_entry(id)? {
             if let Some(blob) = entry.vault_blob_path.as_deref() {

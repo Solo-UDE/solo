@@ -834,6 +834,13 @@ pub async fn access_token_snapshot(
     vault_read(auth, VAULT_KEY_ACCESS_TOKEN).await
 }
 
+/// Non-command helper: returns the ID token from the keychain.
+/// The API Gateway Cognito authorizer validates ID tokens, not access tokens.
+/// Session does not cache the ID token in memory — keychain is the only source.
+pub async fn id_token_snapshot(auth: &State<'_, ProviderAuthState>) -> Option<String> {
+    vault_read(auth, VAULT_KEY_ID_TOKEN).await
+}
+
 /// Returns the stored ID token (JWT with identity claims) — useful for
 /// offline inspection of the current user without hitting Cognito.
 #[tauri::command]
