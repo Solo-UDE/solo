@@ -21,7 +21,7 @@
     "bridge:dev": "bun run --filter @solo/agent-bridge dev",
     "build": "bun run --filter @solo/agent-bridge build && bun run --filter @solo/desktop build:vite && cargo build --release",
     "tauri": "bun run --filter @solo/desktop tauri",
-    "check": "bun run --filter @solo/agent-bridge build && bun run --filter @solo/desktop build:vite && cargo check && bun run --filter '*' typecheck",
+    "check": "bun run --filter @solo/agent-bridge build && bun run bridge:ensure:mac && bun run --filter @solo/desktop build:vite && cargo check && bun run --filter '*' typecheck",
     "test": "cargo test && node scripts/run-workspace-tests.mjs",
     "test:desktop-auth": "bun run gen:bindings && bun run --filter @solo/desktop build:vite && cargo test -p solo-desktop desktop_config::tests -- --nocapture && cargo test -p solo-desktop auth_commands::tests -- --nocapture",
     "premerge:master": "bash scripts/premerge-master.sh",
