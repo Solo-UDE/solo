@@ -2,11 +2,11 @@
 
 **Audience:** Backend/infra engineers building the AWS indexing pipeline (Step Functions + Lambdas) described in `solo/docs/superpowers/specs/2026-04-05-vault-cloud-design.md`.
 
-**Purpose:** This document defines every type of content that may enter the vault, how it is classified on the IDE side, and what the indexing pipeline must produce for each type so that local (IDE, SQLite + sqlite-vec) and cloud (RDS + pgvector) indexes stay byte-identical.
+**Purpose:** This document defines every type of content that may enter the vault, how it is classified on the IDE side, and what the indexing pipeline must produce for each type so that local (IDE, SQLite + FTS5 + local MiniLM embeddings) and cloud (RDS + pgvector) indexes stay aligned.
 
-**Current local implementation:** the desktop vault now has a local-first extractor layer for PDFs, Word documents, RTF, EPUB, spreadsheets, Parquet, HTML/bookmarks, SVG text, and common archives. See [`VAULT_LOCAL_EXTRACTION.md`](./VAULT_LOCAL_EXTRACTION.md) for the exact local support matrix, status behavior, re-extract command, and the `TextExtractor` cloud adapter contract.
+**Current local implementation:** the desktop vault now has a local-first extractor layer for PDFs, Word documents, RTF, EPUB, spreadsheets, Parquet, HTML/bookmarks, SVG text, and common archives. See [`VAULT_LOCAL_EXTRACTION.md`](./VAULT_LOCAL_EXTRACTION.md) for the exact local support matrix, status behavior, re-extract command, and the `TextExtractor` cloud adapter contract. See [`VAULT_LOCAL_INDEX_SCHEMA.md`](./VAULT_LOCAL_INDEX_SCHEMA.md) for the canonical local SQLite schema and the RDS mirror mapping.
 
-Embedding model (both sides): **OpenAI `text-embedding-3-small`, 1536 dim**. Chunk size: ~500 tokens, 50-token overlap. Deterministic chunker — same input must produce identical chunks in local and cloud.
+Embedding model (both sides): **local MiniLM (`all-MiniLM-L6-v2`), 384 dim**. Chunk size: 500 words with 50-word overlap. Deterministic chunker: same input must produce identical chunks in local and cloud.
 
 ---
 
