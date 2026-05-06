@@ -78,6 +78,7 @@ pub async fn vault_drop_paths(
     memory_type: MemoryType,
     app: AppHandle,
     state: State<'_, VaultState>,
+    auth_state: State<'_, crate::auth_commands::AuthState>,
     provider_auth: State<'_, crate::provider_commands::ProviderAuthState>,
 ) -> Result<Vec<String>, String> {
     let vault = get_vault(&state).await?;
@@ -115,9 +116,9 @@ pub async fn vault_drop_paths(
     );
 
     // fire-and-forget: best-effort remote sync
-    let token = crate::auth_commands::id_token_snapshot(&provider_auth).await;
+    let token = crate::auth_commands::fresh_id_token_snapshot(&auth_state, &provider_auth).await;
     if token.is_none() {
-        warn!("vault_sync: no access token, skipping remote sync");
+        warn!("vault_sync: no fresh id token, skipping remote sync");
     }
     let vault_clone = vault.clone();
     tauri::async_runtime::spawn(async move {
@@ -128,12 +129,24 @@ pub async fn vault_drop_paths(
                         info!(entry_id = %entry.id, %remote_id, "vault_sync: remote create ok");
                         // Upload file to S3 if there is a local blob
                         if let Some(blob_path) = &entry.vault_blob_path {
-                            let filename = std::path::Path::new(blob_path)
-                                .file_name()
-                                .and_then(|n| n.to_str())
+                            let filename = entry.source_path.as_deref()
+                                .and_then(|source| {
+                                    std::path::Path::new(source)
+                                        .file_name()
+                                        .and_then(|n| n.to_str())
+                                })
+                                .or_else(|| {
+                                    std::path::Path::new(blob_path)
+                                        .file_name()
+                                        .and_then(|n| n.to_str())
+                                })
                                 .unwrap_or("file");
+                            let content_type = entry
+                                .mime
+                                .as_deref()
+                                .unwrap_or("application/octet-stream");
                             match crate::vault_sync_commands::remote_request_upload_url(
-                                &token, &remote_id, filename, "application/octet-stream",
+                                &token, &remote_id, filename, content_type,
                             ).await {
                                 Ok((presigned_url, content_type)) => {
                                     match crate::vault_sync_commands::upload_file_to_s3(
