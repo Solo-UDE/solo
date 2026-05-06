@@ -10,6 +10,7 @@
     "build:bundle": "tsup src/index.ts --format esm --target node18 --external bun:sqlite --external @xenova/transformers --external onnxruntime-node --clean --minify --no-splitting",
     "dev": "tsup src/index.ts --format esm --target node18 --external bun:sqlite --external @xenova/transformers --external onnxruntime-node --watch",
     "typecheck": "tsc --noEmit",
+    "test": "bun test",
     "start": "node dist/index.js"
   },
   "dependencies": {

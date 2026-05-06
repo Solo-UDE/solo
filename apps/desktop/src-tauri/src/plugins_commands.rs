@@ -5,8 +5,8 @@
 
 use solo_core::settings as settings_io;
 use solo_plugins::{
-    LoaderConfig, PluginId as CoreId, PluginSource as CoreSource, PluginStore,
-    PluginStoreError, PluginToggles, get_plugin_detail, list_plugins, load_plugin_manifest,
+    get_plugin_detail, list_plugins, load_plugin_manifest, LoaderConfig, PluginId as CoreId,
+    PluginSource as CoreSource, PluginStore, PluginStoreError, PluginToggles,
 };
 use solo_protocol::{
     PluginDetail, PluginId, PluginInstallResult, PluginInterface, PluginListOutcome,
@@ -29,15 +29,15 @@ impl PluginsState {
         Self { home_dir }
     }
 
-    fn solo_home(&self) -> PathBuf {
+    pub(crate) fn solo_home(&self) -> PathBuf {
         self.home_dir.join(".solo")
     }
 
-    fn claude_plugins_dir(&self) -> PathBuf {
+    pub(crate) fn claude_plugins_dir(&self) -> PathBuf {
         self.home_dir.join(".claude").join("plugins")
     }
 
-    fn codex_cache_dir(&self) -> PathBuf {
+    pub(crate) fn codex_cache_dir(&self) -> PathBuf {
         self.home_dir.join(".codex").join("plugins").join("cache")
     }
 }
@@ -277,15 +277,16 @@ pub async fn plugins_install_local(
     Ok(PluginInstallResult {
         id: wire_id(result.id),
         version: result.version,
-        root_path: result.installed_path.as_path().to_string_lossy().into_owned(),
+        root_path: result
+            .installed_path
+            .as_path()
+            .to_string_lossy()
+            .into_owned(),
     })
 }
 
 #[tauri::command]
-pub async fn plugins_uninstall(
-    id: PluginId,
-    state: State<'_, PluginsState>,
-) -> Result<(), String> {
+pub async fn plugins_uninstall(id: PluginId, state: State<'_, PluginsState>) -> Result<(), String> {
     let core_id = core_id(id.clone())?;
     // Only Local/Marketplace plugins live in our cache; adapters are read-only.
     if core_id.marketplace != "local" && !core_id.marketplace.starts_with("marketplace-") {

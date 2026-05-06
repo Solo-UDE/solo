@@ -14,7 +14,7 @@ The single biggest differentiator between Solo and generic AI coding tools is **
 
 All agent prompts now enforce **Phosphor Icons** (`@phosphor-icons/react`) as the exclusive icon library:
 
-- **Reference file**: `server/src/agents/coding/prompts/phosphor-icons-reference.ts` — 1,512 icon names extracted from `phosphor-icons/Fonts/regular/selection.json`
+- **Reference file**: historical prompt source from the removed `server/` backend — 1,512 icon names extracted from `phosphor-icons/Fonts/regular/selection.json`
 - **System prompt**: `<icon_policy>` block injects the full icon catalog so the model picks from real, existing names
 - **All agents updated**: design-kit, template, clone prompts all reference Phosphor instead of Lucide
 - **Emoji ban**: `<no_emoji_policy>` block prohibits emoji characters everywhere in generated code
@@ -49,7 +49,7 @@ Full reference: `.claude/skills/vercel-react-best-practices/AGENTS.md`
 
 ## Source File Mapping
 
-Each document maps to source files in the Solo server codebase (`solo-oauth/server/`):
+These documents preserve the prompt architecture imported from the old server codebase. The active Solo agent runtime is now the desktop `agent-bridge` sidecar; these paths are historical source mappings, not live backend ownership:
 
 | Document | Solo Source File(s) | Key Changes |
 |----------|---------------------|-------------|

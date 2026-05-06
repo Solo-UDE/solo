@@ -6,14 +6,14 @@
 use solo_auth::{
     models::{get_all_models, get_models_for_provider},
     oauth::{
-        AuthMethodInfo, OAuthFlowResult, OAuthMethod, OAuthState,
-        AnthropicOAuthConfig, OpenAIOAuthConfig,
-        start_callback_server, start_callback_server_on,
+        start_callback_server, start_callback_server_on, AnthropicOAuthConfig, AuthMethodInfo,
+        OAuthFlowResult, OAuthMethod, OAuthState, OpenAIOAuthConfig,
     },
     CredentialManager, ProviderType,
 };
 use solo_protocol::ClaudeSetupStatus;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::State;
 use tokio::sync::RwLock;
@@ -47,6 +47,56 @@ impl Default for ProviderAuthState {
     fn default() -> Self {
         Self::new()
     }
+}
+
+fn shell_claude_path() -> Option<PathBuf> {
+    let output = std::process::Command::new("/bin/zsh")
+        .args(["-lc", "command -v claude"])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    (!path.is_empty()).then(|| PathBuf::from(path))
+}
+
+fn common_claude_paths() -> Vec<PathBuf> {
+    let home = std::env::var("HOME").ok().map(PathBuf::from);
+    let mut paths = Vec::new();
+
+    if let Some(home) = home {
+        paths.extend([
+            home.join(".local/bin/claude"),
+            home.join(".bun/bin/claude"),
+            home.join(".npm-global/bin/claude"),
+        ]);
+    }
+
+    paths.extend([
+        PathBuf::from("/opt/homebrew/bin/claude"),
+        PathBuf::from("/usr/local/bin/claude"),
+    ]);
+
+    paths
+}
+
+fn find_claude_cli() -> Option<PathBuf> {
+    shell_claude_path().or_else(|| {
+        common_claude_paths()
+            .into_iter()
+            .find(|path| path.is_file())
+    })
+}
+
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+fn applescript_quote(value: &str) -> String {
+    format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
 // =============================================================================
@@ -83,14 +133,16 @@ pub struct ModelInfoResponse {
 #[tauri::command]
 pub async fn get_providers() -> Result<Vec<String>, String> {
     debug!("Getting available providers");
-    Ok(vec!["anthropic".to_string(), "openai".to_string(), "gemini".to_string()])
+    Ok(vec![
+        "anthropic".to_string(),
+        "openai".to_string(),
+        "gemini".to_string(),
+    ])
 }
 
 /// Get the currently active provider
 #[tauri::command]
-pub async fn get_active_provider(
-    state: State<'_, ProviderAuthState>,
-) -> Result<String, String> {
+pub async fn get_active_provider(state: State<'_, ProviderAuthState>) -> Result<String, String> {
     debug!("Getting active provider");
     let provider = state.active_provider.read().await;
     Ok(provider.as_str().to_string())
@@ -122,12 +174,11 @@ pub async fn get_provider_status(
     let provider_type = ProviderType::from_str(&provider)
         .ok_or_else(|| format!("Unknown provider: {}", provider))?;
 
-    let has_credentials = state.credentials
-        .has_credentials(provider_type)
-        .await;
+    let has_credentials = state.credentials.has_credentials(provider_type).await;
 
     let credential_source = if has_credentials {
-        state.credentials
+        state
+            .credentials
             .get_credential_source(provider_type)
             .await
             .ok()
@@ -165,7 +216,8 @@ pub async fn set_credentials(
         .await
         .map_err(|e| e.to_string())?;
 
-    state.credentials
+    state
+        .credentials
         .set_credentials(provider_type, &api_key)
         .await
         .map_err(|e| e.to_string())
@@ -196,7 +248,8 @@ pub async fn clear_credentials(
     let provider_type = ProviderType::from_str(&provider)
         .ok_or_else(|| format!("Unknown provider: {}", provider))?;
 
-    state.credentials
+    state
+        .credentials
         .clear_credentials(provider_type)
         .await
         .map_err(|e| e.to_string())
@@ -270,7 +323,8 @@ pub async fn get_auth_method(
     let provider_type = ProviderType::from_str(&provider)
         .ok_or_else(|| format!("Unknown provider: {}", provider))?;
 
-    state.credentials
+    state
+        .credentials
         .get_auth_method_info(provider_type)
         .await
         .map_err(|e| e.to_string())
@@ -282,10 +336,7 @@ pub async fn get_auth_method(
 /// "Test connection" buttons; also called internally before
 /// `set_credentials` persists the key.
 #[tauri::command]
-pub async fn validate_api_key(
-    provider: String,
-    api_key: String,
-) -> Result<(), String> {
+pub async fn validate_api_key(provider: String, api_key: String) -> Result<(), String> {
     debug!(provider = %provider, "Validating API key");
     let provider_type = ProviderType::from_str(&provider)
         .ok_or_else(|| format!("Unknown provider: {}", provider))?;
@@ -314,16 +365,18 @@ pub async fn start_oauth_flow(
         ProviderType::Anthropic => {
             AnthropicOAuthConfig::build_auth_url().map_err(|e| e.to_string())?
         }
-        ProviderType::OpenAI => {
-            OpenAIOAuthConfig::build_auth_url().map_err(|e| e.to_string())?
-        }
+        ProviderType::OpenAI => OpenAIOAuthConfig::build_auth_url().map_err(|e| e.to_string())?,
         ProviderType::Gemini => {
-            return Err(format!("{} does not support OAuth", provider_type.display_name()));
+            return Err(format!(
+                "{} does not support OAuth",
+                provider_type.display_name()
+            ));
         }
     };
 
     // Store the OAuth state for later verification
-    state.oauth_pending
+    state
+        .oauth_pending
         .write()
         .await
         .insert(oauth_state.state.clone(), oauth_state);
@@ -341,7 +394,8 @@ pub async fn complete_oauth_flow(
     info!("Completing OAuth flow");
 
     // Look up the pending OAuth state
-    let pending_state = state.oauth_pending
+    let pending_state = state
+        .oauth_pending
         .write()
         .await
         .remove(&oauth_state)
@@ -360,7 +414,8 @@ pub async fn complete_oauth_flow(
                 .await
                 .map_err(|e| e.to_string())?;
 
-            state.credentials
+            state
+                .credentials
                 .set_oauth_token(provider_type, token)
                 .await
                 .map_err(|e| e.to_string())?;
@@ -370,13 +425,17 @@ pub async fn complete_oauth_flow(
                 .await
                 .map_err(|e| e.to_string())?;
 
-            state.credentials
+            state
+                .credentials
                 .set_openai_oauth_token(token)
                 .await
                 .map_err(|e| e.to_string())?;
         }
         ProviderType::Gemini => {
-            return Err(format!("{} does not support OAuth", provider_type.display_name()));
+            return Err(format!(
+                "{} does not support OAuth",
+                provider_type.display_name()
+            ));
         }
     }
 
@@ -401,8 +460,7 @@ pub async fn wait_for_oauth_callback(
 
     let result = match provider_str {
         "openai" => {
-            start_callback_server_on(&expected_state, None, OpenAIOAuthConfig::CALLBACK_PORT)
-                .await
+            start_callback_server_on(&expected_state, None, OpenAIOAuthConfig::CALLBACK_PORT).await
         }
         _ => start_callback_server(&expected_state, None).await,
     }
@@ -422,7 +480,8 @@ pub async fn disconnect_oauth(
     let provider_type = ProviderType::from_str(&provider)
         .ok_or_else(|| format!("Unknown provider: {}", provider))?;
 
-    state.credentials
+    state
+        .credentials
         .disconnect_oauth(provider_type)
         .await
         .map_err(|e| e.to_string())
@@ -515,12 +574,15 @@ pub async fn sign_out_profile(
 
 /// Check if Claude Code auth is complete (token exists in keychain)
 #[tauri::command]
-pub async fn check_claude_auth_status(
-    state: State<'_, ProviderAuthState>,
-) -> Result<bool, String> {
+pub async fn check_claude_auth_status(state: State<'_, ProviderAuthState>) -> Result<bool, String> {
     debug!("Checking Claude Code auth status");
 
-    let info = state.credentials
+    // `claude login` happens outside this process. Force a fresh read so the
+    // Verify button sees credentials written after the modal was opened.
+    state.credentials.clear_cache().await;
+
+    let info = state
+        .credentials
         .get_auth_method_info(ProviderType::Anthropic)
         .await
         .map_err(|e| e.to_string())?;
@@ -533,12 +595,7 @@ pub async fn check_claude_auth_status(
 pub async fn check_claude_cli_installed() -> Result<bool, String> {
     debug!("Checking if Claude CLI is installed");
 
-    let output = std::process::Command::new("/bin/zsh")
-        .args(["-lc", "which claude"])
-        .output()
-        .map_err(|e| e.to_string())?;
-
-    Ok(output.status.success())
+    Ok(find_claude_cli().is_some())
 }
 
 /// Open Terminal and run `claude login` to trigger the native login flow
@@ -546,10 +603,19 @@ pub async fn check_claude_cli_installed() -> Result<bool, String> {
 pub async fn start_claude_login() -> Result<(), String> {
     info!("Starting Claude Code login");
 
+    let command = if let Some(path) = find_claude_cli() {
+        format!("{} login", shell_quote(&path.to_string_lossy()))
+    } else {
+        "claude login".to_string()
+    };
+
     std::process::Command::new("osascript")
         .args([
             "-e",
-            "tell application \"Terminal\" to do script \"claude login\"",
+            &format!(
+                "tell application \"Terminal\" to do script {}",
+                applescript_quote(&command)
+            ),
         ])
         .spawn()
         .map_err(|e| format!("Failed to open Terminal with claude login: {}", e))?;
@@ -601,15 +667,9 @@ pub async fn verify_claude_setup(
     };
 
     // 1. Check CLI installation
-    match std::process::Command::new("/bin/zsh").args(["-lc", "which claude"]).output() {
-        Ok(output) if output.status.success() => {
-            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            status.cli_installed = true;
-            if !path.is_empty() {
-                status.cli_path = Some(path);
-            }
-        }
-        _ => {}
+    if let Some(path) = find_claude_cli() {
+        status.cli_installed = true;
+        status.cli_path = Some(path.to_string_lossy().into_owned());
     }
 
     // 2. Read credentials with full detail
@@ -659,7 +719,8 @@ pub async fn verify_claude_setup(
     }
 
     // 4. CLI mode is available when CLI is installed and credentials exist
-    status.cli_mode_available = status.cli_installed && status.credentials_found && !status.token_expired;
+    status.cli_mode_available =
+        status.cli_installed && status.credentials_found && !status.token_expired;
 
     // 5. API verification
     if status.requires_cli_mode {

@@ -4,7 +4,7 @@
   "version": "0.2.0-beta.3",
   "identifier": "com.solo.ide",
   "build": {
-    "beforeDevCommand": "bun run dev:vite",
+    "beforeDevCommand": "cd ../.. && bun run bridge:ensure:mac && cd apps/desktop && bun run dev:vite",
     "devUrl": "http://localhost:5173",
     "beforeBuildCommand": "bun run build:vite && cd ../.. && bun run bridge:compile:mac",
     "frontendDist": "../dist"

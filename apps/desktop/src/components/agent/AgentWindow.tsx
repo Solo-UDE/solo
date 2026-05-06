@@ -490,11 +490,11 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 				</div>
 			)}
 
-			{connectionState === 'stale' && (
-				<div className="mx-auto mt-3 w-full max-w-[56rem] rounded-[14px] border border-warning/20 bg-warning/5 px-4 py-2 text-sm text-warning" role="alert">
-					Session expired. Your next message will start a fresh context.
-				</div>
-			)}
+				{connectionState === 'stale' && (
+					<div className="mx-auto mt-3 w-full max-w-[56rem] rounded-[14px] border border-warning/20 bg-warning/5 px-4 py-2 text-sm text-warning" role="alert">
+						Session resume failed. Start a new continuation or fork this session before sending more.
+					</div>
+				)}
 
 			{error && (
 				<div className="mx-auto mt-3 w-full max-w-[56rem] rounded-[14px] border border-destructive/20 bg-destructive/10 px-4 py-2" role="alert">

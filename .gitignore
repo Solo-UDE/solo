@@ -99,3 +99,5 @@ packages/ui/design-dump/codex/manual/*.json
 infra/cdk.out.auth/
 .claude/scheduled_tasks.lock
 agent-bridge/dist/*
+!agent-bridge/dist/*.js
+!agent-bridge/dist/*.js.map

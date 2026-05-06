@@ -31,8 +31,10 @@ export type {
 \tAttachmentContentBlock,
 \tBridgeAgentMessage,
 \tPermissionRequest,
+\tProviderCapabilities,
 \tSessionConfig,
 \tTokenUsage,
+\tToolPolicyConfig,
 } from '../types/agent-protocol';
 `;
 

@@ -8,7 +8,13 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import { enableMapSet } from 'immer';
-import type { BridgeAgentMessage, PermissionRequest, TokenUsage, AttachmentContentBlock } from '../bindings';
+import type {
+	AttachmentContentBlock,
+	BridgeAgentMessage,
+	PermissionRequest,
+	TokenUsage,
+	ToolPolicyConfig,
+} from '../bindings';
 import * as backend from '../lib/backend';
 import {
 	loadAllSessions,
@@ -17,7 +23,7 @@ import {
 	deleteSessionFile,
 	createDebouncedSessionSave,
 } from '../lib/sessionPersistence';
-import { DEFAULT_MODEL_ID } from '../lib/constants';
+import { capabilitiesForModel, DEFAULT_MODEL_ID, providerForModel } from '../lib/constants';
 import { useSettingsStore } from './settingsStore';
 import { useSkillStore } from './skillStore';
 
@@ -322,7 +328,11 @@ interface AgentActions {
 	// Session management
 	createSession: (
 		model?: string,
-		options?: { readonly allowedTools?: readonly string[] },
+		options?: {
+			readonly allowedTools?: readonly string[];
+			readonly toolPolicy?: ToolPolicyConfig;
+			readonly selectedSkills?: readonly string[];
+		},
 	) => Promise<string>;
 	forkSession: (sourceSessionId: string, model?: string) => Promise<string>;
 	setActiveSession: (sessionId: string) => void;
@@ -530,23 +540,36 @@ export const useAgentStore = create<AgentStore>()(
 				});
 			}
 
-			const agentModel = session.model || DEFAULT_MODEL_ID;
-			const maxTokens = useSettingsStore.getState().ai.maxTokens;
+				const agentModel = session.model || DEFAULT_MODEL_ID;
+				const maxTokens = useSettingsStore.getState().ai.maxTokens;
+				const provider = providerForModel(agentModel);
+				const providerCapabilities = capabilitiesForModel(agentModel);
+				const sessionMode = providerCapabilities.agent ? 'agent' : 'chat';
 
-			try {
 				try {
-					// Attempt resume with persisted SDK session ID
-					if (session.sdkSessionId && session.resumable) {
-						await backend.agentCreateSession(sessionId, {
-							model: agentModel,
-							maxTokens,
-							resumeSessionId: session.sdkSessionId,
-							cwd: session.workspacePath,
-						});
-					} else {
-						// No SDK session to resume — create fresh bridge session
-						await backend.agentCreateSession(sessionId, { model: agentModel, maxTokens, cwd: session.workspacePath });
-					}
+					try {
+						// Attempt resume with persisted SDK session ID
+						if (session.sdkSessionId && session.resumable) {
+							await backend.agentCreateSession(sessionId, {
+								model: agentModel,
+								maxTokens,
+								resumeSessionId: session.sdkSessionId,
+								cwd: session.workspacePath,
+								provider,
+								providerCapabilities,
+								sessionMode,
+							});
+						} else {
+							// No SDK session to resume — create fresh bridge session
+							await backend.agentCreateSession(sessionId, {
+								model: agentModel,
+								maxTokens,
+								cwd: session.workspacePath,
+								provider,
+								providerCapabilities,
+								sessionMode,
+							});
+						}
 
 					set((s) => {
 						const sess = s.sessions.get(sessionId);
@@ -555,35 +578,18 @@ export const useAgentStore = create<AgentStore>()(
 							sess.resumeError = undefined;
 						}
 					});
-				} catch (error) {
-					const errorMsg = error instanceof Error ? error.message : String(error);
-					console.error(`[Agent] Resume failed for ${sessionId}: ${errorMsg}`);
-
-					// Auto-fork: create fresh bridge session, preserving message history
-					try {
-						await backend.agentCreateSession(sessionId, { model: agentModel, maxTokens, cwd: session.workspacePath });
+					} catch (error) {
+						const errorMsg = error instanceof Error ? error.message : String(error);
+						console.error(`[Agent] Resume failed for ${sessionId}: ${errorMsg}`);
 						set((s) => {
 							const sess = s.sessions.get(sessionId);
 							if (sess) {
-								sess.connectionState = 'active';
-								sess.resumable = false;
-								sess.sdkSessionId = undefined;
-								sess.resumeError = undefined;
+								sess.connectionState = 'stale';
+								sess.resumeError = `SDK resume failed. Start a new continuation or fork this session. ${errorMsg}`;
 							}
 						});
-					} catch (forkError) {
-						const forkMsg = forkError instanceof Error ? forkError.message : String(forkError);
-						console.error(`[Agent] Fork also failed for ${sessionId}: ${forkMsg}`);
-						set((s) => {
-							const sess = s.sessions.get(sessionId);
-							if (sess) {
-								sess.connectionState = 'archived';
-								sess.resumeError = forkMsg;
-							}
-						});
-						throw forkError;
+						throw error;
 					}
-				}
 			} finally {
 				// Always release the resumption lock
 				_resumingLocks.delete(sessionId);
@@ -660,16 +666,26 @@ export const useAgentStore = create<AgentStore>()(
 		// Session Management
 		// =================================================================
 
-		createSession: async (
-			model?: string,
-			options?: { readonly allowedTools?: readonly string[] },
-		) => {
-			const sessionId = generateSessionId();
-			const agentModel = model || DEFAULT_MODEL_ID;
-			const maxTokens = useSettingsStore.getState().ai.maxTokens;
-			const allowedTools = options?.allowedTools
-				? [...options.allowedTools]
-				: undefined;
+			createSession: async (
+				model?: string,
+				options?: {
+					readonly allowedTools?: readonly string[];
+					readonly toolPolicy?: ToolPolicyConfig;
+					readonly selectedSkills?: readonly string[];
+				},
+			) => {
+				const sessionId = generateSessionId();
+				const agentModel = model || DEFAULT_MODEL_ID;
+				const maxTokens = useSettingsStore.getState().ai.maxTokens;
+				const provider = providerForModel(agentModel);
+				const providerCapabilities = capabilitiesForModel(agentModel);
+				const sessionMode = providerCapabilities.agent ? 'agent' : 'chat';
+				const allowedTools = options?.allowedTools
+					? [...options.allowedTools]
+					: undefined;
+				const selectedSkills = options?.selectedSkills
+					? [...options.selectedSkills]
+					: undefined;
 
 			try {
 				// If a worktree is active, use its path as the session cwd
@@ -683,12 +699,17 @@ export const useAgentStore = create<AgentStore>()(
 				const workspacePath = useFileExplorerStore.getState().rootPath ?? undefined;
 				const cwd = activeWt?.path ?? workspacePath;
 
-				await backend.agentCreateSession(sessionId, {
-					model: agentModel,
-					maxTokens,
-					cwd,
-					allowedTools,
-				});
+					await backend.agentCreateSession(sessionId, {
+						model: agentModel,
+						maxTokens,
+						cwd,
+						provider,
+						providerCapabilities,
+						sessionMode,
+						allowedTools,
+						selectedSkills,
+						toolPolicy: options?.toolPolicy,
+					});
 
 				set((state) => {
 					state.sessions.set(sessionId, {
@@ -737,9 +758,12 @@ export const useAgentStore = create<AgentStore>()(
 			if (!sourceSession) throw new Error(`Source session ${sourceSessionId} not found`);
 			if (!sourceSession.sdkSessionId) throw new Error('Source session has no SDK session ID to fork from');
 
-			const sessionId = generateSessionId();
-			const agentModel = model || sourceSession.model || DEFAULT_MODEL_ID;
-			const maxTokens = useSettingsStore.getState().ai.maxTokens;
+				const sessionId = generateSessionId();
+				const agentModel = model || sourceSession.model || DEFAULT_MODEL_ID;
+				const maxTokens = useSettingsStore.getState().ai.maxTokens;
+				const provider = providerForModel(agentModel);
+				const providerCapabilities = capabilitiesForModel(agentModel);
+				const sessionMode = providerCapabilities.agent ? 'agent' : 'chat';
 
 			try {
 				const { useFileExplorerStore } = await import('@/stores/fileExplorerStore');
@@ -755,10 +779,13 @@ export const useAgentStore = create<AgentStore>()(
 				await backend.agentCreateSession(sessionId, {
 					model: agentModel,
 					maxTokens,
-					resumeSessionId: sourceSession.sdkSessionId,
-					forkSession: true,
-					cwd,
-				});
+						resumeSessionId: sourceSession.sdkSessionId,
+						forkSession: true,
+						cwd,
+						provider,
+						providerCapabilities,
+						sessionMode,
+					});
 
 				// Copy messages from source session for visual continuity
 				const sourceMessages = get().messages.get(sourceSessionId) || [];
@@ -1179,7 +1206,8 @@ export const useAgentStore = create<AgentStore>()(
 						break;
 					}
 
-					case 'tool_use': {
+						case 'tool_use':
+						case 'tool_result': {
 						const meta = message.metadata;
 						if (!meta?.toolId) break;
 
