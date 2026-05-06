@@ -14,7 +14,7 @@ import * as readline from "readline";
 import { createHash, randomUUID } from "crypto";
 import { appendFileSync, mkdirSync as mkdirSync2 } from "fs";
 import { homedir as homedir5 } from "os";
-import { join as join6 } from "path";
+import { join as join7 } from "path";
 
 // src/agent.ts
 import { query, createSdkMcpServer as createSdkMcpServer2 } from "@anthropic-ai/claude-agent-sdk";
@@ -170,7 +170,7 @@ ${h.content.trim()}`;
 function sanitizeFts(raw) {
   const cleaned = raw.replace(/["']/g, " ").replace(/\s+/g, " ").trim();
   if (!cleaned) return "";
-  const terms = cleaned.split(" ").filter((t) => t.length >= 2).map((t) => t.replace(/[^\p{L}\p{N}_-]/gu, "")).filter(Boolean);
+  const terms = cleaned.split(" ").filter((t) => t.length >= 2).map((t) => t.replace(/[^\p{L}\p{N}_-]/gu, "")).filter(Boolean).map((t) => `"${t}"`);
   if (terms.length === 0) return "";
   return terms.join(" OR ");
 }
@@ -494,6 +494,7 @@ ${hits.map((h) => `  ${h.entryTitle} \u2192 ${h.score.toFixed(4)}`).join("\n")}
 
 // src/agent.ts
 import * as fs4 from "fs";
+import * as path4 from "path";
 
 // src/credentials.ts
 import { execFileSync } from "child_process";
@@ -1058,12 +1059,12 @@ var PermissionManager = class _PermissionManager {
     if (!ws) return null;
     try {
       const fs5 = __require("fs");
-      const path4 = __require("path");
+      const path5 = __require("path");
       const os2 = __require("os");
       const paths = [
-        path4.join(os2.homedir(), ".solo", "settings.json"),
-        path4.join(ws, ".solo", "settings.json"),
-        path4.join(ws, ".solo", "settings.local.json")
+        path5.join(os2.homedir(), ".solo", "settings.json"),
+        path5.join(ws, ".solo", "settings.json"),
+        path5.join(ws, ".solo", "settings.local.json")
       ];
       let combinedMtime = 0;
       for (const p of paths) {
@@ -2200,6 +2201,39 @@ function getMessageContentArray(message) {
   }
   return content;
 }
+function isExecutable(candidate) {
+  try {
+    fs4.accessSync(candidate, fs4.constants.X_OK);
+    return fs4.statSync(candidate).isFile();
+  } catch {
+    return false;
+  }
+}
+function resolveClaudeCodeExecutable() {
+  const envOverride = process.env.SOLO_CLAUDE_CODE_EXECUTABLE ?? process.env.CLAUDE_CODE_EXECUTABLE ?? process.env.CLAUDE_CODE_PATH;
+  if (envOverride) {
+    if (isExecutable(envOverride)) {
+      return envOverride;
+    }
+    logger6.warn({ path: envOverride }, "Configured Claude Code executable is not executable");
+  }
+  const homeDir = process.env.HOME ?? "";
+  const pathDirs = (process.env.PATH ?? "").split(path4.delimiter).filter(Boolean);
+  const candidates = [
+    ...pathDirs.map((dir) => path4.join(dir, "claude")),
+    path4.join(homeDir, ".local", "bin", "claude"),
+    path4.join(homeDir, ".bun", "bin", "claude"),
+    path4.join(homeDir, ".npm-global", "bin", "claude"),
+    "/opt/homebrew/bin/claude",
+    "/usr/local/bin/claude"
+  ];
+  for (const candidate of [...new Set(candidates)]) {
+    if (isExecutable(candidate)) {
+      return candidate;
+    }
+  }
+  return void 0;
+}
 var MessageQueue = class {
   queue = [];
   resolvers = [];
@@ -2549,6 +2583,13 @@ data, screenshots, notes). It functions as your durable memory across sessions.
       // Load CLAUDE.md from project directory for project-specific instructions
       settingSources: ["project"]
     };
+    const claudeCodeExecutable = resolveClaudeCodeExecutable();
+    if (claudeCodeExecutable) {
+      options.pathToClaudeCodeExecutable = claudeCodeExecutable;
+      logger6.info({ path: claudeCodeExecutable }, "Using Claude Code executable");
+    } else {
+      logger6.warn("Claude Code executable not found on PATH; SDK will try its bundled CLI");
+    }
     if (this._thinkingMode && this._thinkingBudget > 0) {
       options.maxThinkingTokens = this._thinkingBudget;
       const modeName = this._thinkingBudget <= 4096 ? "think" : this._thinkingBudget <= 10240 ? "hard" : "ultra";
@@ -3314,7 +3355,7 @@ var Emitter = class {
 
 // src/session-manager.ts
 var logger7 = createLogger("SessionManager");
-var LEDGER_DIR = join6(homedir5(), ".solo", "agent-ledger");
+var LEDGER_DIR = join7(homedir5(), ".solo", "agent-ledger");
 var PROVIDER_CAPABILITIES = {
   anthropic: { chat: true, agent: true, tools: true, mcp: true, resume: true },
   openai: { chat: true, agent: false, tools: false, mcp: false, resume: false },
@@ -3410,7 +3451,7 @@ var SessionManager = class extends Disposable {
     try {
       mkdirSync2(LEDGER_DIR, { recursive: true });
       appendFileSync(
-        join6(LEDGER_DIR, `${sessionId}.jsonl`),
+        join7(LEDGER_DIR, `${sessionId}.jsonl`),
         `${JSON.stringify({
           ts: (/* @__PURE__ */ new Date()).toISOString(),
           sessionId,
@@ -3630,6 +3671,7 @@ var SessionManager = class extends Disposable {
     void (async () => {
       try {
         const toolUseMap = this.sessionToolUseMaps.get(sessionId);
+        let streamedTextForAssistant = "";
         for await (const rawMessage of agent.receiveResponse()) {
           if (state.cancelled) {
             break;
@@ -3663,6 +3705,7 @@ var SessionManager = class extends Disposable {
               if (deltaType === "text_delta") {
                 const textDelta = event.delta?.text;
                 if (textDelta !== void 0) {
+                  streamedTextForAssistant += textDelta;
                   this.emitAgentMessage(sessionId, { type: "text", content: textDelta });
                 }
               } else if (deltaType === "thinking_delta") {
@@ -3677,6 +3720,17 @@ var SessionManager = class extends Disposable {
           if (sdkMessage.type === "assistant") {
             const content = sdkMessage.message?.content;
             if (content === void 0) continue;
+            const assistantText = content.filter((block) => block.type === "text").map((block) => block.text ?? "").join("");
+            if (assistantText !== "") {
+              if (streamedTextForAssistant === "") {
+                this.emitAgentMessage(sessionId, { type: "text", content: assistantText });
+              } else if (assistantText.startsWith(streamedTextForAssistant)) {
+                const missingTail = assistantText.slice(streamedTextForAssistant.length);
+                if (missingTail !== "") {
+                  this.emitAgentMessage(sessionId, { type: "text", content: missingTail });
+                }
+              }
+            }
             for (const block of content) {
               if (block.type === "text") {
                 continue;
@@ -3718,6 +3772,7 @@ var SessionManager = class extends Disposable {
               });
               this.emitAgentMessage(sessionId, toolMessage);
             }
+            streamedTextForAssistant = "";
           } else if (sdkMessage.type === "user") {
             const content = sdkMessage.message?.content;
             if (!Array.isArray(content)) continue;
@@ -3753,7 +3808,7 @@ var SessionManager = class extends Disposable {
                 }
               }
             }
-          } else {
+          } else if (sdkMessage.type === "result") {
             const resultMsg = sdkMessage;
             if (resultMsg.usage !== void 0) {
               logger7.info(
@@ -3781,6 +3836,11 @@ var SessionManager = class extends Disposable {
               resultSubtype: resultMsg.subtype
             });
             setCorrelationId(void 0);
+          } else {
+            logger7.debug(
+              { sessionId, messageType: rawMessage.type },
+              "Ignoring non-result SDK message"
+            );
           }
         }
       } catch (error) {
