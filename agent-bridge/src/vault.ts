@@ -261,7 +261,8 @@ function sanitizeFts(raw: string): string {
     .split(' ')
     .filter((t) => t.length >= 2)
     .map((t) => t.replace(/[^\p{L}\p{N}_-]/gu, ''))
-    .filter(Boolean);
+    .filter(Boolean)
+    .map((t) => `"${t}"`);
   if (terms.length === 0) return '';
   return terms.join(' OR ');
 }
