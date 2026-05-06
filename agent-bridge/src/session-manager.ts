@@ -705,6 +705,7 @@ export class SessionManager extends Disposable {
       try {
         // Get the shared tool use map (created in createSession)
         const toolUseMap = this.sessionToolUseMaps.get(sessionId)!;
+        let streamedTextForAssistant = '';
 
         for await (const rawMessage of agent.receiveResponse()) {
           if (state.cancelled) {
@@ -753,6 +754,7 @@ export class SessionManager extends Disposable {
               if (deltaType === 'text_delta') {
                 const textDelta = event.delta?.text;
                 if (textDelta !== undefined) {
+                  streamedTextForAssistant += textDelta;
                   this.emitAgentMessage(sessionId, { type: 'text', content: textDelta });
                 }
               } else if (deltaType === 'thinking_delta') {
@@ -772,8 +774,23 @@ export class SessionManager extends Disposable {
             const content = sdkMessage.message?.content;
             if (content === undefined) continue;
 
+            const assistantText = content
+              .filter((block): block is TextBlock => block.type === 'text')
+              .map((block) => block.text ?? '')
+              .join('');
+
+            if (assistantText !== '') {
+              if (streamedTextForAssistant === '') {
+                this.emitAgentMessage(sessionId, { type: 'text', content: assistantText });
+              } else if (assistantText.startsWith(streamedTextForAssistant)) {
+                const missingTail = assistantText.slice(streamedTextForAssistant.length);
+                if (missingTail !== '') {
+                  this.emitAgentMessage(sessionId, { type: 'text', content: missingTail });
+                }
+              }
+            }
+
             for (const block of content) {
-              // Skip text blocks (already streamed via deltas)
               if (block.type === 'text') {
                 continue;
               }
@@ -835,6 +852,7 @@ export class SessionManager extends Disposable {
 
               this.emitAgentMessage(sessionId, toolMessage);
             }
+            streamedTextForAssistant = '';
           } else if (sdkMessage.type === 'user') {
             // =================================================================
             // Tool results
@@ -883,7 +901,7 @@ export class SessionManager extends Disposable {
                 }
               }
             }
-          } else {
+          } else if (sdkMessage.type === 'result') {
             // =================================================================
             // result messages
             // =================================================================
@@ -923,6 +941,11 @@ export class SessionManager extends Disposable {
             });
 
             setCorrelationId(undefined);
+          } else {
+            logger.debug(
+              { sessionId, messageType: (rawMessage as { type?: string }).type },
+              'Ignoring non-result SDK message'
+            );
           }
         }
       } catch (error) {
