@@ -84,6 +84,16 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 fn resolve_agent_bridge_path() -> PathBuf {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let dev_path = manifest_dir.join("../../../agent-bridge/dist/index.js");
+
+    // Dev builds run the Bun-built JS sidecar from the workspace so the
+    // agent-bridge watcher can update it without recompiling the Tauri app.
+    #[cfg(debug_assertions)]
+    if dev_path.exists() {
+        return dev_path;
+    }
+
     if let Ok(exe_path) = env::current_exe() {
         if let Some(exe_dir) = exe_path.parent() {
             for candidate in [
@@ -97,8 +107,6 @@ fn resolve_agent_bridge_path() -> PathBuf {
         }
     }
 
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let dev_path = manifest_dir.join("../../../agent-bridge/dist/index.js");
     if dev_path.exists() {
         return dev_path;
     }
