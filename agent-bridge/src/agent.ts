@@ -6,6 +6,7 @@ import { query, createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk';
 import { vaultSearchTool, fetchVaultContext, loadEmbeddingsCache } from './vault.js';
 
 import * as fs from 'node:fs';
+import * as path from 'node:path';
 
 import { ClaudeCredentials } from './credentials.js';
 import { createLogger } from './logger.js';
@@ -110,6 +111,48 @@ function getMessageContentArray(message: SDKMessage): unknown[] | null {
   }
   // Cast to unknown[] to satisfy type checker
   return content as unknown[];
+}
+
+function isExecutable(candidate: string): boolean {
+  try {
+    fs.accessSync(candidate, fs.constants.X_OK);
+    return fs.statSync(candidate).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function resolveClaudeCodeExecutable(): string | undefined {
+  const envOverride =
+    process.env.SOLO_CLAUDE_CODE_EXECUTABLE ??
+    process.env.CLAUDE_CODE_EXECUTABLE ??
+    process.env.CLAUDE_CODE_PATH;
+
+  if (envOverride) {
+    if (isExecutable(envOverride)) {
+      return envOverride;
+    }
+    logger.warn({ path: envOverride }, 'Configured Claude Code executable is not executable');
+  }
+
+  const homeDir = process.env.HOME ?? '';
+  const pathDirs = (process.env.PATH ?? '').split(path.delimiter).filter(Boolean);
+  const candidates = [
+    ...pathDirs.map((dir) => path.join(dir, 'claude')),
+    path.join(homeDir, '.local', 'bin', 'claude'),
+    path.join(homeDir, '.bun', 'bin', 'claude'),
+    path.join(homeDir, '.npm-global', 'bin', 'claude'),
+    '/opt/homebrew/bin/claude',
+    '/usr/local/bin/claude',
+  ];
+
+  for (const candidate of [...new Set(candidates)]) {
+    if (isExecutable(candidate)) {
+      return candidate;
+    }
+  }
+
+  return undefined;
 }
 
 export interface OrbitAgentConfig {
@@ -553,6 +596,14 @@ data, screenshots, notes). It functions as your durable memory across sessions.
       // Load CLAUDE.md from project directory for project-specific instructions
       settingSources: ['project'],
     };
+
+    const claudeCodeExecutable = resolveClaudeCodeExecutable();
+    if (claudeCodeExecutable) {
+      options.pathToClaudeCodeExecutable = claudeCodeExecutable;
+      logger.info({ path: claudeCodeExecutable }, 'Using Claude Code executable');
+    } else {
+      logger.warn('Claude Code executable not found on PATH; SDK will try its bundled CLI');
+    }
 
     // Only add thinking tokens if thinking mode is enabled and budget > 0
     if (this._thinkingMode && this._thinkingBudget > 0) {
