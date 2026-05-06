@@ -37,7 +37,7 @@ Options:
   -h, --help             Show this help.
 
 Env (shell or scripts/.env.release — gitignored):
-  SOLO_COGNITO_DOMAIN, SOLO_COGNITO_CLIENT_ID, SOLO_AWS_REGION, SOLO_API_ENDPOINT
+  SOLO_COGNITO_DOMAIN, SOLO_COGNITO_CLIENT_ID, SOLO_AWS_REGION, SOLO_API_ENDPOINT, SOLO_VAULT_API_ENDPOINT
   APPLE_SIGN_IDENTITY        e.g. "Developer ID Application: Foo (ABC123XYZ)"
   APPLE_ID, APPLE_APP_PASSWORD, APPLE_TEAM_ID   (unless --skip-notarize)
   TAURI_SIGNING_PRIVATE_KEY, TAURI_SIGNING_PRIVATE_KEY_PASSWORD  (unless --skip-updater)
@@ -75,6 +75,7 @@ command -v brew >/dev/null || { echo "brew required"                    >&2; exi
 : "${SOLO_COGNITO_CLIENT_ID:?missing}"
 : "${SOLO_AWS_REGION:?missing}"
 : "${SOLO_API_ENDPOINT:?missing}"
+: "${SOLO_VAULT_API_ENDPOINT:?missing}"
 : "${APPLE_SIGN_IDENTITY:?missing — 'Developer ID Application: ...' identity}"
 
 # The cert must already be in the login keychain (no import dance like CI).
