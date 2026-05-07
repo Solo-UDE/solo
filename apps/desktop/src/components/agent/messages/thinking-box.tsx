@@ -1,11 +1,9 @@
-import { ChevronDownIcon } from '@radix-ui/react-icons';
-import { Brain } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
-
-import { StreamdownNarrative } from './StreamdownNarrative';
-import { ExpandRegion } from './shared/ExpandRegion';
-import { ThinkingDots } from '../streaming/ThinkingDots';
-import { TextShimmer } from '../streaming/TextShimmer';
+import {
+  Reasoning,
+  ReasoningContent,
+  ReasoningTrigger,
+} from '@/components/ai-elements/reasoning';
+import { ShineFx } from '@/components/ai-elements/shimmer';
 
 import type { FC } from 'react';
 
@@ -36,83 +34,57 @@ export const ThinkingBox: FC<ThinkingBoxProps> = ({
   defaultExpanded = false,
   isStreaming = false,
 }) => {
-  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
-  const wasStreamingRef = useRef(false);
-
-  // Auto-expand when streaming starts, auto-collapse when streaming ends
-  useEffect(() => {
-    if (isStreaming && !wasStreamingRef.current) {
-      setIsExpanded(true);
-    } else if (!isStreaming && wasStreamingRef.current) {
-      setIsExpanded(false);
-    }
-    wasStreamingRef.current = isStreaming;
-  }, [isStreaming]);
-
-  const toggleExpanded = (): void => {
-    setIsExpanded(!isExpanded);
-  };
-
-  const durationText = formatDuration(thinkingDurationMs);
+  const durationSeconds = thinkingDurationMs > 0
+    ? Math.max(1, Math.ceil(thinkingDurationMs / 1000))
+    : undefined;
 
   return (
-    <div
-      className="rounded-lg border overflow-hidden mb-3 transition-all duration-200"
+    <Reasoning
+      className="mb-3 overflow-hidden rounded-lg border transition-all duration-200"
+      defaultOpen={isStreaming || defaultExpanded}
+      duration={durationSeconds}
+      isStreaming={isStreaming}
       style={{ borderColor: 'var(--border-tool)', background: 'var(--tool-output-bg)' }}
     >
-      {/* Header */}
-      <button
-        onClick={toggleExpanded}
-        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        aria-expanded={isExpanded}
-        aria-label={`Thought for ${durationText}, ${isExpanded ? 'expanded' : 'collapsed'}`}
-      >
-        {/* During streaming: ThinkingDots grid + shimmer label */}
-        {isStreaming ? (
-          <>
-            <ThinkingDots size={18} speed={1.2} />
-            <TextShimmer className="text-xs font-medium" duration={3}>
-              Deep reasoning in progress
-            </TextShimmer>
-          </>
-        ) : (
-          <>
-            {/* After streaming: Brain icon + static label */}
-            <Brain className="h-4 w-4 shrink-0 text-muted-foreground" />
+      <ReasoningTrigger
+        className="px-3 py-2 text-sm hover:bg-muted/30 focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        getThinkingMessage={(streaming, duration) => {
+          const durationText = duration ? formatDuration(duration * 1000) : 'a few seconds';
+
+          if (streaming) {
+            return (
+              <span className="flex items-center gap-1.5 text-xs font-medium">
+                <ShineFx
+                  as="span"
+                  className="text-xs font-medium"
+                  duration={1.4}
+                  variant="body-default-sm"
+                >
+                  Reasoning
+                </ShineFx>
+                {duration ? (
+                  <span className="tabular-nums text-muted-foreground/60">
+                    {durationText}
+                  </span>
+                ) : null}
+              </span>
+            );
+          }
+
+          return (
             <span className="text-xs font-medium">
               Thought for {durationText}
             </span>
-            {/* Duration badge */}
-            {thinkingDurationMs > 0 ? (
-              <span className="rounded-full bg-muted/40 text-[10px] px-2 py-0.5 tabular-nums text-muted-foreground">
-                {durationText}
-              </span>
-            ) : null}
-          </>
-        )}
+          );
+        }}
+      />
 
-        {/* Spacer */}
-        <div className="flex-1" />
-
-        {/* Expand/collapse caret */}
-        <ChevronDownIcon
-          width={14} height={14}
-          className={`shrink-0 transition-transform duration-200 ${
-            isExpanded ? 'rotate-0' : '-rotate-90'
-          }`}
-        />
-      </button>
-
-      {/* Collapsible Content — Orbit motion pattern */}
-      <ExpandRegion isExpanded={isExpanded}>
-        <div className="px-3 pb-3 pt-1">
-          <StreamdownNarrative
-            content={thinking}
-            isStreaming={isStreaming}
-            className="text-muted-foreground/80 text-sm leading-relaxed"
-          />
-        </div>
-      </ExpandRegion>
-    </div>
+      <ReasoningContent
+        className="px-3 pb-3 pt-1 text-sm leading-relaxed text-muted-foreground/80"
+        isStreaming={isStreaming}
+      >
+        {thinking}
+      </ReasoningContent>
+    </Reasoning>
   );
 };
