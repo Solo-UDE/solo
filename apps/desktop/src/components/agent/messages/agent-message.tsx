@@ -267,10 +267,17 @@ export const AgentMessage: FC<AgentMessageProps> = ({
               // entry.kind === 'content'
               const block = entry.block;
               const idx = entry.blockIndex;
+              const isActiveStreamingBlock = Boolean(
+                content.isStreaming && idx === blocks.length - 1,
+              );
               switch (block.type) {
                 case 'narrative':
                   return block.content ? (
-                    <AgentNarrative key={`block-${idx}`} content={block.content} isStreaming={content.isStreaming} />
+                    <AgentNarrative
+                      key={`block-${idx}`}
+                      content={block.content}
+                      isStreaming={isActiveStreamingBlock}
+                    />
                   ) : null;
                 case 'thinking':
                   return block.content ? (
@@ -278,7 +285,7 @@ export const AgentMessage: FC<AgentMessageProps> = ({
                       key={`block-${idx}`}
                       thinking={block.content}
                       thinkingDurationMs={block.durationMs}
-                      isStreaming={block.isStreaming}
+                      isStreaming={Boolean(content.isStreaming && block.isStreaming)}
                     />
                   ) : null;
                 case 'toolCall': {
