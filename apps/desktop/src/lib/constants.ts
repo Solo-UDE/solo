@@ -42,6 +42,7 @@ export const CLAUDE_SONNET_4_6 = 'claude-sonnet-4-6';
 export const CLAUDE_HAIKU_4_5 = 'claude-haiku-4-5-20251001';
 
 // OpenAI
+export const GPT_5_5 = 'gpt-5.5';
 export const GPT_5_4 = 'gpt-5.4';
 export const GPT_5_3_CODEX_SPARK = 'gpt-5.3-codex-spark';
 export const GPT_5_4_MINI = 'gpt-5.4-mini';
@@ -132,6 +133,14 @@ export const MODEL_OPTIONS: ModelOptionConfig[] = [
     iconType: 'claude',
   },
   // OpenAI models
+  {
+    value: GPT_5_5,
+    label: 'GPT-5.5',
+    description: 'Frontier coding and research model',
+    provider: 'openai',
+    iconType: 'openai',
+    textOnly: true,
+  },
   {
     value: GPT_5_4,
     label: 'GPT-5.4',
