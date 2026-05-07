@@ -151,12 +151,17 @@ export const useRepoStore = create<RepoStore>()(
       refreshWorktrees: async (repoPath: string) => {
         await withRefreshLock(async () => {
           const currentActive = get().activeRepoPath;
+          const { useFileExplorerStore } = await import('./fileExplorerStore');
+          const currentRoot = useFileExplorerStore.getState().rootPath;
           const needsSwitch = currentActive !== repoPath;
+          const needsRootBootstrap = currentActive === repoPath && !currentRoot;
 
           try {
             // If this repo isn't the active workspace, we need to
             // temporarily switch to it to list worktrees
-            if (needsSwitch) {
+            // On app startup, activeRepoPath is persisted but the Tauri
+            // workspace root is not, so bootstrap it before listing.
+            if (needsSwitch || needsRootBootstrap) {
               await fsApi.setWorkspaceRoot(repoPath);
             }
 
