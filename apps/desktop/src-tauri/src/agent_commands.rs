@@ -240,7 +240,9 @@ pub async fn agent_create_session(
                 if let Some(info) = resolved {
                     use solo_auth::credentials::CredentialSource as CS;
                     config.credentials = Some(
-                        if provider_type == ProviderType::OpenAI && info.source == CS::SoloOAuth {
+                        if provider_type == ProviderType::OpenAI
+                            && matches!(info.source, CS::SoloOAuth | CS::CodexOAuthFile)
+                        {
                             let account_id = provider_state
                                 .credentials
                                 .get_openai_account_id()
