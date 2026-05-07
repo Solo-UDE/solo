@@ -3,7 +3,7 @@
  *
  * Uses OpenAI's Responses API with streaming. Two auth modes:
  *   - OAuth (ChatGPT Plus/Pro): base URL = https://chatgpt.com/backend-api/codex,
- *     plus `chatgpt-account-id` header.
+ *     plus `ChatGPT-Account-Id` header.
  *   - API key: base URL = https://api.openai.com/v1, no special headers.
  *
  * v1 limitations:
@@ -26,7 +26,7 @@ import type { ProviderEvent, ProviderSession, SessionCredentials } from './types
 const logger = createLogger('OpenAIAdapter');
 
 export interface OpenAIAdapterOptions {
-  /** Model alias — e.g. "gpt-5.4-medium". */
+  /** Model alias — e.g. "gpt-5.5". */
   model: string;
   /** Credentials resolved by Rust and passed across the wire. Required. */
   credentials: SessionCredentials;
@@ -45,6 +45,7 @@ export async function createOpenAISession(
   const { model, credentials, maxTokens, thinkingEnabled } = opts;
 
   const client = buildClient(credentials);
+  const usesChatGptBackend = credentials.kind === 'oauth';
 
   // Pending user input, flushed when receiveResponse() is called.
   // OpenAI's Responses API is request/response per turn (not a persistent
@@ -85,13 +86,27 @@ export async function createOpenAISession(
         // Responses API is evolving rapidly and the openai SDK's types may
         // not match the server exactly — defensive typing here lets us
         // tolerate SDK drift without build failures.
-        const requestBody: Record<string, unknown> = {
-          model,
-          input: userText,
-          stream: true,
-          tools: [],
-        };
-        if (maxTokens !== undefined) {
+        const requestBody: Record<string, unknown> = usesChatGptBackend
+          ? {
+              model,
+              instructions: 'You are Solo. Reply directly and concisely.',
+              input: [
+                {
+                  role: 'user',
+                  content: [{ type: 'input_text', text: userText }],
+                },
+              ],
+              stream: true,
+              store: false,
+              tools: [],
+            }
+          : {
+              model,
+              input: userText,
+              stream: true,
+              tools: [],
+            };
+        if (!usesChatGptBackend && maxTokens !== undefined) {
           requestBody.max_output_tokens = maxTokens;
         }
         if (thinkingEnabled === true) {
@@ -155,7 +170,7 @@ function buildClient(credentials: SessionCredentials): OpenAI {
     case 'oauth': {
       const defaultHeaders: Record<string, string> = {};
       if (credentials.accountId) {
-        defaultHeaders['chatgpt-account-id'] = credentials.accountId;
+        defaultHeaders['ChatGPT-Account-Id'] = credentials.accountId;
       }
       return new OpenAI({
         apiKey: credentials.token,

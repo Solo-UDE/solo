@@ -10,6 +10,7 @@ var API_BASE_URL = "https://api.openai.com/v1";
 async function createOpenAISession(opts) {
   const { model, credentials, maxTokens, thinkingEnabled } = opts;
   const client = buildClient(credentials);
+  const usesChatGptBackend = credentials.kind === "oauth";
   let pendingUserText = null;
   let abortController = null;
   let closed = false;
@@ -36,13 +37,25 @@ async function createOpenAISession(opts) {
       pendingUserText = null;
       abortController = new AbortController();
       try {
-        const requestBody = {
+        const requestBody = usesChatGptBackend ? {
+          model,
+          instructions: "You are Solo. Reply directly and concisely.",
+          input: [
+            {
+              role: "user",
+              content: [{ type: "input_text", text: userText }]
+            }
+          ],
+          stream: true,
+          store: false,
+          tools: []
+        } : {
           model,
           input: userText,
           stream: true,
           tools: []
         };
-        if (maxTokens !== void 0) {
+        if (!usesChatGptBackend && maxTokens !== void 0) {
           requestBody.max_output_tokens = maxTokens;
         }
         if (thinkingEnabled === true) {
@@ -95,7 +108,7 @@ function buildClient(credentials) {
     case "oauth": {
       const defaultHeaders = {};
       if (credentials.accountId) {
-        defaultHeaders["chatgpt-account-id"] = credentials.accountId;
+        defaultHeaders["ChatGPT-Account-Id"] = credentials.accountId;
       }
       return new OpenAI({
         apiKey: credentials.token,
@@ -139,4 +152,4 @@ function translateEvent(event) {
 export {
   createOpenAISession
 };
-//# sourceMappingURL=openai-JGIVWFMX.js.map
+//# sourceMappingURL=openai-LFIX5X2W.js.map

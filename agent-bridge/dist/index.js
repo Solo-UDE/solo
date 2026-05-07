@@ -3525,7 +3525,7 @@ var SessionManager = class extends Disposable {
       if (!config?.model) {
         throw new Error("OpenAI session requires a model");
       }
-      const { createOpenAISession } = await import("./openai-JGIVWFMX.js");
+      const { createOpenAISession } = await import("./openai-LFIX5X2W.js");
       const openaiSession = await createOpenAISession({
         model: config.model,
         credentials: config.credentials,
