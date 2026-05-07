@@ -163,9 +163,9 @@ export const MarketplaceTab: FC = () => {
     installNames(entry).some((name) => installedIds.has(name));
 
   return (
-    <div className="grid h-full min-h-0 grid-cols-1 xl:grid-cols-[minmax(300px,0.95fr)_minmax(320px,1.05fr)]">
-      <section className="flex min-h-0 flex-col border-r border-border/50">
-        <div className="shrink-0 space-y-3 p-4">
+    <div className="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[minmax(340px,0.9fr)_minmax(420px,1.1fr)]">
+      <section className="flex min-h-0 flex-col border-b border-border/50 lg:border-b-0 lg:border-r">
+        <div className="shrink-0 space-y-3 px-4 py-4">
           <div className="flex items-center gap-2">
             <div className="relative min-w-0 flex-1">
               <Search
@@ -176,13 +176,13 @@ export const MarketplaceTab: FC = () => {
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Search skills.sh"
-                className="h-10 w-full rounded-[8px] border border-border/60 bg-background/55 pl-9 pr-3 text-[13px] text-foreground placeholder:text-muted-foreground/60 outline-none focus:border-border focus:ring-1 focus:ring-ring/30"
+                className="h-10 w-full rounded-[10px] border border-border/60 bg-background/55 pl-9 pr-3 text-[13px] text-foreground placeholder:text-muted-foreground/60 outline-none transition-[border-color,box-shadow,background-color] duration-150 focus:border-border focus:bg-background/70 focus:ring-1 focus:ring-ring/30"
               />
             </div>
             <button
               type="button"
               onClick={() => void refreshRegistry(true)}
-              className="grid size-10 place-items-center rounded-[8px] border border-border/60 bg-background/55 text-muted-foreground hover:text-foreground"
+              className="grid size-10 place-items-center rounded-[10px] border border-border/60 bg-background/55 text-muted-foreground transition-[background-color,border-color,color,transform] duration-150 hover:bg-background/70 hover:text-foreground active:scale-[0.96]"
               title="Refresh skills.sh"
               aria-label="Refresh skills.sh"
             >
@@ -233,9 +233,9 @@ export const MarketplaceTab: FC = () => {
                   >
                     <div
                       className={cn(
-                        'group flex min-h-[84px] w-full items-start gap-3 rounded-[8px] border px-3 py-2.5 transition-colors',
+                        'group flex min-h-[84px] w-full items-start gap-3 rounded-[10px] border px-3 py-2.5 transition-[background-color,border-color,box-shadow] duration-150',
                         active
-                          ? 'border-border bg-card'
+                          ? 'border-border/80 bg-card shadow-[0_10px_24px_-22px_rgba(0,0,0,0.45)]'
                           : 'border-transparent bg-transparent hover:border-border/50 hover:bg-background/45',
                       )}
                     >
@@ -266,7 +266,7 @@ export const MarketplaceTab: FC = () => {
                         type="button"
                         disabled={installedEntry || installingEntry}
                         className={cn(
-                          'mt-0.5 inline-flex min-h-10 shrink-0 items-center rounded-[7px] border px-2 text-[11px] font-medium',
+                          'mt-0.5 inline-flex min-h-10 shrink-0 items-center rounded-[9px] border px-2.5 text-[11px] font-medium transition-[background-color,border-color,color,transform] duration-150 active:scale-[0.96]',
                           installedEntry
                             ? 'border-border/50 text-muted-foreground'
                             : 'border-border/60 text-foreground group-hover:bg-background disabled:cursor-not-allowed disabled:opacity-50',
@@ -323,7 +323,7 @@ const SkillPreview: FC<SkillPreviewProps> = ({
 }) => {
   if (!entry) {
     return (
-      <aside className="hidden min-h-0 flex-col xl:flex">
+      <aside className="hidden min-h-0 flex-col lg:flex">
         <div className="p-5 text-[13px] text-muted-foreground">Select a skill to preview.</div>
       </aside>
     );
@@ -336,8 +336,8 @@ const SkillPreview: FC<SkillPreviewProps> = ({
     null;
 
   return (
-    <aside className="flex min-h-0 flex-col">
-      <div className="shrink-0 border-b border-border/50 p-5">
+    <aside className="flex min-h-0 flex-col bg-background/35">
+      <div className="shrink-0 border-b border-border/50 px-5 py-4">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-2">
@@ -354,7 +354,7 @@ const SkillPreview: FC<SkillPreviewProps> = ({
             type="button"
             disabled={installed || installing || (detail ? !detail.installable : false)}
             onClick={onInstall}
-            className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-[8px] border border-border/60 bg-background/60 px-3 text-[12px] font-medium text-foreground hover:bg-background disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-[10px] border border-border/60 bg-background/60 px-3 text-[12px] font-medium text-foreground transition-[background-color,border-color,color,transform] duration-150 hover:bg-background active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
           >
             <Download aria-hidden="true" className="size-3.5" />
             {installed ? 'Installed' : installing ? 'Installing' : 'Install'}
@@ -362,15 +362,15 @@ const SkillPreview: FC<SkillPreviewProps> = ({
         </div>
 
         <div className="mt-4 grid grid-cols-3 gap-2 text-[11px]">
-          <div className="rounded-[8px] border border-border/55 bg-background/45 px-2 py-1.5">
+          <div className="rounded-[9px] border border-border/55 bg-background/45 px-2 py-1.5">
             <p className="text-muted-foreground">Installs</p>
             <p className="mt-0.5 font-medium tabular-nums text-foreground">{formatInstalls(entry.installs)}</p>
           </div>
-          <div className="rounded-[8px] border border-border/55 bg-background/45 px-2 py-1.5">
+          <div className="rounded-[9px] border border-border/55 bg-background/45 px-2 py-1.5">
             <p className="text-muted-foreground">Files</p>
             <p className="mt-0.5 font-medium tabular-nums text-foreground">{detail?.files.length ?? '…'}</p>
           </div>
-          <div className="rounded-[8px] border border-border/55 bg-background/45 px-2 py-1.5">
+          <div className="rounded-[9px] border border-border/55 bg-background/45 px-2 py-1.5">
             <p className="text-muted-foreground">Source</p>
             <p className="mt-0.5 truncate font-medium text-foreground">{entry.source_type || 'github'}</p>
           </div>
@@ -404,7 +404,7 @@ const SkillPreview: FC<SkillPreviewProps> = ({
                 Contains
               </h4>
               {detail.files.length > 0 ? (
-                <ul className="mt-2 max-h-44 overflow-y-auto rounded-[8px] border border-border/55 bg-background/35">
+                <ul className="mt-2 max-h-44 overflow-y-auto rounded-[10px] border border-border/55 bg-background/35">
                   {detail.files.map((file) => (
                     <li
                       key={file.path}
@@ -429,7 +429,7 @@ const SkillPreview: FC<SkillPreviewProps> = ({
                 <h4 className="text-[11px] font-semibold uppercase text-muted-foreground">
                   {primaryFile.path}
                 </h4>
-                <pre className="mt-2 max-h-[440px] overflow-auto rounded-[8px] border border-border/55 bg-background/45 p-3 text-[11px] leading-5 text-muted-foreground">
+                <pre className="mt-2 max-h-[440px] overflow-auto rounded-[10px] border border-border/55 bg-background/45 p-3 text-[11px] leading-5 text-muted-foreground">
                   {primaryFile.contents}
                 </pre>
               </section>
@@ -445,7 +445,7 @@ const SkillPreview: FC<SkillPreviewProps> = ({
                 <ExternalLink aria-hidden="true" className="size-3.5" />
                 Open on skills.sh
               </a>
-              <code className="block rounded-[8px] border border-border/55 bg-background/45 px-3 py-2 text-[11px] leading-5 text-muted-foreground">
+              <code className="block rounded-[10px] border border-border/55 bg-background/45 px-3 py-2 text-[11px] leading-5 text-muted-foreground">
                 {detail.install_command}
               </code>
               {!detail.installable && (
