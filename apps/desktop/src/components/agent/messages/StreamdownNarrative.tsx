@@ -3,7 +3,7 @@
  *
  * Wraps Streamdown with Solo's chat animation + component overrides.
  * with a single component that handles all of these natively:
- * - Progressive text reveal (isAnimating + caret) with word-level fadeIn
+ * - Progressive text reveal using Streamdown's slide-up streaming animation
  * - Unterminated fence handling (built-in)
  * - Syntax highlighting (@streamdown/code with Shiki)
  * - Math rendering (@streamdown/math with KaTeX)
@@ -88,6 +88,20 @@ const components = {
 	),
 };
 
+const streamdownPlugins = { code, math, mermaid };
+const streamdownAnimation = {
+	animation: 'slideUp' as const,
+	duration: 120,
+	easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
+	sep: 'word' as const,
+	stagger: 10,
+};
+const streamdownControls = {
+	table: true,
+	code: true,
+	mermaid: { download: true, copy: true },
+};
+
 export const StreamdownNarrative: FC<StreamdownNarrativeProps> = ({
 	content,
 	isStreaming = false,
@@ -98,21 +112,11 @@ export const StreamdownNarrative: FC<StreamdownNarrativeProps> = ({
 		data-streaming={isStreaming ? 'true' : 'false'}
 	>
 		<Streamdown
-			plugins={{ code, math, mermaid }}
+			plugins={streamdownPlugins}
 			isAnimating={isStreaming}
-			animated={{
-				animation: 'blurIn',
-				duration: 200,
-				easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
-				sep: 'word',
-			}}
-			caret="circle"
+			animated={streamdownAnimation}
 			shikiTheme={['github-light', 'github-dark']}
-			controls={{
-				table: true,
-				code: true,
-				mermaid: { download: true, copy: true },
-			}}
+			controls={streamdownControls}
 			components={components}
 			remend={{ linkMode: 'text-only' }}
 		>
