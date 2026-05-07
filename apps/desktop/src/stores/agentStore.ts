@@ -23,7 +23,12 @@ import {
 	deleteSessionFile,
 	createDebouncedSessionSave,
 } from '../lib/sessionPersistence';
-import { capabilitiesForModel, DEFAULT_MODEL_ID, providerForModel } from '../lib/constants';
+import {
+	capabilitiesForModel,
+	DEFAULT_MODEL_ID,
+	providerForModel,
+	type ModelProvider,
+} from '../lib/constants';
 import { useSettingsStore } from './settingsStore';
 import { useSkillStore } from './skillStore';
 
@@ -142,6 +147,8 @@ export interface AgentSession {
 	sdkSessionId?: string;
 	createdAt: Date;
 	model: string;
+	provider?: ModelProvider;
+	sessionMode?: 'agent' | 'chat';
 	name?: string;
 	currentTurn?: number;
 	// v3 persistence fields
@@ -512,33 +519,34 @@ export const useAgentStore = create<AgentStore>()(
 			// Acquire resumption lock to prevent concurrent resume attempts
 			_resumingLocks.add(sessionId);
 
-			// Stale sessions (from bridge crash) proceed through normal resume flow
-			// Mark as resuming
-			set((s) => {
-				const sess = s.sessions.get(sessionId);
-				if (sess) {
-					sess.connectionState = 'resuming';
-					sess.resumeError = undefined;
-				}
-			});
-
-			// Evict oldest active session if at max capacity
-			const activeSessions = [...get().sessions.values()]
-				.filter((s) => s.connectionState === 'active')
-				.sort((a, b) => {
-					const aTime = new Date(a.lastActiveAt || a.createdAt).getTime();
-					const bTime = new Date(b.lastActiveAt || b.createdAt).getTime();
-					return aTime - bTime; // oldest first
-				});
-
-			if (activeSessions.length >= MAX_ACTIVE_SESSIONS) {
-				const oldest = activeSessions[0];
-				backend.agentDeleteSession(oldest.id).catch(console.error);
+			try {
+				// Stale sessions (from bridge crash) proceed through normal resume flow
+				// Mark as resuming
 				set((s) => {
-					const sess = s.sessions.get(oldest.id);
-					if (sess) sess.connectionState = 'archived';
+					const sess = s.sessions.get(sessionId);
+					if (sess) {
+						sess.connectionState = 'resuming';
+						sess.resumeError = undefined;
+					}
 				});
-			}
+
+				// Evict oldest active session if at max capacity
+				const activeSessions = [...get().sessions.values()]
+					.filter((s) => s.connectionState === 'active')
+					.sort((a, b) => {
+						const aTime = new Date(a.lastActiveAt || a.createdAt).getTime();
+						const bTime = new Date(b.lastActiveAt || b.createdAt).getTime();
+						return aTime - bTime; // oldest first
+					});
+
+				if (activeSessions.length >= MAX_ACTIVE_SESSIONS) {
+					const oldest = activeSessions[0];
+					backend.agentDeleteSession(oldest.id).catch(console.error);
+					set((s) => {
+						const sess = s.sessions.get(oldest.id);
+						if (sess) sess.connectionState = 'archived';
+					});
+				}
 
 				const agentModel = session.model || DEFAULT_MODEL_ID;
 				const maxTokens = useSettingsStore.getState().ai.maxTokens;
@@ -547,49 +555,51 @@ export const useAgentStore = create<AgentStore>()(
 				const sessionMode = providerCapabilities.agent ? 'agent' : 'chat';
 
 				try {
-					try {
-						// Attempt resume with persisted SDK session ID
-						if (session.sdkSessionId && session.resumable) {
-							await backend.agentCreateSession(sessionId, {
-								model: agentModel,
-								maxTokens,
-								resumeSessionId: session.sdkSessionId,
-								cwd: session.workspacePath,
-								provider,
-								providerCapabilities,
-								sessionMode,
-							});
-						} else {
-							// No SDK session to resume — create fresh bridge session
-							await backend.agentCreateSession(sessionId, {
-								model: agentModel,
-								maxTokens,
-								cwd: session.workspacePath,
-								provider,
-								providerCapabilities,
-								sessionMode,
-							});
-						}
+					// Attempt resume with persisted SDK session ID
+					if (session.sdkSessionId && session.resumable) {
+						await backend.agentCreateSession(sessionId, {
+							model: agentModel,
+							maxTokens,
+							resumeSessionId: session.sdkSessionId,
+							cwd: session.workspacePath,
+							provider,
+							providerCapabilities,
+							sessionMode,
+						});
+					} else {
+						// No SDK session to resume — create fresh bridge session
+						await backend.agentCreateSession(sessionId, {
+							model: agentModel,
+							maxTokens,
+							cwd: session.workspacePath,
+							provider,
+							providerCapabilities,
+							sessionMode,
+						});
+					}
 
 					set((s) => {
 						const sess = s.sessions.get(sessionId);
 						if (sess) {
 							sess.connectionState = 'active';
 							sess.resumeError = undefined;
+							sess.model = agentModel;
+							sess.provider = provider;
+							sess.sessionMode = sessionMode;
 						}
 					});
-					} catch (error) {
-						const errorMsg = error instanceof Error ? error.message : String(error);
-						console.error(`[Agent] Resume failed for ${sessionId}: ${errorMsg}`);
-						set((s) => {
-							const sess = s.sessions.get(sessionId);
-							if (sess) {
-								sess.connectionState = 'stale';
-								sess.resumeError = `SDK resume failed. Start a new continuation or fork this session. ${errorMsg}`;
-							}
-						});
-						throw error;
-					}
+				} catch (error) {
+					const errorMsg = error instanceof Error ? error.message : String(error);
+					console.error(`[Agent] Resume failed for ${sessionId}: ${errorMsg}`);
+					set((s) => {
+						const sess = s.sessions.get(sessionId);
+						if (sess) {
+							sess.connectionState = 'stale';
+							sess.resumeError = `SDK resume failed. Start a new continuation or fork this session. ${errorMsg}`;
+						}
+					});
+					throw error;
+				}
 			} finally {
 				// Always release the resumption lock
 				_resumingLocks.delete(sessionId);
@@ -716,6 +726,8 @@ export const useAgentStore = create<AgentStore>()(
 						id: sessionId,
 						createdAt: new Date(),
 						model: agentModel,
+						provider,
+						sessionMode,
 						workspacePath: cwd,
 						worktreeId: activeWt?.id,
 						worktreeBranch: activeWt?.branch ?? undefined,
@@ -795,6 +807,8 @@ export const useAgentStore = create<AgentStore>()(
 						id: sessionId,
 						createdAt: new Date(),
 						model: agentModel,
+						provider,
+						sessionMode,
 						workspacePath: sourceSession.workspacePath,
 						worktreeId: activeWt?.id ?? sourceSession.worktreeId,
 						worktreeBranch: (activeWt?.branch ?? sourceSession.worktreeBranch) ?? undefined,
@@ -828,15 +842,67 @@ export const useAgentStore = create<AgentStore>()(
 
 		setModel: async (sessionId: string, model: string) => {
 			try {
-				await backend.agentSetModel(sessionId, model);
+				const session = get().sessions.get(sessionId);
+				if (!session) return;
+
+				const nextProvider = providerForModel(model);
+				const nextCapabilities = capabilitiesForModel(model);
+				const nextSessionMode = nextCapabilities.agent ? 'agent' : 'chat';
+				const currentProvider = session.provider ?? providerForModel(session.model || DEFAULT_MODEL_ID);
+				const mustRecreateBackendSession =
+					currentProvider !== nextProvider ||
+					(!session.provider && nextProvider !== 'anthropic');
+
+				if (mustRecreateBackendSession) {
+					const streamState = get().sessionStreaming.get(sessionId);
+					if (streamState?.isStreaming) {
+						await backend.agentInterrupt(sessionId).catch(() => {});
+					}
+
+					set((state) => {
+						const existing = state.sessions.get(sessionId);
+						if (existing) {
+							existing.connectionState = 'resuming';
+							existing.resumeError = undefined;
+						}
+					});
+
+					await backend.agentDeleteSession(sessionId).catch(() => {});
+					await backend.agentCreateSession(sessionId, {
+						model,
+						maxTokens: useSettingsStore.getState().ai.maxTokens,
+						cwd: session.workspacePath,
+						provider: nextProvider,
+						providerCapabilities: nextCapabilities,
+						sessionMode: nextSessionMode,
+					});
+				} else {
+					await backend.agentSetModel(sessionId, model);
+				}
+
+				set((state) => {
+					const existing = state.sessions.get(sessionId);
+					if (existing) {
+						existing.model = model;
+						existing.provider = nextProvider;
+						existing.sessionMode = nextSessionMode;
+						existing.resumable = nextCapabilities.resume ? existing.resumable : false;
+						existing.sdkSessionId = nextCapabilities.resume ? existing.sdkSessionId : undefined;
+						existing.connectionState = 'active';
+						existing.resumeError = undefined;
+					}
+				});
+				get().persistSessions(sessionId);
+			} catch (error) {
+				console.error('Failed to set model:', error);
 				set((state) => {
 					const session = state.sessions.get(sessionId);
 					if (session) {
-						session.model = model;
+						session.connectionState = 'stale';
+						session.resumeError = String(error);
 					}
 				});
-			} catch (error) {
-				console.error('Failed to set model:', error);
+				throw error;
 			}
 		},
 
@@ -1076,6 +1142,9 @@ export const useAgentStore = create<AgentStore>()(
 				for (const n of q.skills ?? []) skillSet.add(n);
 			}
 			const combinedSkills = Array.from(skillSet);
+			if (last.model) {
+				await get().setModel(sessionId, last.model);
+			}
 			// Stitch queued parts together with paragraph separators so bubble
 			// ordering is preserved across recall-and-send.
 			const combinedParts: UserContentPart[] = [];
