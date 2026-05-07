@@ -38,6 +38,18 @@ export interface ModelInfo {
 	max_output_tokens: number;
 }
 
+export interface ProviderModelDiagnostic {
+	provider: ProviderType;
+	model: string;
+	ok: boolean;
+	authenticated: boolean;
+	credentialSource: string | null;
+	status: 'ok' | 'warning' | 'error' | string;
+	message: string;
+	latencyMs: number | null;
+	error: string | null;
+}
+
 // Re-export for convenience
 export type { ProviderType, AuthMethodInfo, ClaudeSetupStatus };
 
@@ -293,6 +305,13 @@ export async function validateApiKey(
 	apiKey: string
 ): Promise<void> {
 	return invoke('validate_api_key', { provider, apiKey });
+}
+
+export async function verifyProviderModel(
+	provider: string,
+	model: string
+): Promise<ProviderModelDiagnostic> {
+	return invoke<ProviderModelDiagnostic>('verify_provider_model', { provider, model });
 }
 
 export type { ProfileSummary };
