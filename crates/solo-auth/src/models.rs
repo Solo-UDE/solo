@@ -152,6 +152,23 @@ pub static GEMINI_MODELS: LazyLock<Vec<AIModel>> = LazyLock::new(|| {
 pub static OPENAI_MODELS: LazyLock<Vec<AIModel>> = LazyLock::new(|| {
     vec![
         AIModel {
+            id: "gpt-5.5".to_string(),
+            display_name: "GPT-5.5".to_string(),
+            alias: "gpt-5.5".to_string(),
+            provider: ProviderType::OpenAI,
+            capabilities: ModelCapabilities {
+                context_window: 272_000,
+                max_output_tokens: 32_768,
+                supports_vision: true,
+                supports_tools: false,
+                supports_streaming: true,
+                supports_thinking: true,
+            },
+            is_default: true,
+            description: "Frontier model for complex coding, research, and real-world work"
+                .to_string(),
+        },
+        AIModel {
             id: "gpt-5.4".to_string(),
             display_name: "GPT-5.4".to_string(),
             alias: "gpt-5.4".to_string(),
@@ -164,7 +181,7 @@ pub static OPENAI_MODELS: LazyLock<Vec<AIModel>> = LazyLock::new(|| {
                 supports_streaming: true,
                 supports_thinking: true,
             },
-            is_default: true,
+            is_default: false,
             description: "Flagship reasoning model".to_string(),
         },
         AIModel {
@@ -264,13 +281,14 @@ mod tests {
         assert_eq!(anthropic_default.alias, "opus");
 
         let openai_default = get_default_model(ProviderType::OpenAI);
-        assert_eq!(openai_default.id, "gpt-5.4");
+        assert_eq!(openai_default.id, "gpt-5.5");
     }
 
     #[test]
     fn test_find_model() {
         assert!(find_model("sonnet").is_some());
         assert!(find_model("claude-sonnet-4-6").is_some());
+        assert!(find_model("gpt-5.5").is_some());
         assert!(find_model("gpt-5.4").is_some());
         assert!(find_model("codex-spark").is_some());
         assert!(find_model("gpt-5.4-mini").is_some());
