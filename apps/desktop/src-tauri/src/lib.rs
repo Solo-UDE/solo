@@ -395,6 +395,7 @@ pub fn run() {
             provider_commands::get_models_for_provider_cmd,
             provider_commands::get_auth_method,
             provider_commands::validate_api_key,
+            provider_commands::verify_provider_model,
             provider_commands::start_oauth_flow,
             provider_commands::complete_oauth_flow,
             provider_commands::wait_for_oauth_callback,
