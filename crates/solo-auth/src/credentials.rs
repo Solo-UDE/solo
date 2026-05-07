@@ -4,15 +4,17 @@
 //! 1. Solo OAuth tokens (primary)
 //! 2. API keys from macOS Keychain
 //! 3. Claude Code OAuth (fallback for Anthropic)
-//! 4. Environment variables (fallback)
+//! 4. Codex CLI OAuth (fallback for OpenAI)
+//! 5. Environment variables (fallback)
 
 use crate::oauth::{
-    AuthMethodInfo, AuthType, OAuthToken, OpenAIOAuthToken, AnthropicOAuthConfig, OpenAIOAuthConfig,
+    AnthropicOAuthConfig, AuthMethodInfo, AuthType, OAuthToken, OpenAIOAuthConfig, OpenAIOAuthToken,
 };
 use crate::provider::{ProviderError, ProviderResult, ProviderType};
 use keyring::Entry;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::PathBuf;
 use ts_rs::TS;
 
 /// Client ID used by Claude Code CLI for OAuth token refresh
@@ -37,6 +39,8 @@ pub enum CredentialSource {
     SoloOAuth,
     /// From Claude Code credentials file (~/.claude/.credentials.json)
     ClaudeOAuthFile,
+    /// From Codex CLI credentials file (~/.codex/auth.json)
+    CodexOAuthFile,
 }
 
 impl std::fmt::Display for CredentialSource {
@@ -47,6 +51,7 @@ impl std::fmt::Display for CredentialSource {
             CredentialSource::ClaudeOAuth => write!(f, "claude-oauth"),
             CredentialSource::SoloOAuth => write!(f, "solo-oauth"),
             CredentialSource::ClaudeOAuthFile => write!(f, "claude-oauth-file"),
+            CredentialSource::CodexOAuthFile => write!(f, "codex-oauth-file"),
         }
     }
 }
@@ -101,7 +106,9 @@ fn keychain_read(service: &str, account: Option<&str>) -> Result<Option<String>,
         // Non-zero exit (commonly 44 = item not found) — treat as absent.
         return Ok(None);
     }
-    let s = String::from_utf8_lossy(&output.stdout).trim_end().to_string();
+    let s = String::from_utf8_lossy(&output.stdout)
+        .trim_end()
+        .to_string();
     if s.is_empty() {
         Ok(None)
     } else {
@@ -161,13 +168,29 @@ fn keychain_write(service: &str, account: &str, value: &str) -> Result<(), Strin
 /// Kept for potential future use as a manual migration action in Settings.
 #[allow(dead_code)]
 const LEGACY_ENTRIES: &[(&str, &str, &str)] = &[
-    ("solo.provider.anthropic.apiKey", "api-key", "anthropic.apiKey"),
+    (
+        "solo.provider.anthropic.apiKey",
+        "api-key",
+        "anthropic.apiKey",
+    ),
     ("solo.provider.openai.apiKey", "api-key", "openai.apiKey"),
     ("solo.provider.gemini.apiKey", "api-key", "gemini.apiKey"),
-    ("solo.provider.anthropic.oauth", "oauth-token", "anthropic.oauth"),
+    (
+        "solo.provider.anthropic.oauth",
+        "oauth-token",
+        "anthropic.oauth",
+    ),
     ("solo.provider.openai.oauth", "oauth-token", "openai.oauth"),
-    ("solo.supabase.accessToken", "solo-auth", "supabase.accessToken"),
-    ("solo.supabase.refreshToken", "solo-auth", "supabase.refreshToken"),
+    (
+        "solo.supabase.accessToken",
+        "solo-auth",
+        "supabase.accessToken",
+    ),
+    (
+        "solo.supabase.refreshToken",
+        "solo-auth",
+        "supabase.refreshToken",
+    ),
 ];
 
 /// Credential info with OAuth token support
@@ -258,6 +281,16 @@ impl CredentialManager {
         format!("{}.apiKey", provider.as_str())
     }
 
+    fn codex_auth_path() -> Option<PathBuf> {
+        if let Some(home) = std::env::var_os("CODEX_HOME").map(PathBuf::from) {
+            return Some(home.join("auth.json"));
+        }
+
+        std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .map(|home| home.join(".codex").join("auth.json"))
+    }
+
     /// Get the vault key for a provider's OAuth token
     fn oauth_vault_key(provider: ProviderType) -> String {
         format!("{}.oauth", provider.as_str())
@@ -329,8 +362,9 @@ impl CredentialManager {
     /// Persist the vault HashMap to the single keychain entry
     #[cfg_attr(test, allow(dead_code))]
     fn persist_vault(data: &HashMap<String, String>) -> ProviderResult<()> {
-        let json = serde_json::to_string(data)
-            .map_err(|e| ProviderError::KeychainError(format!("Failed to serialize vault: {}", e)))?;
+        let json = serde_json::to_string(data).map_err(|e| {
+            ProviderError::KeychainError(format!("Failed to serialize vault: {}", e))
+        })?;
 
         keychain_write(VAULT_SERVICE, VAULT_ACCOUNT, &json)
             .map_err(|e| ProviderError::KeychainError(format!("Failed to write vault: {}", e)))?;
@@ -408,18 +442,22 @@ impl CredentialManager {
                     if let Err(e) = entry.delete_credential() {
                         tracing::debug!(
                             "Could not delete legacy entry {}/{}: {}",
-                            old_service, old_account, e
+                            old_service,
+                            old_account,
+                            e
                         );
                     }
                 }
-                Ok(_) => {} // empty value — skip
+                Ok(_) => {}                        // empty value — skip
                 Err(keyring::Error::NoEntry) => {} // doesn't exist — skip
                 Err(e) => {
                     // Permission denied or platform error — stop immediately
                     // to avoid a cascade of macOS keychain dialogs
                     tracing::debug!(
                         "Stopping legacy migration at {}/{}: {}",
-                        old_service, old_account, e
+                        old_service,
+                        old_account,
+                        e
                     );
                     break;
                 }
@@ -454,8 +492,12 @@ impl CredentialManager {
         if let Err(e) = Self::persist_vault(vault) {
             // Rollback in-memory state
             match old_value {
-                Some(v) => { vault.insert(key.to_string(), v); }
-                None => { vault.remove(key); }
+                Some(v) => {
+                    vault.insert(key.to_string(), v);
+                }
+                None => {
+                    vault.remove(key);
+                }
             }
             return Err(e);
         }
@@ -578,7 +620,17 @@ impl CredentialManager {
             }));
         }
 
-        // 3. For Anthropic, try Claude Code OAuth (file first, keychain fallback)
+        // 3. For OpenAI, try the existing Codex CLI ChatGPT login.
+        if provider == ProviderType::OpenAI {
+            if let Some(token) = self.get_codex_oauth_from_file().await? {
+                return Ok(Some(CredentialInfo {
+                    api_key: token.access_token,
+                    source: CredentialSource::CodexOAuthFile,
+                }));
+            }
+        }
+
+        // 4. For Anthropic, try Claude Code OAuth (file first, keychain fallback)
         if provider == ProviderType::Anthropic {
             // Primary: ~/.claude/.credentials.json — always complete, no size limits
             if let Some(key) = self.get_claude_oauth_from_file().await? {
@@ -596,7 +648,7 @@ impl CredentialManager {
             }
         }
 
-        // 4. Try environment variable
+        // 5. Try environment variable
         if let Some(key) = self.get_from_env(provider) {
             return Ok(Some(CredentialInfo {
                 api_key: key,
@@ -608,14 +660,20 @@ impl CredentialManager {
     }
 
     /// Get credential source without exposing the key
-    pub async fn get_credential_source(&self, provider: ProviderType) -> ProviderResult<Option<CredentialSource>> {
+    pub async fn get_credential_source(
+        &self,
+        provider: ProviderType,
+    ) -> ProviderResult<Option<CredentialSource>> {
         // Check cache
         if let Some(info) = self.cache.read().await.get(&provider) {
             return Ok(Some(info.source));
         }
 
         // Get fresh
-        Ok(self.get_credentials_with_source(provider).await?.map(|i| i.source))
+        Ok(self
+            .get_credentials_with_source(provider)
+            .await?
+            .map(|i| i.source))
     }
 
     /// Get API key from the vault
@@ -631,10 +689,8 @@ impl CredentialManager {
     /// The value may be a JSON number or a string containing digits.
     fn parse_expires_at(oauth_obj: &serde_json::Value) -> Option<i64> {
         oauth_obj.get("expiresAt").and_then(|exp| {
-            exp.as_i64().or_else(|| {
-                exp.as_str()
-                    .and_then(|s| s.parse::<i64>().ok())
-            })
+            exp.as_i64()
+                .or_else(|| exp.as_str().and_then(|s| s.parse::<i64>().ok()))
         })
     }
 
@@ -749,8 +805,12 @@ impl CredentialManager {
                         tracing::debug!("Claude Code OAuth token expired, attempting refresh");
 
                         // Try to refresh using the refresh token
-                        if let Some(refresh_token) = oauth_obj.get("refreshToken").and_then(|t| t.as_str()) {
-                            if let Some(new_token) = Self::refresh_claude_code_token(refresh_token).await {
+                        if let Some(refresh_token) =
+                            oauth_obj.get("refreshToken").and_then(|t| t.as_str())
+                        {
+                            if let Some(new_token) =
+                                Self::refresh_claude_code_token(refresh_token).await
+                            {
                                 tracing::info!("Successfully refreshed Claude Code OAuth token");
                                 return Ok(Some(new_token));
                             }
@@ -807,9 +867,15 @@ impl CredentialManager {
                     if Self::is_claude_token_expired(expires_at) {
                         tracing::debug!("Claude Code file OAuth token expired, attempting refresh");
 
-                        if let Some(refresh_token) = oauth_obj.get("refreshToken").and_then(|t| t.as_str()) {
-                            if let Some(new_token) = Self::refresh_claude_code_token(refresh_token).await {
-                                tracing::info!("Successfully refreshed Claude Code file OAuth token");
+                        if let Some(refresh_token) =
+                            oauth_obj.get("refreshToken").and_then(|t| t.as_str())
+                        {
+                            if let Some(new_token) =
+                                Self::refresh_claude_code_token(refresh_token).await
+                            {
+                                tracing::info!(
+                                    "Successfully refreshed Claude Code file OAuth token"
+                                );
                                 return Ok(Some(new_token));
                             }
                             tracing::warn!("Failed to refresh Claude Code file OAuth token");
@@ -869,13 +935,19 @@ impl CredentialManager {
             if let Ok(content) = std::fs::read_to_string(&path) {
                 if let Ok(value) = serde_json::from_str::<serde_json::Value>(&content) {
                     if let Some(oauth_obj) = value.get("claudeAiOauth") {
-                        if let Some(access_token) = oauth_obj.get("accessToken").and_then(|t| t.as_str()) {
+                        if let Some(access_token) =
+                            oauth_obj.get("accessToken").and_then(|t| t.as_str())
+                        {
                             let expires_at = Self::parse_expires_at(oauth_obj);
 
                             let final_token = if let Some(exp) = expires_at {
                                 if Self::is_claude_token_expired(exp) {
-                                    if let Some(refresh_token) = oauth_obj.get("refreshToken").and_then(|t| t.as_str()) {
-                                        if let Some(new_token) = Self::refresh_claude_code_token(refresh_token).await {
+                                    if let Some(refresh_token) =
+                                        oauth_obj.get("refreshToken").and_then(|t| t.as_str())
+                                    {
+                                        if let Some(new_token) =
+                                            Self::refresh_claude_code_token(refresh_token).await
+                                        {
                                             tracing::info!("Refreshed Claude Code file token in detailed check");
                                             new_token
                                         } else {
@@ -907,20 +979,25 @@ impl CredentialManager {
         if let Ok(Some(json_str)) = keychain_read("Claude Code-credentials", None) {
             if !json_str.is_empty() {
                 if let Ok(value) = serde_json::from_str::<serde_json::Value>(&json_str) {
-                        if let Some(oauth_obj) = value.get("claudeAiOauth") {
-                            if let Some(access_token) = oauth_obj.get("accessToken").and_then(|t| t.as_str()) {
-                                let expires_at = Self::parse_expires_at(oauth_obj);
+                    if let Some(oauth_obj) = value.get("claudeAiOauth") {
+                        if let Some(access_token) =
+                            oauth_obj.get("accessToken").and_then(|t| t.as_str())
+                        {
+                            let expires_at = Self::parse_expires_at(oauth_obj);
 
-                                // If expired, try to refresh and return the new token
-                                let final_token = if let Some(exp) = expires_at {
-                                    if Self::is_claude_token_expired(exp) {
-                                        if let Some(refresh_token) = oauth_obj.get("refreshToken").and_then(|t| t.as_str()) {
-                                            if let Some(new_token) = Self::refresh_claude_code_token(refresh_token).await {
-                                                tracing::info!("Refreshed Claude Code token in detailed check");
-                                                new_token
-                                            } else {
-                                                access_token.to_string()
-                                            }
+                            // If expired, try to refresh and return the new token
+                            let final_token = if let Some(exp) = expires_at {
+                                if Self::is_claude_token_expired(exp) {
+                                    if let Some(refresh_token) =
+                                        oauth_obj.get("refreshToken").and_then(|t| t.as_str())
+                                    {
+                                        if let Some(new_token) =
+                                            Self::refresh_claude_code_token(refresh_token).await
+                                        {
+                                            tracing::info!(
+                                                "Refreshed Claude Code token in detailed check"
+                                            );
+                                            new_token
                                         } else {
                                             access_token.to_string()
                                         }
@@ -929,17 +1006,20 @@ impl CredentialManager {
                                     }
                                 } else {
                                     access_token.to_string()
-                                };
+                                }
+                            } else {
+                                access_token.to_string()
+                            };
 
-                                return Ok(Some((
-                                    final_token,
-                                    expires_at,
-                                    CredentialSource::ClaudeOAuth,
-                                    oauth_obj.clone(),
-                                )));
-                            }
+                            return Ok(Some((
+                                final_token,
+                                expires_at,
+                                CredentialSource::ClaudeOAuth,
+                                oauth_obj.clone(),
+                            )));
                         }
                     }
+                }
             }
         }
 
@@ -952,7 +1032,11 @@ impl CredentialManager {
     }
 
     /// Store credentials in the vault
-    pub async fn set_credentials(&self, provider: ProviderType, api_key: &str) -> ProviderResult<()> {
+    pub async fn set_credentials(
+        &self,
+        provider: ProviderType,
+        api_key: &str,
+    ) -> ProviderResult<()> {
         let key = Self::api_key_vault_key(provider);
         self.vault_set(&key, api_key).await?;
 
@@ -1048,8 +1132,9 @@ impl CredentialManager {
         };
         store.upsert_profile(active_name, profile);
 
-        let json = serde_json::to_string(&store)
-            .map_err(|e| ProviderError::AuthError(format!("Failed to serialize OAuth store: {}", e)))?;
+        let json = serde_json::to_string(&store).map_err(|e| {
+            ProviderError::AuthError(format!("Failed to serialize OAuth store: {}", e))
+        })?;
         self.vault_set(&key, &json).await?;
 
         // Cache the same shape get_oauth_token would return on a cold miss,
@@ -1085,7 +1170,10 @@ impl CredentialManager {
     }
 
     /// Get OAuth token for a provider
-    pub async fn get_oauth_token(&self, provider: ProviderType) -> ProviderResult<Option<OAuthToken>> {
+    pub async fn get_oauth_token(
+        &self,
+        provider: ProviderType,
+    ) -> ProviderResult<Option<OAuthToken>> {
         // Cache hit fast path — unchanged behavior.
         if let Some(info) = self.oauth_cache.read().await.get(&provider) {
             return Ok(Some(info.token.clone()));
@@ -1273,7 +1361,11 @@ impl CredentialManager {
                 scope: None,
                 id_token: p.id_token.clone(),
                 account_id: p.account_id.clone(),
-                email: if p.email.is_empty() { None } else { Some(p.email.clone()) },
+                email: if p.email.is_empty() {
+                    None
+                } else {
+                    Some(p.email.clone())
+                },
             },
             None => token, // shouldn't happen — we just upserted
         };
@@ -1349,7 +1441,11 @@ impl CredentialManager {
             scope: None,
             id_token: active.id_token.clone(),
             account_id: active.account_id.clone(),
-            email: if active.email.is_empty() { None } else { Some(active.email.clone()) },
+            email: if active.email.is_empty() {
+                None
+            } else {
+                Some(active.email.clone())
+            },
         };
 
         *self.openai_oauth_cache.write().await = Some(OpenAIOAuthCredentialInfo {
@@ -1369,12 +1465,87 @@ impl CredentialManager {
         }
     }
 
+    /// Read the Codex CLI ChatGPT OAuth cache.
+    ///
+    /// This is intentionally read-only. Codex owns refreshing and rotating this
+    /// file; Solo only treats it as an external credential source, mirroring the
+    /// way Claude Code credentials are consumed for Anthropic.
+    pub async fn get_codex_oauth_from_file(&self) -> ProviderResult<Option<OpenAIOAuthToken>> {
+        let Some(path) = Self::codex_auth_path() else {
+            return Ok(None);
+        };
+
+        let raw = match tokio::fs::read_to_string(&path).await {
+            Ok(raw) => raw,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => return Err(ProviderError::IoError(e)),
+        };
+
+        let json: serde_json::Value = serde_json::from_str(&raw)?;
+        let auth_mode = json
+            .get("auth_mode")
+            .and_then(|value| value.as_str())
+            .unwrap_or_default();
+
+        if auth_mode != "chatgpt" {
+            return Ok(None);
+        }
+
+        let Some(tokens) = json.get("tokens") else {
+            return Ok(None);
+        };
+
+        let Some(access_token) = tokens
+            .get("access_token")
+            .and_then(|value| value.as_str())
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+        else {
+            return Ok(None);
+        };
+
+        let refresh_token = tokens
+            .get("refresh_token")
+            .and_then(|value| value.as_str())
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned);
+        let id_token = tokens
+            .get("id_token")
+            .and_then(|value| value.as_str())
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned);
+        let account_id = tokens
+            .get("account_id")
+            .and_then(|value| value.as_str())
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned);
+
+        // Codex's auth cache does not currently expose an access-token expiry.
+        // Keep the value far enough in the future that UI status does not mark
+        // it as expired; failed live checks still surface stale-token problems.
+        let expires_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or(std::time::Duration::ZERO)
+            .as_secs()
+            + 24 * 60 * 60;
+
+        Ok(Some(OpenAIOAuthToken {
+            access_token,
+            refresh_token,
+            expires_at,
+            token_type: "Bearer".into(),
+            scope: None,
+            id_token,
+            account_id,
+            email: None,
+        }))
+    }
+
     /// Refresh an OpenAI OAuth token
     pub async fn refresh_openai_oauth_token(&self) -> ProviderResult<OpenAIOAuthToken> {
-        let current_token = self
-            .get_openai_oauth_token()
-            .await?
-            .ok_or_else(|| ProviderError::AuthError("No OpenAI OAuth token to refresh".to_string()))?;
+        let current_token = self.get_openai_oauth_token().await?.ok_or_else(|| {
+            ProviderError::AuthError("No OpenAI OAuth token to refresh".to_string())
+        })?;
 
         let refresh_token = current_token
             .refresh_token
@@ -1398,6 +1569,9 @@ impl CredentialManager {
     /// Get the ChatGPT account ID for API calls
     pub async fn get_openai_account_id(&self) -> ProviderResult<Option<String>> {
         if let Some(token) = self.get_openai_oauth_token().await? {
+            return Ok(token.account_id);
+        }
+        if let Some(token) = self.get_codex_oauth_from_file().await? {
             return Ok(token.account_id);
         }
         Ok(None)
@@ -1463,7 +1637,8 @@ impl CredentialManager {
             Err(e) => {
                 tracing::warn!(
                     "validation request to {} failed ({}) — accepting key optimistically",
-                    url, e
+                    url,
+                    e
                 );
                 return Ok(());
             }
@@ -1505,7 +1680,11 @@ impl CredentialManager {
         let store = match crate::oauth::profiles::migrate_legacy_blob(&raw, provider.as_str()) {
             Ok(s) => s,
             Err(e) => {
-                tracing::warn!("failed to parse OAuth store for {}: {}", provider.as_str(), e);
+                tracing::warn!(
+                    "failed to parse OAuth store for {}: {}",
+                    provider.as_str(),
+                    e
+                );
                 return Ok(Vec::new());
             }
         };
@@ -1545,9 +1724,8 @@ impl CredentialManager {
             ))
         })?;
 
-        let mut store =
-            crate::oauth::profiles::migrate_legacy_blob(&raw, provider.as_str())
-                .map_err(|e| ProviderError::AuthError(format!("parse OAuth store: {}", e)))?;
+        let mut store = crate::oauth::profiles::migrate_legacy_blob(&raw, provider.as_str())
+            .map_err(|e| ProviderError::AuthError(format!("parse OAuth store: {}", e)))?;
 
         store
             .set_active(profile_name)
@@ -1585,9 +1763,8 @@ impl CredentialManager {
             _ => return Ok(()), // nothing to remove
         };
 
-        let mut store =
-            crate::oauth::profiles::migrate_legacy_blob(&raw, provider.as_str())
-                .map_err(|e| ProviderError::AuthError(format!("parse OAuth store: {}", e)))?;
+        let mut store = crate::oauth::profiles::migrate_legacy_blob(&raw, provider.as_str())
+            .map_err(|e| ProviderError::AuthError(format!("parse OAuth store: {}", e)))?;
 
         let removed = store.remove_profile(profile_name);
         if removed.is_none() {
@@ -1642,10 +1819,12 @@ impl CredentialManager {
 
     /// Store a GitHub OAuth token in cache + vault
     pub async fn set_github_oauth_token(&self, token: OAuthToken) -> ProviderResult<()> {
-        let token_json = serde_json::to_string(&token)
-            .map_err(|e| ProviderError::AuthError(format!("Failed to serialize GitHub token: {}", e)))?;
+        let token_json = serde_json::to_string(&token).map_err(|e| {
+            ProviderError::AuthError(format!("Failed to serialize GitHub token: {}", e))
+        })?;
 
-        self.vault_set(Self::github_oauth_vault_key(), &token_json).await?;
+        self.vault_set(Self::github_oauth_vault_key(), &token_json)
+            .await?;
 
         *self.github_oauth_cache.write().await = Some(token);
         tracing::info!("Stored GitHub OAuth token");
@@ -1688,14 +1867,14 @@ impl CredentialManager {
 
     /// Convenience: get just the access token string (or None)
     pub async fn get_github_access_token(&self) -> ProviderResult<Option<String>> {
-        Ok(self
-            .get_github_oauth_token()
-            .await?
-            .map(|t| t.access_token))
+        Ok(self.get_github_oauth_token().await?.map(|t| t.access_token))
     }
 
     /// Get authentication method info for a provider
-    pub async fn get_auth_method_info(&self, provider: ProviderType) -> ProviderResult<AuthMethodInfo> {
+    pub async fn get_auth_method_info(
+        &self,
+        provider: ProviderType,
+    ) -> ProviderResult<AuthMethodInfo> {
         // Check for OAuth token first
         // For OpenAI, use the specialized token type
         if provider == ProviderType::OpenAI {
@@ -1725,8 +1904,10 @@ impl CredentialManager {
             let auth_type = match info.source {
                 CredentialSource::Keychain => AuthType::ApiKey,
                 CredentialSource::Environment => AuthType::ApiKey,
-                CredentialSource::ClaudeOAuth | CredentialSource::ClaudeOAuthFile => AuthType::ClaudeOAuth,
-                CredentialSource::SoloOAuth => AuthType::OAuth,
+                CredentialSource::ClaudeOAuth | CredentialSource::ClaudeOAuthFile => {
+                    AuthType::ClaudeOAuth
+                }
+                CredentialSource::SoloOAuth | CredentialSource::CodexOAuthFile => AuthType::OAuth,
             };
 
             return Ok(AuthMethodInfo {
@@ -1787,10 +1968,7 @@ mod tests {
 
     #[test]
     fn test_github_oauth_vault_key() {
-        assert_eq!(
-            CredentialManager::github_oauth_vault_key(),
-            "github.oauth"
-        );
+        assert_eq!(CredentialManager::github_oauth_vault_key(), "github.oauth");
     }
 
     #[test]
@@ -1799,7 +1977,10 @@ mod tests {
         assert_eq!(CredentialSource::Environment.to_string(), "environment");
         assert_eq!(CredentialSource::ClaudeOAuth.to_string(), "claude-oauth");
         assert_eq!(CredentialSource::SoloOAuth.to_string(), "solo-oauth");
-        assert_eq!(CredentialSource::ClaudeOAuthFile.to_string(), "claude-oauth-file");
+        assert_eq!(
+            CredentialSource::ClaudeOAuthFile.to_string(),
+            "claude-oauth-file"
+        );
     }
 
     #[test]
@@ -1983,11 +2164,7 @@ mod profile_tests {
             .unwrap();
 
         // Read the raw vault entry and verify the email survived.
-        let raw = m
-            .vault_get_raw("anthropic.oauth")
-            .await
-            .unwrap()
-            .unwrap();
+        let raw = m.vault_get_raw("anthropic.oauth").await.unwrap().unwrap();
         let saved: ProviderOAuthStore = serde_json::from_str(&raw).unwrap();
         let saved_active = saved.active().expect("active profile");
         assert_eq!(saved_active.email, "work@co.com");
@@ -2007,13 +2184,7 @@ mod profile_tests {
     #[tokio::test]
     async fn disconnect_oauth_clears_all_profiles() {
         let m = manager_with_vault(HashMap::new()).await;
-        let token = crate::oauth::OAuthToken::new(
-            "ak".into(),
-            None,
-            3600,
-            "Bearer".into(),
-            None,
-        );
+        let token = crate::oauth::OAuthToken::new("ak".into(), None, 3600, "Bearer".into(), None);
         m.set_oauth_token(ProviderType::Anthropic, token)
             .await
             .unwrap();
@@ -2138,8 +2309,8 @@ mod profile_tests {
             expires_at: 9_999_999_999,
             token_type: "Bearer".into(),
             scope: None,
-            id_token: None,              // new token has no id_token
-            account_id: None,            // new token has no account_id
+            id_token: None,   // new token has no id_token
+            account_id: None, // new token has no account_id
             email: None,
         };
         m.set_openai_oauth_token(new_token).await.unwrap();
