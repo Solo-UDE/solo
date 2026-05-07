@@ -270,15 +270,15 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 		});
 	}, [createSession, selectedModel, openPanel]);
 
-	const forkSession = useAgentStore((state) => state.forkSession);
-	const handleForkSession = useCallback(() => {
+	const createSessionFromContext = useAgentStore((state) => state.createSessionFromContext);
+	const handleNewSessionWithContext = useCallback(() => {
 		if (!sessionId) return;
-		forkSession(sessionId, selectedModel || undefined).then((newSessionId) => {
+		createSessionFromContext(sessionId, selectedModel || undefined).then((newSessionId) => {
 			openPanel(BUILTIN_PANEL_TYPES.AGENT, { sessionId: newSessionId });
 		}).catch((err) => {
-			console.error('Failed to fork session:', err);
+			console.error('Failed to create contextual session:', err);
 		});
-	}, [sessionId, forkSession, selectedModel, openPanel]);
+	}, [sessionId, createSessionFromContext, selectedModel, openPanel]);
 
 	const handleLocalCommand = useCallback((commandId: string) => {
 		switch (commandId) {
@@ -363,7 +363,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 			<DropdownMenuTrigger asChild>
 				<button
 					type="button"
-					className="absolute right-4 top-3 z-20 inline-flex h-8 w-8 items-center justify-center rounded-[10px] border border-border/70 bg-background/84 text-muted-foreground shadow-[0_10px_24px_-20px_rgba(0,0,0,0.35)] backdrop-blur-sm transition-[background-color,border-color,color,transform] duration-150 hover:bg-card hover:text-foreground active:scale-[0.97]"
+					className="absolute right-4 top-4 z-20 inline-flex h-9 w-9 items-center justify-center rounded-[11px] border border-border/70 bg-background/84 text-muted-foreground shadow-[0_10px_24px_-20px_rgba(0,0,0,0.35)] backdrop-blur-sm transition-[background-color,border-color,color,transform] duration-150 hover:bg-card hover:text-foreground active:scale-[0.97]"
 					title="Session actions"
 					aria-label="Session actions"
 				>
@@ -384,7 +384,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 					</div>
 				</DropdownMenuItem>
 				<DropdownMenuItem
-					onClick={handleForkSession}
+					onClick={handleNewSessionWithContext}
 					disabled={!sessionId}
 					className="flex items-center gap-2 px-2 py-1.5"
 				>
@@ -392,8 +392,8 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 						<Split className="h-3 w-3 text-primary" />
 					</div>
 					<div className="flex flex-col">
-						<span className="text-xs font-medium">Continue as new</span>
-						<span className="text-[11px] leading-tight text-muted-foreground">New chat with this context</span>
+						<span className="text-xs font-medium">New chat with context</span>
+						<span className="text-[11px] leading-tight text-muted-foreground">Carry this chat's latest goal</span>
 					</div>
 				</DropdownMenuItem>
 			</DropdownMenuContent>
@@ -464,9 +464,9 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 			ref={rootRef}
 			tabIndex={-1}
 			onMouseDown={handleRootMouseDown}
-				className={`relative flex h-full flex-col overflow-hidden rounded-[26px] bg-transparent focus:outline-none ${className}`}
-				data-instance-id={instanceId}
-				style={{ fontFamily: 'var(--font-chat)' }}
+			className={`relative flex h-full flex-col overflow-hidden rounded-[26px] bg-transparent focus:outline-none ${className}`}
+			data-instance-id={instanceId}
+			style={{ fontFamily: 'var(--font-chat)' }}
 		>
 			{sessionMenu}
 
@@ -492,7 +492,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 				onToolApproval={handleToolApproval}
 				onAnswerQuestion={handleAnswerQuestion}
 				bottomReservePx={overlayHeightPx}
-				className="flex-1"
+				className="flex-1 pt-14"
 			/>
 
 			{connectionState === 'resuming' && (
