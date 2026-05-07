@@ -17,6 +17,7 @@ import {
   vaultList,
   vaultSetPinned,
   vaultDelete,
+  vaultSyncEntry,
   vaultUnsortedCount,
   vaultSearch,
   vaultBackfillEmbeddings,
@@ -32,6 +33,7 @@ import {
 
 // Local-storage key for the search mode toggle.
 const SEARCH_MODE_STORAGE_KEY = 'solo.vault.searchMode';
+const SYNC_TO_CLOUD_STORAGE_KEY = 'solo.vault.syncToCloud';
 
 function loadInitialSearchMode(): VaultSearchMode {
   try {
@@ -41,6 +43,17 @@ function loadInitialSearchMode(): VaultSearchMode {
     /* localStorage unavailable */
   }
   return 'fts';
+}
+
+function loadInitialSyncToCloud(): boolean {
+  try {
+    const raw = localStorage.getItem(SYNC_TO_CLOUD_STORAGE_KEY);
+    if (raw === 'false') return false;
+    if (raw === 'true') return true;
+  } catch {
+    /* localStorage unavailable */
+  }
+  return true;
 }
 
 interface BackfillState {
@@ -92,6 +105,7 @@ interface VaultState {
   filters: VaultListFilters;
   searchQuery: string;
   searchMode: VaultSearchMode;
+  syncToCloud: boolean;
   searchResults: VaultSearchResult[];
   isLoading: boolean;
   isSearching: boolean;
@@ -109,6 +123,7 @@ interface VaultActions {
   setFilter: (patch: Partial<VaultListFilters>) => void;
   setSearchQuery: (query: string) => void;
   setSearchMode: (mode: VaultSearchMode) => void;
+  setSyncToCloud: (enabled: boolean) => void;
   setSelectedEntry: (id: string | null) => void;
   fetchEntries: () => Promise<void>;
   fetchUnsortedCount: () => Promise<void>;
@@ -118,6 +133,7 @@ interface VaultActions {
   removeEntry: (entryId: string) => void;
   togglePinned: (entryId: string) => Promise<void>;
   deleteEntry: (entryId: string, alsoRemote: boolean) => Promise<void>;
+  syncEntry: (entryId: string) => Promise<void>;
   runSearch: (mode?: VaultSearchMode) => Promise<void>;
   clearSearch: () => void;
   // V1.2 — backfill
@@ -158,6 +174,7 @@ export const useVaultStore = create<VaultState & VaultActions>()(
     filters: initialFilters,
     searchQuery: '',
     searchMode: loadInitialSearchMode(),
+    syncToCloud: loadInitialSyncToCloud(),
     searchResults: [],
     isLoading: false,
     isSearching: false,
@@ -194,6 +211,17 @@ export const useVaultStore = create<VaultState & VaultActions>()(
       });
       try {
         localStorage.setItem(SEARCH_MODE_STORAGE_KEY, mode);
+      } catch {
+        /* non-fatal */
+      }
+    },
+
+    setSyncToCloud: (enabled) => {
+      set((s) => {
+        s.syncToCloud = enabled;
+      });
+      try {
+        localStorage.setItem(SYNC_TO_CLOUD_STORAGE_KEY, String(enabled));
       } catch {
         /* non-fatal */
       }
@@ -283,7 +311,19 @@ export const useVaultStore = create<VaultState & VaultActions>()(
       await vaultDelete(entryId, alsoRemote);
       set((s) => {
         s.entries.delete(entryId);
+        if (s.selectedEntryId === entryId) {
+          s.selectedEntryId = null;
+        }
       });
+    },
+
+    syncEntry: async (entryId) => {
+      const updated = await vaultSyncEntry(entryId);
+      if (updated) {
+        set((s) => {
+          s.entries.set(updated.id, updated);
+        });
+      }
     },
 
     runSearch: async (mode) => {
