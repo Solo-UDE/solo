@@ -1,29 +1,89 @@
-//! Skills marketplace — registry fetch, install, uninstall.
+//! Skills marketplace integration.
 //!
-//! Fetches `registry.json` from `github.com/Sachin1801/skills-registry` (user
-//! overridable later). Caches the JSON on disk at `~/.solo/cache/registry.json`
-//! for 24h. Installs download the full repo tarball, filter to
-//! `skills/<id>/`, and extract with path-traversal + executable-content
-//! rejection.
+//! The browse/search surface follows skills.sh's public app endpoints
+//! (`/api/skills/{view}/{page}` and `/api/search`). Installation is direct:
+//! for GitHub-backed skills, Solo resolves the skill folder through the
+//! GitHub tree API and copies the text files into `~/.solo/skills/<skill-id>/`.
 
 use crate::skills_origin;
-use solo_protocol::{
-    InstalledSkillMeta, OriginSource, Registry, RegistryEntry, SkillSuggestion, SkillsEvent,
-};
+use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION, USER_AGENT};
+use serde::Deserialize;
 use sha2::{Digest, Sha256};
-use std::io::Read;
+use solo_protocol::{
+    InstalledSkillMeta, OriginSource, Registry, RegistryEntry, SkillAudit, SkillDetail, SkillFile,
+    SkillSuggestion, SkillsEvent,
+};
 use std::path::{Component, Path, PathBuf};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter};
 use tokio::fs;
 
-const DEFAULT_REGISTRY_URL: &str =
-    "https://raw.githubusercontent.com/Sachin1801/skills-registry/main/registry.json";
-const CACHE_TTL_SECS: u64 = 24 * 60 * 60;
-const MAX_SKILL_BYTES: u64 = 5 * 1024 * 1024;
+const SKILLS_SH_BASE: &str = "https://skills.sh";
+const CACHE_TTL_SECS: u64 = 30 * 60;
 const FETCH_TIMEOUT_SECS: u64 = 20;
+const MAX_SKILL_BYTES: u64 = 5 * 1024 * 1024;
+const MAX_SKILL_FILES: usize = 300;
 
-// ─── Path helpers ────────────────────────────────────────────────────
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SkillsShPage {
+    skills: Vec<SkillsShSkill>,
+    #[serde(default)]
+    has_more: bool,
+    #[serde(default)]
+    total_skills: Option<u32>,
+    #[serde(default)]
+    all_time_total: Option<u32>,
+    #[serde(default)]
+    view: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SkillsShSkill {
+    #[serde(default)]
+    id: Option<String>,
+    source: String,
+    skill_id: String,
+    name: String,
+    #[serde(default)]
+    installs: u32,
+    #[serde(default)]
+    is_official: bool,
+    #[serde(default)]
+    is_duplicate: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct GithubRepo {
+    default_branch: String,
+    #[serde(default)]
+    html_url: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct GithubTree {
+    tree: Vec<GithubTreeEntry>,
+    #[serde(default)]
+    truncated: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct GithubTreeEntry {
+    path: String,
+    #[serde(rename = "type")]
+    kind: String,
+    #[serde(default)]
+    size: Option<u64>,
+}
+
+#[derive(Debug, Clone)]
+struct SkillFolder {
+    branch: String,
+    root: String,
+    instruction_path: String,
+    repo_url: String,
+}
 
 fn home_dir() -> Option<PathBuf> {
     std::env::var_os("HOME")
@@ -35,12 +95,27 @@ fn user_skills_dir() -> Option<PathBuf> {
     home_dir().map(|h| h.join(".solo").join("skills"))
 }
 
-fn cache_path() -> Option<PathBuf> {
-    home_dir().map(|h| h.join(".solo").join("cache").join("registry.json"))
+fn cache_path(view: &str, page: u32) -> Option<PathBuf> {
+    home_dir().map(|h| {
+        h.join(".solo")
+            .join("cache")
+            .join("skills-sh")
+            .join(format!("{}-{}.json", sanitize_file_segment(view), page))
+    })
 }
 
-/// Reject anything that isn't a safe `[a-zA-Z0-9_-]+` skill id.
-/// Blocks `..`, `/`, spaces, dots, null bytes, etc.
+fn sanitize_file_segment(value: &str) -> String {
+    let mut out = String::new();
+    for ch in value.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+            out.push(ch);
+        } else if !out.ends_with('-') {
+            out.push('-');
+        }
+    }
+    out.trim_matches('-').to_string()
+}
+
 fn validate_skill_id(id: &str) -> Result<&str, String> {
     if id.is_empty() {
         return Err("skill id must not be empty".into());
@@ -54,21 +129,160 @@ fn validate_skill_id(id: &str) -> Result<&str, String> {
     Ok(id)
 }
 
-// ─── Registry fetch (Task 3.1) ───────────────────────────────────────
+fn install_dir_name(entry: &RegistryEntry) -> Result<String, String> {
+    let raw = if !entry.skill_id.trim().is_empty() {
+        entry.skill_id.as_str()
+    } else if !entry.name.trim().is_empty() {
+        entry.name.as_str()
+    } else {
+        entry.id.as_str()
+    };
+    let sanitized = sanitize_file_segment(raw);
+    validate_skill_id(&sanitized)?;
+    Ok(sanitized)
+}
 
-async fn read_cache_any_age(cache: &Path) -> Option<Registry> {
-    let raw = fs::read_to_string(cache).await.ok()?;
-    serde_json::from_str::<Registry>(&raw).ok()
+fn is_domain_source(source: &str) -> bool {
+    !source.contains('/') && source.contains('.')
+}
+
+fn is_github_source(source: &str) -> bool {
+    let mut parts = source.split('/');
+    matches!((parts.next(), parts.next(), parts.next()), (Some(a), Some(b), None) if !a.is_empty() && !b.is_empty())
+}
+
+fn source_from_entry(entry: &RegistryEntry) -> String {
+    if !entry.source.is_empty() {
+        return entry.source.clone();
+    }
+    let mut parts: Vec<&str> = entry.id.split('/').collect();
+    if parts.len() >= 3 {
+        parts.pop();
+        return parts.join("/");
+    }
+    String::new()
+}
+
+fn skill_id_from_entry(entry: &RegistryEntry) -> String {
+    if !entry.skill_id.is_empty() {
+        entry.skill_id.clone()
+    } else if !entry.name.is_empty() {
+        entry.name.clone()
+    } else {
+        entry.id.rsplit('/').next().unwrap_or("").to_string()
+    }
+}
+
+fn skills_sh_url(source: &str, skill_id: &str) -> String {
+    if is_domain_source(source) {
+        format!(
+            "{}/site/{}/{}",
+            SKILLS_SH_BASE,
+            urlencoding::encode(source),
+            urlencoding::encode(skill_id)
+        )
+    } else {
+        format!(
+            "{}/{}/{}",
+            SKILLS_SH_BASE,
+            source
+                .split('/')
+                .map(urlencoding::encode)
+                .collect::<Vec<_>>()
+                .join("/"),
+            urlencoding::encode(skill_id)
+        )
+    }
+}
+
+fn registry_entry_from_skill(skill: SkillsShSkill) -> RegistryEntry {
+    let id = skill
+        .id
+        .clone()
+        .unwrap_or_else(|| format!("{}/{}", skill.source, skill.skill_id));
+    let source_type = if is_domain_source(&skill.source) {
+        "well-known"
+    } else {
+        "github"
+    };
+    let install_url = if is_domain_source(&skill.source) {
+        format!("https://{}", skill.source)
+    } else {
+        format!("https://github.com/{}", skill.source)
+    };
+    let author = skill
+        .source
+        .split('/')
+        .next()
+        .unwrap_or(skill.source.as_str())
+        .to_string();
+
+    RegistryEntry {
+        id,
+        skill_id: skill.skill_id.clone(),
+        name: skill.name,
+        source: skill.source.clone(),
+        source_type: source_type.to_string(),
+        version: String::new(),
+        description: String::new(),
+        categories: Vec::new(),
+        author,
+        license: String::new(),
+        tarball_url: String::new(),
+        sha256: String::new(),
+        tags: Vec::new(),
+        updated_at: String::new(),
+        install_url,
+        url: skills_sh_url(&skill.source, &skill.skill_id),
+        installs: skill.installs,
+        is_official: skill.is_official,
+        is_duplicate: skill.is_duplicate,
+    }
+}
+
+fn registry_from_page(page: SkillsShPage, view: &str, page_no: u32) -> Registry {
+    let total = page
+        .total_skills
+        .or(page.all_time_total)
+        .unwrap_or_default();
+    Registry {
+        version: 1,
+        generated_at: chrono::Utc::now().to_rfc3339(),
+        skills: page.skills.into_iter().map(registry_entry_from_skill).collect(),
+        total_skills: total,
+        has_more: page.has_more,
+        next_page: page.has_more.then_some(page_no + 1),
+        view: page.view.unwrap_or_else(|| view.to_string()),
+    }
+}
+
+fn http_client() -> Result<reqwest::Client, String> {
+    let mut headers = HeaderMap::new();
+    headers.insert(USER_AGENT, HeaderValue::from_static("Solo IDE skills marketplace"));
+    headers.insert(ACCEPT, HeaderValue::from_static("application/json,text/plain,*/*"));
+
+    if let Ok(token) = std::env::var("GITHUB_TOKEN").or_else(|_| std::env::var("GH_TOKEN")) {
+        if !token.trim().is_empty() {
+            let value = format!("Bearer {}", token.trim());
+            if let Ok(header) = HeaderValue::from_str(&value) {
+                headers.insert(AUTHORIZATION, header);
+            }
+        }
+    }
+
+    reqwest::Client::builder()
+        .timeout(Duration::from_secs(FETCH_TIMEOUT_SECS))
+        .default_headers(headers)
+        .build()
+        .map_err(|e| format!("build http client: {}", e))
 }
 
 async fn cache_is_fresh(cache: &Path) -> bool {
-    let meta = match fs::metadata(cache).await {
-        Ok(m) => m,
-        Err(_) => return false,
+    let Ok(meta) = fs::metadata(cache).await else {
+        return false;
     };
-    let modified = match meta.modified() {
-        Ok(m) => m,
-        Err(_) => return false,
+    let Ok(modified) = meta.modified() else {
+        return false;
     };
     modified
         .elapsed()
@@ -76,253 +290,554 @@ async fn cache_is_fresh(cache: &Path) -> bool {
         .unwrap_or(false)
 }
 
-async fn write_cache(cache: &Path, text: &str) -> std::io::Result<()> {
-    if let Some(parent) = cache.parent() {
-        fs::create_dir_all(parent).await?;
-    }
-    fs::write(cache, text).await
+async fn read_cache(cache: &Path) -> Option<Registry> {
+    let raw = fs::read_to_string(cache).await.ok()?;
+    serde_json::from_str::<Registry>(&raw).ok()
 }
 
-/// Fetch the marketplace registry.
-///
-/// - `force = false`: returns cached copy if it's <24h old; otherwise fetches.
-/// - `force = true`: always fetches.
-/// - On network failure: falls back to stale cache if any exists.
-#[tauri::command]
-pub async fn skills_fetch_registry(
-    app: AppHandle,
-    force: bool,
-) -> Result<Registry, String> {
-    let cache = cache_path().ok_or_else(|| "could not resolve HOME".to_string())?;
+async fn write_cache(cache: &Path, registry: &Registry) {
+    let Ok(text) = serde_json::to_string(registry) else {
+        return;
+    };
+    if let Some(parent) = cache.parent() {
+        if let Err(e) = fs::create_dir_all(parent).await {
+            tracing::debug!("failed to create skills.sh cache dir: {}", e);
+            return;
+        }
+    }
+    if let Err(e) = fs::write(cache, text).await {
+        tracing::debug!("failed to write skills.sh cache: {}", e);
+    }
+}
+
+async fn fetch_registry_page_inner(view: &str, page: u32, force: bool) -> Result<Registry, String> {
+    let view = match view {
+        "all-time" | "trending" | "hot" => view,
+        other => return Err(format!("unsupported skills.sh view '{}'", other)),
+    };
+    let cache = cache_path(view, page).ok_or_else(|| "could not resolve HOME".to_string())?;
 
     if !force && cache_is_fresh(&cache).await {
-        if let Some(reg) = read_cache_any_age(&cache).await {
-            return Ok(reg);
+        if let Some(registry) = read_cache(&cache).await {
+            return Ok(registry);
         }
     }
 
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(FETCH_TIMEOUT_SECS))
-        .build()
-        .map_err(|e| format!("build http client: {}", e))?;
-
-    let url = DEFAULT_REGISTRY_URL;
-    match client.get(url).send().await {
-        Ok(resp) if resp.status().is_success() => {
-            let text = resp
-                .text()
-                .await
-                .map_err(|e| format!("read registry body: {}", e))?;
-            let reg: Registry = serde_json::from_str(&text)
-                .map_err(|e| format!("parse registry.json: {}", e))?;
-            if let Err(e) = write_cache(&cache, &text).await {
-                tracing::warn!("failed to cache registry.json: {}", e);
-            }
-            let _ = app.emit("skills-event", SkillsEvent::RegistryUpdated);
-            Ok(reg)
+    let client = http_client()?;
+    let url = format!("{}/api/skills/{}/{}", SKILLS_SH_BASE, view, page);
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("fetch skills.sh page: {}", e))?;
+    if !resp.status().is_success() {
+        if let Some(stale) = read_cache(&cache).await {
+            return Ok(stale);
         }
-        Ok(resp) => {
-            tracing::warn!("registry fetch returned {}, falling back to cache", resp.status());
-            read_cache_any_age(&cache)
-                .await
-                .ok_or_else(|| format!("registry fetch failed (HTTP {}) and no cache available", resp.status()))
-        }
-        Err(e) => {
-            tracing::warn!("registry fetch error: {}, falling back to cache", e);
-            read_cache_any_age(&cache)
-                .await
-                .ok_or_else(|| format!("registry fetch failed: {} (no cache)", e))
-        }
+        return Err(format!("skills.sh page HTTP {}", resp.status()));
     }
+
+    let page_json = resp
+        .json::<SkillsShPage>()
+        .await
+        .map_err(|e| format!("parse skills.sh page: {}", e))?;
+    let registry = registry_from_page(page_json, view, page);
+    write_cache(&cache, &registry).await;
+    Ok(registry)
 }
 
-// ─── Install (Task 3.2) ──────────────────────────────────────────────
-
-/// Which file extensions are banned inside skill tarballs.
-/// Keep this in sync with `infra/skills-registry/scripts/validate.ts`.
-const BANNED_EXTS: &[&str] = &[
-    "sh", "py", "js", "ts", "mjs", "cjs", "exe", "bin", "so", "dll", "dylib",
-];
-
-fn has_banned_extension(path: &Path) -> bool {
-    path.extension()
-        .and_then(|s| s.to_str())
-        .map(|s| BANNED_EXTS.iter().any(|b| b.eq_ignore_ascii_case(s)))
-        .unwrap_or(false)
+#[tauri::command]
+pub async fn skills_fetch_registry(app: AppHandle, force: bool) -> Result<Registry, String> {
+    let registry = fetch_registry_page_inner("all-time", 0, force).await?;
+    let _ = app.emit("skills-event", SkillsEvent::RegistryUpdated);
+    Ok(registry)
 }
 
-/// Reject if any path component is ParentDir, RootDir, or Prefix — that
-/// prevents both `../escape` and absolute-path tar entries.
+#[tauri::command]
+pub async fn skills_fetch_registry_page(
+    view: String,
+    page: u32,
+    force: bool,
+) -> Result<Registry, String> {
+    fetch_registry_page_inner(&view, page, force).await
+}
+
+#[derive(Debug, Deserialize)]
+struct SkillsShSearch {
+    #[serde(default)]
+    skills: Vec<SkillsShSkill>,
+}
+
+#[tauri::command]
+pub async fn skills_search_marketplace(
+    _app: AppHandle,
+    query: String,
+    installed_ids: Vec<String>,
+) -> Result<Vec<SkillSuggestion>, String> {
+    let trimmed = query.trim();
+    if trimmed.len() < 2 {
+        return Ok(Vec::new());
+    }
+
+    let installed: std::collections::HashSet<String> = installed_ids
+        .into_iter()
+        .map(|s| s.to_lowercase())
+        .collect();
+    let client = http_client()?;
+    let url = format!(
+        "{}/api/search?q={}&limit=50",
+        SKILLS_SH_BASE,
+        urlencoding::encode(trimmed)
+    );
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("search skills.sh: {}", e))?;
+    if !resp.status().is_success() {
+        tracing::debug!("skills.sh search returned {}", resp.status());
+        return Ok(Vec::new());
+    }
+
+    let body = resp
+        .json::<SkillsShSearch>()
+        .await
+        .map_err(|e| format!("parse skills.sh search: {}", e))?;
+    Ok(body
+        .skills
+        .into_iter()
+        .map(registry_entry_from_skill)
+        .filter(|entry| {
+            let id = entry.id.to_lowercase();
+            let skill_id = entry.skill_id.to_lowercase();
+            let name = entry.name.to_lowercase();
+            !installed.contains(&id) && !installed.contains(&skill_id) && !installed.contains(&name)
+        })
+        .enumerate()
+        .map(|(idx, entry)| SkillSuggestion {
+            reason: if entry.is_official {
+                "official skills.sh result".to_string()
+            } else {
+                "matches skills.sh search".to_string()
+            },
+            score: 1.0 - (idx as f32 * 0.05),
+            entry,
+        })
+        .collect())
+}
+
 fn path_is_safe_relative(path: &Path) -> bool {
     if path.is_absolute() {
         return false;
     }
-    path.components().all(|c| {
-        matches!(c, Component::Normal(_) | Component::CurDir)
-    })
+    path.components()
+        .all(|c| matches!(c, Component::Normal(_) | Component::CurDir))
 }
 
-/// Extract `skills/<id>/` contents from a github-style tarball into `dest`.
-/// The tarball's top-level dir is `<repo>-<branch>/` which we strip.
-fn extract_skill_from_tarball(
-    tarball: &[u8],
-    skill_id: &str,
-    dest: &Path,
-) -> Result<u64, String> {
-    let gz = flate2::read::GzDecoder::new(tarball);
-    let mut archive = tar::Archive::new(gz);
-    let prefix_needle = format!("/skills/{}/", skill_id);
-    let mut total_bytes: u64 = 0;
-    let mut files_written = 0;
-
-    for entry in archive.entries().map_err(|e| format!("tar entries: {}", e))? {
-        let mut entry = entry.map_err(|e| format!("tar entry: {}", e))?;
-
-        let entry_path = entry
-            .path()
-            .map_err(|e| format!("tar path: {}", e))?
-            .into_owned();
-        let path_str = entry_path.to_string_lossy().to_string();
-
-        // Find the `skills/<id>/` slice inside the top-level `<repo>-<ref>/` dir
-        let Some(idx) = path_str.find(&prefix_needle) else {
-            continue;
-        };
-        let rel_inside_skill = &path_str[idx + prefix_needle.len()..];
-        if rel_inside_skill.is_empty() {
-            continue;
-        }
-        let rel_path = Path::new(rel_inside_skill);
-
-        if !path_is_safe_relative(rel_path) {
-            return Err(format!("unsafe tar entry path: {}", path_str));
-        }
-
-        let header = entry.header().clone();
-        let entry_type = header.entry_type();
-        if entry_type.is_dir() {
-            let dir_dest = dest.join(rel_path);
-            std::fs::create_dir_all(&dir_dest).map_err(|e| e.to_string())?;
-            continue;
-        }
-        if !entry_type.is_file() {
-            // Skip symlinks, hardlinks, devices, etc.
-            continue;
-        }
-
-        if has_banned_extension(rel_path) {
-            return Err(format!("banned file extension: {}", path_str));
-        }
-
-        let entry_size = header.size().unwrap_or(0);
-        total_bytes = total_bytes.saturating_add(entry_size);
-        if total_bytes > MAX_SKILL_BYTES {
-            return Err(format!(
-                "skill exceeds {} byte limit",
-                MAX_SKILL_BYTES
-            ));
-        }
-
-        let out_path = dest.join(rel_path);
-        if let Some(parent) = out_path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-        }
-
-        // Read the first few bytes and reject executable magic bytes before
-        // writing anything to disk.
-        let mut buf = Vec::with_capacity(entry_size.min(MAX_SKILL_BYTES) as usize);
-        entry
-            .read_to_end(&mut buf)
-            .map_err(|e| format!("read tar entry body: {}", e))?;
-        if has_executable_magic(&buf) {
-            return Err(format!("binary magic bytes in {}", path_str));
-        }
-
-        std::fs::write(&out_path, &buf).map_err(|e| format!("write {}: {}", out_path.display(), e))?;
-        files_written += 1;
-    }
-
-    if files_written == 0 {
-        return Err(format!(
-            "skill '{}' not found in tarball",
-            skill_id
-        ));
-    }
-
-    Ok(total_bytes)
+fn has_binary_extension(path: &Path) -> bool {
+    const BINARY_EXTS: &[&str] = &[
+        "exe", "bin", "so", "dll", "dylib", "app", "dmg", "pkg", "zip", "gz", "tgz", "tar",
+        "png", "jpg", "jpeg", "gif", "webp", "ico", "pdf", "woff", "woff2", "ttf", "otf",
+    ];
+    path.extension()
+        .and_then(|s| s.to_str())
+        .map(|s| BINARY_EXTS.iter().any(|b| b.eq_ignore_ascii_case(s)))
+        .unwrap_or(false)
 }
 
 fn has_executable_magic(bytes: &[u8]) -> bool {
     if bytes.len() < 4 {
         return false;
     }
-    // ELF
     if &bytes[0..4] == b"\x7fELF" {
         return true;
     }
-    // Mach-O
     let magic = u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
     if magic == 0xfeedface || magic == 0xfeedfacf || magic == 0xcefaedfe || magic == 0xcffaedfe {
         return true;
     }
-    // PE (MZ)
-    if &bytes[0..2] == b"MZ" {
-        return true;
-    }
-    false
+    &bytes[0..2] == b"MZ"
 }
 
-/// Install a registry skill.
+fn encoded_path(path: &str) -> String {
+    path.split('/')
+        .map(urlencoding::encode)
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+fn raw_github_url(source: &str, branch: &str, path: &str) -> String {
+    format!(
+        "https://raw.githubusercontent.com/{}/{}/{}",
+        source,
+        urlencoding::encode(branch),
+        encoded_path(path)
+    )
+}
+
+async fn fetch_json<T: for<'de> Deserialize<'de>>(
+    client: &reqwest::Client,
+    url: &str,
+) -> Result<T, String> {
+    let resp = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| format!("fetch {}: {}", url, e))?;
+    if !resp.status().is_success() {
+        return Err(format!("{} returned HTTP {}", url, resp.status()));
+    }
+    resp.json::<T>()
+        .await
+        .map_err(|e| format!("parse {}: {}", url, e))
+}
+
+fn instruction_candidate_score(path: &str, entry: &RegistryEntry) -> i32 {
+    let lower = path.to_lowercase();
+    if !(lower.ends_with("/skill.md")
+        || lower.ends_with("/agents.md")
+        || lower == "skill.md"
+        || lower == "agents.md")
+    {
+        return 0;
+    }
+
+    let skill_id = skill_id_from_entry(entry).to_lowercase();
+    let name = entry.name.to_lowercase();
+    let parent = Path::new(path)
+        .parent()
+        .and_then(|p| p.file_name())
+        .and_then(|p| p.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    let root = Path::new(path)
+        .parent()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default()
+        .to_lowercase();
+
+    let mut score = 1;
+    if parent == skill_id || parent == name {
+        score += 100;
+    }
+    if !parent.is_empty() && (skill_id.ends_with(&parent) || parent.ends_with(&skill_id)) {
+        score += 80;
+    }
+    if !parent.is_empty() && (skill_id.contains(&parent) || parent.contains(&skill_id)) {
+        score += 45;
+    }
+    if root == format!("skills/{}", skill_id) || root == format!("skills/{}", name) {
+        score += 80;
+    }
+    if lower.ends_with("/agents.md") || lower == "agents.md" {
+        score += 3;
+    }
+    score
+}
+
+async fn resolve_skill_folder(
+    client: &reqwest::Client,
+    entry: &RegistryEntry,
+) -> Result<SkillFolder, String> {
+    let source = source_from_entry(entry);
+    if !is_github_source(&source) {
+        return Err("only GitHub-backed skills can be installed directly right now".to_string());
+    }
+
+    let repo_url = format!("https://github.com/{}", source);
+    let repo: GithubRepo = fetch_json(
+        client,
+        &format!("https://api.github.com/repos/{}", source),
+    )
+    .await?;
+    let branch = repo.default_branch;
+    let tree: GithubTree = fetch_json(
+        client,
+        &format!(
+            "https://api.github.com/repos/{}/git/trees/{}?recursive=1",
+            source,
+            urlencoding::encode(&branch)
+        ),
+    )
+    .await?;
+    if tree.truncated {
+        tracing::warn!("GitHub tree for {} was truncated", source);
+    }
+
+    let mut best: Option<(i32, String)> = None;
+    for item in tree.tree.iter().filter(|item| item.kind == "blob") {
+        let score = instruction_candidate_score(&item.path, entry);
+        if score > 0 && best.as_ref().map(|(s, _)| score > *s).unwrap_or(true) {
+            best = Some((score, item.path.clone()));
+        }
+    }
+
+    let (_, instruction_path) =
+        best.ok_or_else(|| format!("could not find {} in {}", skill_id_from_entry(entry), source))?;
+    let root = Path::new(&instruction_path)
+        .parent()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    Ok(SkillFolder {
+        branch,
+        root,
+        instruction_path,
+        repo_url: if repo.html_url.is_empty() {
+            repo_url
+        } else {
+            repo.html_url
+        },
+    })
+}
+
+fn entry_under_root<'a>(entry_path: &'a str, root: &str) -> Option<&'a str> {
+    if root.is_empty() {
+        Some(entry_path)
+    } else {
+        entry_path
+            .strip_prefix(root)
+            .and_then(|rest| rest.strip_prefix('/'))
+    }
+}
+
+async fn fetch_skill_files(
+    client: &reqwest::Client,
+    source: &str,
+    folder: &SkillFolder,
+) -> Result<Vec<SkillFile>, String> {
+    let tree: GithubTree = fetch_json(
+        client,
+        &format!(
+            "https://api.github.com/repos/{}/git/trees/{}?recursive=1",
+            source,
+            urlencoding::encode(&folder.branch)
+        ),
+    )
+    .await?;
+
+    let mut entries: Vec<GithubTreeEntry> = tree
+        .tree
+        .into_iter()
+        .filter(|item| item.kind == "blob")
+        .filter(|item| entry_under_root(&item.path, &folder.root).is_some())
+        .collect();
+    entries.sort_by(|a, b| a.path.cmp(&b.path));
+
+    if entries.len() > MAX_SKILL_FILES {
+        return Err(format!(
+            "skill has {} files, above Solo's {} file limit",
+            entries.len(),
+            MAX_SKILL_FILES
+        ));
+    }
+
+    let mut total_bytes = 0_u64;
+    let mut files = Vec::new();
+    for item in entries {
+        let Some(rel) = entry_under_root(&item.path, &folder.root) else {
+            continue;
+        };
+        let rel_path = Path::new(rel);
+        if !path_is_safe_relative(rel_path) {
+            return Err(format!("unsafe skill file path: {}", item.path));
+        }
+        if has_binary_extension(rel_path) {
+            tracing::debug!("skipping binary skill file {}", item.path);
+            continue;
+        }
+
+        let hinted_size = item.size.unwrap_or_default();
+        total_bytes = total_bytes.saturating_add(hinted_size);
+        if total_bytes > MAX_SKILL_BYTES {
+            return Err(format!("skill exceeds {} byte limit", MAX_SKILL_BYTES));
+        }
+
+        let resp = client
+            .get(raw_github_url(source, &folder.branch, &item.path))
+            .send()
+            .await
+            .map_err(|e| format!("fetch {}: {}", item.path, e))?;
+        if !resp.status().is_success() {
+            return Err(format!("{} returned HTTP {}", item.path, resp.status()));
+        }
+        let bytes = resp
+            .bytes()
+            .await
+            .map_err(|e| format!("read {}: {}", item.path, e))?;
+        if has_executable_magic(&bytes) {
+            return Err(format!("binary magic bytes in {}", item.path));
+        }
+        total_bytes = total_bytes.saturating_add(bytes.len() as u64);
+        if total_bytes > MAX_SKILL_BYTES {
+            return Err(format!("skill exceeds {} byte limit", MAX_SKILL_BYTES));
+        }
+
+        let contents = String::from_utf8(bytes.to_vec())
+            .map_err(|_| format!("{} is not valid UTF-8 text", item.path))?;
+        files.push(SkillFile {
+            path: rel.to_string(),
+            bytes: bytes.len() as u32,
+            contents,
+        });
+    }
+
+    if !files
+        .iter()
+        .any(|file| file.path == "AGENTS.md" || file.path == "SKILL.md")
+    {
+        let instruction_name = Path::new(&folder.instruction_path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("SKILL.md");
+        return Err(format!("skill folder did not include {}", instruction_name));
+    }
+
+    Ok(files)
+}
+
+fn parse_frontmatter_field(content: &str, field: &str) -> Option<String> {
+    let mut lines = content.lines();
+    if lines.next()?.trim() != "---" {
+        return None;
+    }
+    let prefix = format!("{}:", field);
+    for line in lines {
+        let trimmed = line.trim();
+        if trimmed == "---" {
+            break;
+        }
+        if let Some(value) = trimmed.strip_prefix(&prefix) {
+            return Some(value.trim().trim_matches('"').trim_matches('\'').to_string());
+        }
+    }
+    None
+}
+
+fn fallback_description(content: &str) -> String {
+    content
+        .lines()
+        .map(str::trim)
+        .filter(|line| {
+            !line.is_empty()
+                && !line.starts_with("---")
+                && !line.starts_with('#')
+                && !line.starts_with("**Version")
+        })
+        .map(|line| {
+            line.trim_start_matches('>')
+                .trim_start_matches('-')
+                .trim_matches('*')
+                .trim()
+                .to_string()
+        })
+        .find(|line| line.len() > 24)
+        .unwrap_or_default()
+}
+
+fn detail_description(files: &[SkillFile], entry: &RegistryEntry) -> String {
+    let instruction = files
+        .iter()
+        .find(|file| file.path == "AGENTS.md")
+        .or_else(|| files.iter().find(|file| file.path == "SKILL.md"));
+    if let Some(file) = instruction {
+        if let Some(desc) = parse_frontmatter_field(&file.contents, "description") {
+            if !desc.is_empty() {
+                return desc;
+            }
+        }
+        let fallback = fallback_description(&file.contents);
+        if !fallback.is_empty() {
+            return fallback;
+        }
+    }
+    entry.description.clone()
+}
+
+async fn fetch_skill_detail_inner(entry: RegistryEntry) -> Result<SkillDetail, String> {
+    let source = source_from_entry(&entry);
+    let skill_id = skill_id_from_entry(&entry);
+    let web_url = if entry.url.is_empty() {
+        skills_sh_url(&source, &skill_id)
+    } else {
+        entry.url.clone()
+    };
+    let source_url = if entry.install_url.is_empty() {
+        if is_github_source(&source) {
+            format!("https://github.com/{}", source)
+        } else {
+            format!("https://{}", source)
+        }
+    } else {
+        entry.install_url.clone()
+    };
+    let install_command = if is_github_source(&source) {
+        format!("npx skills add {} --skill {}", source_url, skill_id)
+    } else {
+        format!("npx skills add {} --skill {}", source_url, skill_id)
+    };
+
+    if !is_github_source(&source) {
+        return Ok(SkillDetail {
+            description: entry.description.clone(),
+            entry,
+            install_command,
+            web_url,
+            source_url,
+            hash: None,
+            files: Vec::new(),
+            audits: Vec::<SkillAudit>::new(),
+            installable: false,
+            install_note: "Solo can preview this skills.sh listing, but direct install currently supports GitHub-backed skills.".to_string(),
+        });
+    }
+
+    let client = http_client()?;
+    let folder = resolve_skill_folder(&client, &entry).await?;
+    let files = fetch_skill_files(&client, &source, &folder).await?;
+    let mut hash = Sha256::new();
+    for file in &files {
+        hash.update(file.path.as_bytes());
+        hash.update([0]);
+        hash.update(file.contents.as_bytes());
+        hash.update([0]);
+    }
+    let hash = format!("{:x}", hash.finalize());
+    let description = detail_description(&files, &entry);
+
+    Ok(SkillDetail {
+        entry,
+        description,
+        install_command,
+        web_url,
+        source_url: folder.repo_url,
+        hash: Some(hash),
+        files,
+        audits: Vec::<SkillAudit>::new(),
+        installable: true,
+        install_note: "Installs directly from the GitHub source shown on skills.sh.".to_string(),
+    })
+}
+
 #[tauri::command]
-pub async fn skills_install(
-    app: AppHandle,
-    entry: RegistryEntry,
-) -> Result<(), String> {
-    let id = validate_skill_id(&entry.id)?.to_string();
+pub async fn skills_fetch_detail(entry: RegistryEntry) -> Result<SkillDetail, String> {
+    fetch_skill_detail_inner(entry).await
+}
+
+#[tauri::command]
+pub async fn skills_install(app: AppHandle, entry: RegistryEntry) -> Result<(), String> {
+    let detail = fetch_skill_detail_inner(entry).await?;
+    if !detail.installable {
+        return Err(detail.install_note);
+    }
+
+    let id = install_dir_name(&detail.entry)?;
     let user_dir = user_skills_dir().ok_or_else(|| "could not resolve HOME".to_string())?;
     let dest = user_dir.join(&id);
-
     if dest.exists() {
         return Err(format!("skill '{}' is already installed", id));
     }
 
-    // Download tarball
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(FETCH_TIMEOUT_SECS * 3))
-        .build()
-        .map_err(|e| format!("build http client: {}", e))?;
-    let resp = client
-        .get(&entry.tarball_url)
-        .send()
-        .await
-        .map_err(|e| format!("download tarball: {}", e))?;
-    if !resp.status().is_success() {
-        return Err(format!("tarball HTTP {}", resp.status()));
-    }
-    let bytes = resp
-        .bytes()
-        .await
-        .map_err(|e| format!("read tarball: {}", e))?;
-
-    // Verify sha256 if the registry specifies one. Empty sha means
-    // "not yet populated by CI" — skip verification but log.
-    let actual_sha = {
-        let mut h = Sha256::new();
-        h.update(&bytes);
-        format!("{:x}", h.finalize())
-    };
-    if !entry.sha256.is_empty() && !entry.sha256.eq_ignore_ascii_case(&actual_sha) {
-        return Err(format!(
-            "sha256 mismatch for '{}': expected {}, got {}",
-            id, entry.sha256, actual_sha
-        ));
-    }
-    if entry.sha256.is_empty() {
-        tracing::warn!("installing '{}' with empty sha256 — registry not yet signed", id);
-    }
-
-    // Extract into a temp dir first; only commit on full success so a
-    // failure halfway through never leaves a half-installed skill.
     let staging = user_dir.join(format!(".tmp-install-{}", id));
     if staging.exists() {
         fs::remove_dir_all(&staging)
@@ -333,38 +848,38 @@ pub async fn skills_install(
         .await
         .map_err(|e| format!("create staging: {}", e))?;
 
-    let id_clone = id.clone();
-    let staging_path = staging.clone();
-    let bytes_vec = bytes.to_vec();
-    let extracted_size = tokio::task::spawn_blocking(move || {
-        extract_skill_from_tarball(&bytes_vec, &id_clone, &staging_path)
-    })
-    .await
-    .map_err(|e| format!("extract task: {}", e))??;
+    for file in &detail.files {
+        let rel = Path::new(&file.path);
+        if !path_is_safe_relative(rel) {
+            return Err(format!("unsafe skill file path: {}", file.path));
+        }
+        let out_path = staging.join(rel);
+        if let Some(parent) = out_path.parent() {
+            fs::create_dir_all(parent)
+                .await
+                .map_err(|e| format!("create {}: {}", parent.display(), e))?;
+        }
+        fs::write(&out_path, &file.contents)
+            .await
+            .map_err(|e| format!("write {}: {}", out_path.display(), e))?;
+    }
 
-    // Commit: move staging → dest
     fs::rename(&staging, &dest)
         .await
         .map_err(|e| format!("commit install: {}", e))?;
 
-    // Write origin file
     let meta = InstalledSkillMeta {
         source: OriginSource::Registry,
-        id: id.clone(),
-        version: entry.version.clone(),
+        id: detail.entry.id.clone(),
+        version: detail.hash.clone().unwrap_or_else(|| "skills.sh".to_string()),
         installed_at: chrono::Utc::now().to_rfc3339(),
         modified: false,
-        upstream_sha256: if entry.sha256.is_empty() {
-            Some(actual_sha)
-        } else {
-            Some(entry.sha256.clone())
-        },
+        upstream_sha256: detail.hash.clone(),
     };
     skills_origin::write_origin(&dest, &meta)
         .await
         .map_err(|e| format!("write origin: {}", e))?;
 
-    tracing::info!("installed skill '{}' ({} bytes)", id, extracted_size);
     let _ = app.emit(
         "skills-event",
         SkillsEvent::Installed {
@@ -374,15 +889,12 @@ pub async fn skills_install(
     Ok(())
 }
 
-// ─── Uninstall (Task 3.3) ────────────────────────────────────────────
-
 #[tauri::command]
 pub async fn skills_uninstall(app: AppHandle, skill_id: String) -> Result<(), String> {
     let id = validate_skill_id(&skill_id)?.to_string();
     let user_dir = user_skills_dir().ok_or_else(|| "could not resolve HOME".to_string())?;
     let dest = user_dir.join(&id);
 
-    // Extra belt-and-suspenders: canonicalize and ensure dest is inside user_dir.
     let canonical_user = fs::canonicalize(&user_dir)
         .await
         .map_err(|e| format!("canonicalize user skills dir: {}", e))?;
@@ -390,14 +902,13 @@ pub async fn skills_uninstall(app: AppHandle, skill_id: String) -> Result<(), St
         .await
         .map_err(|e| format!("canonicalize skill dir: {}", e))?;
     if !canonical_dest.starts_with(&canonical_user) {
-        return Err(format!("refusing to remove path outside skills dir"));
+        return Err("refusing to remove path outside skills dir".to_string());
     }
 
     fs::remove_dir_all(&canonical_dest)
         .await
         .map_err(|e| format!("remove skill dir: {}", e))?;
 
-    tracing::info!("uninstalled skill '{}'", id);
     let _ = app.emit(
         "skills-event",
         SkillsEvent::Uninstalled {
@@ -407,126 +918,6 @@ pub async fn skills_uninstall(app: AppHandle, skill_id: String) -> Result<(), St
     Ok(())
 }
 
-// ─── Search (Task 4.1 — keyword + fuzzy scoring) ─────────────────────
-
-/// Normalize a string into whitespace-split lowercase tokens, dropping
-/// anything shorter than 3 chars and common stop words.
-fn tokens(s: &str) -> Vec<String> {
-    const STOP: &[&str] = &[
-        "the", "and", "for", "with", "use", "when", "that", "this", "from",
-        "into", "onto", "over", "what", "will", "can", "may", "are", "was",
-        "but", "not", "how", "you", "your", "about", "there", "their",
-    ];
-    s.to_lowercase()
-        .split(|c: char| !c.is_alphanumeric())
-        .filter(|t| t.len() >= 3 && !STOP.contains(t))
-        .map(String::from)
-        .collect()
-}
-
-/// Score how well `entry` matches `query_tokens`. Score ranges roughly 0..5.
-fn score_entry(entry: &RegistryEntry, query_tokens: &[String]) -> f32 {
-    if query_tokens.is_empty() {
-        return 0.0;
-    }
-
-    let name_tokens = tokens(&entry.name);
-    let desc_tokens = tokens(&entry.description);
-    let category_tokens: Vec<String> = entry
-        .categories
-        .iter()
-        .flat_map(|c| tokens(c))
-        .collect();
-    let tag_tokens: Vec<String> = entry.tags.iter().flat_map(|t| tokens(t)).collect();
-
-    let mut score = 0.0f32;
-    for q in query_tokens {
-        if name_tokens.iter().any(|t| t == q) {
-            score += 2.5;
-        } else if name_tokens.iter().any(|t| t.contains(q) || q.contains(t)) {
-            score += 1.2;
-        }
-        if tag_tokens.iter().any(|t| t == q) {
-            score += 1.5;
-        }
-        if category_tokens.iter().any(|t| t == q) {
-            score += 1.0;
-        }
-        if desc_tokens.iter().any(|t| t == q) {
-            score += 0.6;
-        } else if desc_tokens.iter().any(|t| t.contains(q) || q.contains(t)) {
-            score += 0.25;
-        }
-    }
-
-    // Penalize score by query length so "write a short poem" doesn't rank
-    // any skill artificially high just because the query is wordy.
-    score / (query_tokens.len() as f32).sqrt().max(1.0)
-}
-
-fn describe_match(entry: &RegistryEntry, query_tokens: &[String]) -> String {
-    let name_hit = query_tokens.iter().any(|q| entry.name.to_lowercase().contains(q));
-    let tag_hit = entry.tags.iter().any(|t| {
-        query_tokens.iter().any(|q| t.to_lowercase().contains(q))
-    });
-    if name_hit {
-        format!("matches skill name '{}'", entry.name)
-    } else if tag_hit {
-        format!("tagged for your task ({})", entry.tags.join(", "))
-    } else {
-        format!("description matches your task")
-    }
-}
-
-#[tauri::command]
-pub async fn skills_search_marketplace(
-    app: AppHandle,
-    query: String,
-    installed_ids: Vec<String>,
-) -> Result<Vec<SkillSuggestion>, String> {
-    let trimmed = query.trim();
-    if trimmed.len() < 4 {
-        return Ok(Vec::new());
-    }
-
-    // Fetch registry (cached). Falls back to empty on any failure.
-    let reg = match skills_fetch_registry(app, false).await {
-        Ok(r) => r,
-        Err(e) => {
-            tracing::debug!("search: registry unavailable ({})", e);
-            return Ok(Vec::new());
-        }
-    };
-
-    let installed: std::collections::HashSet<&str> =
-        installed_ids.iter().map(String::as_str).collect();
-    let qt = tokens(trimmed);
-    if qt.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    let mut scored: Vec<(f32, RegistryEntry)> = reg
-        .skills
-        .into_iter()
-        .filter(|e| !installed.contains(e.id.as_str()))
-        .map(|e| (score_entry(&e, &qt), e))
-        .filter(|(s, _)| *s >= 0.9) // threshold — tuned by hand
-        .collect();
-
-    scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
-    scored.truncate(3);
-
-    Ok(scored
-        .into_iter()
-        .map(|(score, entry)| SkillSuggestion {
-            reason: describe_match(&entry, &qt),
-            score,
-            entry,
-        })
-        .collect())
-}
-
-/// Read the currently-installed AGENTS.md (or SKILL.md fallback) for a given skill.
 #[tauri::command]
 pub async fn skills_read_installed(skill_id: String) -> Result<String, String> {
     let id = validate_skill_id(&skill_id)?.to_string();
@@ -549,9 +940,6 @@ pub async fn skills_read_installed(skill_id: String) -> Result<String, String> {
         .map_err(|e| format!("read {}: {}", path.display(), e))
 }
 
-/// Overwrite an installed skill's `AGENTS.md`. Flips `.solo-origin.json.modified`
-/// so the Forks tab picks it up. If the skill was originally a `SKILL.md`-only
-/// Claude-style skill, we migrate to AGENTS.md on first write.
 #[tauri::command]
 pub async fn skills_write_installed(skill_id: String, content: String) -> Result<(), String> {
     let id = validate_skill_id(&skill_id)?.to_string();
@@ -571,18 +959,38 @@ pub async fn skills_write_installed(skill_id: String, content: String) -> Result
     Ok(())
 }
 
-// ─── Tests ───────────────────────────────────────────────────────────
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    fn sample_entry(source: &str, skill_id: &str, name: &str) -> RegistryEntry {
+        RegistryEntry {
+            id: format!("{}/{}", source, skill_id),
+            skill_id: skill_id.into(),
+            name: name.into(),
+            source: source.into(),
+            source_type: "github".into(),
+            version: String::new(),
+            description: String::new(),
+            categories: Vec::new(),
+            author: source.split('/').next().unwrap_or("").into(),
+            license: String::new(),
+            tarball_url: String::new(),
+            sha256: String::new(),
+            tags: Vec::new(),
+            updated_at: String::new(),
+            install_url: format!("https://github.com/{}", source),
+            url: skills_sh_url(source, skill_id),
+            installs: 0,
+            is_official: false,
+            is_duplicate: false,
+        }
+    }
+
     #[test]
-    fn validate_skill_id_accepts_safe() {
-        assert!(validate_skill_id("ui").is_ok());
-        assert!(validate_skill_id("poetry-writer").is_ok());
-        assert!(validate_skill_id("finance_calc").is_ok());
-        assert!(validate_skill_id("skill123").is_ok());
+    fn install_dir_name_uses_safe_skill_id() {
+        let entry = sample_entry("anthropics/skills", "skill-creator", "Skill Creator");
+        assert_eq!(install_dir_name(&entry).unwrap(), "skill-creator");
     }
 
     #[test]
@@ -603,203 +1011,46 @@ mod tests {
     }
 
     #[test]
-    fn path_safe_rejects_absolute() {
+    fn path_safe_rejects_absolute_and_parent_dir() {
         assert!(!path_is_safe_relative(Path::new("/etc/passwd")));
-    }
-
-    #[test]
-    fn path_safe_rejects_parent_dir() {
         assert!(!path_is_safe_relative(Path::new("../escape")));
         assert!(!path_is_safe_relative(Path::new("foo/../../escape")));
     }
 
     #[test]
-    fn banned_exts_cover_scripts_and_binaries() {
-        assert!(has_banned_extension(Path::new("x.sh")));
-        assert!(has_banned_extension(Path::new("foo.py")));
-        assert!(has_banned_extension(Path::new("a/b/c.js")));
-        assert!(has_banned_extension(Path::new("foo.EXE")));
-        assert!(!has_banned_extension(Path::new("foo.md")));
-        assert!(!has_banned_extension(Path::new("no-ext")));
+    fn binary_exts_reject_archives_and_images_but_allow_scripts() {
+        assert!(has_binary_extension(Path::new("x.zip")));
+        assert!(has_binary_extension(Path::new("foo.png")));
+        assert!(!has_binary_extension(Path::new("script.py")));
+        assert!(!has_binary_extension(Path::new("guide.md")));
     }
 
     #[test]
     fn magic_bytes_detect_elf_macho_pe() {
         assert!(has_executable_magic(b"\x7fELF\x02\x01\x01\x00"));
-        assert!(has_executable_magic(&[0xfe, 0xed, 0xfa, 0xcf])); // Mach-O 64
+        assert!(has_executable_magic(&[0xfe, 0xed, 0xfa, 0xcf]));
         assert!(has_executable_magic(b"MZ\x90\x00"));
         assert!(!has_executable_magic(b"# Hello, world"));
     }
 
-    /// Build a synthetic tarball matching github's layout
-    /// (`<repo>-<ref>/skills/<id>/...`) with just two files.
-    fn build_fake_tarball(skill_id: &str, top_dir: &str) -> Vec<u8> {
-        let mut buf = Vec::new();
-        {
-            let gz = flate2::write::GzEncoder::new(&mut buf, flate2::Compression::default());
-            let mut ar = tar::Builder::new(gz);
-
-            let rel_agents = format!("{}/skills/{}/AGENTS.md", top_dir, skill_id);
-            let agents_body = b"---\nname: x\ndescription: d\n---\nbody";
-            let mut header = tar::Header::new_gnu();
-            header.set_path(&rel_agents).unwrap();
-            header.set_size(agents_body.len() as u64);
-            header.set_mode(0o644);
-            header.set_cksum();
-            ar.append(&header, agents_body.as_slice()).unwrap();
-
-            let rel_extra = format!("{}/skills/{}/ref.md", top_dir, skill_id);
-            let extra = b"# extra";
-            let mut header = tar::Header::new_gnu();
-            header.set_path(&rel_extra).unwrap();
-            header.set_size(extra.len() as u64);
-            header.set_mode(0o644);
-            header.set_cksum();
-            ar.append(&header, extra.as_slice()).unwrap();
-
-            ar.finish().unwrap();
-        }
-        buf
+    #[test]
+    fn candidate_score_matches_prefixed_skills() {
+        let entry = sample_entry(
+            "vercel-labs/agent-skills",
+            "vercel-react-best-practices",
+            "vercel-react-best-practices",
+        );
+        let exact = instruction_candidate_score("skills/react-best-practices/AGENTS.md", &entry);
+        let unrelated = instruction_candidate_score("skills/deploy-to-vercel/SKILL.md", &entry);
+        assert!(exact > unrelated);
     }
 
     #[test]
-    fn extract_happy_path() {
-        let tarball = build_fake_tarball("ui", "skills-registry-main");
-        let tmp = tempfile::tempdir().unwrap();
-        let bytes = extract_skill_from_tarball(&tarball, "ui", tmp.path()).unwrap();
-        assert!(bytes > 0);
-        assert!(tmp.path().join("AGENTS.md").exists());
-        assert!(tmp.path().join("ref.md").exists());
-    }
-
-    #[test]
-    fn extract_rejects_when_skill_missing_from_tarball() {
-        let tarball = build_fake_tarball("other-skill", "skills-registry-main");
-        let tmp = tempfile::tempdir().unwrap();
-        let err = extract_skill_from_tarball(&tarball, "ui", tmp.path()).unwrap_err();
-        assert!(err.contains("not found"));
-    }
-
-    // Note: we don't write an integration test for the `../escape` case
-    // because `tar::Builder` refuses to construct such a tarball from Rust
-    // (rejects `set_path` with `..`). The defense lives in
-    // `path_is_safe_relative`, which IS unit-tested above, and the extract
-    // loop calls it before writing. A hostile registry server could hand-roll
-    // tar bytes to bypass Builder's check; inspection of the loop confirms
-    // every entry path goes through `path_is_safe_relative` first.
-
-    fn build_banned_ext_tarball() -> Vec<u8> {
-        let mut buf = Vec::new();
-        {
-            let gz = flate2::write::GzEncoder::new(&mut buf, flate2::Compression::default());
-            let mut ar = tar::Builder::new(gz);
-            let rel = "skills-registry-main/skills/ui/install.sh";
-            let body = b"#!/bin/sh\nrm -rf /";
-            let mut header = tar::Header::new_gnu();
-            header.set_path(rel).unwrap();
-            header.set_size(body.len() as u64);
-            header.set_mode(0o644);
-            header.set_cksum();
-            ar.append(&header, body.as_slice()).unwrap();
-            ar.finish().unwrap();
-        }
-        buf
-    }
-
-    #[test]
-    fn extract_rejects_banned_extension() {
-        let tarball = build_banned_ext_tarball();
-        let tmp = tempfile::tempdir().unwrap();
-        let err = extract_skill_from_tarball(&tarball, "ui", tmp.path()).unwrap_err();
-        assert!(err.contains("banned"));
-    }
-
-    fn build_macho_tarball() -> Vec<u8> {
-        let mut buf = Vec::new();
-        {
-            let gz = flate2::write::GzEncoder::new(&mut buf, flate2::Compression::default());
-            let mut ar = tar::Builder::new(gz);
-            let rel = "skills-registry-main/skills/ui/payload.md";
-            let body = [0xfe, 0xed, 0xfa, 0xcf, 0, 0, 0, 0]; // Mach-O 64 magic inside a .md
-            let mut header = tar::Header::new_gnu();
-            header.set_path(rel).unwrap();
-            header.set_size(body.len() as u64);
-            header.set_mode(0o644);
-            header.set_cksum();
-            ar.append(&header, body.as_slice()).unwrap();
-            ar.finish().unwrap();
-        }
-        buf
-    }
-
-    fn sample_entry(id: &str, desc: &str, categories: &[&str], tags: &[&str]) -> RegistryEntry {
-        RegistryEntry {
-            id: id.into(),
-            name: id.into(),
-            version: "1.0.0".into(),
-            description: desc.into(),
-            categories: categories.iter().map(|s| (*s).to_string()).collect(),
-            author: "tester".into(),
-            license: "MIT".into(),
-            tarball_url: String::new(),
-            sha256: String::new(),
-            tags: tags.iter().map(|s| (*s).to_string()).collect(),
-            updated_at: String::new(),
-        }
-    }
-
-    #[test]
-    fn tokens_strip_stopwords_and_short_words() {
-        let t = tokens("Use this skill when you want to write poetry");
-        assert!(t.contains(&"skill".to_string()));
-        assert!(t.contains(&"write".to_string()));
-        assert!(t.contains(&"poetry".to_string()));
-        assert!(!t.contains(&"the".to_string()));
-        assert!(!t.contains(&"use".to_string())); // stop word
-        assert!(!t.contains(&"to".to_string())); // short
-    }
-
-    #[test]
-    fn score_name_match_ranks_highest() {
-        let poetry = sample_entry("poetry-writer", "Generate poems", &["writing"], &["poem", "verse"]);
-        let cooking = sample_entry("cooking-helper", "Recipe ideas", &["food"], &["recipe"]);
-        let q = tokens("i want to write a poem");
-        let poetry_score = score_entry(&poetry, &q);
-        let cooking_score = score_entry(&cooking, &q);
-        assert!(poetry_score > cooking_score);
-        assert!(poetry_score > 0.9, "score was {}", poetry_score);
-    }
-
-    #[test]
-    fn score_ignores_unrelated_skills() {
-        let cooking = sample_entry("cooking-helper", "Recipe ideas", &["food"], &["recipe"]);
-        let q = tokens("write a sonnet");
-        let s = score_entry(&cooking, &q);
-        assert!(s < 0.9, "score was {}", s);
-    }
-
-    #[test]
-    fn score_tag_match_contributes() {
-        let entry = sample_entry("x", "Generic description", &[], &["finance", "budget"]);
-        let q = tokens("help me with my budget");
-        let s = score_entry(&entry, &q);
-        assert!(s > 0.9, "score was {}", s);
-    }
-
-    #[test]
-    fn describe_match_prefers_name_then_tag() {
-        let e = sample_entry("poetry-writer", "gen", &[], &["verse"]);
-        let msg_name = describe_match(&e, &tokens("poetry please"));
-        assert!(msg_name.contains("poetry-writer"));
-        let msg_tag = describe_match(&e, &tokens("verse please"));
-        assert!(msg_tag.to_lowercase().contains("tag"));
-    }
-
-    #[test]
-    fn extract_rejects_binary_magic_even_in_md() {
-        let tarball = build_macho_tarball();
-        let tmp = tempfile::tempdir().unwrap();
-        let err = extract_skill_from_tarball(&tarball, "ui", tmp.path()).unwrap_err();
-        assert!(err.contains("magic"));
+    fn parses_frontmatter_description() {
+        let content = "---\nname: test\ndescription: Use this for tests.\n---\n# Body";
+        assert_eq!(
+            parse_frontmatter_field(content, "description").as_deref(),
+            Some("Use this for tests.")
+        );
     }
 }
