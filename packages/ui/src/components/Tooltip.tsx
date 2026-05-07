@@ -26,18 +26,28 @@ export const TooltipContent = forwardRef<
       ref={ref}
       sideOffset={sideOffset}
       className={cn(
-        "z-60 overflow-hidden rounded-md",
-        "bg-popover text-popover-foreground",
-        "px-2 py-1 text-[11px] font-medium",
-        "ring-1 ring-black/5 dark:ring-white/5",
-        "shadow-md",
-        "data-[state=delayed-open]:animate-[fade-in-scale_150ms_cubic-bezier(0.16,1,0.3,1)]",
-        "data-[state=closed]:animate-[fade-out_100ms_cubic-bezier(0.4,0,0.2,1)]",
-        className,
+        "z-60",
+        "data-[side=top]:[--solo-tooltip-origin:bottom]",
+        "data-[side=bottom]:[--solo-tooltip-origin:top]",
+        "data-[side=left]:[--solo-tooltip-origin:right]",
+        "data-[side=right]:[--solo-tooltip-origin:left]",
       )}
       {...props}
     >
-      {children}
+      <div
+        className={cn(
+          "overflow-hidden rounded-full",
+          "bg-popover text-popover-foreground",
+          "px-2 py-1 text-[11px] font-medium",
+          "ring-1 ring-black/5 dark:ring-white/5",
+          "shadow-md",
+          "origin-[var(--solo-tooltip-origin,center)]",
+          "animate-[fade-in-scale_150ms_cubic-bezier(0.16,1,0.3,1)]",
+          className,
+        )}
+      >
+        {children}
+      </div>
       {withArrow && <Arrow className="fill-popover" />}
     </Content>
   </Portal>
