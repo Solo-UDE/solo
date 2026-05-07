@@ -38,13 +38,17 @@ export const vaultDropPaths = (
   paths: string[],
   scope: VaultScope,
   memoryType: MemoryType,
-) => invoke<string[]>('vault_drop_paths', { paths, scope, memoryType });
+  syncToCloud: boolean,
+) => invoke<string[]>('vault_drop_paths', { paths, scope, memoryType, syncToCloud });
 
 export const vaultList = (scope: VaultScope, filters: VaultListFilters) =>
   invoke<VaultEntry[]>('vault_list', { scope, filters });
 
 export const vaultGet = (entryId: string) =>
   invoke<VaultEntry | null>('vault_get', { entryId });
+
+export const vaultSyncEntry = (entryId: string) =>
+  invoke<VaultEntry | null>('vault_sync_entry', { entryId });
 
 export const vaultUpdateTags = (entryId: string, tags: string[]) =>
   invoke<VaultEntry | null>('vault_update_tags', { entryId, tags });
