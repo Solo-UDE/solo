@@ -81,7 +81,7 @@ export const RepoRail: FC = () => {
 
   return (
     <motion.aside
-      className="flex h-full shrink-0 flex-col overflow-hidden border-r border-border/80 bg-sidebar"
+      className="liquid-sidebar flex h-full shrink-0 flex-col overflow-hidden border-r border-border/80 bg-sidebar"
       animate={{ width: isExpanded ? SIDEBAR.railExpandedWidth : 58 }}
       transition={RAIL_SPRING}
       style={{
