@@ -67,7 +67,7 @@ export interface ToolCallState {
 
 export type ContentBlock =
 	| { type: 'text'; text: string }
-	| { type: 'thinking'; text: string }
+	| { type: 'thinking'; text: string; isStreaming?: boolean }
 	| { type: 'tool_use'; toolCallIndex: number };
 
 export interface FileAttachment {
@@ -288,6 +288,93 @@ function getOrCreateStreamState(
 	return state;
 }
 
+function finalizeThinking(streamState: SessionStreamState, msg?: Message): void {
+	if (msg) {
+		if (streamState.thinkingStartTime !== null && msg.thinkingContent) {
+			msg.thinkingDurationMs = Date.now() - streamState.thinkingStartTime;
+		}
+		const firstBlock = msg.blocks[0];
+		if (firstBlock && firstBlock.type === 'thinking') {
+			firstBlock.isStreaming = false;
+		}
+	}
+	streamState.thinkingStartTime = null;
+}
+
+const CONTINUATION_CONTEXT_LIMIT = 8_000;
+const CONTINUATION_MESSAGE_LIMIT = 1_200;
+const CONTINUATION_GOAL_LIMIT = 2_000;
+
+function compactText(value: string, limit: number): string {
+	const compacted = value.trim().replace(/\s+/g, ' ');
+	if (compacted.length <= limit) return compacted;
+	return `${compacted.slice(0, Math.max(0, limit - 3)).trimEnd()}...`;
+}
+
+function truncateText(value: string, limit: number): string {
+	const trimmed = value.trim();
+	if (trimmed.length <= limit) return trimmed;
+	return `${trimmed.slice(0, Math.max(0, limit - 3)).trimEnd()}...`;
+}
+
+function getSessionTitleForContext(session: AgentSession, messages: Message[]): string {
+	if (session.name) return session.name;
+	const firstUser = messages.find((message) => message.role === 'user' && message.content.trim());
+	return firstUser ? compactText(firstUser.content, 80) : 'Previous chat';
+}
+
+function buildContinuationSummary(
+	session: AgentSession,
+	messages: Message[],
+	capturedGoal?: string,
+): string {
+	const mostRecentUserMessage = [...messages]
+		.reverse()
+		.find((message) => message.role === 'user' && message.content.trim())?.content.trim();
+	const latestUserGoal =
+		mostRecentUserMessage ||
+		capturedGoal?.trim() ||
+		'Continue the previous chat.';
+
+	const recentMessages = messages
+		.filter((message) => message.content.trim())
+		.slice(-8)
+		.map((message) => {
+			const label = message.role === 'assistant' ? 'Assistant' : 'User';
+			return `${label}: ${compactText(message.content, CONTINUATION_MESSAGE_LIMIT)}`;
+		});
+
+	const lines = [
+		'Context carried from the previous Solo chat.',
+		'',
+		`Most recent user goal: ${compactText(latestUserGoal, CONTINUATION_GOAL_LIMIT)}`,
+		capturedGoal?.trim() && capturedGoal.trim() !== latestUserGoal
+			? `Earlier captured session goal: ${compactText(capturedGoal, CONTINUATION_GOAL_LIMIT)}`
+			: null,
+		`Source chat: ${getSessionTitleForContext(session, messages)}`,
+		session.worktreeBranch ? `Worktree branch: ${session.worktreeBranch}` : null,
+		session.workspacePath ? `Workspace: ${session.workspacePath}` : null,
+		session.summary ? `Existing session summary: ${compactText(session.summary, CONTINUATION_MESSAGE_LIMIT)}` : null,
+		'',
+		'Recent conversation:',
+		recentMessages.length > 0 ? recentMessages.join('\n\n') : 'No previous messages were available.',
+		'',
+		'Use this as background context only. Continue from the goal above and answer the next user message directly.',
+	].filter((line): line is string => line !== null);
+
+	return truncateText(lines.join('\n'), CONTINUATION_CONTEXT_LIMIT);
+}
+
+function getContinuationContextForFirstTurn(session: AgentSession | undefined, messages: Message[]): string | null {
+	if (!session?.summary) return null;
+	if (messages.some((message) => message.role === 'user')) return null;
+	return [
+		session.summary,
+		'',
+		'Current turn instruction: use the carried context silently. Do not repeat or summarize it unless the user asks.',
+	].join('\n');
+}
+
 // =============================================================================
 // State
 // =============================================================================
@@ -341,6 +428,7 @@ interface AgentActions {
 			readonly selectedSkills?: readonly string[];
 		},
 	) => Promise<string>;
+	createSessionFromContext: (sourceSessionId: string, model?: string) => Promise<string>;
 	forkSession: (sourceSessionId: string, model?: string) => Promise<string>;
 	setActiveSession: (sessionId: string) => void;
 	deleteSession: (sessionId: string) => void;
@@ -676,26 +764,26 @@ export const useAgentStore = create<AgentStore>()(
 		// Session Management
 		// =================================================================
 
-			createSession: async (
-				model?: string,
-				options?: {
-					readonly allowedTools?: readonly string[];
-					readonly toolPolicy?: ToolPolicyConfig;
-					readonly selectedSkills?: readonly string[];
-				},
-			) => {
-				const sessionId = generateSessionId();
-				const agentModel = model || DEFAULT_MODEL_ID;
-				const maxTokens = useSettingsStore.getState().ai.maxTokens;
-				const provider = providerForModel(agentModel);
-				const providerCapabilities = capabilitiesForModel(agentModel);
-				const sessionMode = providerCapabilities.agent ? 'agent' : 'chat';
-				const allowedTools = options?.allowedTools
-					? [...options.allowedTools]
-					: undefined;
-				const selectedSkills = options?.selectedSkills
-					? [...options.selectedSkills]
-					: undefined;
+		createSession: async (
+			model?: string,
+			options?: {
+				readonly allowedTools?: readonly string[];
+				readonly toolPolicy?: ToolPolicyConfig;
+				readonly selectedSkills?: readonly string[];
+			},
+		) => {
+			const sessionId = generateSessionId();
+			const agentModel = model || DEFAULT_MODEL_ID;
+			const maxTokens = useSettingsStore.getState().ai.maxTokens;
+			const provider = providerForModel(agentModel);
+			const providerCapabilities = capabilitiesForModel(agentModel);
+			const sessionMode = providerCapabilities.agent ? 'agent' : 'chat';
+			const allowedTools = options?.allowedTools
+				? [...options.allowedTools]
+				: undefined;
+			const selectedSkills = options?.selectedSkills
+				? [...options.selectedSkills]
+				: undefined;
 
 			try {
 				// If a worktree is active, use its path as the session cwd
@@ -709,17 +797,17 @@ export const useAgentStore = create<AgentStore>()(
 				const workspacePath = useFileExplorerStore.getState().rootPath ?? undefined;
 				const cwd = activeWt?.path ?? workspacePath;
 
-					await backend.agentCreateSession(sessionId, {
-						model: agentModel,
-						maxTokens,
-						cwd,
-						provider,
-						providerCapabilities,
-						sessionMode,
-						allowedTools,
-						selectedSkills,
-						toolPolicy: options?.toolPolicy,
-					});
+				await backend.agentCreateSession(sessionId, {
+					model: agentModel,
+					maxTokens,
+					cwd,
+					provider,
+					providerCapabilities,
+					sessionMode,
+					allowedTools,
+					selectedSkills,
+					toolPolicy: options?.toolPolicy,
+				});
 
 				set((state) => {
 					state.sessions.set(sessionId, {
@@ -765,17 +853,43 @@ export const useAgentStore = create<AgentStore>()(
 			}
 		},
 
+		createSessionFromContext: async (sourceSessionId: string, model?: string) => {
+			const sourceSession = get().sessions.get(sourceSessionId);
+			if (!sourceSession) throw new Error(`Source session ${sourceSessionId} not found`);
+
+			const sourceMessages = get().messages.get(sourceSessionId) || [];
+			const contextSummary = buildContinuationSummary(
+				sourceSession,
+				sourceMessages,
+				get().sessionGoals.get(sourceSessionId),
+			);
+			const sessionId = await get().createSession(model || sourceSession.model || DEFAULT_MODEL_ID);
+
+			set((state) => {
+				const session = state.sessions.get(sessionId);
+				if (session) {
+					session.summary = contextSummary;
+					session.workspacePath = sourceSession.workspacePath ?? session.workspacePath;
+					session.worktreeId = sourceSession.worktreeId ?? session.worktreeId;
+					session.worktreeBranch = sourceSession.worktreeBranch ?? session.worktreeBranch;
+				}
+			});
+
+			get().persistSessions(sessionId);
+			return sessionId;
+		},
+
 		forkSession: async (sourceSessionId: string, model?: string) => {
 			const sourceSession = get().sessions.get(sourceSessionId);
 			if (!sourceSession) throw new Error(`Source session ${sourceSessionId} not found`);
 			if (!sourceSession.sdkSessionId) throw new Error('Source session has no SDK session ID to fork from');
 
-				const sessionId = generateSessionId();
-				const agentModel = model || sourceSession.model || DEFAULT_MODEL_ID;
-				const maxTokens = useSettingsStore.getState().ai.maxTokens;
-				const provider = providerForModel(agentModel);
-				const providerCapabilities = capabilitiesForModel(agentModel);
-				const sessionMode = providerCapabilities.agent ? 'agent' : 'chat';
+			const sessionId = generateSessionId();
+			const agentModel = model || sourceSession.model || DEFAULT_MODEL_ID;
+			const maxTokens = useSettingsStore.getState().ai.maxTokens;
+			const provider = providerForModel(agentModel);
+			const providerCapabilities = capabilitiesForModel(agentModel);
+			const sessionMode = providerCapabilities.agent ? 'agent' : 'chat';
 
 			try {
 				const { useFileExplorerStore } = await import('@/stores/fileExplorerStore');
@@ -791,13 +905,13 @@ export const useAgentStore = create<AgentStore>()(
 				await backend.agentCreateSession(sessionId, {
 					model: agentModel,
 					maxTokens,
-						resumeSessionId: sourceSession.sdkSessionId,
-						forkSession: true,
-						cwd,
-						provider,
-						providerCapabilities,
-						sessionMode,
-					});
+					resumeSessionId: sourceSession.sdkSessionId,
+					forkSession: true,
+					cwd,
+					provider,
+					providerCapabilities,
+					sessionMode,
+				});
 
 				// Copy messages from source session for visual continuity
 				const sourceMessages = get().messages.get(sourceSessionId) || [];
@@ -1010,6 +1124,12 @@ export const useAgentStore = create<AgentStore>()(
 				throw new Error(`Session ${sessionId} is not active after resume (state: ${currentSession?.connectionState ?? 'deleted'})`);
 			}
 
+			const messagesBeforeSend = get().messages.get(sessionId) || [];
+			const continuationContext = getContinuationContextForFirstTurn(currentSession, messagesBeforeSend);
+			const outboundContent = continuationContext
+				? `${continuationContext}\n\n---\n\nCurrent user message:\n${content}`
+				: content;
+
 			// Add user message
 			get().addUserMessage(sessionId, content, mode, attachments, mentions, skills, parts);
 
@@ -1038,7 +1158,7 @@ export const useAgentStore = create<AgentStore>()(
 			});
 
 			try {
-				await backend.agentSendMessage(sessionId, content, toContentBlocks(attachments, mentions, skills));
+				await backend.agentSendMessage(sessionId, outboundContent, toContentBlocks(attachments, mentions, skills));
 			} catch (error) {
 				const errorMsg = error instanceof Error ? error.message : String(error);
 				console.error('[Agent] sendMessage failed:', errorMsg);
@@ -1231,6 +1351,7 @@ export const useAgentStore = create<AgentStore>()(
 						if (messages && streamState.streamingMessageId) {
 							const msg = messages.find((m) => m.id === streamState.streamingMessageId);
 							if (msg) {
+								finalizeThinking(streamState, msg);
 								msg.content = streamState.streamingContent;
 
 								// Ordered blocks: append to last text block or create new one
@@ -1267,8 +1388,13 @@ export const useAgentStore = create<AgentStore>()(
 								const firstBlock = msg.blocks[0];
 								if (firstBlock && firstBlock.type === 'thinking') {
 									firstBlock.text = streamState.streamingThinking;
+									firstBlock.isStreaming = true;
 								} else {
-									msg.blocks.unshift({ type: 'thinking', text: streamState.streamingThinking });
+									msg.blocks.unshift({
+										type: 'thinking',
+										text: streamState.streamingThinking,
+										isStreaming: true,
+									});
 								}
 							}
 						}
@@ -1287,6 +1413,7 @@ export const useAgentStore = create<AgentStore>()(
 						if (messages && streamState.streamingMessageId) {
 							const msg = messages.find((m) => m.id === streamState.streamingMessageId);
 							if (msg) {
+								finalizeThinking(streamState, msg);
 								if (!msg.toolCalls) msg.toolCalls = [];
 
 								// Try to find existing entry by toolId first
@@ -1354,10 +1481,7 @@ export const useAgentStore = create<AgentStore>()(
 							const msg = messages.find((m) => m.id === streamState.streamingMessageId);
 							if (msg) {
 								msg.isStreaming = false;
-								// Finalize thinking duration
-								if (streamState.thinkingStartTime !== null && msg.thinkingContent) {
-									msg.thinkingDurationMs = Date.now() - streamState.thinkingStartTime;
-								}
+								finalizeThinking(streamState, msg);
 								if (message.usage) {
 									msg.usage = message.usage;
 								}
@@ -1414,6 +1538,7 @@ export const useAgentStore = create<AgentStore>()(
 							const msg = messages.find((m) => m.id === streamState.streamingMessageId);
 							if (msg) {
 								msg.isStreaming = false;
+								finalizeThinking(streamState, msg);
 								if (!msg.content) {
 									msg.content = `Error: ${message.content}`;
 								}
