@@ -1,4 +1,5 @@
 export { AccountTab } from './AccountTab';
+export { AppearanceTab } from './AppearanceTab';
 export { GeneralTab } from './GeneralTab';
 export { EditorTab } from './EditorTab';
 export { FilesTab } from './FilesTab';
