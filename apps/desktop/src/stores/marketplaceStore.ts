@@ -21,8 +21,14 @@ enableMapSet();
 interface MarketplaceState {
   /** Cached registry.json. `null` before first fetch. */
   registry: Registry | null;
+  /** Next skills.sh leaderboard page to fetch. */
+  nextPage: number | null;
+  /** True while more skills.sh pages are available. */
+  hasMore: boolean;
   /** True while a fetch is in-flight. */
   loading: boolean;
+  /** True while an additional page is in-flight. */
+  loadingMore: boolean;
   /** Last fetch error, if any. UI should still show cached `registry` when set. */
   error: string | null;
   /** Current active suggestions for the chat banner. */
@@ -33,6 +39,7 @@ interface MarketplaceState {
 
 interface MarketplaceActions {
   refreshRegistry: (force?: boolean) => Promise<void>;
+  loadMore: () => Promise<void>;
   setSuggestions: (list: SkillSuggestion[]) => void;
   dismissSuggestion: (id: string) => void;
   clearSuggestions: () => void;
@@ -43,9 +50,12 @@ interface MarketplaceActions {
 type MarketplaceStore = MarketplaceState & MarketplaceActions;
 
 export const useMarketplaceStore = create<MarketplaceStore>()(
-  immer((set) => ({
+  immer((set, get) => ({
     registry: null,
+    nextPage: null,
+    hasMore: false,
     loading: false,
+    loadingMore: false,
     error: null,
     suggestions: [],
     dismissedIds: new Set<string>(),
@@ -59,11 +69,43 @@ export const useMarketplaceStore = create<MarketplaceStore>()(
         const reg = await api.fetchRegistry(force);
         set((s) => {
           s.registry = reg;
+          s.nextPage = reg.next_page ?? null;
+          s.hasMore = reg.has_more;
           s.loading = false;
         });
       } catch (e: unknown) {
         set((s) => {
           s.loading = false;
+          s.error = e instanceof Error ? e.message : String(e);
+        });
+      }
+    },
+
+    loadMore: async () => {
+      const { nextPage, hasMore, loadingMore, loading } = get();
+      if (!hasMore || nextPage === null || loadingMore || loading) return;
+      set((s) => {
+        s.loadingMore = true;
+        s.error = null;
+      });
+      try {
+        const reg = await api.fetchRegistryPage('all-time', nextPage);
+        set((s) => {
+          if (s.registry) {
+            s.registry.skills.push(...reg.skills);
+            s.registry.has_more = reg.has_more;
+            s.registry.next_page = reg.next_page ?? null;
+            s.registry.total_skills = reg.total_skills || s.registry.total_skills;
+          } else {
+            s.registry = reg;
+          }
+          s.nextPage = reg.next_page ?? null;
+          s.hasMore = reg.has_more;
+          s.loadingMore = false;
+        });
+      } catch (e: unknown) {
+        set((s) => {
+          s.loadingMore = false;
           s.error = e instanceof Error ? e.message : String(e);
         });
       }
