@@ -21,6 +21,7 @@ import {
 import { AskUserQuestionCard } from './streaming/AskUserQuestionCard';
 import { usePanelTabsStore } from '../../stores/panelTabsStore';
 import { BUILTIN_PANEL_TYPES } from '../../lib/panels/constants';
+import { providerForModel } from '../../lib/constants';
 import {
 	DropdownMenu,
 	DropdownMenuTrigger,
@@ -77,6 +78,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 	const chatInputRef = useRef<ChatInputContainerHandle>(null);
 
 	const {
+		session,
 		sessionId,
 		messages,
 		isRunning,
@@ -124,7 +126,9 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 	useEffect(() => {
 		if (sessionId && selectedModel && selectedModel !== prevModelRef.current) {
 			prevModelRef.current = selectedModel;
-			setModel(selectedModel);
+			void setModel(selectedModel).catch((error) => {
+				console.error('Failed to sync selected model:', error);
+			});
 		}
 	}, [sessionId, selectedModel, setModel]);
 
@@ -147,10 +151,18 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 	}, [sessionId, callbacks]);
 
 	const handleSubmit = useCallback(
-		async (content: string, mode: 'planning' | 'fast', _model: string, attachments?: Attachment[], mentions?: FileMention[], skills?: string[], parts?: UserContentPart[]) => {
+		async (content: string, mode: 'planning' | 'fast', model: string, attachments?: Attachment[], mentions?: FileMention[], skills?: string[], parts?: UserContentPart[]) => {
+			if (model && (session?.model !== model || session?.provider !== providerForModel(model))) {
+				try {
+					await setModel(model);
+				} catch (error) {
+					console.error('Failed to switch model before sending:', error);
+					return;
+				}
+			}
 			await sendMessage(content, mode as MessageMode, attachments, mentions, skills, parts);
 		},
-		[sendMessage]
+		[sendMessage, session?.model, session?.provider, setModel]
 	);
 
 	// Queue a message for later flush when the current turn finishes.
