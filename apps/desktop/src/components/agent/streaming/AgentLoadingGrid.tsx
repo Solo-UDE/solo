@@ -1,41 +1,20 @@
-import { useEffect, useState, type FC } from 'react';
+import type { FC } from 'react';
 
-type CellValue = 1 | 0.4 | 0;
-
-function randomCell(): CellValue {
-  const r = Math.random();
-  if (r < 0.4) return 1;
-  if (r < 0.7) return 0.4;
-  return 0;
-}
-
-function randomGrid(): CellValue[] {
-  return Array.from({ length: 9 }, randomCell);
-}
+import { DotmHex8 } from '@/components/ui/dotm-hex-8';
+import { cn } from '@/lib/utils';
 
 export const AgentLoadingGrid: FC<{ className?: string }> = ({ className = '' }) => {
-  const [cells, setCells] = useState(randomGrid);
-
-  useEffect(() => {
-    const id = setInterval(() => setCells(randomGrid()), 150);
-    return () => clearInterval(id);
-  }, []);
-
   return (
-    <div
-      className={`grid grid-cols-3 gap-[2px] w-4 h-4 text-muted-foreground ${className}`}
-      aria-hidden="true"
-    >
-      {cells.map((opacity, i) => (
-        <span
-          key={i}
-          className="rounded-[1px]"
-          style={{
-            backgroundColor: opacity > 0 ? 'currentColor' : 'transparent',
-            opacity: opacity > 0 ? opacity : undefined,
-          }}
-        />
-      ))}
-    </div>
+    <DotmHex8
+      ariaLabel="Working"
+      boxSize={18}
+      className={cn('text-muted-foreground', className)}
+      dotSize={3}
+      opacityBase={0.2}
+      opacityMid={0.5}
+      opacityPeak={0.95}
+      size={18}
+      speed={1.45}
+    />
   );
 };
