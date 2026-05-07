@@ -2308,7 +2308,13 @@ fn default_true_plugins() -> bool {
 #[ts(export, export_to = "../apps/desktop/src/bindings/")]
 pub struct RegistryEntry {
     pub id: String,
+    #[serde(default)]
+    pub skill_id: String,
     pub name: String,
+    #[serde(default)]
+    pub source: String,
+    #[serde(default)]
+    pub source_type: String,
     pub version: String,
     pub description: String,
     pub categories: Vec<String>,
@@ -2318,6 +2324,16 @@ pub struct RegistryEntry {
     pub sha256: String,
     pub tags: Vec<String>,
     pub updated_at: String,
+    #[serde(default)]
+    pub install_url: String,
+    #[serde(default)]
+    pub url: String,
+    #[serde(default)]
+    pub installs: u32,
+    #[serde(default)]
+    pub is_official: bool,
+    #[serde(default)]
+    pub is_duplicate: bool,
 }
 
 /// The full parsed `registry.json` pulled from `solo/skills-registry`.
@@ -2327,6 +2343,14 @@ pub struct Registry {
     pub version: u32,
     pub generated_at: String,
     pub skills: Vec<RegistryEntry>,
+    #[serde(default)]
+    pub total_skills: u32,
+    #[serde(default)]
+    pub has_more: bool,
+    #[serde(default)]
+    pub next_page: Option<u32>,
+    #[serde(default)]
+    pub view: String,
 }
 
 /// A marketplace hit scored against the current user query.
@@ -2336,6 +2360,42 @@ pub struct SkillSuggestion {
     pub entry: RegistryEntry,
     pub score: f32,
     pub reason: String,
+}
+
+/// A text file bundled inside a skill.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct SkillFile {
+    pub path: String,
+    pub contents: String,
+    pub bytes: u32,
+}
+
+/// A normalized skills.sh security audit row.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct SkillAudit {
+    pub provider: String,
+    pub status: String,
+    pub summary: String,
+    pub risk_level: String,
+    pub audited_at: String,
+}
+
+/// Details used by the in-app skills.sh preview and installer.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct SkillDetail {
+    pub entry: RegistryEntry,
+    pub description: String,
+    pub install_command: String,
+    pub web_url: String,
+    pub source_url: String,
+    pub hash: Option<String>,
+    pub files: Vec<SkillFile>,
+    pub audits: Vec<SkillAudit>,
+    pub installable: bool,
+    pub install_note: String,
 }
 
 /// Where an installed skill came from.
