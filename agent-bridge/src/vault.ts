@@ -4,7 +4,7 @@
  * Opens the same SQLite DB the Rust side writes to (WAL mode makes concurrent
  * reads safe). Exposes:
  *   1. A `vault_search` tool for the SDK so the model can query the vault on
- *      demand (supports both `fts` and `semantic` modes).
+ *      demand (supports `fts`, `semantic`, and `hybrid` modes).
  *   2. `fetchVaultContext()` used by the pre-flight injector that automatically
  *      prepends the top-k FTS hits + pinned chunks to every user message.
  *   3. `loadEmbeddingsCache()` — preloaded on session start so semantic tool
@@ -32,6 +32,7 @@
 
 // eslint-disable-next-line import/no-unresolved
 import { Database } from 'bun:sqlite';
+import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
@@ -46,6 +47,8 @@ const VAULT_DB = join(homedir(), '.solo', 'vault', 'index.sqlite');
 // Keep in sync with `EMBEDDING_DIM` in crates/solo-vault/src/store.rs.
 // V1.2.1: switched from OpenAI (1536) to local MiniLM-L6-v2 (384).
 const EMBEDDING_DIM = 384;
+const WRITE_CHUNK_WORDS = 500;
+const WRITE_CHUNK_OVERLAP_WORDS = 50;
 
 // Env toggle: when set to any truthy value, the semantic tool returns the
 // full scored list in its visible text so the developer can eyeball quality.
@@ -65,6 +68,7 @@ interface VaultChunkRow {
 }
 
 export interface VaultHit {
+  chunkId?: string;
   entryId: string;
   entryTitle: string;
   kind: string;
@@ -72,6 +76,19 @@ export interface VaultHit {
   chunkIndex: number;
   content: string;
   score: number;
+  source: VaultRetrievalSource;
+  mode: VaultSearchMode;
+  embeddingModel?: string;
+}
+
+export type VaultSearchMode = 'fts' | 'semantic' | 'hybrid';
+export type VaultRetrievalSource = 'local' | 'cloud' | 'hybrid';
+export type VaultMemoryType = 'project' | 'user' | 'pinned_source_of_truth';
+
+export interface VaultAuthConfig {
+  endpoint?: string;
+  idToken?: string;
+  retrievalSource?: VaultRetrievalSource;
 }
 
 function openDb(): Database | null {
@@ -84,6 +101,20 @@ function openDb(): Database | null {
     return new Database(VAULT_DB, { readonly: true });
   } catch (err) {
     logger.warn({ err: String(err), path: VAULT_DB }, 'vault: open failed');
+    return null;
+  }
+}
+
+function openWritableDb(): Database | null {
+  if (!existsSync(VAULT_DB)) {
+    return null;
+  }
+  try {
+    const db = new Database(VAULT_DB);
+    db.run('PRAGMA busy_timeout = 5000');
+    return db;
+  } catch (err) {
+    logger.warn({ err: String(err), path: VAULT_DB }, 'vault: writable open failed');
     return null;
   }
 }
@@ -137,6 +168,7 @@ export function searchVault(
 
     db.close();
     return rows.map((r) => ({
+      chunkId: r.chunk_id,
       entryId: r.entry_id,
       entryTitle: r.title,
       kind: r.kind,
@@ -144,6 +176,8 @@ export function searchVault(
       chunkIndex: r.chunk_index,
       content: r.content,
       score: 1 / (1 + Math.abs(r.rank)),
+      source: 'local',
+      mode: 'fts',
     }));
   } catch (err) {
     logger.warn({ err: String(err), query }, 'vault: search failed');
@@ -188,6 +222,7 @@ export function pinnedEntries(opts: { projectId?: string; limit?: number } = {})
     const rows = stmt.all(projectId ?? null, limit) as VaultChunkRow[];
     db.close();
     return rows.map((r) => ({
+      chunkId: r.chunk_id,
       entryId: r.entry_id,
       entryTitle: r.title,
       kind: r.kind,
@@ -195,6 +230,8 @@ export function pinnedEntries(opts: { projectId?: string; limit?: number } = {})
       chunkIndex: r.chunk_index,
       content: r.content,
       score: 1.0,
+      source: 'local',
+      mode: 'fts',
     }));
   } catch (err) {
     logger.warn({ err: String(err) }, 'vault: pinned fetch failed');
@@ -212,14 +249,32 @@ export function pinnedEntries(opts: { projectId?: string; limit?: number } = {})
  * ready to prepend or an empty string if no relevant chunks were found.
  * Token budget is approximate (~2000 tokens ≈ 1500 words).
  */
-export function fetchVaultContext(
+export async function fetchVaultContext(
   userMessage: string,
-  opts: { projectId?: string; maxChunks?: number } = {},
-): string {
+  opts: {
+    projectId?: string;
+    maxChunks?: number;
+    mode?: VaultSearchMode;
+    source?: VaultRetrievalSource;
+    vaultAuth?: VaultAuthConfig;
+  } = {},
+): Promise<string> {
   const { projectId, maxChunks = 5 } = opts;
+  const mode = opts.mode ?? 'hybrid';
+  const source =
+    opts.source ??
+    opts.vaultAuth?.retrievalSource ??
+    (opts.vaultAuth?.endpoint && opts.vaultAuth?.idToken ? 'hybrid' : 'local');
 
   const pinned = pinnedEntries({ projectId, limit: 3 });
-  const hits = searchVault(userMessage, { projectId, topK: maxChunks });
+  const hits = await searchVaultBySource(userMessage, {
+    projectId,
+    topK: maxChunks,
+    mode,
+    source,
+    vaultAuth: opts.vaultAuth,
+    includePinned: false,
+  });
 
   // Merge: pinned first, then FTS hits (dedupe by entryId+chunkIndex)
   const seen = new Set<string>();
@@ -236,7 +291,7 @@ export function fetchVaultContext(
 
   const sections = merged.map((h) => {
     const badge = h.pinned ? ' [pinned]' : '';
-    return `### ${h.entryTitle}${badge} (${h.kind}, chunk ${h.chunkIndex})\n${h.content.trim()}`;
+    return `### ${h.entryTitle}${badge} (${h.kind}, ${h.source}/${h.mode}, chunk ${h.chunkIndex})\n${h.content.trim()}`;
   });
 
   return [
@@ -598,6 +653,7 @@ export async function searchVaultSemantic(
   const rankMs = Date.now() - rankStart;
 
   const hits: VaultHit[] = top.map(({ c, score }) => ({
+    chunkId: c.chunkId,
     entryId: c.entryId,
     entryTitle: c.entryTitle,
     kind: c.kind,
@@ -605,6 +661,9 @@ export async function searchVaultSemantic(
     chunkIndex: c.chunkIndex,
     content: c.content,
     score,
+    source: 'local',
+    mode: 'semantic',
+    embeddingModel: 'Xenova/all-MiniLM-L6-v2',
   }));
 
   logger.info(
@@ -626,96 +685,700 @@ export async function searchVaultSemantic(
   return hits;
 }
 
-// ============================================================================
-// SDK tool — the model can call `vault_search` with mode=fts or mode=semantic.
-// ============================================================================
+function fuseHits(
+  lists: VaultHit[][],
+  mode: VaultSearchMode,
+  markCrossSourceDuplicates: boolean,
+  topK: number,
+): VaultHit[] {
+  const RRF_K = 60;
+  const fused = new Map<string, { hit: VaultHit; fusedScore: number }>();
 
-export const vaultSearchTool = tool(
-  'vault_search',
-  "Search the user's personal vault (agent memory) for indexed content. " +
-    'The vault holds documents, code, screenshots, and data the user has ' +
-    'chosen to remember across sessions. ALWAYS use this tool before asking ' +
-    'the user to re-explain something they\'ve indexed — especially when they ' +
-    'refer to "that spec", "the schema I shared", "my notes on X", or ask ' +
-    '"did I put X in the vault?". ' +
-    'Pick mode="fts" for exact keyword recall and mode="semantic" for ' +
-    'conceptual / paraphrased queries. When unsure, start with fts; if it ' +
-    'returns nothing, retry with semantic.',
-  {
-    query: z
-      .string()
-      .min(2)
-      .describe(
-        'Free-text search query. Keywords from the user\'s message work well ' +
-          'for fts mode; natural-language phrases work better for semantic mode.',
-      ),
-    mode: z
-      .enum(['fts', 'semantic'])
-      .default('fts')
-      .describe(
-        'Retrieval strategy. "fts" = BM25 keyword match (fast, precise). ' +
-          '"semantic" = OpenAI embedding + cosine (recalls paraphrased matches).',
-      ),
-    top_k: z
-      .number()
-      .int()
-      .min(1)
-      .max(20)
-      .default(6)
-      .describe('Maximum chunks to return (default 6).'),
+  for (const list of lists) {
+    list.forEach((hit, index) => {
+      const key = `${hit.entryId}:${hit.chunkIndex}`;
+      const contribution = 1 / (RRF_K + index + 1);
+      const current = fused.get(key);
+      if (current) {
+        current.fusedScore += contribution;
+        if (current.hit.source === 'cloud' && hit.source === 'local') {
+          current.hit = { ...hit };
+        }
+        if (markCrossSourceDuplicates && current.hit.source !== hit.source) {
+          current.hit.source = 'hybrid';
+        }
+        current.hit.mode = mode;
+      } else {
+        fused.set(key, {
+          hit: { ...hit, mode },
+          fusedScore: contribution,
+        });
+      }
+    });
+  }
+
+  const sorted = [...fused.values()].sort((a, b) => {
+    if (b.fusedScore !== a.fusedScore) return b.fusedScore - a.fusedScore;
+    if (b.hit.score !== a.hit.score) return b.hit.score - a.hit.score;
+    return `${a.hit.entryId}:${a.hit.chunkIndex}`.localeCompare(`${b.hit.entryId}:${b.hit.chunkIndex}`);
+  });
+  const topScore = sorted[0]?.fusedScore ?? 1;
+  return sorted.slice(0, topK).map(({ hit, fusedScore }) => ({
+    ...hit,
+    score: topScore > 0 ? fusedScore / topScore : 0,
+  }));
+}
+
+async function searchVaultLocal(
+  query: string,
+  opts: { projectId?: string; topK?: number; mode?: VaultSearchMode } = {},
+): Promise<VaultHit[]> {
+  const { projectId, topK = 6, mode = 'fts' } = opts;
+  if (mode === 'semantic') {
+    return searchVaultSemantic(query, { projectId, topK });
+  }
+  if (mode === 'hybrid') {
+    const fts = searchVault(query, { projectId, topK });
+    const semantic = await searchVaultSemantic(query, { projectId, topK });
+    return fuseHits([fts, semantic], 'hybrid', false, topK);
+  }
+  return searchVault(query, { projectId, topK });
+}
+
+interface CloudVaultSearchResponse {
+  results?: Array<{
+    chunk_id?: string;
+    chunk_index?: number;
+    snippet?: string;
+    score?: number;
+    source?: VaultRetrievalSource;
+    mode?: VaultSearchMode;
+    embedding_model?: string;
+    entry?: {
+      id?: string;
+      title?: string;
+      kind?: string;
+      pinned?: number | boolean;
+    };
+  }>;
+  cloud_error?: string;
+}
+
+async function searchVaultCloud(
+  queryText: string,
+  opts: {
+    projectId?: string;
+    topK?: number;
+    mode?: VaultSearchMode;
+    vaultAuth?: VaultAuthConfig;
+  } = {},
+): Promise<VaultHit[]> {
+  const { projectId, topK = 6, mode = 'fts', vaultAuth } = opts;
+  const endpoint = vaultAuth?.endpoint?.replace(/\/+$/, '');
+  const token = vaultAuth?.idToken;
+  if (!endpoint || !token) {
+    throw new Error('Cloud vault search requires sign-in');
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+  try {
+    const response = await fetch(`${endpoint}/vault/search`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        query: queryText,
+        limit: topK,
+        mode,
+        scope_type: projectId ? 'project' : 'global',
+        scope_project_id: projectId,
+      }),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      const body = await response.text().catch(() => '');
+      throw new Error(`cloud search failed (${response.status}): ${body}`);
+    }
+    const payload = (await response.json()) as CloudVaultSearchResponse;
+    if (payload.cloud_error) {
+      logger.warn({ error: payload.cloud_error }, 'vault.cloud.partial_error');
+    }
+    return (payload.results ?? [])
+      .filter((row) => row.entry?.id && row.entry?.title && row.snippet)
+      .map((row) => ({
+        chunkId: row.chunk_id,
+        entryId: String(row.entry?.id),
+        entryTitle: String(row.entry?.title),
+        kind: String(row.entry?.kind ?? 'document'),
+        pinned: row.entry?.pinned === true || Number(row.entry?.pinned ?? 0) !== 0,
+        chunkIndex: Number(row.chunk_index ?? 0),
+        content: String(row.snippet ?? ''),
+        score: Number(row.score ?? 0),
+        source: row.source ?? 'cloud',
+        mode: row.mode ?? mode,
+        embeddingModel: row.embedding_model,
+      }));
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function searchVaultBySource(
+  queryText: string,
+  opts: {
+    projectId?: string;
+    topK?: number;
+    mode?: VaultSearchMode;
+    source?: VaultRetrievalSource;
+    vaultAuth?: VaultAuthConfig;
+    includePinned?: boolean;
+  } = {},
+): Promise<VaultHit[]> {
+  const { projectId, topK = 6, mode = 'hybrid', includePinned = false } = opts;
+  const source =
+    opts.source ??
+    opts.vaultAuth?.retrievalSource ??
+    (opts.vaultAuth?.endpoint && opts.vaultAuth?.idToken ? 'hybrid' : 'local');
+  const pinned = includePinned ? pinnedEntries({ projectId, limit: 3 }) : [];
+
+  if (source === 'local') {
+    return fuseHits([pinned, await searchVaultLocal(queryText, { projectId, topK, mode })], mode, false, topK + pinned.length);
+  }
+
+  if (source === 'cloud') {
+    const cloud = await searchVaultCloud(queryText, { projectId, topK, mode, vaultAuth: opts.vaultAuth });
+    return fuseHits([pinned, cloud], mode, false, topK + pinned.length);
+  }
+
+  const local = await searchVaultLocal(queryText, { projectId, topK, mode });
+  try {
+    const cloud = await searchVaultCloud(queryText, { projectId, topK, mode, vaultAuth: opts.vaultAuth });
+    return fuseHits([pinned, local, cloud], mode, true, topK + pinned.length);
+  } catch (err) {
+    logger.warn({ err: String(err) }, 'vault.cloud.degraded_to_local');
+    return fuseHits([pinned, local], mode, false, topK + pinned.length);
+  }
+}
+
+interface AddedVaultEntry {
+  id: string;
+  title: string;
+  scopeType: 'global' | 'project';
+  scopeProjectId: string | null;
+  chunkCount: number;
+  embeddedCount: number;
+  cloudSyncState: 'offline' | 'pending' | 'synced' | 'failed';
+}
+
+function unixNow(): number {
+  return Math.floor(Date.now() / 1000);
+}
+
+function inferTextTitle(text: string, title?: string): string {
+  const explicit = title?.trim();
+  if (explicit) return explicit.slice(0, 500);
+  const firstLine = text
+    .split('\n')
+    .map((line) => line.trim())
+    .find(Boolean);
+  if (!firstLine) return 'Agent memory';
+  return firstLine.length > 96 ? `${firstLine.slice(0, 96)}...` : firstLine;
+}
+
+function chunkTextForVault(text: string): Array<{ content: string; tokenCount: number }> {
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return [];
+  const step = Math.max(1, WRITE_CHUNK_WORDS - WRITE_CHUNK_OVERLAP_WORDS);
+  const chunks: Array<{ content: string; tokenCount: number }> = [];
+  for (let i = 0; i < words.length;) {
+    const end = Math.min(words.length, i + WRITE_CHUNK_WORDS);
+    const content = words.slice(i, end).join(' ');
+    chunks.push({
+      content,
+      tokenCount: Math.round(content.split(/\s+/).filter(Boolean).length * 1.3),
+    });
+    if (end === words.length) break;
+    i += step;
+  }
+  return chunks;
+}
+
+function packEmbedding(vec: Float32Array): Uint8Array | null {
+  if (vec.length === 0) return null;
+  const normalized = new Float32Array(EMBEDDING_DIM);
+  normalized.set(vec.slice(0, EMBEDDING_DIM));
+  const bytes = new Uint8Array(EMBEDDING_DIM * 4);
+  const view = new DataView(bytes.buffer);
+  for (let i = 0; i < EMBEDDING_DIM; i++) {
+    view.setFloat32(i * 4, normalized[i] ?? 0, true);
+  }
+  return bytes;
+}
+
+async function embedTextChunksForVault(
+  chunks: Array<{ content: string; tokenCount: number }>,
+): Promise<Array<Uint8Array | null>> {
+  if (chunks.length === 0) return [];
+  let extractor: Awaited<ReturnType<typeof getEmbedder>>;
+  try {
+    extractor = await getEmbedder();
+  } catch {
+    return chunks.map(() => null);
+  }
+
+  const embeddings: Array<Uint8Array | null> = [];
+  for (const chunk of chunks) {
+    try {
+      const output = await extractor(chunk.content, { pooling: 'mean', normalize: true });
+      embeddings.push(packEmbedding(new Float32Array(output.data)));
+    } catch (err) {
+      logger.warn({ err: String(err) }, 'vault.add.embed_chunk_failed');
+      embeddings.push(null);
+    }
+  }
+  return embeddings;
+}
+
+async function syncAddedTextToCloud(
+  entry: {
+    id: string;
+    title: string;
+    content: string;
+    scopeType: 'global' | 'project';
+    scopeProjectId: string | null;
+    memoryType: VaultMemoryType;
+    pinned: boolean;
+    tags: string[];
+    sizeBytes: number;
+    createdAt: number;
+    updatedAt: number;
   },
-  async (args) => {
-    const start = Date.now();
-    const mode = args.mode ?? 'fts';
-    const topK = args.top_k ?? 6;
+  vaultAuth?: VaultAuthConfig,
+): Promise<'synced' | 'failed'> {
+  const endpoint = vaultAuth?.endpoint?.replace(/\/+$/, '');
+  const token = vaultAuth?.idToken;
+  if (!endpoint || !token) {
+    return 'failed';
+  }
 
-    let hits: VaultHit[];
-    if (mode === 'semantic') {
-      hits = await searchVaultSemantic(args.query, { topK });
-    } else {
-      hits = searchVault(args.query, { topK });
+  const response = await fetch(`${endpoint}/vault/entries`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      id: entry.id,
+      kind: 'note',
+      subkind: 'agent_memory',
+      title: entry.title,
+      content: entry.content,
+      source_path: null,
+      vault_blob_path: null,
+      scope_type: entry.scopeType,
+      scope_project_id: entry.scopeProjectId,
+      memory_type: entry.memoryType,
+      pinned: entry.pinned ? 1 : 0,
+      tags: JSON.stringify(entry.tags),
+      mime: 'text/plain',
+      size_bytes: entry.sizeBytes,
+      index_status: 'indexed',
+      cloud_sync_state: 'synced',
+      classifier_confidence: 1,
+      hit_count: 0,
+      last_retrieved_at: null,
+      created_at: entry.createdAt,
+      updated_at: entry.updatedAt,
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => '');
+    throw new Error(`cloud vault add failed (${response.status}): ${body}`);
+  }
+  return 'synced';
+}
+
+export async function addTextToVault(
+  text: string,
+  opts: {
+    title?: string;
+    projectId?: string;
+    scope?: 'global' | 'project';
+    memoryType?: VaultMemoryType;
+    pinned?: boolean;
+    tags?: string[];
+    syncToCloud?: boolean;
+    vaultAuth?: VaultAuthConfig;
+  } = {},
+): Promise<AddedVaultEntry> {
+  const content = text.trim();
+  if (!content) {
+    throw new Error('Vault memory text cannot be empty');
+  }
+
+  const db = openWritableDb();
+  if (!db) {
+    throw new Error('Vault database is not initialized yet');
+  }
+
+  const id = randomUUID();
+  const title = inferTextTitle(content, opts.title);
+  const now = unixNow();
+  const scopeType = opts.scope === 'project' ? 'project' : 'global';
+  const scopeProjectId = scopeType === 'project' ? (opts.projectId ?? null) : null;
+  if (scopeType === 'project' && !scopeProjectId) {
+    db.close();
+    throw new Error('Project-scoped vault memories require an active project id');
+  }
+  const memoryType = opts.memoryType ?? (scopeType === 'project' ? 'project' : 'user');
+  const pinned = opts.pinned ?? false;
+  const tags = Array.from(new Set(['agent', ...(opts.tags ?? [])].map((tag) => tag.trim()).filter(Boolean))).slice(0, 12);
+  const chunks = chunkTextForVault(content);
+  const embeddings = await embedTextChunksForVault(chunks);
+  const embeddedCount = embeddings.filter(Boolean).length;
+  const initialCloudState = opts.syncToCloud ? 'pending' : 'offline';
+
+  try {
+    db.run('BEGIN IMMEDIATE');
+    db.run(
+      `INSERT INTO entries (
+        id, kind, subkind, title, content, source_path, vault_blob_path,
+        scope_type, scope_project_id, memory_type, pinned, tags,
+        mime, size_bytes, index_status, cloud_sync_state,
+        classifier_confidence, hit_count, last_retrieved_at,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        'note',
+        'agent_memory',
+        title,
+        content,
+        null,
+        null,
+        scopeType,
+        scopeProjectId,
+        memoryType,
+        pinned ? 1 : 0,
+        JSON.stringify(tags),
+        'text/plain',
+        Buffer.byteLength(content, 'utf8'),
+        'indexed',
+        initialCloudState,
+        1,
+        0,
+        null,
+        now,
+        now,
+      ],
+    );
+
+    chunks.forEach((chunk, index) => {
+      const chunkId = `${id}:${index}`;
+      db.run(
+        `INSERT INTO chunks (id, entry_id, chunk_index, content, token_count, embedding)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          chunkId,
+          id,
+          index,
+          chunk.content,
+          chunk.tokenCount,
+          embeddings[index] ?? null,
+        ],
+      );
+      db.run(
+        'INSERT INTO chunks_fts (content, entry_id, chunk_id) VALUES (?, ?, ?)',
+        [chunk.content, id, chunkId],
+      );
+    });
+    db.run('COMMIT');
+  } catch (err) {
+    try {
+      db.run('ROLLBACK');
+    } catch {
+      /* transaction may already be closed */
+    }
+    db.close();
+    throw err;
+  }
+
+  let cloudSyncState: AddedVaultEntry['cloudSyncState'] = initialCloudState;
+  if (opts.syncToCloud) {
+    try {
+      cloudSyncState = await syncAddedTextToCloud(
+        {
+          id,
+          title,
+          content,
+          scopeType,
+          scopeProjectId,
+          memoryType,
+          pinned,
+          tags,
+          sizeBytes: Buffer.byteLength(content, 'utf8'),
+          createdAt: now,
+          updatedAt: now,
+        },
+        opts.vaultAuth,
+      );
+    } catch (err) {
+      cloudSyncState = 'failed';
+      logger.warn({ err: String(err), entryId: id }, 'vault.add.cloud_sync_failed');
+    }
+    try {
+      db.run(
+        'UPDATE entries SET cloud_sync_state = ?, updated_at = ? WHERE id = ?',
+        [cloudSyncState, unixNow(), id],
+      );
+    } catch (err) {
+      logger.warn({ err: String(err), entryId: id }, 'vault.add.cloud_state_update_failed');
+    }
+  }
+
+  db.close();
+  invalidateEmbeddingsCache();
+  logger.info(
+    {
+      entry_id: id,
+      title,
+      scope: scopeProjectId ? `project:${scopeProjectId}` : 'global',
+      chunks: chunks.length,
+      embedded: embeddedCount,
+      cloud_sync_state: cloudSyncState,
+    },
+    'vault.add.done',
+  );
+
+  return {
+    id,
+    title,
+    scopeType,
+    scopeProjectId,
+    chunkCount: chunks.length,
+    embeddedCount,
+    cloudSyncState,
+  };
+}
+
+// ============================================================================
+// SDK tools — the model can search and update vault memory.
+// ============================================================================
+
+export function createVaultSearchTool(
+  getVaultAuth?: () => VaultAuthConfig | undefined,
+  getProjectId?: () => string | undefined,
+) {
+  return tool(
+    'vault_search',
+    "Search the user's personal vault (agent memory) for indexed content. " +
+      'The vault holds documents, code, screenshots, and data the user has ' +
+      'chosen to remember across sessions. ALWAYS use this tool before asking ' +
+      'the user to re-explain something they\'ve indexed — especially when they ' +
+      'refer to "that spec", "the schema I shared", "my notes on X", or ask ' +
+      '"did I put X in the vault?". ' +
+      'Use source="hybrid" and mode="hybrid" by default. Use source="local" ' +
+      'when the user asks to avoid cloud retrieval. Use source="cloud" only ' +
+      'when the user specifically wants cloud-indexed vault content. Cloud ' +
+      'retrieval sends the search query to the cloud.',
+    {
+      query: z
+        .string()
+        .min(2)
+        .describe(
+          'Free-text search query. Keywords work well for fts; natural-language phrases work better for semantic/hybrid.',
+        ),
+      mode: z
+        .enum(['fts', 'semantic', 'hybrid'])
+        .default('hybrid')
+        .describe(
+          'Retrieval strategy. "fts" = BM25 keyword match. "semantic" = vector similarity. "hybrid" = rank-fused fts + semantic.',
+        ),
+      source: z
+        .enum(['local', 'cloud', 'hybrid'])
+        .default('hybrid')
+        .describe(
+          'Retrieval source. "local" searches on-device vault data. "cloud" searches cloud embeddings/FTS and requires sign-in. "hybrid" merges local and cloud when available.',
+        ),
+      top_k: z
+        .number()
+        .int()
+        .min(1)
+        .max(20)
+        .default(6)
+        .describe('Maximum chunks to return (default 6).'),
+    },
+    async (args) => {
+      const start = Date.now();
+      const mode = args.mode ?? 'hybrid';
+      const topK = args.top_k ?? 6;
+      const vaultAuth = getVaultAuth?.();
+      const source = args.source ?? vaultAuth?.retrievalSource ?? 'hybrid';
+
+      if (source === 'cloud' && (!vaultAuth?.endpoint || !vaultAuth?.idToken)) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: 'Cloud vault search requires the user to be signed in. Retry with source="local" or source="hybrid" to use local vault retrieval.',
+            },
+          ],
+        };
+      }
+
+      const hits = await searchVaultBySource(args.query, {
+        projectId: getProjectId?.(),
+        topK,
+        mode,
+        source,
+        vaultAuth,
+      });
+
       logger.info(
         {
-          mode: 'fts',
+          mode,
+          source,
           query_len: args.query.length,
           top_k: topK,
           ms: Date.now() - start,
           returned: hits.length,
           top_scores: hits.slice(0, 5).map((h) => ({
             title: h.entryTitle,
+            source: h.source,
             score: Math.round(h.score * 1000) / 1000,
           })),
         },
         'vault.tool.search',
       );
-    }
 
-    if (hits.length === 0) {
+      if (hits.length === 0) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `No vault entries matched "${args.query}" (source: ${source}, mode: ${mode}).`,
+            },
+          ],
+        };
+      }
+
+      const body = hits
+        .map(
+          (h) =>
+            `### ${h.entryTitle}${h.pinned ? ' [pinned]' : ''} (${h.kind}, ${h.source}/${h.mode})\n` +
+            `score: ${(h.score * 100).toFixed(0)}%\n` +
+            `${h.content.trim()}`,
+        )
+        .join('\n\n---\n\n');
+
+      const debugFooter = VAULT_DEBUG
+        ? `\n\n---\n<vault-debug>\nsource=${source} mode=${mode} top_k=${topK} returned=${hits.length} ms=${Date.now() - start}\n${hits.map((h) => `  ${h.entryTitle} [${h.source}/${h.mode}] -> ${h.score.toFixed(4)}`).join('\n')}\n</vault-debug>`
+        : '';
+
+      return {
+        content: [{ type: 'text', text: body + debugFooter }],
+      };
+    },
+  );
+}
+
+export function createVaultAddTool(
+  getVaultAuth?: () => VaultAuthConfig | undefined,
+  getProjectId?: () => string | undefined,
+) {
+  return tool(
+    'vault_add',
+    "Add a durable note to the user's personal vault. Use this when the user " +
+      'asks you to remember something, save a note, add something to the vault, ' +
+      'or preserve an instruction/preference for future sessions. Do not use it ' +
+      'for incidental facts unless the user explicitly asks you to remember/save ' +
+      'them. By default this saves locally. Set sync_to_cloud=true only when the ' +
+      'user asks for cloud sync or explicitly wants the memory available through cloud retrieval.',
+    {
+      text: z
+        .string()
+        .min(1)
+        .max(50000)
+        .describe('The exact memory text to save. Include enough context for future retrieval.'),
+      title: z
+        .string()
+        .min(1)
+        .max(500)
+        .optional()
+        .describe('Short human-readable title. If omitted, a title is inferred from the text.'),
+      scope: z
+        .enum(['global', 'project'])
+        .default('global')
+        .describe('Use "global" for cross-project user memory. Use "project" only for project-specific facts.'),
+      memory_type: z
+        .enum(['project', 'user', 'pinned_source_of_truth'])
+        .optional()
+        .describe('Memory classification. Defaults to "user" for global memories and "project" for project scope.'),
+      pinned: z
+        .boolean()
+        .default(false)
+        .describe('Pin only when the user says this is a source of truth or should always be prioritized.'),
+      tags: z
+        .array(z.string().min(1).max(40))
+        .max(10)
+        .default([])
+        .describe('Optional lightweight tags for the saved memory.'),
+      sync_to_cloud: z
+        .boolean()
+        .default(false)
+        .describe('When true, also sync this memory to cloud. Requires sign-in and sends the saved text to cloud.'),
+    },
+    async (args) => {
+      const start = Date.now();
+      const vaultAuth = getVaultAuth?.();
+      const result = await addTextToVault(args.text, {
+        title: args.title,
+        projectId: getProjectId?.(),
+        scope: args.scope ?? 'global',
+        memoryType: args.memory_type,
+        pinned: args.pinned ?? false,
+        tags: args.tags ?? [],
+        syncToCloud: args.sync_to_cloud ?? false,
+        vaultAuth,
+      });
+
+      logger.info(
+        {
+          entry_id: result.id,
+          scope: result.scopeProjectId ? 'project' : 'global',
+          sync_to_cloud: args.sync_to_cloud ?? false,
+          cloud_sync_state: result.cloudSyncState,
+          ms: Date.now() - start,
+        },
+        'vault.tool.add',
+      );
+
+      const cloudNote =
+        args.sync_to_cloud && result.cloudSyncState !== 'synced'
+          ? '\nCloud sync was requested but did not complete; the memory was saved locally.'
+          : '';
+
       return {
         content: [
           {
             type: 'text',
-            text: `No vault entries matched "${args.query}" (mode: ${mode}).`,
+            text:
+              `Saved to vault: "${result.title}"\n` +
+              `entry_id: ${result.id}\n` +
+              `scope: ${result.scopeProjectId ? `project:${result.scopeProjectId}` : 'global'}\n` +
+              `chunks: ${result.chunkCount}, embedded locally: ${result.embeddedCount}\n` +
+              `cloud_sync_state: ${result.cloudSyncState}` +
+              cloudNote,
           },
         ],
       };
-    }
+    },
+  );
+}
 
-    const body = hits
-      .map(
-        (h) =>
-          `### ${h.entryTitle}${h.pinned ? ' [pinned]' : ''} (${h.kind})\n` +
-          `score: ${(h.score * 100).toFixed(0)}%\n` +
-          `${h.content.trim()}`,
-      )
-      .join('\n\n---\n\n');
-
-    const debugFooter = VAULT_DEBUG
-      ? `\n\n---\n<vault-debug>\nmode=${mode} top_k=${topK} returned=${hits.length} ms=${Date.now() - start}\n${hits.map((h) => `  ${h.entryTitle} → ${h.score.toFixed(4)}`).join('\n')}\n</vault-debug>`
-      : '';
-
-    return {
-      content: [{ type: 'text', text: body + debugFooter }],
-    };
-  },
-);
+export const vaultSearchTool = createVaultSearchTool();
+export const vaultAddTool = createVaultAddTool();
