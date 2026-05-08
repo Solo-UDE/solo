@@ -25,6 +25,7 @@ import {
   Archive,
   File,
   Check,
+  Trash2,
 } from 'lucide-react';
 import type { EntryKind, VaultEntry } from '@/lib/tauri/vault';
 import { vaultMoveBucket } from '@/lib/tauri/vault';
@@ -124,10 +125,13 @@ interface RowProps {
 
 const UnsortedRow: FC<RowProps> = ({ entry, menuOpen, onToggleMenu, onMoved }) => {
   const upsertEntry = useVaultStore((s) => s.upsertEntry);
+  const deleteEntry = useVaultStore((s) => s.deleteEntry);
   const fetchUnsortedCount = useVaultStore((s) => s.fetchUnsortedCount);
   const [busy, setBusy] = useState(false);
 
   const hint = entry.subkind || entry.mime || 'unknown type';
+  const deleteRemote = entry.cloud_sync_state !== 'offline';
+  const deleteLabel = deleteRemote ? 'Delete everywhere' : 'Delete from Vault';
 
   const moveTo = async (kind: EntryKind) => {
     setBusy(true);
@@ -140,6 +144,23 @@ const UnsortedRow: FC<RowProps> = ({ entry, menuOpen, onToggleMenu, onMoved }) =
       // eslint-disable-next-line no-console
       console.error('[vault] move bucket failed:', err);
     } finally {
+      setBusy(false);
+    }
+  };
+
+  const requestDelete = async () => {
+    if (busy) return;
+    const confirmed = window.confirm(`${deleteLabel}?\n\n${entry.title}`);
+    if (!confirmed) return;
+
+    setBusy(true);
+    try {
+      await deleteEntry(entry.id, deleteRemote);
+      await fetchUnsortedCount();
+      onMoved();
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[vault] delete unsorted entry failed:', err);
       setBusy(false);
     }
   };
@@ -169,6 +190,20 @@ const UnsortedRow: FC<RowProps> = ({ entry, menuOpen, onToggleMenu, onMoved }) =
           )}
         >
           Move to…
+        </button>
+        <button
+          type="button"
+          onClick={() => void requestDelete()}
+          disabled={busy}
+          className={cn(
+            'h-6 w-6 rounded-md flex items-center justify-center transition-all duration-150',
+            'text-muted-foreground/60 hover:bg-destructive/10 hover:text-destructive',
+            'disabled:opacity-50 disabled:cursor-not-allowed',
+          )}
+          title={deleteLabel}
+          aria-label={deleteLabel}
+        >
+          <Trash2 className="w-3.5 h-3.5" />
         </button>
       </div>
 
