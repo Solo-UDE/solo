@@ -286,9 +286,7 @@ pub async fn embed_chunks(
                     );
                     break;
                 }
-                Err(EmbeddingError::RateLimited(retry_after_s))
-                    if attempt < MAX_RETRIES =>
-                {
+                Err(EmbeddingError::RateLimited(retry_after_s)) if attempt < MAX_RETRIES => {
                     let base = u64::from(retry_after_s.clamp(1, 60));
                     let wait_s = (base * (1u64 << attempt)).min(60);
                     warn!(
@@ -356,7 +354,7 @@ pub(crate) async fn extract_chunks_for_entry(
     (chunk_records_for_entry(entry_id, chunks), failed)
 }
 
-fn chunk_text(text: &str) -> Vec<String> {
+pub(crate) fn chunk_text(text: &str) -> Vec<String> {
     if text.trim().is_empty() {
         return Vec::new();
     }
@@ -378,7 +376,7 @@ fn chunk_text(text: &str) -> Vec<String> {
     out
 }
 
-fn chunk_records_for_entry(entry_id: &str, chunks: Vec<String>) -> Vec<VaultChunk> {
+pub(crate) fn chunk_records_for_entry(entry_id: &str, chunks: Vec<String>) -> Vec<VaultChunk> {
     chunks
         .into_iter()
         .enumerate()
