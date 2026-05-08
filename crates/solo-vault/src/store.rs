@@ -140,13 +140,20 @@ impl Store {
         }
         let conn = Connection::open(&db_path).map_err(to_vault)?;
         conn.execute_batch(SCHEMA).map_err(to_vault)?;
-        conn.pragma_update(None, "journal_mode", "WAL").map_err(to_vault)?;
-        conn.pragma_update(None, "foreign_keys", "ON").map_err(to_vault)?;
-        Ok(Self { conn: Mutex::new(conn), db_path })
+        conn.pragma_update(None, "journal_mode", "WAL")
+            .map_err(to_vault)?;
+        conn.pragma_update(None, "foreign_keys", "ON")
+            .map_err(to_vault)?;
+        Ok(Self {
+            conn: Mutex::new(conn),
+            db_path,
+        })
     }
 
     #[allow(dead_code)]
-    pub fn path(&self) -> &Path { &self.db_path }
+    pub fn path(&self) -> &Path {
+        &self.db_path
+    }
 
     pub fn upsert_entry(&self, entry: &VaultEntry) -> Result<()> {
         let conn = self.conn.lock().expect("vault store mutex poisoned");
@@ -210,12 +217,21 @@ impl Store {
 
     pub fn get_entry(&self, id: &str) -> Result<Option<VaultEntry>> {
         let conn = self.conn.lock().expect("vault store mutex poisoned");
-        let mut stmt = conn.prepare("SELECT * FROM entries WHERE id = ?1").map_err(to_vault)?;
-        let row = stmt.query_row(params![id], row_to_entry).optional().map_err(to_vault)?;
+        let mut stmt = conn
+            .prepare("SELECT * FROM entries WHERE id = ?1")
+            .map_err(to_vault)?;
+        let row = stmt
+            .query_row(params![id], row_to_entry)
+            .optional()
+            .map_err(to_vault)?;
         Ok(row)
     }
 
-    pub fn list_entries(&self, scope: &VaultScope, filters: &VaultListFilters) -> Result<Vec<VaultEntry>> {
+    pub fn list_entries(
+        &self,
+        scope: &VaultScope,
+        filters: &VaultListFilters,
+    ) -> Result<Vec<VaultEntry>> {
         let (_scope_type, scope_project_id) = split_scope(scope);
         let conn = self.conn.lock().expect("vault store mutex poisoned");
 
@@ -231,10 +247,15 @@ impl Store {
         };
 
         let mut stmt = conn.prepare(sql).map_err(to_vault)?;
-        let rows: rusqlite::Result<Vec<VaultEntry>> = if matches!(scope, VaultScope::Project { .. }) {
-            stmt.query_map(params![scope_project_id], row_to_entry).map_err(to_vault)?.collect()
+        let rows: rusqlite::Result<Vec<VaultEntry>> = if matches!(scope, VaultScope::Project { .. })
+        {
+            stmt.query_map(params![scope_project_id], row_to_entry)
+                .map_err(to_vault)?
+                .collect()
         } else {
-            stmt.query_map([], row_to_entry).map_err(to_vault)?.collect()
+            stmt.query_map([], row_to_entry)
+                .map_err(to_vault)?
+                .collect()
         };
         let mut entries = rows.map_err(to_vault)?;
 
@@ -259,8 +280,10 @@ impl Store {
 
     pub fn delete_entry(&self, id: &str) -> Result<()> {
         let conn = self.conn.lock().expect("vault store mutex poisoned");
-        conn.execute("DELETE FROM entries WHERE id = ?1", params![id]).map_err(to_vault)?;
-        conn.execute("DELETE FROM chunks_fts WHERE entry_id = ?1", params![id]).map_err(to_vault)?;
+        conn.execute("DELETE FROM entries WHERE id = ?1", params![id])
+            .map_err(to_vault)?;
+        conn.execute("DELETE FROM chunks_fts WHERE entry_id = ?1", params![id])
+            .map_err(to_vault)?;
         Ok(())
     }
 
@@ -268,7 +291,11 @@ impl Store {
         let conn = self.conn.lock().expect("vault store mutex poisoned");
         conn.execute(
             "UPDATE entries SET tags = ?1, updated_at = ?2 WHERE id = ?3",
-            params![serde_json::to_string(tags).unwrap_or_else(|_| "[]".into()), now as i64, id],
+            params![
+                serde_json::to_string(tags).unwrap_or_else(|_| "[]".into()),
+                now as i64,
+                id
+            ],
         )
         .map_err(to_vault)?;
         drop(conn);
@@ -286,7 +313,12 @@ impl Store {
         self.get_entry(id)
     }
 
-    pub fn move_scope(&self, id: &str, new_scope: &VaultScope, now: u64) -> Result<Option<VaultEntry>> {
+    pub fn move_scope(
+        &self,
+        id: &str,
+        new_scope: &VaultScope,
+        now: u64,
+    ) -> Result<Option<VaultEntry>> {
         let (t, pid) = split_scope(new_scope);
         let conn = self.conn.lock().expect("vault store mutex poisoned");
         conn.execute(
@@ -298,7 +330,12 @@ impl Store {
         self.get_entry(id)
     }
 
-    pub fn move_bucket(&self, id: &str, new_kind: EntryKind, now: u64) -> Result<Option<VaultEntry>> {
+    pub fn move_bucket(
+        &self,
+        id: &str,
+        new_kind: EntryKind,
+        now: u64,
+    ) -> Result<Option<VaultEntry>> {
         let conn = self.conn.lock().expect("vault store mutex poisoned");
         conn.execute(
             "UPDATE entries SET kind = ?1, updated_at = ?2 WHERE id = ?3",
@@ -311,11 +348,13 @@ impl Store {
 
     pub fn unsorted_count(&self) -> Result<u32> {
         let conn = self.conn.lock().expect("vault store mutex poisoned");
-        let n: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM entries WHERE kind = 'unsorted'",
-            [],
-            |r| r.get(0),
-        ).map_err(to_vault)?;
+        let n: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM entries WHERE kind = 'unsorted'",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(to_vault)?;
         Ok(n as u32)
     }
 
@@ -331,11 +370,13 @@ impl Store {
                 chunk.content,
                 chunk.token_count.map(i64::from),
             ],
-        ).map_err(to_vault)?;
+        )
+        .map_err(to_vault)?;
         conn.execute(
             "INSERT INTO chunks_fts (content, entry_id, chunk_id) VALUES (?, ?, ?)",
             params![chunk.content, chunk.entry_id, chunk.id],
-        ).map_err(to_vault)?;
+        )
+        .map_err(to_vault)?;
         Ok(())
     }
 
@@ -419,7 +460,12 @@ impl Store {
         rows.map_err(to_vault)
     }
 
-    pub fn fts_search(&self, query: &str, scope: &VaultScope, top_k: usize) -> Result<Vec<(VaultChunk, VaultEntry, f32)>> {
+    pub fn fts_search(
+        &self,
+        query: &str,
+        scope: &VaultScope,
+        top_k: usize,
+    ) -> Result<Vec<(VaultChunk, VaultEntry, f32)>> {
         let conn = self.conn.lock().expect("vault store mutex poisoned");
 
         let sql = r"
@@ -457,8 +503,12 @@ impl Store {
 
         let mut results = Vec::with_capacity(raw.len());
         for (chunk, entry_id, rank) in raw {
-            let mut lookup = conn.prepare("SELECT * FROM entries WHERE id = ?1").map_err(to_vault)?;
-            let entry = lookup.query_row(params![entry_id], row_to_entry).map_err(to_vault)?;
+            let mut lookup = conn
+                .prepare("SELECT * FROM entries WHERE id = ?1")
+                .map_err(to_vault)?;
+            let entry = lookup
+                .query_row(params![entry_id], row_to_entry)
+                .map_err(to_vault)?;
             let relevance = (1.0 / (1.0 + rank.abs())) as f32;
             results.push((chunk, entry, relevance));
         }
@@ -470,7 +520,8 @@ impl Store {
         conn.execute(
             "UPDATE entries SET hit_count = hit_count + 1, last_retrieved_at = ?1 WHERE id = ?2",
             params![now as i64, entry_id],
-        ).map_err(to_vault)?;
+        )
+        .map_err(to_vault)?;
         Ok(())
     }
 
@@ -506,9 +557,16 @@ impl Store {
             )
             .map_err(to_vault)?;
         if rows == 0 {
-            warn!(chunk_id, "vault.store.update_chunk_embedding: no matching chunk");
+            warn!(
+                chunk_id,
+                "vault.store.update_chunk_embedding: no matching chunk"
+            );
         } else {
-            debug!(chunk_id, bytes = blob.len(), "vault.store.update_chunk_embedding.ok");
+            debug!(
+                chunk_id,
+                bytes = blob.len(),
+                "vault.store.update_chunk_embedding.ok"
+            );
         }
         Ok(())
     }
@@ -653,9 +711,7 @@ impl Store {
         );
 
         // Phase 3: Partial sort for top-k.
-        candidates.sort_by(|a, b| {
-            b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal)
-        });
+        candidates.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         candidates.truncate(top_k);
 
         let rank_ms = start.elapsed().as_millis() as u64 - load_ms - score_ms;
@@ -725,7 +781,10 @@ pub(crate) fn f32_slice_to_blob(vec: &[f32]) -> Vec<u8> {
 /// expected dimension. Returns an error string suitable for logging rather
 /// than a rich typed error — callers just want to skip the row and log.
 #[inline]
-pub(crate) fn blob_to_f32_vec(bytes: &[u8], expected_dim: usize) -> std::result::Result<Vec<f32>, String> {
+pub(crate) fn blob_to_f32_vec(
+    bytes: &[u8],
+    expected_dim: usize,
+) -> std::result::Result<Vec<f32>, String> {
     if !bytes.len().is_multiple_of(4) {
         return Err(format!(
             "embedding blob length {} not a multiple of 4",
@@ -754,7 +813,9 @@ fn row_to_entry(row: &rusqlite::Row<'_>) -> rusqlite::Result<VaultEntry> {
     let scope_type: String = row.get("scope_type")?;
     let scope_project_id: Option<String> = row.get("scope_project_id")?;
     let scope = match scope_type.as_str() {
-        "project" => VaultScope::Project { project_id: scope_project_id.unwrap_or_default() },
+        "project" => VaultScope::Project {
+            project_id: scope_project_id.unwrap_or_default(),
+        },
         _ => VaultScope::Global,
     };
 
