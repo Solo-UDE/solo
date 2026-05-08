@@ -200,10 +200,10 @@ export const AgentMessage: FC<AgentMessageProps> = ({
 
   return (
     <div className={`chat-surface animate-in fade-in-0 slide-in-from-bottom-2 duration-200 ${className}`}>
-      <div className="min-w-0 space-y-3" style={{ maxWidth: 'min(56rem, 100%)' }}>
+      <div className="min-w-0 space-y-3.5" style={{ maxWidth: 'min(56rem, 100%)' }}>
         <div className="flex items-center gap-2 text-[11px]">
           <SoloAgentBadge />
-          <span className="text-muted-foreground">{formatTime(timestamp)}</span>
+          <span className="text-muted-foreground/72">{formatTime(timestamp)}</span>
           {content.autoProceed ? <ProceedIndicator /> : null}
         </div>
 
@@ -214,8 +214,9 @@ export const AgentMessage: FC<AgentMessageProps> = ({
             <button
               type="button"
               onClick={() => setTraceExpanded((v) => !v)}
-              className="flex items-center gap-1.5 rounded-full bg-background/55 px-2.5 py-1 text-xs text-muted-foreground hover:bg-card hover:text-foreground transition-[background-color,color] duration-150"
+              className="relative inline-flex min-h-8 items-center gap-1.5 rounded-full bg-background/55 px-3 py-1 text-xs text-muted-foreground transition-[background-color,color,transform] duration-150 before:absolute before:-inset-1 before:content-[''] hover:bg-card hover:text-foreground active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
               aria-expanded={traceExpanded}
+              title={traceExpanded ? 'Hide work' : 'Show work'}
             >
               <span>
                 {finalDurationMsRef.current
