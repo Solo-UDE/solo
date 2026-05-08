@@ -14,7 +14,7 @@ use tauri::{AppHandle, Emitter as _, State};
 
 use crate::agent::{
     AttachmentContentBlock, PermissionDecision, PermissionResponse, SessionConfig,
-    SessionCredentials, SessionManager, SessionMode,
+    SessionCredentials, SessionManager, SessionMode, VaultAuthConfig,
 };
 use crate::fs_commands::FsState;
 use crate::plugins_commands::PluginsState;
@@ -144,6 +144,17 @@ fn merge_session_mcp_servers(
     Ok((!merged.is_empty()).then_some(JsonValue::Object(merged)))
 }
 
+async fn build_vault_auth_config(
+    auth_state: &State<'_, crate::auth_commands::AuthState>,
+    provider_auth: &State<'_, ProviderAuthState>,
+) -> VaultAuthConfig {
+    VaultAuthConfig {
+        endpoint: Some(crate::desktop_config::vault_api_endpoint().to_string()),
+        id_token: crate::auth_commands::fresh_id_token_snapshot(auth_state, provider_auth).await,
+        retrieval_source: Some("hybrid".to_string()),
+    }
+}
+
 // ============================================================================
 // Session Management Commands
 // ============================================================================
@@ -187,7 +198,7 @@ pub(crate) async fn create_session_internal(
     stats.record(solo_stats::StatsEvent::SessionCreated).await;
 
     session_manager
-        .send_message(&session_id, &prompt, None)
+        .send_message(&session_id, &prompt, None, None)
         .map_err(to_error)?;
     stats.record(solo_stats::StatsEvent::MessageSent).await;
 
@@ -200,11 +211,13 @@ pub async fn agent_create_session(
     session_id: String,
     config: Option<SessionConfig>,
     state: State<'_, Arc<SessionManager>>,
+    auth_state: State<'_, crate::auth_commands::AuthState>,
     provider_state: State<'_, ProviderAuthState>,
     plugins_state: State<'_, PluginsState>,
     stats: State<'_, crate::stats_commands::StatsState>,
 ) -> Result<()> {
     let mut config = config.unwrap_or_default();
+    config.vault_auth = Some(build_vault_auth_config(&auth_state, &provider_state).await);
 
     // If the caller didn't specify a provider, use the currently-active one.
     if config.provider.is_none() {
@@ -213,11 +226,16 @@ pub async fn agent_create_session(
     }
 
     let provider_str_for_mode = config.provider.as_deref().unwrap_or("anthropic");
-    if provider_str_for_mode != "anthropic"
-        && config.session_mode.unwrap_or(SessionMode::Agent) == SessionMode::Agent
-    {
+    let requested_agent_mode =
+        config.session_mode.unwrap_or(SessionMode::Agent) == SessionMode::Agent;
+    let provider_allows_agent_mode = config
+        .provider_capabilities
+        .as_ref()
+        .map(|capabilities| capabilities.agent)
+        .unwrap_or(provider_str_for_mode == "anthropic");
+    if requested_agent_mode && !provider_allows_agent_mode {
         return Err(format!(
-            "{provider_str_for_mode} is chat-only in Solo v1; select a Claude model for agent mode"
+            "{provider_str_for_mode} does not support Solo agent mode with the selected model"
         ));
     }
 
@@ -310,10 +328,13 @@ pub async fn agent_send_message(
     message: String,
     attachments: Option<Vec<AttachmentContentBlock>>,
     state: State<'_, Arc<SessionManager>>,
+    auth_state: State<'_, crate::auth_commands::AuthState>,
+    provider_state: State<'_, ProviderAuthState>,
     stats: State<'_, crate::stats_commands::StatsState>,
 ) -> Result<()> {
+    let vault_auth = Some(build_vault_auth_config(&auth_state, &provider_state).await);
     state
-        .send_message(&session_id, &message, attachments)
+        .send_message(&session_id, &message, attachments, vault_auth)
         .map_err(to_error)?;
     stats.record(solo_stats::StatsEvent::MessageSent).await;
     Ok(())
