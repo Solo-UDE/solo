@@ -794,6 +794,7 @@ html.dark [data-streamdown='code-block-copy-button']:hover {
   font-size: 13px;
   line-height: 1.68;
   font-feature-settings: "rlig" 1, "calt" 1, "cv11" 1;
+  text-rendering: geometricPrecision;
 }
 
 .chat-surface code,
@@ -807,6 +808,7 @@ html.dark [data-streamdown='code-block-copy-button']:hover {
   line-height: 1.8;
   color: color-mix(in oklch, var(--foreground) 96%, white 4%);
   font-weight: 430;
+  text-wrap: pretty;
 }
 
 .chat-surface .chat-markdown p,
@@ -860,9 +862,12 @@ html.dark [data-streamdown='code-block-copy-button']:hover {
 }
 
 .tool-widget-output {
-  background: var(--tool-output-bg);
-  border: 0;
+  background: color-mix(in oklch, var(--tool-output-bg) 86%, transparent);
+  border: 1px solid color-mix(in oklch, var(--border-tool) 78%, transparent);
   border-radius: 0.5rem;
+  box-shadow:
+    inset 0 1px 0 color-mix(in oklch, white 4%, transparent),
+    0 8px 24px -22px color-mix(in oklch, black 45%, transparent);
 }
 
 .tool-widget-inline-chip {
