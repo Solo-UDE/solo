@@ -154,6 +154,7 @@ export type { VaultChunk } from './VaultChunk';
 export type { VaultEntry } from './VaultEntry';
 export type { VaultListFilters } from './VaultListFilters';
 export type { VaultScope } from './VaultScope';
+export type { VaultRetrievalSource } from './VaultRetrievalSource';
 export type { VaultSearchMode } from './VaultSearchMode';
 export type { VaultSearchResult } from './VaultSearchResult';
 export type { VoiceMode } from './VoiceMode';
