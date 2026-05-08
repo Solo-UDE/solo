@@ -50,6 +50,10 @@ export function useVaultStream(): void {
           });
           break;
         }
+        case 'vault:retrieval_warning': {
+          store.setRetrievalWarning(evt.payload.message);
+          break;
+        }
         case 'vault:unsorted_count_changed': {
           useVaultStore.setState({ unsortedCount: evt.payload.count });
           break;
