@@ -9,7 +9,9 @@ use std::time::{Duration, Instant};
 
 use serde::Deserialize;
 use solo_protocol::{Executor, TaskDraft, TaskPatch, TaskPriority, TaskStatus, VaultScope};
-use solo_tasks::{ContextFragment, TaskStore, render_prompt, trim_to_budget, DEFAULT_TOKEN_BUDGET, DEFAULT_BUNDLE};
+use solo_tasks::{
+    render_prompt, trim_to_budget, ContextFragment, TaskStore, DEFAULT_BUNDLE, DEFAULT_TOKEN_BUDGET,
+};
 use tauri::{AppHandle, Manager as _};
 use tokio::sync::Mutex;
 use tracing::{info, warn};
@@ -280,7 +282,7 @@ pub async fn plan_from_goal(
         .create_session(&session_id, None)
         .map_err(|e| format!("planner session: {e}"))?;
     session_manager
-        .send_message(&session_id, &prompt, None)
+        .send_message(&session_id, &prompt, None, None)
         .map_err(|e| format!("planner prompt: {e}"))?;
 
     // Wait for the session to complete — we collect agent:message events and
@@ -330,11 +332,7 @@ pub async fn plan_from_goal(
 //   - { type: "tool_use" | "thinking" | ... }   ← ignored
 //   - { type: "result" }                        ← terminal marker (no `result` field)
 //   - { type: "error", content: "..." }         ← abort
-async fn wait_for_result(
-    app: &AppHandle,
-    session_id: &str,
-    timeout: Duration,
-) -> Option<String> {
+async fn wait_for_result(app: &AppHandle, session_id: &str, timeout: Duration) -> Option<String> {
     use tauri::Listener as _;
     let (tx, rx) = tokio::sync::oneshot::channel::<String>();
     let tx = std::sync::Arc::new(Mutex::new(Some(tx)));
