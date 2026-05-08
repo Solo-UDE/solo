@@ -208,12 +208,10 @@ pub async fn worktree_create(
                     };
 
                     // Enforce a 5-minute timeout on the entire setup sequence
-                    let timed_out = tokio::time::timeout(
-                        std::time::Duration::from_secs(300),
-                        setup_future,
-                    )
-                    .await
-                    .is_err();
+                    let timed_out =
+                        tokio::time::timeout(std::time::Duration::from_secs(300), setup_future)
+                            .await
+                            .is_err();
 
                     if timed_out {
                         let _ = app_clone.emit(
