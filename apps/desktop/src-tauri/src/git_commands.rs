@@ -5,9 +5,8 @@
 //! because `git2::Repository` is `!Send`.
 
 use git2::{
-    build::CheckoutBuilder, Cred, CredentialType, Delta, DiffOptions, FetchOptions,
-    IndexAddOption, MergeOptions, PushOptions, RemoteCallbacks, Repository, ResetType, Signature,
-    StatusOptions,
+    build::CheckoutBuilder, Cred, CredentialType, Delta, DiffOptions, FetchOptions, IndexAddOption,
+    MergeOptions, PushOptions, RemoteCallbacks, Repository, ResetType, Signature, StatusOptions,
 };
 use solo_fs::{git_watcher, SharedGitRefWatcher};
 use solo_protocol::{
@@ -51,13 +50,13 @@ impl Default for GitState {
 /// Install a fresh `.git/` watcher for `workspace` and spawn a task that forwards
 /// its debounced signals to the frontend as `GitChangesUpdated` events.
 /// Replaces any previously-installed watcher. Safe to call even on non-repo paths.
-pub async fn install_git_ref_watcher(
-    git_state: &GitState,
-    app: AppHandle,
-    workspace: PathBuf,
-) {
+pub async fn install_git_ref_watcher(git_state: &GitState, app: AppHandle, workspace: PathBuf) {
     if let Err(e) = git_watcher::install(&git_state.ref_watcher, &workspace).await {
-        warn!("Failed to install .git watcher for {}: {}", workspace.display(), e);
+        warn!(
+            "Failed to install .git watcher for {}: {}",
+            workspace.display(),
+            e
+        );
         return;
     }
 
@@ -208,8 +207,6 @@ fn to_authenticated_https_url(url: &str, token: &str) -> String {
         url.replace("https://", &format!("https://{}@", token))
     }
 }
-
-
 
 /// Build auth callbacks that handle both HTTPS (OAuth token) and SSH (agent).
 fn make_auth_callbacks(token: &str) -> RemoteCallbacks<'_> {
@@ -471,7 +468,11 @@ pub async fn git_push(
                 return Ok(GitPushResponse { commits_count: 0 });
             }
 
-            emit_git_progress(&app, "push", &format!("Pushing {} commit(s)...", commits_count));
+            emit_git_progress(
+                &app,
+                "push",
+                &format!("Pushing {} commit(s)...", commits_count),
+            );
 
             let refspec = format!("refs/heads/{}:refs/heads/{}", branch, branch);
             let mut push_opts = make_push_options(&access_token);
@@ -485,7 +486,8 @@ pub async fn git_push(
                 .map_err(|e| {
                     let msg = e.to_string();
                     if msg.contains("non-fast-forward") {
-                        "Push rejected (non-fast-forward). Pull first to integrate remote changes.".to_string()
+                        "Push rejected (non-fast-forward). Pull first to integrate remote changes."
+                            .to_string()
                     } else {
                         format!("Failed to push: {}", msg)
                     }
@@ -731,7 +733,9 @@ pub async fn git_get_changes(
 
         // Resolve the best base tree to diff against
         let base_tree = find_diff_base(&repo, &branch).and_then(|base_ref| {
-            let oid = repo.refname_to_id(&format!("refs/remotes/{}", base_ref)).ok()?;
+            let oid = repo
+                .refname_to_id(&format!("refs/remotes/{}", base_ref))
+                .ok()?;
             let head_oid = repo.head().ok()?.target()?;
             // Use merge-base so we only see branch changes, not upstream commits
             let merge_base = repo.merge_base(head_oid, oid).ok()?;
@@ -743,8 +747,7 @@ pub async fn git_get_changes(
             let mut diff_opts = DiffOptions::new();
             diff_opts.include_untracked(true);
 
-            if let Ok(diff) =
-                repo.diff_tree_to_workdir_with_index(Some(tree), Some(&mut diff_opts))
+            if let Ok(diff) = repo.diff_tree_to_workdir_with_index(Some(tree), Some(&mut diff_opts))
             {
                 for delta_idx in 0..diff.deltas().count() {
                     if let Some(delta) = diff.deltas().nth(delta_idx) {
@@ -767,13 +770,15 @@ pub async fn git_get_changes(
                             _ => GitFileStatus::Modified,
                         };
 
-                        files_map.entry(file_path.clone()).or_insert(GitChangedFile {
-                            path: file_path,
-                            status,
-                            insertions: 0,
-                            deletions: 0,
-                            is_staged: false,
-                        });
+                        files_map
+                            .entry(file_path.clone())
+                            .or_insert(GitChangedFile {
+                                path: file_path,
+                                status,
+                                insertions: 0,
+                                deletions: 0,
+                                is_staged: false,
+                            });
                     }
                 }
 
@@ -931,8 +936,7 @@ pub async fn git_get_file_diff(
     tokio::task::spawn_blocking(move || {
         let repo = ensure_local_repo_scope(&workspace_path)?;
 
-        let base_ref = find_diff_base(&repo, &branch)
-            .unwrap_or_else(|| "HEAD".to_string());
+        let base_ref = find_diff_base(&repo, &branch).unwrap_or_else(|| "HEAD".to_string());
 
         // Read current file content
         let full_path = workspace_path.join(&file_path);
@@ -1099,8 +1103,9 @@ pub async fn git_get_branch_diff(
                     _ => ("context", false, false),
                 };
 
-                let content =
-                    String::from_utf8_lossy(line.content()).trim_end_matches('\n').to_string();
+                let content = String::from_utf8_lossy(line.content())
+                    .trim_end_matches('\n')
+                    .to_string();
 
                 let old_line_no = line.old_lineno();
                 let new_line_no = line.new_lineno();
@@ -1159,8 +1164,7 @@ pub async fn git_discard_file(
         let repo = ensure_local_repo_scope(&workspace_path)?;
 
         let full_path = workspace_path.join(&file_path);
-        let base_ref = find_diff_base(&repo, &branch)
-            .unwrap_or_else(|| "HEAD".to_string());
+        let base_ref = find_diff_base(&repo, &branch).unwrap_or_else(|| "HEAD".to_string());
 
         // Check if file is untracked
         if let Ok(statuses) = repo.statuses(None) {
@@ -1737,7 +1741,9 @@ pub async fn git_list_branches(
             Repository::open(&workspace_path).map_err(|e| format!("Failed to open repo: {}", e))?;
 
         let head_ref = repo.head().ok();
-        let head_name = head_ref.as_ref().and_then(|h| h.shorthand().map(String::from));
+        let head_name = head_ref
+            .as_ref()
+            .and_then(|h| h.shorthand().map(String::from));
 
         let mut branches = Vec::new();
         for branch_result in repo
@@ -1802,9 +1808,7 @@ pub async fn git_list_branches(
         }
 
         // Sort: current branch first, then alphabetical
-        branches.sort_by(|a, b| {
-            b.is_head.cmp(&a.is_head).then_with(|| a.name.cmp(&b.name))
-        });
+        branches.sort_by(|a, b| b.is_head.cmp(&a.is_head).then_with(|| a.name.cmp(&b.name)));
 
         Ok(branches)
     })
@@ -1868,9 +1872,10 @@ pub async fn git_delete_branch(
 
         if !force && !branch.is_head() {
             // Check if merged into HEAD
-            if let (Ok(branch_oid), Ok(head_ref)) =
-                (repo.refname_to_id(&format!("refs/heads/{}", branch_name)), repo.head())
-            {
+            if let (Ok(branch_oid), Ok(head_ref)) = (
+                repo.refname_to_id(&format!("refs/heads/{}", branch_name)),
+                repo.head(),
+            ) {
                 if let Some(head_oid) = head_ref.target() {
                     if let Ok((_, behind)) = repo.graph_ahead_behind(branch_oid, head_oid) {
                         if behind > 0 {
@@ -1939,11 +1944,14 @@ pub async fn git_merge(
             let head = repo
                 .head()
                 .map_err(|e| format!("Failed to get HEAD: {}", e))?;
-            let refname = head
-                .name()
-                .ok_or("HEAD is not a symbolic reference")?;
-            repo.reference(refname, source_oid, true, &format!("fast-forward merge {}", source_branch))
-                .map_err(|e| format!("Failed to update ref: {}", e))?;
+            let refname = head.name().ok_or("HEAD is not a symbolic reference")?;
+            repo.reference(
+                refname,
+                source_oid,
+                true,
+                &format!("fast-forward merge {}", source_branch),
+            )
+            .map_err(|e| format!("Failed to update ref: {}", e))?;
 
             emit_git_changes_updated(&app);
             return Ok(GitMergeResult {
@@ -1954,8 +1962,12 @@ pub async fn git_merge(
         }
 
         // Normal merge
-        repo.merge(&[&annotated], Some(&mut MergeOptions::new()), Some(&mut CheckoutBuilder::new().safe()))
-            .map_err(|e| format!("Merge failed: {}", e))?;
+        repo.merge(
+            &[&annotated],
+            Some(&mut MergeOptions::new()),
+            Some(&mut CheckoutBuilder::new().safe()),
+        )
+        .map_err(|e| format!("Merge failed: {}", e))?;
 
         let index = repo
             .index()
@@ -1966,10 +1978,7 @@ pub async fn git_merge(
                 .conflicts()
                 .map_err(|e| format!("Failed to read conflicts: {}", e))?
                 .filter_map(|c| c.ok())
-                .filter_map(|c| {
-                    c.our
-                        .map(|e| String::from_utf8_lossy(&e.path).to_string())
-                })
+                .filter_map(|c| c.our.map(|e| String::from_utf8_lossy(&e.path).to_string()))
                 .collect();
 
             return Ok(GitMergeResult {
@@ -2257,10 +2266,7 @@ pub async fn github_get_token(
             body = %body,
             "github_get_token: /v1/github/token failed"
         );
-        return Err(format!(
-            "GitHub token fetch failed ({}): {}",
-            status, body
-        ));
+        return Err(format!("GitHub token fetch failed ({}): {}", status, body));
     }
 
     #[derive(serde::Deserialize)]
@@ -2326,7 +2332,10 @@ pub async fn github_start_device_auth() -> Result<solo_protocol::GitHubDeviceCod
             e.to_string()
         })?;
 
-    info!("GitHub Device Flow started — user_code: {}", response.user_code);
+    info!(
+        "GitHub Device Flow started — user_code: {}",
+        response.user_code
+    );
 
     Ok(solo_protocol::GitHubDeviceCodeResponse {
         user_code: response.user_code,
