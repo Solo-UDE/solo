@@ -248,7 +248,11 @@ fn registry_from_page(page: SkillsShPage, view: &str, page_no: u32) -> Registry 
     Registry {
         version: 1,
         generated_at: chrono::Utc::now().to_rfc3339(),
-        skills: page.skills.into_iter().map(registry_entry_from_skill).collect(),
+        skills: page
+            .skills
+            .into_iter()
+            .map(registry_entry_from_skill)
+            .collect(),
         total_skills: total,
         has_more: page.has_more,
         next_page: page.has_more.then_some(page_no + 1),
@@ -258,8 +262,14 @@ fn registry_from_page(page: SkillsShPage, view: &str, page_no: u32) -> Registry 
 
 fn http_client() -> Result<reqwest::Client, String> {
     let mut headers = HeaderMap::new();
-    headers.insert(USER_AGENT, HeaderValue::from_static("Solo IDE skills marketplace"));
-    headers.insert(ACCEPT, HeaderValue::from_static("application/json,text/plain,*/*"));
+    headers.insert(
+        USER_AGENT,
+        HeaderValue::from_static("Solo IDE skills marketplace"),
+    );
+    headers.insert(
+        ACCEPT,
+        HeaderValue::from_static("application/json,text/plain,*/*"),
+    );
 
     if let Ok(token) = std::env::var("GITHUB_TOKEN").or_else(|_| std::env::var("GH_TOKEN")) {
         if !token.trim().is_empty() {
@@ -436,8 +446,8 @@ fn path_is_safe_relative(path: &Path) -> bool {
 
 fn has_binary_extension(path: &Path) -> bool {
     const BINARY_EXTS: &[&str] = &[
-        "exe", "bin", "so", "dll", "dylib", "app", "dmg", "pkg", "zip", "gz", "tgz", "tar",
-        "png", "jpg", "jpeg", "gif", "webp", "ico", "pdf", "woff", "woff2", "ttf", "otf",
+        "exe", "bin", "so", "dll", "dylib", "app", "dmg", "pkg", "zip", "gz", "tgz", "tar", "png",
+        "jpg", "jpeg", "gif", "webp", "ico", "pdf", "woff", "woff2", "ttf", "otf",
     ];
     path.extension()
         .and_then(|s| s.to_str())
@@ -545,11 +555,8 @@ async fn resolve_skill_folder(
     }
 
     let repo_url = format!("https://github.com/{}", source);
-    let repo: GithubRepo = fetch_json(
-        client,
-        &format!("https://api.github.com/repos/{}", source),
-    )
-    .await?;
+    let repo: GithubRepo =
+        fetch_json(client, &format!("https://api.github.com/repos/{}", source)).await?;
     let branch = repo.default_branch;
     let tree: GithubTree = fetch_json(
         client,
@@ -572,8 +579,13 @@ async fn resolve_skill_folder(
         }
     }
 
-    let (_, instruction_path) =
-        best.ok_or_else(|| format!("could not find {} in {}", skill_id_from_entry(entry), source))?;
+    let (_, instruction_path) = best.ok_or_else(|| {
+        format!(
+            "could not find {} in {}",
+            skill_id_from_entry(entry),
+            source
+        )
+    })?;
     let root = Path::new(&instruction_path)
         .parent()
         .map(|p| p.to_string_lossy().to_string())
@@ -708,7 +720,13 @@ fn parse_frontmatter_field(content: &str, field: &str) -> Option<String> {
             break;
         }
         if let Some(value) = trimmed.strip_prefix(&prefix) {
-            return Some(value.trim().trim_matches('"').trim_matches('\'').to_string());
+            return Some(
+                value
+                    .trim()
+                    .trim_matches('"')
+                    .trim_matches('\'')
+                    .to_string(),
+            );
         }
     }
     None
@@ -871,7 +889,10 @@ pub async fn skills_install(app: AppHandle, entry: RegistryEntry) -> Result<(), 
     let meta = InstalledSkillMeta {
         source: OriginSource::Registry,
         id: detail.entry.id.clone(),
-        version: detail.hash.clone().unwrap_or_else(|| "skills.sh".to_string()),
+        version: detail
+            .hash
+            .clone()
+            .unwrap_or_else(|| "skills.sh".to_string()),
         installed_at: chrono::Utc::now().to_rfc3339(),
         modified: false,
         upstream_sha256: detail.hash.clone(),
