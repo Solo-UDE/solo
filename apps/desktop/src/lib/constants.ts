@@ -87,15 +87,15 @@ export interface ModelOptionConfig {
   iconType: ProviderIconType;
   /**
    * When true, the model's UI surfaces a "Chat only" badge and the input
-   * shows a capability banner. Set on non-Anthropic entries in v1 because
-   * those adapters don't support tool calls yet.
+   * shows a capability banner. Set on provider entries that don't support
+   * tool calls in the current bridge.
    */
   textOnly?: boolean;
 }
 
 export const PROVIDER_CAPABILITIES = {
   anthropic: { chat: true, agent: true, tools: true, mcp: true, resume: true },
-  openai: { chat: true, agent: false, tools: false, mcp: false, resume: false },
+  openai: { chat: true, agent: true, tools: true, mcp: true, resume: true },
   gemini: { chat: true, agent: false, tools: false, mcp: false, resume: false },
 } as const;
 
@@ -139,7 +139,6 @@ export const MODEL_OPTIONS: ModelOptionConfig[] = [
     description: 'Frontier coding and research model',
     provider: 'openai',
     iconType: 'openai',
-    textOnly: true,
   },
   {
     value: GPT_5_4,
@@ -147,7 +146,6 @@ export const MODEL_OPTIONS: ModelOptionConfig[] = [
     description: 'Flagship reasoning model',
     provider: 'openai',
     iconType: 'openai',
-    textOnly: true,
   },
   {
     value: GPT_5_3_CODEX_SPARK,
@@ -155,7 +153,6 @@ export const MODEL_OPTIONS: ModelOptionConfig[] = [
     description: 'Coding-tuned on GPT-5.3',
     provider: 'openai',
     iconType: 'openai',
-    textOnly: true,
   },
   {
     value: GPT_5_4_MINI,
@@ -163,7 +160,6 @@ export const MODEL_OPTIONS: ModelOptionConfig[] = [
     description: 'Fast and cost-effective',
     provider: 'openai',
     iconType: 'openai',
-    textOnly: true,
   },
   // Google Gemini models
   {
