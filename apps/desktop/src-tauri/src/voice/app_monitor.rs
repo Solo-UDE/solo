@@ -15,12 +15,8 @@ pub fn frontmost_app() -> AppContext {
             let Some(running) = ws.frontmostApplication() else {
                 return AppContext::default();
             };
-            let bundle_id = running
-                .bundleIdentifier()
-                .map(|s| s.to_string());
-            let app_name = running
-                .localizedName()
-                .map(|s| s.to_string());
+            let bundle_id = running.bundleIdentifier().map(|s| s.to_string());
+            let app_name = running.localizedName().map(|s| s.to_string());
             AppContext {
                 bundle_id,
                 app_name,
