@@ -209,7 +209,12 @@ async function handleRequest(
     }
 
     case 'send_message': {
-      sessionManager.sendMessage(request.message, request.sessionId, request.attachments);
+      sessionManager.sendMessage(
+        request.message,
+        request.sessionId,
+        request.attachments,
+        request.vaultAuth,
+      );
       sendResponse({ type: 'success', requestType: request.type });
       break;
     }
