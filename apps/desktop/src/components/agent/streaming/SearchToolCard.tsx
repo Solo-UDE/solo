@@ -53,7 +53,7 @@ export const SearchToolCard: FC<SearchToolCardProps> = ({
 			toolName={toolName}
 			status={status}
 			icon={<MagnifyingGlassIcon width={14} height={14} className="shrink-0 text-muted-foreground" />}
-			label={status === 'running' ? 'Searching...' : (isGlob ? 'Glob' : 'Grep')}
+			label={status === 'running' ? 'Searching' : `Ran ${isGlob ? 'Glob' : 'Grep'}`}
 			primaryDisplay={pattern}
 			collapsible={resultCount > 0}
 			defaultExpanded={false}
@@ -66,7 +66,7 @@ export const SearchToolCard: FC<SearchToolCardProps> = ({
 						{badges.map((badge) => (
 							<span
 								key={badge}
-								className="text-[10px] px-1.5 py-0.5 rounded-md bg-muted/50 text-muted-foreground font-mono"
+								className="rounded-md bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
 							>
 								{badge}
 							</span>
@@ -88,7 +88,7 @@ export const SearchToolCard: FC<SearchToolCardProps> = ({
 					<div className="max-h-[160px] overflow-y-auto rounded-lg bg-muted/20 p-2">
 						<AnimatedList stagger={0.02} slideY={3}>
 							{results.slice(0, 8).map((result, i) => (
-								<div key={`r-${String(i)}`} className="text-xs font-mono text-foreground/80 py-0.5 px-1 truncate">
+								<div key={`r-${String(i)}`} className="truncate px-1 py-0.5 font-mono text-xs text-foreground/80">
 									{result}
 								</div>
 							))}
