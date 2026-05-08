@@ -5,8 +5,8 @@
 
 use core_foundation::runloop::{kCFRunLoopCommonModes, CFRunLoop};
 use core_graphics::event::{
-    CGEvent, CGEventFlags, CGEventTap, CGEventTapLocation, CGEventTapOptions,
-    CGEventTapPlacement, CGEventType, CGKeyCode,
+    CGEvent, CGEventFlags, CGEventTap, CGEventTapLocation, CGEventTapOptions, CGEventTapPlacement,
+    CGEventType, CGKeyCode,
 };
 use solo_protocol::ShortcutsConfig;
 use std::sync::{Arc, RwLock};
@@ -75,7 +75,10 @@ impl HotkeyManager {
             let tap = match tap {
                 Ok(t) => t,
                 Err(_) => {
-                    let _ = ready_tx.send(Err("CGEventTap::new failed: permission denied or no Input Monitoring access".to_string()));
+                    let _ = ready_tx.send(Err(
+                        "CGEventTap::new failed: permission denied or no Input Monitoring access"
+                            .to_string(),
+                    ));
                     return;
                 }
             };
@@ -161,9 +164,9 @@ fn classify(
             None
         }
         CGEventType::KeyDown | CGEventType::KeyUp => {
-            let code = event.get_integer_value_field(
-                core_graphics::event::EventField::KEYBOARD_EVENT_KEYCODE,
-            ) as CGKeyCode;
+            let code = event
+                .get_integer_value_field(core_graphics::event::EventField::KEYBOARD_EVENT_KEYCODE)
+                as CGKeyCode;
             let flags = event.get_flags();
             let shortcut = format_shortcut(flags, code);
 
