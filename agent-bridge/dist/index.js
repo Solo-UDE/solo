@@ -5,13 +5,13 @@ import {
   createLogger,
   setCorrelationId,
   shutdownFileLogging
-} from "./chunk-PI2SZOW3.js";
+} from "./chunk-CLAVTT35.js";
 
 // src/index.ts
 import * as readline from "readline";
 
 // src/session-manager.ts
-import { createHash, randomUUID } from "crypto";
+import { createHash, randomUUID as randomUUID2 } from "crypto";
 import { appendFileSync, mkdirSync as mkdirSync2 } from "fs";
 import { homedir as homedir5 } from "os";
 import { join as join7 } from "path";
@@ -21,6 +21,7 @@ import { query, createSdkMcpServer as createSdkMcpServer2 } from "@anthropic-ai/
 
 // src/vault.ts
 import { Database } from "bun:sqlite";
+import { randomUUID } from "crypto";
 import { homedir } from "os";
 import { join } from "path";
 import { existsSync } from "fs";
@@ -29,6 +30,8 @@ import { z } from "zod";
 var logger = createLogger("vault");
 var VAULT_DB = join(homedir(), ".solo", "vault", "index.sqlite");
 var EMBEDDING_DIM = 384;
+var WRITE_CHUNK_WORDS = 500;
+var WRITE_CHUNK_OVERLAP_WORDS = 50;
 var VAULT_DEBUG = process.env.VAULT_DEBUG === "1" || process.env.VAULT_DEBUG === "true";
 function openDb() {
   if (!existsSync(VAULT_DB)) {
@@ -38,6 +41,19 @@ function openDb() {
     return new Database(VAULT_DB, { readonly: true });
   } catch (err) {
     logger.warn({ err: String(err), path: VAULT_DB }, "vault: open failed");
+    return null;
+  }
+}
+function openWritableDb() {
+  if (!existsSync(VAULT_DB)) {
+    return null;
+  }
+  try {
+    const db = new Database(VAULT_DB);
+    db.run("PRAGMA busy_timeout = 5000");
+    return db;
+  } catch (err) {
+    logger.warn({ err: String(err), path: VAULT_DB }, "vault: writable open failed");
     return null;
   }
 }
@@ -75,13 +91,16 @@ function searchVault(query2, opts = {}) {
     const rows = stmt.all(ftsQuery, projectId ?? null, topK);
     db.close();
     return rows.map((r) => ({
+      chunkId: r.chunk_id,
       entryId: r.entry_id,
       entryTitle: r.title,
       kind: r.kind,
       pinned: r.pinned !== 0,
       chunkIndex: r.chunk_index,
       content: r.content,
-      score: 1 / (1 + Math.abs(r.rank))
+      score: 1 / (1 + Math.abs(r.rank)),
+      source: "local",
+      mode: "fts"
     }));
   } catch (err) {
     logger.warn({ err: String(err), query: query2 }, "vault: search failed");
@@ -120,13 +139,16 @@ function pinnedEntries(opts = {}) {
     const rows = stmt.all(projectId ?? null, limit);
     db.close();
     return rows.map((r) => ({
+      chunkId: r.chunk_id,
       entryId: r.entry_id,
       entryTitle: r.title,
       kind: r.kind,
       pinned: true,
       chunkIndex: r.chunk_index,
       content: r.content,
-      score: 1
+      score: 1,
+      source: "local",
+      mode: "fts"
     }));
   } catch (err) {
     logger.warn({ err: String(err) }, "vault: pinned fetch failed");
@@ -137,10 +159,19 @@ function pinnedEntries(opts = {}) {
     return [];
   }
 }
-function fetchVaultContext(userMessage, opts = {}) {
+async function fetchVaultContext(userMessage, opts = {}) {
   const { projectId, maxChunks = 5 } = opts;
+  const mode = opts.mode ?? "hybrid";
+  const source = opts.source ?? opts.vaultAuth?.retrievalSource ?? (opts.vaultAuth?.endpoint && opts.vaultAuth?.idToken ? "hybrid" : "local");
   const pinned = pinnedEntries({ projectId, limit: 3 });
-  const hits = searchVault(userMessage, { projectId, topK: maxChunks });
+  const hits = await searchVaultBySource(userMessage, {
+    projectId,
+    topK: maxChunks,
+    mode,
+    source,
+    vaultAuth: opts.vaultAuth,
+    includePinned: false
+  });
   const seen = /* @__PURE__ */ new Set();
   const merged = [];
   for (const h of [...pinned, ...hits]) {
@@ -153,7 +184,7 @@ function fetchVaultContext(userMessage, opts = {}) {
   if (merged.length === 0) return "";
   const sections = merged.map((h) => {
     const badge = h.pinned ? " [pinned]" : "";
-    return `### ${h.entryTitle}${badge} (${h.kind}, chunk ${h.chunkIndex})
+    return `### ${h.entryTitle}${badge} (${h.kind}, ${h.source}/${h.mode}, chunk ${h.chunkIndex})
 ${h.content.trim()}`;
   });
   return [
@@ -264,6 +295,10 @@ async function loadEmbeddingsCache(projectId) {
   } finally {
     semanticCacheLoading = null;
   }
+}
+function invalidateEmbeddingsCache() {
+  semanticCache = null;
+  semanticCacheScope = null;
 }
 function decodeEmbedding(bytes, expectedDim) {
   if (bytes.byteLength % 4 !== 0) return null;
@@ -403,13 +438,17 @@ async function searchVaultSemantic(query2, opts = {}) {
   const top = scored.slice(0, topK);
   const rankMs = Date.now() - rankStart;
   const hits = top.map(({ c, score }) => ({
+    chunkId: c.chunkId,
     entryId: c.entryId,
     entryTitle: c.entryTitle,
     kind: c.kind,
     pinned: c.pinned,
     chunkIndex: c.chunkIndex,
     content: c.content,
-    score
+    score,
+    source: "local",
+    mode: "semantic",
+    embeddingModel: "Xenova/all-MiniLM-L6-v2"
   }));
   logger.info(
     {
@@ -428,69 +467,503 @@ async function searchVaultSemantic(query2, opts = {}) {
   );
   return hits;
 }
-var vaultSearchTool = tool(
-  "vault_search",
-  `Search the user's personal vault (agent memory) for indexed content. The vault holds documents, code, screenshots, and data the user has chosen to remember across sessions. ALWAYS use this tool before asking the user to re-explain something they've indexed \u2014 especially when they refer to "that spec", "the schema I shared", "my notes on X", or ask "did I put X in the vault?". Pick mode="fts" for exact keyword recall and mode="semantic" for conceptual / paraphrased queries. When unsure, start with fts; if it returns nothing, retry with semantic.`,
-  {
-    query: z.string().min(2).describe(
-      "Free-text search query. Keywords from the user's message work well for fts mode; natural-language phrases work better for semantic mode."
-    ),
-    mode: z.enum(["fts", "semantic"]).default("fts").describe(
-      'Retrieval strategy. "fts" = BM25 keyword match (fast, precise). "semantic" = OpenAI embedding + cosine (recalls paraphrased matches).'
-    ),
-    top_k: z.number().int().min(1).max(20).default(6).describe("Maximum chunks to return (default 6).")
-  },
-  async (args) => {
-    const start = Date.now();
-    const mode = args.mode ?? "fts";
-    const topK = args.top_k ?? 6;
-    let hits;
-    if (mode === "semantic") {
-      hits = await searchVaultSemantic(args.query, { topK });
-    } else {
-      hits = searchVault(args.query, { topK });
+function fuseHits(lists, mode, markCrossSourceDuplicates, topK) {
+  const RRF_K = 60;
+  const fused = /* @__PURE__ */ new Map();
+  for (const list of lists) {
+    list.forEach((hit, index) => {
+      const key = `${hit.entryId}:${hit.chunkIndex}`;
+      const contribution = 1 / (RRF_K + index + 1);
+      const current = fused.get(key);
+      if (current) {
+        current.fusedScore += contribution;
+        if (current.hit.source === "cloud" && hit.source === "local") {
+          current.hit = { ...hit };
+        }
+        if (markCrossSourceDuplicates && current.hit.source !== hit.source) {
+          current.hit.source = "hybrid";
+        }
+        current.hit.mode = mode;
+      } else {
+        fused.set(key, {
+          hit: { ...hit, mode },
+          fusedScore: contribution
+        });
+      }
+    });
+  }
+  const sorted = [...fused.values()].sort((a, b) => {
+    if (b.fusedScore !== a.fusedScore) return b.fusedScore - a.fusedScore;
+    if (b.hit.score !== a.hit.score) return b.hit.score - a.hit.score;
+    return `${a.hit.entryId}:${a.hit.chunkIndex}`.localeCompare(`${b.hit.entryId}:${b.hit.chunkIndex}`);
+  });
+  const topScore = sorted[0]?.fusedScore ?? 1;
+  return sorted.slice(0, topK).map(({ hit, fusedScore }) => ({
+    ...hit,
+    score: topScore > 0 ? fusedScore / topScore : 0
+  }));
+}
+async function searchVaultLocal(query2, opts = {}) {
+  const { projectId, topK = 6, mode = "fts" } = opts;
+  if (mode === "semantic") {
+    return searchVaultSemantic(query2, { projectId, topK });
+  }
+  if (mode === "hybrid") {
+    const fts = searchVault(query2, { projectId, topK });
+    const semantic = await searchVaultSemantic(query2, { projectId, topK });
+    return fuseHits([fts, semantic], "hybrid", false, topK);
+  }
+  return searchVault(query2, { projectId, topK });
+}
+async function searchVaultCloud(queryText, opts = {}) {
+  const { projectId, topK = 6, mode = "fts", vaultAuth } = opts;
+  const endpoint = vaultAuth?.endpoint?.replace(/\/+$/, "");
+  const token = vaultAuth?.idToken;
+  if (!endpoint || !token) {
+    throw new Error("Cloud vault search requires sign-in");
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5e3);
+  try {
+    const response = await fetch(`${endpoint}/vault/search`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        query: queryText,
+        limit: topK,
+        mode,
+        scope_type: projectId ? "project" : "global",
+        scope_project_id: projectId
+      }),
+      signal: controller.signal
+    });
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      throw new Error(`cloud search failed (${response.status}): ${body}`);
+    }
+    const payload = await response.json();
+    if (payload.cloud_error) {
+      logger.warn({ error: payload.cloud_error }, "vault.cloud.partial_error");
+    }
+    return (payload.results ?? []).filter((row) => row.entry?.id && row.entry?.title && row.snippet).map((row) => ({
+      chunkId: row.chunk_id,
+      entryId: String(row.entry?.id),
+      entryTitle: String(row.entry?.title),
+      kind: String(row.entry?.kind ?? "document"),
+      pinned: row.entry?.pinned === true || Number(row.entry?.pinned ?? 0) !== 0,
+      chunkIndex: Number(row.chunk_index ?? 0),
+      content: String(row.snippet ?? ""),
+      score: Number(row.score ?? 0),
+      source: row.source ?? "cloud",
+      mode: row.mode ?? mode,
+      embeddingModel: row.embedding_model
+    }));
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+async function searchVaultBySource(queryText, opts = {}) {
+  const { projectId, topK = 6, mode = "hybrid", includePinned = false } = opts;
+  const source = opts.source ?? opts.vaultAuth?.retrievalSource ?? (opts.vaultAuth?.endpoint && opts.vaultAuth?.idToken ? "hybrid" : "local");
+  const pinned = includePinned ? pinnedEntries({ projectId, limit: 3 }) : [];
+  if (source === "local") {
+    return fuseHits([pinned, await searchVaultLocal(queryText, { projectId, topK, mode })], mode, false, topK + pinned.length);
+  }
+  if (source === "cloud") {
+    const cloud = await searchVaultCloud(queryText, { projectId, topK, mode, vaultAuth: opts.vaultAuth });
+    return fuseHits([pinned, cloud], mode, false, topK + pinned.length);
+  }
+  const local = await searchVaultLocal(queryText, { projectId, topK, mode });
+  try {
+    const cloud = await searchVaultCloud(queryText, { projectId, topK, mode, vaultAuth: opts.vaultAuth });
+    return fuseHits([pinned, local, cloud], mode, true, topK + pinned.length);
+  } catch (err) {
+    logger.warn({ err: String(err) }, "vault.cloud.degraded_to_local");
+    return fuseHits([pinned, local], mode, false, topK + pinned.length);
+  }
+}
+function unixNow() {
+  return Math.floor(Date.now() / 1e3);
+}
+function inferTextTitle(text, title) {
+  const explicit = title?.trim();
+  if (explicit) return explicit.slice(0, 500);
+  const firstLine = text.split("\n").map((line) => line.trim()).find(Boolean);
+  if (!firstLine) return "Agent memory";
+  return firstLine.length > 96 ? `${firstLine.slice(0, 96)}...` : firstLine;
+}
+function chunkTextForVault(text) {
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return [];
+  const step = Math.max(1, WRITE_CHUNK_WORDS - WRITE_CHUNK_OVERLAP_WORDS);
+  const chunks = [];
+  for (let i = 0; i < words.length; ) {
+    const end = Math.min(words.length, i + WRITE_CHUNK_WORDS);
+    const content = words.slice(i, end).join(" ");
+    chunks.push({
+      content,
+      tokenCount: Math.round(content.split(/\s+/).filter(Boolean).length * 1.3)
+    });
+    if (end === words.length) break;
+    i += step;
+  }
+  return chunks;
+}
+function packEmbedding(vec) {
+  if (vec.length === 0) return null;
+  const normalized = new Float32Array(EMBEDDING_DIM);
+  normalized.set(vec.slice(0, EMBEDDING_DIM));
+  const bytes = new Uint8Array(EMBEDDING_DIM * 4);
+  const view = new DataView(bytes.buffer);
+  for (let i = 0; i < EMBEDDING_DIM; i++) {
+    view.setFloat32(i * 4, normalized[i] ?? 0, true);
+  }
+  return bytes;
+}
+async function embedTextChunksForVault(chunks) {
+  if (chunks.length === 0) return [];
+  let extractor;
+  try {
+    extractor = await getEmbedder();
+  } catch {
+    return chunks.map(() => null);
+  }
+  const embeddings = [];
+  for (const chunk of chunks) {
+    try {
+      const output = await extractor(chunk.content, { pooling: "mean", normalize: true });
+      embeddings.push(packEmbedding(new Float32Array(output.data)));
+    } catch (err) {
+      logger.warn({ err: String(err) }, "vault.add.embed_chunk_failed");
+      embeddings.push(null);
+    }
+  }
+  return embeddings;
+}
+async function syncAddedTextToCloud(entry, vaultAuth) {
+  const endpoint = vaultAuth?.endpoint?.replace(/\/+$/, "");
+  const token = vaultAuth?.idToken;
+  if (!endpoint || !token) {
+    return "failed";
+  }
+  const response = await fetch(`${endpoint}/vault/entries`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      id: entry.id,
+      kind: "note",
+      subkind: "agent_memory",
+      title: entry.title,
+      content: entry.content,
+      source_path: null,
+      vault_blob_path: null,
+      scope_type: entry.scopeType,
+      scope_project_id: entry.scopeProjectId,
+      memory_type: entry.memoryType,
+      pinned: entry.pinned ? 1 : 0,
+      tags: JSON.stringify(entry.tags),
+      mime: "text/plain",
+      size_bytes: entry.sizeBytes,
+      index_status: "indexed",
+      cloud_sync_state: "synced",
+      classifier_confidence: 1,
+      hit_count: 0,
+      last_retrieved_at: null,
+      created_at: entry.createdAt,
+      updated_at: entry.updatedAt
+    })
+  });
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(`cloud vault add failed (${response.status}): ${body}`);
+  }
+  return "synced";
+}
+async function addTextToVault(text, opts = {}) {
+  const content = text.trim();
+  if (!content) {
+    throw new Error("Vault memory text cannot be empty");
+  }
+  const db = openWritableDb();
+  if (!db) {
+    throw new Error("Vault database is not initialized yet");
+  }
+  const id = randomUUID();
+  const title = inferTextTitle(content, opts.title);
+  const now = unixNow();
+  const scopeType = opts.scope === "project" ? "project" : "global";
+  const scopeProjectId = scopeType === "project" ? opts.projectId ?? null : null;
+  if (scopeType === "project" && !scopeProjectId) {
+    db.close();
+    throw new Error("Project-scoped vault memories require an active project id");
+  }
+  const memoryType = opts.memoryType ?? (scopeType === "project" ? "project" : "user");
+  const pinned = opts.pinned ?? false;
+  const tags = Array.from(new Set(["agent", ...opts.tags ?? []].map((tag) => tag.trim()).filter(Boolean))).slice(0, 12);
+  const chunks = chunkTextForVault(content);
+  const embeddings = await embedTextChunksForVault(chunks);
+  const embeddedCount = embeddings.filter(Boolean).length;
+  const initialCloudState = opts.syncToCloud ? "pending" : "offline";
+  try {
+    db.run("BEGIN IMMEDIATE");
+    db.run(
+      `INSERT INTO entries (
+        id, kind, subkind, title, content, source_path, vault_blob_path,
+        scope_type, scope_project_id, memory_type, pinned, tags,
+        mime, size_bytes, index_status, cloud_sync_state,
+        classifier_confidence, hit_count, last_retrieved_at,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        "note",
+        "agent_memory",
+        title,
+        content,
+        null,
+        null,
+        scopeType,
+        scopeProjectId,
+        memoryType,
+        pinned ? 1 : 0,
+        JSON.stringify(tags),
+        "text/plain",
+        Buffer.byteLength(content, "utf8"),
+        "indexed",
+        initialCloudState,
+        1,
+        0,
+        null,
+        now,
+        now
+      ]
+    );
+    chunks.forEach((chunk, index) => {
+      const chunkId = `${id}:${index}`;
+      db.run(
+        `INSERT INTO chunks (id, entry_id, chunk_index, content, token_count, embedding)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          chunkId,
+          id,
+          index,
+          chunk.content,
+          chunk.tokenCount,
+          embeddings[index] ?? null
+        ]
+      );
+      db.run(
+        "INSERT INTO chunks_fts (content, entry_id, chunk_id) VALUES (?, ?, ?)",
+        [chunk.content, id, chunkId]
+      );
+    });
+    db.run("COMMIT");
+  } catch (err) {
+    try {
+      db.run("ROLLBACK");
+    } catch {
+    }
+    db.close();
+    throw err;
+  }
+  let cloudSyncState = initialCloudState;
+  if (opts.syncToCloud) {
+    try {
+      cloudSyncState = await syncAddedTextToCloud(
+        {
+          id,
+          title,
+          content,
+          scopeType,
+          scopeProjectId,
+          memoryType,
+          pinned,
+          tags,
+          sizeBytes: Buffer.byteLength(content, "utf8"),
+          createdAt: now,
+          updatedAt: now
+        },
+        opts.vaultAuth
+      );
+    } catch (err) {
+      cloudSyncState = "failed";
+      logger.warn({ err: String(err), entryId: id }, "vault.add.cloud_sync_failed");
+    }
+    try {
+      db.run(
+        "UPDATE entries SET cloud_sync_state = ?, updated_at = ? WHERE id = ?",
+        [cloudSyncState, unixNow(), id]
+      );
+    } catch (err) {
+      logger.warn({ err: String(err), entryId: id }, "vault.add.cloud_state_update_failed");
+    }
+  }
+  db.close();
+  invalidateEmbeddingsCache();
+  logger.info(
+    {
+      entry_id: id,
+      title,
+      scope: scopeProjectId ? `project:${scopeProjectId}` : "global",
+      chunks: chunks.length,
+      embedded: embeddedCount,
+      cloud_sync_state: cloudSyncState
+    },
+    "vault.add.done"
+  );
+  return {
+    id,
+    title,
+    scopeType,
+    scopeProjectId,
+    chunkCount: chunks.length,
+    embeddedCount,
+    cloudSyncState
+  };
+}
+function createVaultSearchTool(getVaultAuth, getProjectId) {
+  return tool(
+    "vault_search",
+    `Search the user's personal vault (agent memory) for indexed content. The vault holds documents, code, screenshots, and data the user has chosen to remember across sessions. ALWAYS use this tool before asking the user to re-explain something they've indexed \u2014 especially when they refer to "that spec", "the schema I shared", "my notes on X", or ask "did I put X in the vault?". Use source="hybrid" and mode="hybrid" by default. Use source="local" when the user asks to avoid cloud retrieval. Use source="cloud" only when the user specifically wants cloud-indexed vault content. Cloud retrieval sends the search query to the cloud.`,
+    {
+      query: z.string().min(2).describe(
+        "Free-text search query. Keywords work well for fts; natural-language phrases work better for semantic/hybrid."
+      ),
+      mode: z.enum(["fts", "semantic", "hybrid"]).default("hybrid").describe(
+        'Retrieval strategy. "fts" = BM25 keyword match. "semantic" = vector similarity. "hybrid" = rank-fused fts + semantic.'
+      ),
+      source: z.enum(["local", "cloud", "hybrid"]).default("hybrid").describe(
+        'Retrieval source. "local" searches on-device vault data. "cloud" searches cloud embeddings/FTS and requires sign-in. "hybrid" merges local and cloud when available.'
+      ),
+      top_k: z.number().int().min(1).max(20).default(6).describe("Maximum chunks to return (default 6).")
+    },
+    async (args) => {
+      const start = Date.now();
+      const mode = args.mode ?? "hybrid";
+      const topK = args.top_k ?? 6;
+      const vaultAuth = getVaultAuth?.();
+      const source = args.source ?? vaultAuth?.retrievalSource ?? "hybrid";
+      if (source === "cloud" && (!vaultAuth?.endpoint || !vaultAuth?.idToken)) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: 'Cloud vault search requires the user to be signed in. Retry with source="local" or source="hybrid" to use local vault retrieval.'
+            }
+          ]
+        };
+      }
+      const hits = await searchVaultBySource(args.query, {
+        projectId: getProjectId?.(),
+        topK,
+        mode,
+        source,
+        vaultAuth
+      });
       logger.info(
         {
-          mode: "fts",
+          mode,
+          source,
           query_len: args.query.length,
           top_k: topK,
           ms: Date.now() - start,
           returned: hits.length,
           top_scores: hits.slice(0, 5).map((h) => ({
             title: h.entryTitle,
+            source: h.source,
             score: Math.round(h.score * 1e3) / 1e3
           }))
         },
         "vault.tool.search"
       );
+      if (hits.length === 0) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `No vault entries matched "${args.query}" (source: ${source}, mode: ${mode}).`
+            }
+          ]
+        };
+      }
+      const body = hits.map(
+        (h) => `### ${h.entryTitle}${h.pinned ? " [pinned]" : ""} (${h.kind}, ${h.source}/${h.mode})
+score: ${(h.score * 100).toFixed(0)}%
+${h.content.trim()}`
+      ).join("\n\n---\n\n");
+      const debugFooter = VAULT_DEBUG ? `
+
+---
+<vault-debug>
+source=${source} mode=${mode} top_k=${topK} returned=${hits.length} ms=${Date.now() - start}
+${hits.map((h) => `  ${h.entryTitle} [${h.source}/${h.mode}] -> ${h.score.toFixed(4)}`).join("\n")}
+</vault-debug>` : "";
+      return {
+        content: [{ type: "text", text: body + debugFooter }]
+      };
     }
-    if (hits.length === 0) {
+  );
+}
+function createVaultAddTool(getVaultAuth, getProjectId) {
+  return tool(
+    "vault_add",
+    "Add a durable note to the user's personal vault. Use this when the user asks you to remember something, save a note, add something to the vault, or preserve an instruction/preference for future sessions. Do not use it for incidental facts unless the user explicitly asks you to remember/save them. By default this saves locally. Set sync_to_cloud=true only when the user asks for cloud sync or explicitly wants the memory available through cloud retrieval.",
+    {
+      text: z.string().min(1).max(5e4).describe("The exact memory text to save. Include enough context for future retrieval."),
+      title: z.string().min(1).max(500).optional().describe("Short human-readable title. If omitted, a title is inferred from the text."),
+      scope: z.enum(["global", "project"]).default("global").describe('Use "global" for cross-project user memory. Use "project" only for project-specific facts.'),
+      memory_type: z.enum(["project", "user", "pinned_source_of_truth"]).optional().describe('Memory classification. Defaults to "user" for global memories and "project" for project scope.'),
+      pinned: z.boolean().default(false).describe("Pin only when the user says this is a source of truth or should always be prioritized."),
+      tags: z.array(z.string().min(1).max(40)).max(10).default([]).describe("Optional lightweight tags for the saved memory."),
+      sync_to_cloud: z.boolean().default(false).describe("When true, also sync this memory to cloud. Requires sign-in and sends the saved text to cloud.")
+    },
+    async (args) => {
+      const start = Date.now();
+      const vaultAuth = getVaultAuth?.();
+      const result = await addTextToVault(args.text, {
+        title: args.title,
+        projectId: getProjectId?.(),
+        scope: args.scope ?? "global",
+        memoryType: args.memory_type,
+        pinned: args.pinned ?? false,
+        tags: args.tags ?? [],
+        syncToCloud: args.sync_to_cloud ?? false,
+        vaultAuth
+      });
+      logger.info(
+        {
+          entry_id: result.id,
+          scope: result.scopeProjectId ? "project" : "global",
+          sync_to_cloud: args.sync_to_cloud ?? false,
+          cloud_sync_state: result.cloudSyncState,
+          ms: Date.now() - start
+        },
+        "vault.tool.add"
+      );
+      const cloudNote = args.sync_to_cloud && result.cloudSyncState !== "synced" ? "\nCloud sync was requested but did not complete; the memory was saved locally." : "";
       return {
         content: [
           {
             type: "text",
-            text: `No vault entries matched "${args.query}" (mode: ${mode}).`
+            text: `Saved to vault: "${result.title}"
+entry_id: ${result.id}
+scope: ${result.scopeProjectId ? `project:${result.scopeProjectId}` : "global"}
+chunks: ${result.chunkCount}, embedded locally: ${result.embeddedCount}
+cloud_sync_state: ${result.cloudSyncState}` + cloudNote
           }
         ]
       };
     }
-    const body = hits.map(
-      (h) => `### ${h.entryTitle}${h.pinned ? " [pinned]" : ""} (${h.kind})
-score: ${(h.score * 100).toFixed(0)}%
-${h.content.trim()}`
-    ).join("\n\n---\n\n");
-    const debugFooter = VAULT_DEBUG ? `
-
----
-<vault-debug>
-mode=${mode} top_k=${topK} returned=${hits.length} ms=${Date.now() - start}
-${hits.map((h) => `  ${h.entryTitle} \u2192 ${h.score.toFixed(4)}`).join("\n")}
-</vault-debug>` : "";
-    return {
-      content: [{ type: "text", text: body + debugFooter }]
-    };
-  }
-);
+  );
+}
+var vaultSearchTool = createVaultSearchTool();
+var vaultAddTool = createVaultAddTool();
 
 // src/agent.ts
 import * as fs4 from "fs";
@@ -2325,6 +2798,7 @@ var OrbitAgent = class {
   _maxTokens;
   _allowedTools;
   _sessionMode;
+  _vaultAuth;
   // Session resume/fork fields
   _resumeSessionId;
   _forkSession;
@@ -2369,6 +2843,7 @@ var OrbitAgent = class {
     this._debugMode = config.debugEnabled ?? config.permissionMode === "debug";
     this._critiqueMode = config.critiqueEnabled ?? false;
     this._sessionMode = config.sessionMode ?? "agent";
+    this._vaultAuth = config.vaultAuth;
     this._resumeSessionId = config.resumeSessionId;
     this._forkSession = config.forkSession ?? false;
     if (config.model !== void 0) {
@@ -2572,7 +3047,14 @@ data, screenshots, notes). It functions as your durable memory across sessions.
   indexed ("the schema I added", "my notes on X", "did I put Y in the
   vault?"), call the \`mcp__vault__vault_search\` tool with keywords from
   their message. Prefer this over re-asking the user or grepping the
-  filesystem for vault content.
+  filesystem for vault content. Default to \`source="hybrid"\` and
+  \`mode="hybrid"\`; use \`source="local"\` when the user wants to keep
+  retrieval local. Cloud retrieval sends the query to the cloud and requires
+  sign-in.
+- **Memory writes**: when the user asks you to remember something, save a
+  note, or add content to the vault, call \`mcp__vault__vault_add\`. Save
+  locally by default. Use \`sync_to_cloud=true\` only when the user explicitly
+  asks for cloud sync or cloud-backed retrieval of that saved memory.
 - **Pinned entries** appear with a \`[pinned]\` badge. They are
   user-designated sources of truth \u2014 treat them as higher priority than
   other retrieved chunks.
@@ -2966,7 +3448,10 @@ Do NOT overwhelm the user with a full checklist every time \u2014 pick the most 
     const vaultMcp = createSdkMcpServer2({
       name: "vault",
       version: "0.1.0",
-      tools: [vaultSearchTool]
+      tools: [
+        createVaultSearchTool(() => this._vaultAuth, () => this.cwd),
+        createVaultAddTool(() => this._vaultAuth, () => this.cwd)
+      ]
     });
     const skillsMcp = createSkillsMcpServer(this.cwd, this._selectedSkills);
     const mergedMcp = { ...this._mcpServers, vault: vaultMcp, solo_skills: skillsMcp };
@@ -3053,9 +3538,15 @@ Do NOT overwhelm the user with a full checklist every time \u2014 pick the most 
   isSessionReady() {
     return this.sessionActive && this.messageQueue !== null;
   }
-  queueMessage(message, attachments) {
+  updateVaultAuth(vaultAuth) {
+    this._vaultAuth = vaultAuth;
+  }
+  async queueMessage(message, attachments, vaultAuth) {
     if (!this.sessionActive || !this.messageQueue) {
       throw new Error("Session not started. Call startSession() first.");
+    }
+    if (vaultAuth !== void 0) {
+      this.updateVaultAuth(vaultAuth);
     }
     const thinkingModeName = this._thinkingMode && this._thinkingBudget > 0 ? this._thinkingBudget <= 4096 ? "think" : this._thinkingBudget <= 10240 ? "hard" : "ultra" : "off";
     logger6.info(
@@ -3076,7 +3567,13 @@ Do NOT overwhelm the user with a full checklist every time \u2014 pick the most 
     );
     let finalMessage = message;
     try {
-      const ctx = fetchVaultContext(message, { projectId: this.cwd, maxChunks: 5 });
+      const ctx = await fetchVaultContext(message, {
+        projectId: this.cwd,
+        maxChunks: 5,
+        mode: "hybrid",
+        source: this._vaultAuth?.retrievalSource ?? "hybrid",
+        vaultAuth: this._vaultAuth
+      });
       if (ctx) {
         finalMessage = `${ctx}
 
@@ -3358,7 +3855,7 @@ var logger7 = createLogger("SessionManager");
 var LEDGER_DIR = join7(homedir5(), ".solo", "agent-ledger");
 var PROVIDER_CAPABILITIES = {
   anthropic: { chat: true, agent: true, tools: true, mcp: true, resume: true },
-  openai: { chat: true, agent: false, tools: false, mcp: false, resume: false },
+  openai: { chat: true, agent: true, tools: true, mcp: true, resume: true },
   google: { chat: true, agent: false, tools: false, mcp: false, resume: false },
   gemini: { chat: true, agent: false, tools: false, mcp: false, resume: false }
 };
@@ -3413,7 +3910,7 @@ var SessionManager = class extends Disposable {
   // Session tracking
   activeSessions = /* @__PURE__ */ new Map();
   /**
-   * Parallel map of chat-only provider sessions, keyed by sessionId. These
+   * Parallel map of non-Anthropic provider sessions, keyed by sessionId. These
    * do NOT share state with the Anthropic `activeSessions` map.
    */
   openAISessions = /* @__PURE__ */ new Map();
@@ -3467,7 +3964,7 @@ var SessionManager = class extends Disposable {
   emitAgentMessage(sessionId, message) {
     const enriched = {
       ...message,
-      eventId: message.eventId ?? randomUUID(),
+      eventId: message.eventId ?? randomUUID2(),
       turnNumber: message.turnNumber ?? this.sessionTurns.get(sessionId),
       sdkSessionId: message.sdkSessionId ?? this.sessionSdkIds.get(sessionId)
     };
@@ -3513,7 +4010,7 @@ var SessionManager = class extends Disposable {
     });
     if (sessionMode === "agent" && !capabilities.agent) {
       throw new Error(
-        `${provider} is chat-only in Solo v1 and cannot create agent-mode sessions. Select a Claude model for tool-running agent sessions.`
+        `${provider} does not support Solo agent-mode sessions. Select a model with tool-running support.`
       );
     }
     if (provider === "openai") {
@@ -3525,21 +4022,31 @@ var SessionManager = class extends Disposable {
       if (!config?.model) {
         throw new Error("OpenAI session requires a model");
       }
-      const { createOpenAISession } = await import("./openai-LFIX5X2W.js");
+      const { createOpenAISession } = await import("./openai-QGAP5HES.js");
       const openaiSession = await createOpenAISession({
         model: config.model,
         credentials: config.credentials,
         maxTokens: config.maxTokens,
-        thinkingEnabled: config.thinkingEnabled
+        thinkingEnabled: config.thinkingEnabled,
+        agentMode: sessionMode === "agent",
+        cwd: config.cwd,
+        resumeSessionId: config.resumeSessionId,
+        forkSession: config.forkSession
       });
       this.openAISessions.set(sessionId, openaiSession);
-      this.emitSessionInit({
-        sessionId,
-        sdkSessionId: sessionId,
-        // no separate SDK id for OpenAI
-        isResumed: false,
-        isForked: false
+      this.sessionToolUseMaps.set(sessionId, /* @__PURE__ */ new Map());
+      this.sessionResumeState.set(sessionId, {
+        isResumed: !!config.resumeSessionId,
+        isForked: !!config.forkSession
       });
+      if (sessionMode !== "agent") {
+        this.emitSessionInit({
+          sessionId,
+          sdkSessionId: sessionId,
+          isResumed: false,
+          isForked: false
+        });
+      }
       return;
     }
     if (provider === "google" || provider === "gemini") {
@@ -3551,13 +4058,14 @@ var SessionManager = class extends Disposable {
       if (!config?.model) {
         throw new Error("Gemini session requires a model");
       }
-      const { createGeminiSession } = await import("./gemini-VYPZJVDS.js");
+      const { createGeminiSession } = await import("./gemini-GBIUEEFR.js");
       const geminiSession = await createGeminiSession({
         model: config.model,
         credentials: config.credentials,
         maxTokens: config.maxTokens
       });
       this.openAISessions.set(sessionId, geminiSession);
+      this.sessionToolUseMaps.set(sessionId, /* @__PURE__ */ new Map());
       this.emitSessionInit({
         sessionId,
         sdkSessionId: sessionId,
@@ -3569,7 +4077,7 @@ var SessionManager = class extends Disposable {
     const toolUseMap = /* @__PURE__ */ new Map();
     this.sessionToolUseMaps.set(sessionId, toolUseMap);
     const permissionCallback = async (toolName, toolInput, _context) => {
-      const requestId = randomUUID();
+      const requestId = randomUUID2();
       let pendingForSession = this.pendingRequestsBySession.get(sessionId);
       if (!pendingForSession) {
         pendingForSession = /* @__PURE__ */ new Map();
@@ -3634,6 +4142,7 @@ var SessionManager = class extends Disposable {
       mcpServers: config?.mcpServers,
       outputFormat: config?.outputFormat,
       agents: config?.agents,
+      vaultAuth: config?.vaultAuth,
       toolPolicy: config?.toolPolicy,
       permissionMode: config?.permissionMode,
       cwd: config?.cwd,
@@ -3859,6 +4368,9 @@ var SessionManager = class extends Disposable {
     if (openaiSession) {
       await openaiSession.close();
       this.openAISessions.delete(sessionId);
+      this.sessionToolUseMaps.delete(sessionId);
+      this.sessionResumeState.delete(sessionId);
+      this.sessionInitFired.delete(sessionId);
       this.sessionTurns.delete(sessionId);
       this.sessionSdkIds.delete(sessionId);
       this.sessionConfigHashes.delete(sessionId);
@@ -3908,14 +4420,14 @@ var SessionManager = class extends Disposable {
    * Get the SDK session ID for a session
    */
   getSDKSessionId(sessionId) {
-    if (this.openAISessions.has(sessionId)) return sessionId;
+    if (this.openAISessions.has(sessionId)) return this.sessionSdkIds.get(sessionId) ?? sessionId;
     const agent = this.activeSessions.get(sessionId);
     return agent?.getCurrentSessionId();
   }
   /**
    * Send a message to a session
    */
-  sendMessage(message, sessionId, attachments) {
+  sendMessage(message, sessionId, attachments, vaultAuth) {
     const openaiSession = this.openAISessions.get(sessionId);
     if (openaiSession) {
       this.emitTurnStart(sessionId);
@@ -3930,7 +4442,7 @@ var SessionManager = class extends Disposable {
     if (!agent.isSessionReady()) {
       throw new Error(`Session ${sessionId} is not ready.`);
     }
-    const correlationId = randomUUID();
+    const correlationId = randomUUID2();
     setCorrelationId(correlationId);
     this.emitTurnStart(sessionId);
     logger7.info(
@@ -3942,7 +4454,16 @@ var SessionManager = class extends Disposable {
       },
       "Sending message"
     );
-    agent.queueMessage(message, attachments);
+    void agent.queueMessage(message, attachments, vaultAuth).catch((err) => {
+      logger7.warn({ sessionId, err: String(err) }, "Failed to queue message with vault context");
+      try {
+        agent.queueMessage(message, attachments).catch((fallbackErr) => {
+          logger7.error({ sessionId, err: String(fallbackErr) }, "Failed to queue fallback message");
+        });
+      } catch (fallbackErr) {
+        logger7.error({ sessionId, err: String(fallbackErr) }, "Failed to queue fallback message");
+      }
+    });
   }
   /**
    * Respond to a permission request
@@ -3963,7 +4484,10 @@ var SessionManager = class extends Disposable {
    */
   async setThinkingMode(sessionId, enabled, maxTokens) {
     if (this.openAISessions.has(sessionId)) {
-      logger7.warn({ sessionId, method: "setThinkingMode" }, "not supported on chat-only sessions");
+      const prefs2 = this.modePreferences.get(sessionId) ?? {};
+      prefs2.thinkingEnabled = enabled;
+      prefs2.maxThinkingTokens = maxTokens;
+      this.modePreferences.set(sessionId, prefs2);
       return;
     }
     const agent = this.activeSessions.get(sessionId);
@@ -3984,7 +4508,9 @@ var SessionManager = class extends Disposable {
    * Get thinking mode for a session
    */
   getThinkingMode(sessionId) {
-    if (this.openAISessions.has(sessionId)) return false;
+    if (this.openAISessions.has(sessionId)) {
+      return this.modePreferences.get(sessionId)?.thinkingEnabled ?? false;
+    }
     const agent = this.activeSessions.get(sessionId);
     if (agent === void 0) {
       const prefs = this.modePreferences.get(sessionId);
@@ -3996,8 +4522,14 @@ var SessionManager = class extends Disposable {
    * Set model for a session
    */
   async setModel(sessionId, model) {
-    if (this.openAISessions.has(sessionId)) {
-      logger7.warn({ sessionId, method: "setModel" }, "not supported on chat-only sessions");
+    const openaiSession = this.openAISessions.get(sessionId);
+    if (openaiSession) {
+      if (openaiSession.setModel) {
+        await openaiSession.setModel(model);
+      }
+      const prefs2 = this.modePreferences.get(sessionId) ?? {};
+      prefs2.model = model;
+      this.modePreferences.set(sessionId, prefs2);
       return;
     }
     const agent = this.activeSessions.get(sessionId);
@@ -4062,7 +4594,7 @@ var SessionManager = class extends Disposable {
    */
   setPlanMode(sessionId, enabled) {
     if (this.openAISessions.has(sessionId)) {
-      logger7.warn({ sessionId, method: "setPlanMode" }, "not supported on chat-only sessions");
+      logger7.warn({ sessionId, method: "setPlanMode" }, "not supported on provider sessions");
       return;
     }
     const agent = this.activeSessions.get(sessionId);
@@ -4098,7 +4630,7 @@ var SessionManager = class extends Disposable {
    */
   setAcceptMode(sessionId, enabled) {
     if (this.openAISessions.has(sessionId)) {
-      logger7.warn({ sessionId, method: "setAcceptMode" }, "not supported on chat-only sessions");
+      logger7.warn({ sessionId, method: "setAcceptMode" }, "not supported on provider sessions");
       return;
     }
     const agent = this.activeSessions.get(sessionId);
@@ -4135,7 +4667,7 @@ var SessionManager = class extends Disposable {
    */
   setDebugMode(sessionId, enabled) {
     if (this.openAISessions.has(sessionId)) {
-      logger7.warn({ sessionId, method: "setDebugMode" }, "not supported on chat-only sessions");
+      logger7.warn({ sessionId, method: "setDebugMode" }, "not supported on provider sessions");
       return;
     }
     const agent = this.activeSessions.get(sessionId);
@@ -4207,7 +4739,7 @@ var SessionManager = class extends Disposable {
    */
   setToolPolicy(sessionId, mode, _isWorktreeSession) {
     if (this.openAISessions.has(sessionId)) {
-      logger7.warn({ sessionId, method: "setToolPolicy" }, "not supported on chat-only sessions");
+      logger7.warn({ sessionId, method: "setToolPolicy" }, "not supported on provider sessions");
       return;
     }
     const agent = this.activeSessions.get(sessionId);
@@ -4236,16 +4768,27 @@ var SessionManager = class extends Disposable {
     }
   }
   /**
-   * Drive a chat-only provider session's receiveResponse() loop and emit
+   * Drive a non-Anthropic provider session's receiveResponse() loop and emit
    * AgentMessage events through the same channel the Anthropic path uses.
-   *
-   * Much simpler than the Anthropic path — no tool calls, no permissions, no
-   * hooks. Each event type maps directly to an AgentMessage.
    */
   async runChatProviderLoop(sessionId, session) {
+    let lastUsage;
+    let toolUseMap = this.sessionToolUseMaps.get(sessionId);
+    if (!toolUseMap) {
+      toolUseMap = /* @__PURE__ */ new Map();
+      this.sessionToolUseMaps.set(sessionId, toolUseMap);
+    }
     try {
       for await (const ev of session.receiveResponse()) {
         switch (ev.type) {
+          case "session_init":
+            this.emitSessionInit({
+              sessionId,
+              sdkSessionId: ev.sdkSessionId,
+              isResumed: ev.isResumed,
+              isForked: ev.isForked
+            });
+            break;
           case "text_delta":
             this.emitAgentMessage(sessionId, {
               type: "text",
@@ -4258,26 +4801,60 @@ var SessionManager = class extends Disposable {
               content: ev.text
             });
             break;
-          case "usage":
+          case "tool_call":
+            toolUseMap.set(ev.id, {
+              name: ev.name,
+              input: ev.input,
+              permissionResolved: true
+            });
             this.emitAgentMessage(sessionId, {
-              type: "text",
-              content: "",
-              usage: {
-                inputTokens: ev.inputTokens,
-                outputTokens: ev.outputTokens
+              type: "tool_use",
+              content: `Using tool: ${ev.name}`,
+              metadata: {
+                toolName: ev.name,
+                toolId: ev.id,
+                toolInput: ev.input,
+                status: "running"
               }
             });
+            break;
+          case "tool_result": {
+            const toolInfo = toolUseMap.get(ev.toolCallId);
+            const toolName = toolInfo?.name ?? "unknown";
+            const toolInput = toolInfo?.input ?? {};
+            this.emitAgentMessage(sessionId, {
+              type: "tool_result",
+              content: ev.isError ? `Tool ${toolName} failed` : `Tool ${toolName} completed`,
+              metadata: {
+                toolName,
+                toolId: ev.toolCallId,
+                toolInput,
+                toolOutput: ev.output,
+                status: ev.isError ? "error" : "success"
+              }
+            });
+            toolUseMap.delete(ev.toolCallId);
+            break;
+          }
+          case "usage":
+            lastUsage = {
+              inputTokens: ev.inputTokens,
+              outputTokens: ev.outputTokens,
+              cacheReadInputTokens: ev.cacheReadInputTokens,
+              cacheCreationInputTokens: ev.cacheCreationInputTokens
+            };
             break;
           case "done":
             this.emitAgentMessage(sessionId, {
               type: "result",
               content: "Turn complete",
+              usage: lastUsage,
               resultSubtype: ev.stopReason,
               totalCostUsd: ev.totalCostUsd,
               durationMs: ev.durationMs
             });
+            lastUsage = void 0;
             break;
-          // v1 chat providers don't emit tool_call / tool_result.
           default:
             break;
         }
@@ -4308,7 +4885,7 @@ var SessionManager = class extends Disposable {
     this.sessionToolUseMaps.clear();
     for (const [sessionId, session] of this.openAISessions.entries()) {
       void session.close().catch((err) => {
-        logger7.error({ sessionId, error: err }, "Error closing chat-only provider session");
+        logger7.error({ sessionId, error: err }, "Error closing provider session");
       });
     }
     this.openAISessions.clear();
@@ -4581,7 +5158,12 @@ async function handleRequest(request, sessionManager) {
       break;
     }
     case "send_message": {
-      sessionManager.sendMessage(request.message, request.sessionId, request.attachments);
+      sessionManager.sendMessage(
+        request.message,
+        request.sessionId,
+        request.attachments,
+        request.vaultAuth
+      );
       sendResponse({ type: "success", requestType: request.type });
       break;
     }
@@ -4693,4 +5275,3 @@ try {
   logger11.error({ error }, "Fatal error");
   process.exit(1);
 }
-//# sourceMappingURL=index.js.map
