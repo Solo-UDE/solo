@@ -1,7 +1,7 @@
 /**
  * VaultPanel — Studio-sidebar surface for the agent memory vault.
  *
- * V1.2: adds a Fts/Semantic mode toggle next to the search input, a
+ * V1.2: adds a Fts/Semantic/Hybrid mode toggle next to the search input, a
  * "Rebuild embeddings" button (with pending-count badge) in the header,
  * and a backfill progress toast at the bottom.
  */
@@ -16,6 +16,9 @@ import {
   Sparkles,
   Type,
   FileSearch,
+  Cloud,
+  HardDrive,
+  Layers,
 } from 'lucide-react';
 import { useVaultStore } from '@/stores/vaultStore';
 import { useVaultDragDrop } from '@/hooks/useVaultDragDrop';
@@ -33,9 +36,11 @@ export const VaultPanel: FC = () => {
   const unsortedCount = useVaultStore((s) => s.unsortedCount);
   const searchQuery = useVaultStore((s) => s.searchQuery);
   const searchMode = useVaultStore((s) => s.searchMode);
+  const retrievalSource = useVaultStore((s) => s.retrievalSource);
   const searchResults = useVaultStore((s) => s.searchResults);
   const setSearchQuery = useVaultStore((s) => s.setSearchQuery);
   const setSearchMode = useVaultStore((s) => s.setSearchMode);
+  const setRetrievalSource = useVaultStore((s) => s.setRetrievalSource);
   const fetchEntries = useVaultStore((s) => s.fetchEntries);
   const fetchUnsortedCount = useVaultStore((s) => s.fetchUnsortedCount);
   const fetchPendingEmbeddings = useVaultStore((s) => s.fetchPendingEmbeddings);
@@ -182,7 +187,9 @@ export const VaultPanel: FC = () => {
               if (e.key === 'Escape') clearSearch();
             }}
             placeholder={
-              searchMode === 'semantic'
+              searchMode === 'hybrid'
+                ? 'Hybrid vault search…'
+                : searchMode === 'semantic'
                 ? 'Semantic search…'
                 : 'Search vault memory…'
             }
@@ -200,7 +207,7 @@ export const VaultPanel: FC = () => {
           )}
         </div>
 
-        {/* Fts / Semantic toggle */}
+        {/* Fts / Semantic / Hybrid toggle */}
         <div className="flex items-center bg-muted/40 rounded-lg p-0.5 h-8">
           <button
             type="button"
@@ -229,6 +236,66 @@ export const VaultPanel: FC = () => {
             <Sparkles
               className={cn('w-3.5 h-3.5', searchMode === 'semantic' && 'fill-current')}
             />
+          </button>
+          <button
+            type="button"
+            onClick={() => setSearchMode('hybrid')}
+            title="Hybrid — fuses keyword and semantic ranks"
+            className={`h-7 w-7 rounded-md flex items-center justify-center transition-all duration-150 active:scale-[0.94] ${
+              searchMode === 'hybrid'
+                ? 'bg-background shadow-sm text-foreground'
+                : 'text-muted-foreground/70 hover:text-foreground'
+            }`}
+            aria-label="Hybrid mode"
+          >
+            <Layers className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+
+      <div className="px-3 pb-2 shrink-0 flex items-center gap-1.5">
+        <div className="flex items-center bg-muted/35 rounded-lg p-0.5 h-7">
+          <button
+            type="button"
+            onClick={() => setRetrievalSource('local')}
+            title="Local retrieval only"
+            className={`h-6 px-2 rounded-md flex items-center gap-1 text-[10px] transition-all duration-150 active:scale-[0.97] ${
+              retrievalSource === 'local'
+                ? 'bg-background shadow-sm text-foreground'
+                : 'text-muted-foreground/70 hover:text-foreground'
+            }`}
+            aria-label="Local retrieval"
+          >
+            <HardDrive className="w-3 h-3" />
+            <span>Local</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setRetrievalSource('hybrid')}
+            title="Hybrid retrieval uses local results first and sends the query to cloud when signed in"
+            className={`h-6 px-2 rounded-md flex items-center gap-1 text-[10px] transition-all duration-150 active:scale-[0.97] ${
+              retrievalSource === 'hybrid'
+                ? 'bg-background shadow-sm text-foreground'
+                : 'text-muted-foreground/70 hover:text-foreground'
+            }`}
+            aria-label="Hybrid retrieval"
+          >
+            <Layers className="w-3 h-3" />
+            <span>Hybrid</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setRetrievalSource('cloud')}
+            title="Cloud retrieval sends the search query to the cloud"
+            className={`h-6 px-2 rounded-md flex items-center gap-1 text-[10px] transition-all duration-150 active:scale-[0.97] ${
+              retrievalSource === 'cloud'
+                ? 'bg-background shadow-sm text-foreground'
+                : 'text-muted-foreground/70 hover:text-foreground'
+            }`}
+            aria-label="Cloud retrieval"
+          >
+            <Cloud className="w-3 h-3" />
+            <span>Cloud</span>
           </button>
         </div>
       </div>
