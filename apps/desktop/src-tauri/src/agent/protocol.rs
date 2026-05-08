@@ -95,6 +95,17 @@ pub struct ToolPolicyConfig {
     pub is_worktree_session: Option<bool>,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VaultAuthConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub endpoint: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id_token: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retrieval_source: Option<String>,
+}
+
 /// Session configuration
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -151,6 +162,8 @@ pub struct SessionConfig {
     /// or ANTHROPIC_API_KEY. The OpenAI adapter REQUIRES this field.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub credentials: Option<SessionCredentials>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vault_auth: Option<VaultAuthConfig>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -317,6 +330,9 @@ pub enum BridgeRequest {
         message: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         attachments: Option<Vec<AttachmentContentBlock>>,
+        #[serde(rename = "vaultAuth")]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        vault_auth: Option<VaultAuthConfig>,
     },
     Interrupt {
         #[serde(rename = "sessionId")]
