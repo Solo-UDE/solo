@@ -729,6 +729,21 @@ pub enum VaultSearchMode {
     Fts,
     /// Vector similarity (embedding)
     Semantic,
+    /// Lexical + semantic retrieval, merged by reciprocal-rank fusion
+    Hybrid,
+}
+
+/// Retrieval source for vault_search.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "snake_case")]
+pub enum VaultRetrievalSource {
+    /// On-device SQLite/embedding cache only
+    Local,
+    /// Cloud-indexed chunks only
+    Cloud,
+    /// Local first plus cloud when signed in
+    Hybrid,
 }
 
 /// A single result from vault_search.
@@ -737,6 +752,10 @@ pub enum VaultSearchMode {
 pub struct VaultSearchResult {
     pub chunk: VaultChunk,
     pub entry: VaultEntry,
+    pub source: VaultRetrievalSource,
+    pub mode: VaultSearchMode,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub embedding_model: Option<String>,
     /// Similarity score (semantic) or BM25 rank (fts), higher = more relevant
     pub score: f32,
 }
@@ -1480,6 +1499,10 @@ pub enum BackendEvent {
         state: CloudSyncState,
     },
 
+    /// Non-fatal cloud retrieval status while local results remain usable.
+    #[serde(rename = "vault:retrieval_warning")]
+    VaultRetrievalWarning { message: String },
+
     /// Count of entries in the Unsorted review tray changed
     #[serde(rename = "vault:unsorted_count_changed")]
     VaultUnsortedCountChanged { count: u32 },
@@ -1582,11 +1605,20 @@ pub enum BackendEvent {
 
     /// Incremental progress — summary text of latest event (truncated).
     #[serde(rename = "tasks:run_progress")]
-    TaskRunProgress { task_id: String, run_id: String, summary: String },
+    TaskRunProgress {
+        task_id: String,
+        run_id: String,
+        summary: String,
+    },
 
     /// Terminal — the run ended with an outcome.
     #[serde(rename = "tasks:run_ended")]
-    TaskRunEnded { task_id: String, run_id: String, outcome: RunOutcome, summary: Option<String> },
+    TaskRunEnded {
+        task_id: String,
+        run_id: String,
+        outcome: RunOutcome,
+        summary: Option<String>,
+    },
 
     /// A task in a worktree finished with pending changes; show review modal.
     #[serde(rename = "tasks:review_ready")]
