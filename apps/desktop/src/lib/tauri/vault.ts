@@ -9,6 +9,7 @@ import { invoke } from '@tauri-apps/api/core';
 import type { VaultEntry } from '../../bindings/VaultEntry';
 import type { VaultScope } from '../../bindings/VaultScope';
 import type { VaultListFilters } from '../../bindings/VaultListFilters';
+import type { VaultRetrievalSource } from '../../bindings/VaultRetrievalSource';
 import type { VaultSearchMode } from '../../bindings/VaultSearchMode';
 import type { VaultSearchResult } from '../../bindings/VaultSearchResult';
 import type { MemoryType } from '../../bindings/MemoryType';
@@ -21,6 +22,7 @@ export type {
   VaultEntry,
   VaultScope,
   VaultListFilters,
+  VaultRetrievalSource,
   VaultSearchMode,
   VaultSearchResult,
   MemoryType,
@@ -40,6 +42,14 @@ export const vaultDropPaths = (
   memoryType: MemoryType,
   syncToCloud: boolean,
 ) => invoke<string[]>('vault_drop_paths', { paths, scope, memoryType, syncToCloud });
+
+export const vaultAddText = (
+  text: string,
+  title: string | null,
+  scope: VaultScope,
+  memoryType: MemoryType,
+  syncToCloud: boolean,
+) => invoke<VaultEntry>('vault_add_text', { text, title, scope, memoryType, syncToCloud });
 
 export const vaultList = (scope: VaultScope, filters: VaultListFilters) =>
   invoke<VaultEntry[]>('vault_list', { scope, filters });
@@ -70,7 +80,8 @@ export const vaultSearch = (
   scope: VaultScope,
   topK: number,
   mode: VaultSearchMode,
-) => invoke<VaultSearchResult[]>('vault_search', { query, scope, topK, mode });
+  source: VaultRetrievalSource,
+) => invoke<VaultSearchResult[]>('vault_search', { query, scope, topK, mode, source });
 
 export const vaultSuggestPlacement = (entryId: string, workspacePath: string) =>
   invoke<PlacementSuggestion | null>('vault_suggest_placement', { entryId, workspacePath });
