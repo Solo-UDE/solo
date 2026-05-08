@@ -4,8 +4,8 @@
 
 use super::bridge::{AgentBridge, BridgeError, EventCallback, Result};
 use super::protocol::{
-    AttachmentContentBlock, BridgeRequest, CommandResponse, PermissionResponse,
-    SessionConfig,
+    AttachmentContentBlock, BridgeRequest, CommandResponse, PermissionResponse, SessionConfig,
+    VaultAuthConfig,
 };
 use parking_lot::Mutex;
 use std::collections::HashSet;
@@ -121,6 +121,7 @@ impl SessionManager {
         session_id: &str,
         message: &str,
         attachments: Option<Vec<AttachmentContentBlock>>,
+        vault_auth: Option<VaultAuthConfig>,
     ) -> Result<()> {
         self.ensure_running()?;
 
@@ -128,6 +129,7 @@ impl SessionManager {
             session_id: session_id.to_owned(),
             message: message.to_owned(),
             attachments,
+            vault_auth,
         };
 
         let bridge = self.bridge.lock();
