@@ -3,21 +3,20 @@
  * Shows both Anthropic and OpenAI providers as separate cards
  */
 
-import { useCallback, useState, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useState, useEffect, useMemo } from 'react';
 import { CheckCircledIcon, ExclamationTriangleIcon, CrossCircledIcon, ReloadIcon, StarFilledIcon } from '@radix-ui/react-icons';
 import { Loader2, Clock, Terminal, ShieldCheck, Network } from 'lucide-react';
-import { motion } from 'motion/react';
 import { ListSkeleton } from '../../ui/skeletons';
 import { useSettingsStore } from '../../../stores/settingsStore';
 import { useProviderStore, useOAuthPending } from '../../../stores/provider-store';
 import { useShallow } from 'zustand/react/shallow';
 import { SettingRow, SelectDropdown, ToggleSwitch, NumberInput, PasswordInput } from '../controls';
 import { ClaudeLoginModal } from '../ClaudeLoginModal';
-import { verifyClaudeSetup } from '../../../lib/backend';
+import { verifyProviderModel } from '../../../lib/backend';
 import { getSetupCommands, setSetupCommands } from '../../../lib/tauri/worktree';
 import { toast } from 'sonner';
 import { ProfileRow } from '../ProfileRow';
-import type { ProviderType, AuthMethodInfo, ClaudeSetupStatus, ProfileSummary } from '../../../lib/backend';
+import type { ProviderType, AuthMethodInfo, ModelInfo, ProfileSummary, ProviderModelDiagnostic } from '../../../lib/backend';
 
 /**
  * Format seconds into a human-readable string
@@ -107,9 +106,13 @@ function ProviderCard({
 }: ProviderCardProps) {
   const isAnthropic = provider === 'anthropic';
   const isClaudeCodeAuth = authInfo?.authType === 'claude-o-auth';
+  const isCodexCliAuth =
+    provider === 'openai' &&
+    (authInfo?.credentialSource === 'codex-oauth-file' ||
+      authInfo?.credentialSource === 'codex-o-auth-file');
   const isOpenAIOAuth = provider === 'openai' && authInfo?.authType === 'o-auth';
   const isSoloOAuth = authInfo?.credentialSource === 'solo-oauth';
-  const isConnectedViaOAuth = isClaudeCodeAuth || isOpenAIOAuth || isSoloOAuth;
+  const isConnectedViaOAuth = isClaudeCodeAuth || isOpenAIOAuth || isSoloOAuth || isCodexCliAuth;
 
   const providerConfig = isAnthropic
     ? {
@@ -118,7 +121,7 @@ function ProviderCard({
         iconColor: 'text-[#d97706]',
         buttonColor: 'bg-[#d97706] hover:bg-[#b45309]',
         buttonText: 'Sign in with Claude Code',
-        buttonSubtext: 'For free API access via Claude Code CLI',
+        buttonSubtext: 'Use your Claude Code membership',
       }
     : {
         name: 'OpenAI',
@@ -126,16 +129,16 @@ function ProviderCard({
         iconColor: 'text-[#10a37f]',
         buttonColor: 'bg-[#10a37f] hover:bg-[#0d8c6d]',
         buttonText: 'Sign in with ChatGPT',
-        buttonSubtext: 'For ChatGPT Pro/Plus subscribers (free API)',
+        buttonSubtext: 'Use your ChatGPT membership',
       };
 
   const Icon = providerConfig.icon;
 
   return (
     <div
-      className={`p-4 rounded-none border bg-card/50 space-y-4 transition-all duration-200 hover-lift ${
+      className={`p-3 rounded-none border bg-card/60 space-y-3 transition-colors duration-150 ${
         isActive
-          ? 'border-primary/50 ring-2 ring-primary/20'
+          ? 'border-primary/50 shadow-[0_0_0_1px_rgba(16,163,127,0.14)]'
           : 'border-border hover:border-border/80'
       }`}
     >
@@ -174,7 +177,7 @@ function ProviderCard({
             type="button"
             onClick={onOAuthLogin}
             disabled={isOAuthPending}
-            className={`w-full h-10 px-4 ${providerConfig.buttonColor} text-white rounded-none text-sm font-medium active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed`}
+            className={`w-full h-9 px-3 ${providerConfig.buttonColor} text-white rounded-none text-sm font-medium active:scale-[0.96] transition-colors duration-150 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed`}
           >
             {isOAuthPending ? (
               <>
@@ -188,12 +191,12 @@ function ProviderCard({
               </>
             )}
           </button>
-          <div className="text-xs text-muted-foreground mt-2 text-center">
+          <div className="text-[11px] text-muted-foreground mt-1.5 text-center">
             {providerConfig.buttonSubtext}
           </div>
 
           {/* Divider with "or" */}
-          <div className="mt-3 flex items-center gap-2">
+          <div className="mt-2.5 flex items-center gap-2">
             <div className="flex-1 h-px bg-border" />
             <span className="text-xs text-muted-foreground">or</span>
             <div className="flex-1 h-px bg-border" />
@@ -203,13 +206,15 @@ function ProviderCard({
 
       {/* Connected notice — shown for OAuth and API key connections */}
       {isConnectedViaOAuth && (
-        <div className="p-3 bg-muted/40 rounded-none text-xs text-muted-foreground">
-          <p className="mb-2">
+        <div className="p-2.5 bg-muted/40 rounded-none text-xs text-muted-foreground">
+          <p className="mb-1.5">
             {isClaudeCodeAuth
               ? 'Using credentials from Claude Code.'
-              : 'Connected via ChatGPT account.'}
+              : isCodexCliAuth
+                ? 'Using credentials from Codex CLI.'
+                : 'Connected via ChatGPT account.'}
           </p>
-          {isClaudeCodeAuth ? (
+          {isClaudeCodeAuth || isCodexCliAuth ? (
             <>
               <button
                 type="button"
@@ -277,8 +282,8 @@ function ProviderCard({
 
       {/* API key connected notice — only when connected via API key (not OAuth) */}
       {!isConnectedViaOAuth && hasCredentials && authInfo?.authType === 'api-key' && (
-        <div className="p-3 bg-muted/40 rounded-none text-xs text-muted-foreground">
-          <p className="mb-2">Connected via API key.</p>
+        <div className="p-2.5 bg-muted/40 rounded-none text-xs text-muted-foreground">
+          <p className="mb-1.5">Connected via API key.</p>
           <button
             type="button"
             onClick={onDisconnect}
@@ -300,7 +305,7 @@ function ProviderCard({
             </div>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
           <PasswordInput
             value={apiKeyInput}
             onChange={onApiKeyChange}
@@ -311,7 +316,7 @@ function ProviderCard({
             type="button"
             onClick={onApiKeySave}
             disabled={!apiKeyInput.trim() || isSaving}
-            className="px-3 py-1.5 bg-primary text-primary-foreground rounded-none text-sm font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="h-9 px-3 bg-primary text-primary-foreground rounded-none text-sm font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.96] transition-colors"
           >
             {isSaving ? 'Saving...' : 'Save'}
           </button>
@@ -322,176 +327,169 @@ function ProviderCard({
   );
 }
 
-/**
- * Diagnostic panel showing Claude Code CLI setup status
- */
-function ClaudeSetupDiagnostic() {
-  const [status, setStatus] = useState<ClaudeSetupStatus | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [resultKey, setResultKey] = useState(0);
-  const isFirstRun = useRef(true);
+function ProviderDiagnostics({
+  activeProvider,
+  selectedModel,
+  models,
+}: {
+  activeProvider: string | null;
+  selectedModel: string | null;
+  models: ModelInfo[];
+}) {
+  const providerOptions = useMemo(
+    () => [
+      { label: 'Anthropic', value: 'anthropic' },
+      { label: 'OpenAI', value: 'openai' },
+    ],
+    []
+  );
+  const [provider, setProvider] = useState<string>(activeProvider ?? 'anthropic');
+  const [model, setModel] = useState<string>(selectedModel ?? '');
+  const [checking, setChecking] = useState(false);
+  const [result, setResult] = useState<ProviderModelDiagnostic | null>(null);
 
-  const runCheck = useCallback(async () => {
-    const isRecheck = !isFirstRun.current;
-    isFirstRun.current = false;
-    setLoading(true);
-    setError(null);
-    if (isRecheck) {
-      setStatus(null);
-    }
-    try {
-      const [result] = await Promise.all([
-        verifyClaudeSetup(),
-        isRecheck ? new Promise<void>((r) => setTimeout(r, 750)) : Promise.resolve(),
-      ]);
-      setStatus(result);
-      setResultKey((k) => k + 1);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // Run on mount
-  useEffect(() => {
-    runCheck();
-  }, [runCheck]);
-
-  const StatusRow = ({ label, children, index = 0 }: { label: string; children: React.ReactNode; index?: number }) => (
-    <motion.div
-      className="flex items-center justify-between py-1.5"
-      initial={{ opacity: 0, x: -6 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ type: 'spring', stiffness: 500, damping: 30, delay: index * 0.09 }}
-    >
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <span className="text-xs font-mono">{children}</span>
-    </motion.div>
+  const providerModels = useMemo(
+    () => models.filter((m) => m.provider.toLowerCase() === provider.toLowerCase()),
+    [models, provider]
   );
 
-  const StatusIcon = ({ ok }: { ok: boolean | null | undefined }) => {
-    if (ok === null || ok === undefined) {
-      return <span className="text-muted-foreground">—</span>;
+  const modelOptions = useMemo(
+    () => providerModels.map((m) => ({ label: m.display_name, value: m.id })),
+    [providerModels]
+  );
+
+  useEffect(() => {
+    if (activeProvider) {
+      setProvider(activeProvider);
     }
-    return ok ? (
-      <CheckCircledIcon className="w-3.5 h-3.5 text-success inline" />
-    ) : (
-      <CrossCircledIcon className="w-3.5 h-3.5 text-destructive inline" />
-    );
-  };
+  }, [activeProvider]);
+
+  useEffect(() => {
+    const currentModelIsValid = providerModels.some((m) => m.id === model);
+    const selectedModelIsValid = providerModels.some((m) => m.id === selectedModel);
+    const nextModel = selectedModelIsValid
+      ? selectedModel
+      : providerModels.find((m) => m.is_default)?.id ?? providerModels[0]?.id ?? '';
+
+    if (!currentModelIsValid && nextModel && nextModel !== model) {
+      setModel(nextModel);
+      setResult(null);
+    }
+  }, [model, providerModels, selectedModel]);
+
+  const runCheck = useCallback(async () => {
+    if (!model) return;
+
+    setChecking(true);
+    setResult(null);
+    try {
+      const diagnostic = await verifyProviderModel(provider, model);
+      setResult(diagnostic);
+    } catch (err) {
+      setResult({
+        provider: provider as ProviderType,
+        model,
+        ok: false,
+        authenticated: false,
+        credentialSource: null,
+        status: 'error',
+        message: 'Diagnostic failed',
+        latencyMs: null,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setChecking(false);
+    }
+  }, [model, provider]);
+
+  const resultTone = result?.ok
+    ? 'text-success'
+    : result
+      ? 'text-destructive'
+      : 'text-muted-foreground';
 
   return (
-    <div className="p-4 rounded-none border border-border bg-card/50 space-y-3">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <ShieldCheck className="w-4 h-4 text-muted-foreground" />
-          <span className="text-sm font-medium text-foreground">Claude Code Setup</span>
+    <div className="rounded-none border border-border bg-card/60 p-3 space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <ShieldCheck className="w-4 h-4 text-muted-foreground shrink-0" />
+          <div className="min-w-0">
+            <div className="text-sm font-medium text-foreground">Provider Check</div>
+            <div className="text-[11px] text-muted-foreground truncate">
+              Validate credentials against a selected model.
+            </div>
+          </div>
         </div>
-        <motion.button
+        <button
           type="button"
           onClick={runCheck}
-          disabled={loading}
-          whileTap={{ scale: [1, 0.92, 1.05, 1] }}
-          transition={{ duration: 0.3 }}
-          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+          disabled={checking || !model}
+          className="h-9 px-3 rounded-none bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.96] transition-colors flex items-center gap-1.5"
         >
-          <ReloadIcon className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-          {loading ? 'Checking...' : 'Recheck'}
-        </motion.button>
+          <ReloadIcon className={`w-3.5 h-3.5 ${checking ? 'animate-spin' : ''}`} />
+          {checking ? 'Checking' : 'Check'}
+        </button>
       </div>
 
-      {error && (
-        <div className="text-xs text-destructive bg-destructive/10 px-2 py-1 rounded-none">
-          {error}
-        </div>
-      )}
+      <div className="grid grid-cols-1 md:grid-cols-[180px_minmax(0,1fr)] gap-2">
+        <SelectDropdown
+          value={provider}
+          options={providerOptions}
+          onChange={(nextProvider) => {
+            setProvider(nextProvider);
+            setResult(null);
+          }}
+          disabled={checking}
+          className="w-full min-w-0 h-9"
+        />
+        <SelectDropdown
+          value={model}
+          options={modelOptions}
+          onChange={(nextModel) => {
+            setModel(nextModel);
+            setResult(null);
+          }}
+          disabled={checking || modelOptions.length === 0}
+          className="w-full min-w-0 h-9"
+        />
+      </div>
 
-      {!status && loading && (
-        <div className="flex items-center justify-center py-6">
-          <span className="text-xs text-muted-foreground/60 animate-pulse">Scanning environment...</span>
-        </div>
-      )}
-
-      {status && (
-        <div key={resultKey} className="divide-y divide-border/50">
-          <StatusRow label="CLI installed" index={0}>
-            <span className="flex items-center gap-1.5">
-              <StatusIcon ok={status.cliInstalled} />
-              {status.cliPath ?? 'Not found'}
-            </span>
-          </StatusRow>
-          <StatusRow label="Credentials" index={1}>
-            <span className="flex items-center gap-1.5">
-              <StatusIcon ok={status.credentialsFound} />
-              {status.credentialSource ?? 'None'}
-            </span>
-          </StatusRow>
-          {status.requiresCliMode && (
-            <StatusRow label="Mode" index={2}>
-              <span className="flex items-center gap-1.5">
-                <StatusIcon ok={status.cliModeAvailable} />
-                {status.cliModeAvailable ? 'CLI Mode (Subscription)' : 'CLI required'}
-              </span>
-            </StatusRow>
-          )}
-          <StatusRow label="Token expiry" index={3}>
-            <span className="flex items-center gap-1.5">
-              <StatusIcon ok={status.credentialsFound ? !status.tokenExpired : null} />
-              {status.tokenExpiresInSeconds != null
-                ? status.tokenExpiresInSeconds > 0
-                  ? formatExpiryTime(Number(status.tokenExpiresInSeconds))
-                  : 'Expired'
-                : '---'}
-            </span>
-          </StatusRow>
-          {status.scopes && (
-            <StatusRow label="Scopes" index={4}>
-              <span className="text-[10px] text-muted-foreground">
-                {status.scopes.join(', ')}
-              </span>
-            </StatusRow>
-          )}
-          <StatusRow label="Status" index={5}>
-            <span className="flex items-center gap-1.5">
-              <StatusIcon ok={status.apiVerified} />
-              {status.apiVerified === true
-                ? status.requiresCliMode ? 'Ready (via CLI)' : 'Working'
-                : status.apiVerified === false
-                  ? 'Failed'
-                  : 'Not checked'}
-            </span>
-          </StatusRow>
-          {status.error && (
-            <motion.div
-              className="pt-1.5 text-[10px] text-destructive/80 break-all"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.5 }}
-            >
-              {status.error}
-            </motion.div>
-          )}
-          {status.requiresCliMode && !status.cliInstalled && (
-            <motion.div
-              className="pt-2 text-[10px] text-warning bg-warning/10 px-2 py-1.5 rounded-none"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.5 }}
-            >
-              Subscription tokens require the Claude CLI. Install with:<br />
-              <code className="text-[10px]">npm i -g @anthropic-ai/claude-code</code>
-            </motion.div>
-          )}
-        </div>
-      )}
-
-      {!status && !loading && !error && (
-        <div className="text-xs text-muted-foreground text-center py-2">
-          Click Recheck to verify setup
-        </div>
-      )}
+      <div className="min-h-9 rounded-none bg-muted/35 px-3 py-2 text-xs">
+        {checking ? (
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            Running a live model check...
+          </div>
+        ) : result ? (
+          <div className="space-y-1.5">
+            <div className={`flex items-center gap-2 ${resultTone}`}>
+              {result.ok ? (
+                <CheckCircledIcon className="w-3.5 h-3.5 shrink-0" />
+              ) : (
+                <CrossCircledIcon className="w-3.5 h-3.5 shrink-0" />
+              )}
+              <span className="font-medium text-foreground">{result.message}</span>
+              {result.latencyMs != null && (
+                <span className="ml-auto text-[11px] text-muted-foreground tabular-nums">
+                  {result.latencyMs} ms
+                </span>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+              <span>Source: {result.credentialSource ?? 'none'}</span>
+              <span>Model: {result.model}</span>
+            </div>
+            {result.error && (
+              <div className="text-[11px] text-destructive/80 break-words">{result.error}</div>
+            )}
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <ShieldCheck className="w-3.5 h-3.5" />
+            Pick a provider and model, then run a check.
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -539,6 +537,7 @@ export function AITab() {
   const setActiveProvider = useProviderStore((s) => s.setActiveProvider);
   const setCredentials = useProviderStore((s) => s.setCredentials);
   const setSelectedModel = useProviderStore((s) => s.setSelectedModel);
+  const refreshProviderStatus = useProviderStore((s) => s.refreshProviderStatus);
   const refreshAuthMethod = useProviderStore((s) => s.refreshAuthMethod);
   const startOAuthFlow = useProviderStore((s) => s.startOAuthFlow);
   const disconnectOAuth = useProviderStore((s) => s.disconnectOAuth);
@@ -605,10 +604,12 @@ export function AITab() {
   // Refresh auth method info for both providers on init
   useEffect(() => {
     if (isInitialized) {
+      refreshProviderStatus('anthropic');
+      refreshProviderStatus('openai');
       refreshAuthMethod('anthropic');
       refreshAuthMethod('openai');
     }
-  }, [isInitialized, refreshAuthMethod]);
+  }, [isInitialized, refreshAuthMethod, refreshProviderStatus]);
 
   // Preload profiles for both providers on mount
   useEffect(() => {
@@ -651,8 +652,9 @@ export function AITab() {
 
   const handleClaudeLoginSuccess = useCallback(() => {
     // Refresh auth method to pick up new Claude Code credentials
+    refreshProviderStatus('anthropic');
     refreshAuthMethod('anthropic');
-  }, [refreshAuthMethod]);
+  }, [refreshAuthMethod, refreshProviderStatus]);
 
   const handleOpenAIOAuthLogin = useCallback(async () => {
     try {
@@ -671,11 +673,12 @@ export function AITab() {
       } else if (authType === 'o-auth' || authType === 'claude-o-auth') {
         await disconnectOAuth(provider);
       }
+      await refreshProviderStatus(provider);
       await refreshAuthMethod(provider);
     } catch (err) {
       console.error(`Failed to disconnect ${provider}:`, err);
     }
-  }, [authMethodInfo, clearCredentials, disconnectOAuth, refreshAuthMethod]);
+  }, [authMethodInfo, clearCredentials, disconnectOAuth, refreshAuthMethod, refreshProviderStatus]);
 
   if (!isInitialized && isLoading) {
     return (
@@ -686,13 +689,13 @@ export function AITab() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Providers Section */}
       <div>
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-4">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
           Providers
         </h3>
-        <div className="space-y-3">
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
           {/* Anthropic Card */}
           <ProviderCard
             provider="anthropic"
@@ -746,18 +749,22 @@ export function AITab() {
         </div>
       </div>
 
-      {/* Claude Code Setup Diagnostic */}
+      {/* Provider Diagnostics */}
       <div>
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-4">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
           Diagnostics
         </h3>
-        <ClaudeSetupDiagnostic />
+        <ProviderDiagnostics
+          activeProvider={activeProvider}
+          selectedModel={selectedModel}
+          models={allModels}
+        />
       </div>
 
       {/* Model Selection - show when there are models for the active provider */}
       {models.length > 0 && (
         <div>
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-4">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
             Model
           </h3>
           <div className="divide-y divide-border">
@@ -778,7 +785,7 @@ export function AITab() {
 
       {/* Behavior Section */}
       <div>
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-4">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
           Behavior
         </h3>
         <div className="divide-y divide-border">
@@ -839,7 +846,7 @@ export function AITab() {
 
       {/* Worktree Setup Section */}
       <div>
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-4 flex items-center gap-2">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
           <Network className="w-3.5 h-3.5" />
           Worktree Setup
         </h3>
@@ -866,7 +873,7 @@ export function AITab() {
 
       {/* Advanced Section */}
       <div>
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-4">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
           Advanced
         </h3>
         <div className="divide-y divide-border">
