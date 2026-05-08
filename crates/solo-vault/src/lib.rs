@@ -38,13 +38,13 @@ use tracing::{debug, info, warn};
 
 pub use solo_protocol::{
     CloudSyncState, EntryKind, IndexStatus, MemoryType, PlacementMode, PlacementResult,
-    PlacementSuggestion, RetrievalStats, VaultChunk, VaultEntry, VaultListFilters, VaultScope,
-    VaultSearchMode, VaultSearchResult,
+    PlacementSuggestion, RetrievalStats, VaultChunk, VaultEntry, VaultListFilters,
+    VaultRetrievalSource, VaultScope, VaultSearchMode, VaultSearchResult,
 };
 
 use crate::extractors::{LocalTextExtractor, TextExtractor};
 pub use crate::pipeline::EmbedStats;
-use crate::store::Store;
+use crate::store::{Store, EMBEDDING_DIM};
 
 #[derive(Debug, Error)]
 pub enum VaultError {
@@ -153,7 +153,10 @@ impl Vault {
         } else {
             info!("vault.provider.cleared");
         }
-        *self.embed_provider.write().expect("vault provider lock poisoned") = provider;
+        *self
+            .embed_provider
+            .write()
+            .expect("vault provider lock poisoned") = provider;
         self.no_provider_warned.store(false, Ordering::Relaxed);
     }
 
@@ -251,6 +254,95 @@ impl Vault {
         out
     }
 
+    pub async fn add_text_entry(
+        &self,
+        text: &str,
+        title: Option<String>,
+        scope: VaultScope,
+        memory_type: MemoryType,
+    ) -> Result<VaultEntry> {
+        let content = text.trim();
+        if content.is_empty() {
+            return Err(VaultError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "vault text entry cannot be empty",
+            )));
+        }
+
+        let id = uuid::Uuid::new_v4().to_string();
+        let now = unix_now();
+        let chunks = pipeline::chunk_records_for_entry(&id, pipeline::chunk_text(content));
+        let entry = VaultEntry {
+            id: id.clone(),
+            kind: EntryKind::Note,
+            subkind: Some("chat_selection".to_string()),
+            title: text_entry_title(content, title),
+            content: Some(content.to_string()),
+            source_path: None,
+            vault_blob_path: None,
+            scope,
+            memory_type,
+            pinned: false,
+            tags: vec!["chat".to_string()],
+            mime: Some("text/plain".to_string()),
+            size_bytes: Some(content.len() as u64),
+            index_status: IndexStatus::Indexed,
+            cloud_sync_state: CloudSyncState::Offline,
+            classifier_confidence: 1.0,
+            retrieval_stats: RetrievalStats::default(),
+            created_at: now,
+            updated_at: now,
+        };
+
+        self.store.upsert_entry(&entry)?;
+        for chunk in &chunks {
+            self.store.insert_chunk(chunk)?;
+        }
+
+        if chunks.is_empty() {
+            debug!(entry_id = %entry.id, "vault.embed.skip reason=no_chunks");
+        } else if let Some(provider) = self.current_provider() {
+            let total_chars: usize = chunks.iter().map(|c| c.content.len()).sum();
+            info!(
+                entry_id = %entry.id,
+                chunks_n = chunks.len(),
+                total_chars,
+                source = "chat_selection",
+                "vault.embed.start"
+            );
+            let (vectors, stats) = pipeline::embed_chunks(&chunks, provider.as_ref()).await;
+            for (chunk_id, emb) in &vectors {
+                if emb.values.len() != EMBEDDING_DIM {
+                    warn!(
+                        chunk_id,
+                        got_dim = emb.values.len(),
+                        expected_dim = EMBEDDING_DIM,
+                        "vault.embed.dim_mismatch (provider returned wrong shape)"
+                    );
+                    continue;
+                }
+                if let Err(e) = self.store.update_chunk_embedding(chunk_id, &emb.values) {
+                    warn!(chunk_id, err = %e, "vault.embed.write_failed");
+                }
+            }
+            info!(
+                entry_id = %entry.id,
+                dim = stats.dim,
+                chunks_n = chunks.len(),
+                total_ms = stats.total_ms,
+                ms_per_chunk = stats.avg_ms_per_chunk,
+                succeeded = stats.succeeded,
+                failed = stats.failed,
+                retries = stats.retries,
+                "vault.embed.done"
+            );
+        } else {
+            debug!(entry_id = %entry.id, "vault.embed.skip reason=no_provider");
+        }
+
+        Ok(entry)
+    }
+
     pub fn list(&self, scope: &VaultScope, filters: &VaultListFilters) -> Result<Vec<VaultEntry>> {
         self.store.list_entries(scope, filters)
     }
@@ -318,7 +410,14 @@ impl Vault {
         );
         Ok(hits
             .into_iter()
-            .map(|(chunk, entry, score)| VaultSearchResult { chunk, entry, score })
+            .map(|(chunk, entry, score)| VaultSearchResult {
+                chunk,
+                entry,
+                source: VaultRetrievalSource::Local,
+                mode: VaultSearchMode::Fts,
+                embedding_model: None,
+                score,
+            })
             .collect())
     }
 
@@ -366,7 +465,9 @@ impl Vault {
             "vault.search.embed_query"
         );
 
-        let hits = self.store.semantic_search(&query_emb.values, scope, top_k)?;
+        let hits = self
+            .store
+            .semantic_search(&query_emb.values, scope, top_k)?;
         let now = unix_now();
         for (_, entry, _) in &hits {
             let _ = self.store.bump_retrieval(&entry.id, now);
@@ -380,7 +481,14 @@ impl Vault {
         );
         Ok(hits
             .into_iter()
-            .map(|(chunk, entry, score)| VaultSearchResult { chunk, entry, score })
+            .map(|(chunk, entry, score)| VaultSearchResult {
+                chunk,
+                entry,
+                source: VaultRetrievalSource::Local,
+                mode: VaultSearchMode::Semantic,
+                embedding_model: Some("Xenova/all-MiniLM-L6-v2".to_string()),
+                score,
+            })
             .collect())
     }
 
@@ -659,6 +767,29 @@ fn scope_label(scope: &VaultScope) -> String {
     match scope {
         VaultScope::Global => "global".to_string(),
         VaultScope::Project { project_id } => format!("project:{}", project_id),
+    }
+}
+
+fn text_entry_title(content: &str, title: Option<String>) -> String {
+    if let Some(title) = title
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+    {
+        return title;
+    }
+
+    let first_line = content
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or("Chat selection");
+    let chars = first_line.chars().collect::<Vec<_>>();
+    if chars.len() <= 96 {
+        first_line.to_string()
+    } else {
+        let mut clipped = chars.into_iter().take(96).collect::<String>();
+        clipped.push_str("...");
+        clipped
     }
 }
 
