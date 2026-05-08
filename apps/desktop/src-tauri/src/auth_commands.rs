@@ -41,7 +41,9 @@ fn jwt_expires_within(token: &str, leeway_secs: i64) -> bool {
     let Ok(claims) = serde_json::from_slice::<JwtExpiryClaims>(&decoded) else {
         return true;
     };
-    claims.exp.map_or(true, |exp| exp <= now_epoch_secs() + leeway_secs)
+    claims
+        .exp
+        .map_or(true, |exp| exp <= now_epoch_secs() + leeway_secs)
 }
 
 // =============================================================================
@@ -371,11 +373,7 @@ pub struct HttpProbe {
 }
 
 async fn probe_url(client: &reqwest::Client, url: &str) -> HttpProbe {
-    match client
-        .get(url)
-        .send()
-        .await
-    {
+    match client.get(url).send().await {
         Ok(resp) => {
             let status = resp.status().as_u16();
             let location = resp
