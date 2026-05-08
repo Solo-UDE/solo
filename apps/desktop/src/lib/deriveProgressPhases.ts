@@ -76,20 +76,11 @@ export function buildInterleavedTimeline(
   const timeline: TimelineEntry[] = [];
   let phaseIndex = 0;
 
-  // No blocks yet — still connecting
+  // No progress row until the model emits real work. The message renderer
+  // already has a neutral fallback loader for the initial empty state.
   if (blocks.length === 0) {
-    timeline.push({
-      kind: 'progress',
-      phase: { id: `phase-${phaseIndex}`, label: 'Connecting', status: 'active' },
-    });
     return timeline;
   }
-
-  // Blocks exist — connecting is done
-  timeline.push({
-    kind: 'progress',
-    phase: { id: `phase-${phaseIndex++}`, label: 'Connecting', status: 'completed' },
-  });
 
   let lastProgressLabel = '';
 
@@ -206,13 +197,11 @@ export function deriveProgressPhases(
   const phases: ProgressPhase[] = [];
   let phaseIndex = 0;
 
-  // No blocks yet — still connecting
+  // No progress row until the model emits real work. The message renderer
+  // already has a neutral fallback loader for the initial empty state.
   if (blocks.length === 0) {
-    return [{ id: `phase-${phaseIndex}`, label: 'Connecting', status: 'active' }];
+    return [];
   }
-
-  // Blocks exist — connecting is done
-  phases.push({ id: `phase-${phaseIndex++}`, label: 'Connecting', status: 'completed' });
 
   for (const block of blocks) {
     switch (block.type) {
