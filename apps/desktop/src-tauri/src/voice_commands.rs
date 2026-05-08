@@ -38,11 +38,7 @@ impl ChatClient for ClaudeChatClient {
         system: &str,
         user: &str,
     ) -> solo_voice::error::Result<String> {
-        let creds = self
-            .handle
-            .state::<ProviderAuthState>()
-            .credentials
-            .clone();
+        let creds = self.handle.state::<ProviderAuthState>().credentials.clone();
         solo_auth::claude_simple_completion(&creds, model, system, user)
             .await
             .map_err(|e| solo_voice::VoiceError::Formatter(format!("claude: {e}")))
@@ -78,20 +74,14 @@ impl VoiceState {
 // -- Helpers -----------------------------------------------------------------
 
 fn models_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    let base = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?;
+    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let models = base.join("models");
     std::fs::create_dir_all(&models).map_err(|e| e.to_string())?;
     Ok(models)
 }
 
 fn history_path(app: &AppHandle) -> Result<PathBuf, String> {
-    let base = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?;
+    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&base).map_err(|e| e.to_string())?;
     Ok(base.join("voice_history.sqlite"))
 }
@@ -108,10 +98,7 @@ fn emit_state(app: &AppHandle, mode: VoiceMode, state: &PipelineState) {
 // -- Commands ----------------------------------------------------------------
 
 #[tauri::command]
-pub async fn voice_enable(
-    app: AppHandle,
-    voice: State<'_, VoiceState>,
-) -> Result<(), String> {
+pub async fn voice_enable(app: AppHandle, voice: State<'_, VoiceState>) -> Result<(), String> {
     let hist_path = history_path(&app)?;
     let models_root = models_dir(&app)?;
     let history = History::open(&hist_path).map_err(|e| e.to_string())?;
@@ -122,23 +109,21 @@ pub async fn voice_enable(
     let app_for_cb = app.clone();
     let mgr = HotkeyManager::start(
         cfg,
-        std::sync::Arc::new(move |evt| {
-            match evt {
-                HotkeyEvent::DictationDown => {
-                    let _ = app_for_cb.emit("voice:hotkey", "dictation_down");
-                }
-                HotkeyEvent::DictationUp => {
-                    let _ = app_for_cb.emit("voice:hotkey", "dictation_up");
-                }
-                HotkeyEvent::DispatchDown => {
-                    let _ = app_for_cb.emit("voice:hotkey", "dispatch_down");
-                }
-                HotkeyEvent::DispatchUp => {
-                    let _ = app_for_cb.emit("voice:hotkey", "dispatch_up");
-                }
-                HotkeyEvent::Cancel => {
-                    let _ = app_for_cb.emit("voice:hotkey", "cancel");
-                }
+        std::sync::Arc::new(move |evt| match evt {
+            HotkeyEvent::DictationDown => {
+                let _ = app_for_cb.emit("voice:hotkey", "dictation_down");
+            }
+            HotkeyEvent::DictationUp => {
+                let _ = app_for_cb.emit("voice:hotkey", "dictation_up");
+            }
+            HotkeyEvent::DispatchDown => {
+                let _ = app_for_cb.emit("voice:hotkey", "dispatch_down");
+            }
+            HotkeyEvent::DispatchUp => {
+                let _ = app_for_cb.emit("voice:hotkey", "dispatch_up");
+            }
+            HotkeyEvent::Cancel => {
+                let _ = app_for_cb.emit("voice:hotkey", "cancel");
             }
         }),
     )
@@ -219,12 +204,16 @@ pub async fn voice_begin(
 
         let formatter: Arc<dyn FormatterProvider> = Arc::new(CloudFormatter {
             model: DEFAULT_CLAUDE_FORMATTER_MODEL.into(),
-            client: ClaudeChatClient { handle: app.clone() },
+            client: ClaudeChatClient {
+                handle: app.clone(),
+            },
         });
 
         let app_for_state = app.clone();
-        let hud_state: Arc<crate::voice::hud::HudState> =
-            app.state::<Arc<crate::voice::hud::HudState>>().inner().clone();
+        let hud_state: Arc<crate::voice::hud::HudState> = app
+            .state::<Arc<crate::voice::hud::HudState>>()
+            .inner()
+            .clone();
         let on_state = Arc::new(move |s: &PipelineState| {
             emit_state(&app_for_state, mode, s);
             match s {
@@ -234,9 +223,7 @@ pub async fn voice_begin(
                 | PipelineState::Formatting => {
                     let _ = crate::voice::hud::show(&app_for_state, &hud_state);
                 }
-                PipelineState::Idle
-                | PipelineState::Emitting
-                | PipelineState::Error(_) => {
+                PipelineState::Idle | PipelineState::Emitting | PipelineState::Error(_) => {
                     let _ = crate::voice::hud::hide(&app_for_state, &hud_state);
                 }
             }
@@ -282,12 +269,7 @@ pub async fn voice_end(
 
     let ctx = crate::voice::app_monitor::frontmost_app();
     let out = pipeline
-        .end(
-            mode,
-            target,
-            ctx.clone(),
-            DictationOptions::default(),
-        )
+        .end(mode, target, ctx.clone(), DictationOptions::default())
         .await
         .map_err(|e| e.to_string())?;
 
@@ -349,15 +331,13 @@ pub async fn voice_end(
     }
 
     let paste_outcome = match target {
-        PipelineTarget::FocusedApp => {
-            match inject_text(&out.formatted) {
-                Ok(InjectionOutcome::Pasted) => Some(Ok(())),
-                Ok(InjectionOutcome::ClipboardOnly) => Some(Err(
-                    "Paste failed — text copied to clipboard, paste manually".to_string(),
-                )),
-                Err(e) => Some(Err(format!("Paste failed: {}", e.0))),
-            }
-        }
+        PipelineTarget::FocusedApp => match inject_text(&out.formatted) {
+            Ok(InjectionOutcome::Pasted) => Some(Ok(())),
+            Ok(InjectionOutcome::ClipboardOnly) => Some(Err(
+                "Paste failed — text copied to clipboard, paste manually".to_string(),
+            )),
+            Err(e) => Some(Err(format!("Paste failed: {}", e.0))),
+        },
         _ => None,
     };
 
@@ -431,19 +411,14 @@ pub async fn voice_history_list(
 }
 
 #[tauri::command]
-pub async fn voice_history_delete(
-    voice: State<'_, VoiceState>,
-    id: String,
-) -> Result<(), String> {
+pub async fn voice_history_delete(voice: State<'_, VoiceState>, id: String) -> Result<(), String> {
     let g = voice.history.lock().await;
     let h = g.as_ref().ok_or_else(|| "voice not enabled".to_string())?;
     h.delete(&id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn voice_parakeet_installed(
-    voice: State<'_, VoiceState>,
-) -> Result<bool, String> {
+pub async fn voice_parakeet_installed(voice: State<'_, VoiceState>) -> Result<bool, String> {
     let root = voice
         .models_root
         .lock()
@@ -454,9 +429,7 @@ pub async fn voice_parakeet_installed(
 }
 
 #[tauri::command]
-pub async fn voice_get_shortcuts(
-    voice: State<'_, VoiceState>,
-) -> Result<ShortcutsConfig, String> {
+pub async fn voice_get_shortcuts(voice: State<'_, VoiceState>) -> Result<ShortcutsConfig, String> {
     Ok(voice.shortcuts.lock().await.clone())
 }
 
@@ -486,17 +459,13 @@ pub async fn voice_check_permissions() -> Result<VoicePermissions, String> {
 }
 
 #[tauri::command]
-pub async fn voice_request_permission(
-    which: String,
-) -> Result<VoicePermissions, String> {
+pub async fn voice_request_permission(which: String) -> Result<VoicePermissions, String> {
     match which.as_str() {
         "microphone" => {
-            let _ =
-                tauri_plugin_macos_permissions::request_microphone_permission().await;
+            let _ = tauri_plugin_macos_permissions::request_microphone_permission().await;
         }
         "input-monitoring" => {
-            let _ = tauri_plugin_macos_permissions::request_input_monitoring_permission()
-                .await;
+            let _ = tauri_plugin_macos_permissions::request_input_monitoring_permission().await;
         }
         "accessibility" => {
             tauri_plugin_macos_permissions::request_accessibility_permission().await;
