@@ -141,10 +141,7 @@ export function SettingsView() {
         <div className="h-full overflow-y-auto">
           <div className="mx-auto max-w-3xl px-7 py-7 lg:px-9 lg:py-8">
             <div className="mb-7">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground/65">
-                Settings
-              </p>
-              <h1 className="mt-2 text-[32px] font-semibold tracking-tight text-foreground">
+              <h1 className="text-[32px] font-semibold tracking-tight text-foreground">
                 {TAB_LABELS[settingsTab]}
               </h1>
               <p className="mt-2 text-sm leading-7 text-muted-foreground">
