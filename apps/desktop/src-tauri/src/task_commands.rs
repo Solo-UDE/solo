@@ -5,16 +5,14 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use solo_protocol::{
-    BackendEvent, Task, TaskDraft, TaskListFilters, TaskPatch, TaskStatus,
-};
+use solo_protocol::{BackendEvent, Task, TaskDraft, TaskListFilters, TaskPatch, TaskStatus};
 use solo_tasks::TaskStore;
 use tauri::{AppHandle, Emitter as _, State};
 use tokio::sync::RwLock;
 use tracing::{debug, info};
 
-use crate::task_executor::{spawn_agent_for_task, cancel_task, ExecutorMap};
 use crate::agent::SessionManager;
+use crate::task_executor::{cancel_task, spawn_agent_for_task, ExecutorMap};
 use crate::task_planner::{plan_from_goal as planner_run, ProactiveGate};
 
 // =============================================================================
@@ -27,22 +25,30 @@ pub struct TaskState {
 
 impl TaskState {
     pub fn new() -> Self {
-        Self { inner: Arc::new(RwLock::new(None)) }
+        Self {
+            inner: Arc::new(RwLock::new(None)),
+        }
     }
 }
 
 impl Default for TaskState {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Lazy-open the store on first call. Stored under `~/.solo/tasks/tasks.db`.
 pub(crate) async fn get_store(state: &State<'_, TaskState>) -> Result<Arc<TaskStore>, String> {
     {
         let guard = state.inner.read().await;
-        if let Some(s) = guard.as_ref() { return Ok(s.clone()); }
+        if let Some(s) = guard.as_ref() {
+            return Ok(s.clone());
+        }
     }
     let mut guard = state.inner.write().await;
-    if let Some(s) = guard.as_ref() { return Ok(s.clone()); }
+    if let Some(s) = guard.as_ref() {
+        return Ok(s.clone());
+    }
 
     let home = dirs::home_dir().ok_or_else(|| "home dir not found".to_string())?;
     let path: PathBuf = home.join(".solo").join("tasks").join("tasks.db");
@@ -53,7 +59,10 @@ pub(crate) async fn get_store(state: &State<'_, TaskState>) -> Result<Arc<TaskSt
 }
 
 fn emit_changed(app: &AppHandle, ids: Vec<String>) {
-    let _ = app.emit("backend-event", BackendEvent::TasksChanged { task_ids: ids });
+    let _ = app.emit(
+        "backend-event",
+        BackendEvent::TasksChanged { task_ids: ids },
+    );
 }
 
 // =============================================================================
@@ -71,10 +80,7 @@ pub async fn task_list(
 }
 
 #[tauri::command]
-pub async fn task_get(
-    id: String,
-    state: State<'_, TaskState>,
-) -> Result<Task, String> {
+pub async fn task_get(id: String, state: State<'_, TaskState>) -> Result<Task, String> {
     let store = get_store(&state).await?;
     store.get(&id).map_err(|e| e.to_string())
 }
@@ -118,10 +124,7 @@ pub async fn task_delete(
 }
 
 #[tauri::command]
-pub async fn task_search(
-    query: String,
-    state: State<'_, TaskState>,
-) -> Result<Vec<Task>, String> {
+pub async fn task_search(query: String, state: State<'_, TaskState>) -> Result<Vec<Task>, String> {
     let store = get_store(&state).await?;
     store.search(&query).map_err(|e| e.to_string())
 }
@@ -138,7 +141,9 @@ pub async fn task_subtask_add(
     state: State<'_, TaskState>,
 ) -> Result<Task, String> {
     let store = get_store(&state).await?;
-    let task = store.subtask_add(&task_id, title).map_err(|e| e.to_string())?;
+    let task = store
+        .subtask_add(&task_id, title)
+        .map_err(|e| e.to_string())?;
     emit_changed(&app, vec![task.id.clone()]);
     Ok(task)
 }
@@ -220,7 +225,8 @@ pub async fn task_run(
         executor_map.inner().clone(),
         session_manager.inner().clone(),
         id,
-    ).await
+    )
+    .await
 }
 
 #[tauri::command]
@@ -238,7 +244,8 @@ pub async fn task_cancel(
         executor_map.inner().clone(),
         session_manager.inner().clone(),
         id,
-    ).await
+    )
+    .await
 }
 
 // =============================================================================
@@ -262,15 +269,25 @@ pub async fn task_review_discard(
         .into_iter()
         .find(|r| r.id == run_id)
         .ok_or_else(|| "run not found".to_string())?;
-    let wid = run.worktree_id.ok_or_else(|| "run has no worktree".to_string())?;
+    let wid = run
+        .worktree_id
+        .ok_or_else(|| "run has no worktree".to_string())?;
 
-    let request = solo_protocol::RemoveWorktreeRequest { id: wid, force: true };
+    let request = solo_protocol::RemoveWorktreeRequest {
+        id: wid,
+        force: true,
+    };
     crate::worktree_commands::worktree_remove(request, app.clone(), wt_state, fs_state).await?;
 
-    store.update(
-        &id,
-        TaskPatch { status: Some(TaskStatus::Done), ..Default::default() },
-    ).map_err(|e| e.to_string())?;
+    store
+        .update(
+            &id,
+            TaskPatch {
+                status: Some(TaskStatus::Done),
+                ..Default::default()
+            },
+        )
+        .map_err(|e| e.to_string())?;
     emit_changed(&app, vec![id]);
     Ok(())
 }
@@ -293,7 +310,9 @@ pub async fn task_review_merge(
         .into_iter()
         .find(|r| r.id == run_id)
         .ok_or_else(|| "run not found".to_string())?;
-    let wid = run.worktree_id.ok_or_else(|| "run has no worktree".to_string())?;
+    let wid = run
+        .worktree_id
+        .ok_or_else(|| "run has no worktree".to_string())?;
 
     let stable_branch = format!("solo-review/{}", &wid);
     crate::worktree_commands::worktree_promote(
@@ -301,16 +320,26 @@ pub async fn task_review_merge(
         stable_branch.clone(),
         wt_state.clone(),
         fs_state.clone(),
-    ).await?;
+    )
+    .await?;
 
     // Remove the worktree directory; the branch persists for manual git merge.
-    let request = solo_protocol::RemoveWorktreeRequest { id: wid, force: false };
-    let _ = crate::worktree_commands::worktree_remove(request, app.clone(), wt_state, fs_state).await;
+    let request = solo_protocol::RemoveWorktreeRequest {
+        id: wid,
+        force: false,
+    };
+    let _ =
+        crate::worktree_commands::worktree_remove(request, app.clone(), wt_state, fs_state).await;
 
-    store.update(
-        &id,
-        TaskPatch { status: Some(TaskStatus::Done), ..Default::default() },
-    ).map_err(|e| e.to_string())?;
+    store
+        .update(
+            &id,
+            TaskPatch {
+                status: Some(TaskStatus::Done),
+                ..Default::default()
+            },
+        )
+        .map_err(|e| e.to_string())?;
     emit_changed(&app, vec![id]);
     Ok(stable_branch)
 }
@@ -330,7 +359,9 @@ pub async fn task_review_open_pr(
         .into_iter()
         .find(|r| r.id == run_id)
         .ok_or_else(|| "run not found".to_string())?;
-    let wid = run.worktree_id.ok_or_else(|| "run has no worktree".to_string())?;
+    let wid = run
+        .worktree_id
+        .ok_or_else(|| "run has no worktree".to_string())?;
     Ok(format!("https://github.com/compare/{}", wid))
 }
 
@@ -346,9 +377,7 @@ pub async fn get_store_for_setup(app: &AppHandle) -> Result<Arc<TaskStore>, Stri
 // =============================================================================
 
 #[tauri::command]
-pub async fn task_schedule_preview(
-    schedule: solo_protocol::Schedule,
-) -> Result<Vec<i64>, String> {
+pub async fn task_schedule_preview(schedule: solo_protocol::Schedule) -> Result<Vec<i64>, String> {
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| i64::try_from(d.as_millis()).unwrap_or(0))
@@ -370,16 +399,13 @@ pub async fn plan_from_goal(
 ) -> Result<Vec<String>, String> {
     let store = get_store(&state).await?;
     let bundle = context_override.unwrap_or_default();
-    let draft_ids = planner_run(
-        &app,
-        store,
-        session_manager.inner().clone(),
-        goal,
-        bundle,
-    ).await?;
-    let _ = app.emit("backend-event", solo_protocol::BackendEvent::TasksChanged {
-        task_ids: draft_ids.clone(),
-    });
+    let draft_ids = planner_run(&app, store, session_manager.inner().clone(), goal, bundle).await?;
+    let _ = app.emit(
+        "backend-event",
+        solo_protocol::BackendEvent::TasksChanged {
+            task_ids: draft_ids.clone(),
+        },
+    );
     Ok(draft_ids)
 }
 
@@ -390,13 +416,19 @@ pub async fn plan_accept_draft(
     state: State<'_, TaskState>,
 ) -> Result<(), String> {
     let store = get_store(&state).await?;
-    store.update(&id, solo_protocol::TaskPatch {
-        status: Some(solo_protocol::TaskStatus::Queued),
-        ..Default::default()
-    }).map_err(|e| e.to_string())?;
-    let _ = app.emit("backend-event", solo_protocol::BackendEvent::TasksChanged {
-        task_ids: vec![id],
-    });
+    store
+        .update(
+            &id,
+            solo_protocol::TaskPatch {
+                status: Some(solo_protocol::TaskStatus::Queued),
+                ..Default::default()
+            },
+        )
+        .map_err(|e| e.to_string())?;
+    let _ = app.emit(
+        "backend-event",
+        solo_protocol::BackendEvent::TasksChanged { task_ids: vec![id] },
+    );
     Ok(())
 }
 
@@ -408,9 +440,10 @@ pub async fn plan_dismiss_draft(
 ) -> Result<(), String> {
     let store = get_store(&state).await?;
     store.delete(&id).map_err(|e| e.to_string())?;
-    let _ = app.emit("backend-event", solo_protocol::BackendEvent::TasksChanged {
-        task_ids: vec![id],
-    });
+    let _ = app.emit(
+        "backend-event",
+        solo_protocol::BackendEvent::TasksChanged { task_ids: vec![id] },
+    );
     Ok(())
 }
 
@@ -431,9 +464,13 @@ pub async fn plan_proactive(
         session_manager.inner().clone(),
         "Based on my recent activity, suggest 3 useful next tasks.".to_string(),
         Vec::new(), // use default bundle
-    ).await?;
-    let _ = app.emit("backend-event", solo_protocol::BackendEvent::TasksChanged {
-        task_ids: draft_ids.clone(),
-    });
+    )
+    .await?;
+    let _ = app.emit(
+        "backend-event",
+        solo_protocol::BackendEvent::TasksChanged {
+            task_ids: draft_ids.clone(),
+        },
+    );
     Ok(draft_ids)
 }
