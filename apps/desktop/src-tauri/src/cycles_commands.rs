@@ -22,7 +22,10 @@ fn emit_tasks(app: &AppHandle, task_ids: Vec<String>) {
 
 #[tauri::command]
 pub async fn cycle_list(state: State<'_, TaskState>) -> Result<Vec<Cycle>, String> {
-    get_store(&state).await?.cycle_list().map_err(|e| e.to_string())
+    get_store(&state)
+        .await?
+        .cycle_list()
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -31,7 +34,8 @@ pub async fn cycle_create(
     app: AppHandle,
     state: State<'_, TaskState>,
 ) -> Result<Cycle, String> {
-    let cycle = get_store(&state).await?
+    let cycle = get_store(&state)
+        .await?
         .cycle_create(draft)
         .map_err(|e| e.to_string())?;
     debug!(id = %cycle.id, "cycle created");
@@ -46,7 +50,8 @@ pub async fn cycle_update(
     app: AppHandle,
     state: State<'_, TaskState>,
 ) -> Result<Cycle, String> {
-    let cycle = get_store(&state).await?
+    let cycle = get_store(&state)
+        .await?
         .cycle_update(&id, patch)
         .map_err(|e| e.to_string())?;
     emit_cycles(&app, vec![id]);
@@ -59,7 +64,8 @@ pub async fn cycle_delete(
     app: AppHandle,
     state: State<'_, TaskState>,
 ) -> Result<(), String> {
-    let affected_tasks = get_store(&state).await?
+    let affected_tasks = get_store(&state)
+        .await?
         .cycle_delete(&id)
         .map_err(|e| e.to_string())?;
     emit_cycles(&app, vec![id]);
