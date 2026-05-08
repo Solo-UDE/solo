@@ -37,8 +37,7 @@ pub fn inject_text(text: &str) -> Result<InjectionOutcome, InjectionError> {
         pb.clearContents();
         let ns_text = NSString::from_str(text);
         let ns_type2 = NSString::from_str(PLAIN_TEXT_UTI);
-        let ns_types: objc2::rc::Retained<NSArray<NSString>> =
-            NSArray::from_vec(vec![ns_type2]);
+        let ns_types: objc2::rc::Retained<NSArray<NSString>> = NSArray::from_vec(vec![ns_type2]);
         pb.declareTypes_owner(&ns_types, None);
         let ns_type3 = NSString::from_str(PLAIN_TEXT_UTI);
         pb.setString_forType(&ns_text, &ns_type3);
