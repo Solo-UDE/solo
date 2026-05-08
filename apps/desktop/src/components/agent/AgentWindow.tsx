@@ -10,6 +10,7 @@ import SoloDecryptAnimation from './SoloDecryptAnimation';
 import { convertToMessageGroups } from './messageAdapter';
 import { useAgentSession } from '../../hooks/useAgentSession';
 import { useProviderStore } from '../../stores/provider-store';
+import { useVaultStore } from '../../stores/vaultStore';
 import {
 	useAgentStore,
 	usePlanModeActive,
@@ -22,6 +23,7 @@ import { AskUserQuestionCard } from './streaming/AskUserQuestionCard';
 import { usePanelTabsStore } from '../../stores/panelTabsStore';
 import { BUILTIN_PANEL_TYPES } from '../../lib/panels/constants';
 import { providerForModel } from '../../lib/constants';
+import { vaultAddText } from '../../lib/tauri/vault';
 import {
 	DropdownMenu,
 	DropdownMenuTrigger,
@@ -32,6 +34,15 @@ import {
 import type { FC } from 'react';
 import type { Mode } from './input/mode-selector';
 import type { MessageMode, Attachment, FileMention, SessionConnectionState, UserContentPart } from '../../stores/agentStore';
+
+function titleFromSelection(text: string): string {
+	const firstLine = text
+		.split('\n')
+		.map((line) => line.trim())
+		.find(Boolean);
+	if (!firstLine) return 'Chat selection';
+	return firstLine.length > 96 ? `${firstLine.slice(0, 96)}...` : firstLine;
+}
 
 export interface AgentWindowCallbacks {
 	onFileOpen?: (path: string) => void;
@@ -286,10 +297,30 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 				handleNewSession();
 				break;
 			default:
-				sendMessage(`/${commandId}`, 'planning' as MessageMode);
+			sendMessage(`/${commandId}`, 'planning' as MessageMode);
 				break;
 		}
 	}, [sendMessage, handleNewSession]);
+
+	const handleAddSelectionToChat = useCallback((text: string) => {
+		chatInputRef.current?.insertText(text);
+		chatInputRef.current?.focus();
+	}, []);
+
+	const handleAddSelectionToVault = useCallback(async (text: string) => {
+		const trimmed = text.trim();
+		if (!trimmed) return;
+		const vaultState = useVaultStore.getState();
+		const entry = await vaultAddText(
+			trimmed,
+			titleFromSelection(trimmed),
+			vaultState.activeScope,
+			'user',
+			vaultState.syncToCloud,
+		);
+		vaultState.upsertEntry(entry);
+		void vaultState.fetchUnsortedCount();
+	}, []);
 
 	// Panel-scoped keyboard dispatcher.
 	//
@@ -491,6 +522,8 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 				isStreaming={isRunning}
 				onToolApproval={handleToolApproval}
 				onAnswerQuestion={handleAnswerQuestion}
+				onAddSelectionToChat={handleAddSelectionToChat}
+				onAddSelectionToVault={handleAddSelectionToVault}
 				bottomReservePx={overlayHeightPx}
 				className="flex-1 pt-14"
 			/>
