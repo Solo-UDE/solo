@@ -3,6 +3,7 @@ fn main() {
     println!("cargo:rerun-if-env-changed=SOLO_COGNITO_CLIENT_ID");
     println!("cargo:rerun-if-env-changed=SOLO_AWS_REGION");
     println!("cargo:rerun-if-env-changed=SOLO_API_ENDPOINT");
+    println!("cargo:rerun-if-env-changed=SOLO_VAULT_API_ENDPOINT");
 
     // Embed Info.plist into the Mach-O binary so macOS TCC can read
     // NSMicrophoneUsageDescription even when running unbundled (cargo tauri dev).

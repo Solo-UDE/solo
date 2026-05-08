@@ -39,8 +39,8 @@ export const WebToolCard: FC<WebToolCardProps> = ({
 			icon={<GlobeIcon width={14} height={14} className="shrink-0 text-muted-foreground" />}
 			label={
 				status === 'running'
-					? (isSearch ? 'Searching web...' : 'Fetching page...')
-					: (isSearch ? 'Web Search' : 'Web Fetch')
+					? (isSearch ? 'Searching web' : 'Fetching page')
+					: `Ran ${isSearch ? 'Web Search' : 'Web Fetch'}`
 			}
 			primaryDisplay={display}
 			output={output}

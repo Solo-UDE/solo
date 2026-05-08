@@ -42,6 +42,7 @@ export const CLAUDE_SONNET_4_6 = 'claude-sonnet-4-6';
 export const CLAUDE_HAIKU_4_5 = 'claude-haiku-4-5-20251001';
 
 // OpenAI
+export const GPT_5_5 = 'gpt-5.5';
 export const GPT_5_4 = 'gpt-5.4';
 export const GPT_5_3_CODEX_SPARK = 'gpt-5.3-codex-spark';
 export const GPT_5_4_MINI = 'gpt-5.4-mini';
@@ -86,15 +87,15 @@ export interface ModelOptionConfig {
   iconType: ProviderIconType;
   /**
    * When true, the model's UI surfaces a "Chat only" badge and the input
-   * shows a capability banner. Set on non-Anthropic entries in v1 because
-   * those adapters don't support tool calls yet.
+   * shows a capability banner. Set on provider entries that don't support
+   * tool calls in the current bridge.
    */
   textOnly?: boolean;
 }
 
 export const PROVIDER_CAPABILITIES = {
   anthropic: { chat: true, agent: true, tools: true, mcp: true, resume: true },
-  openai: { chat: true, agent: false, tools: false, mcp: false, resume: false },
+  openai: { chat: true, agent: true, tools: true, mcp: true, resume: true },
   gemini: { chat: true, agent: false, tools: false, mcp: false, resume: false },
 } as const;
 
@@ -133,12 +134,18 @@ export const MODEL_OPTIONS: ModelOptionConfig[] = [
   },
   // OpenAI models
   {
+    value: GPT_5_5,
+    label: 'GPT-5.5',
+    description: 'Frontier coding and research model',
+    provider: 'openai',
+    iconType: 'openai',
+  },
+  {
     value: GPT_5_4,
     label: 'GPT-5.4',
     description: 'Flagship reasoning model',
     provider: 'openai',
     iconType: 'openai',
-    textOnly: true,
   },
   {
     value: GPT_5_3_CODEX_SPARK,
@@ -146,7 +153,6 @@ export const MODEL_OPTIONS: ModelOptionConfig[] = [
     description: 'Coding-tuned on GPT-5.3',
     provider: 'openai',
     iconType: 'openai',
-    textOnly: true,
   },
   {
     value: GPT_5_4_MINI,
@@ -154,7 +160,6 @@ export const MODEL_OPTIONS: ModelOptionConfig[] = [
     description: 'Fast and cost-effective',
     provider: 'openai',
     iconType: 'openai',
-    textOnly: true,
   },
   // Google Gemini models
   {

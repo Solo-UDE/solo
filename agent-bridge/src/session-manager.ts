@@ -14,6 +14,8 @@ import { createLogger, setCorrelationId } from './logger.js';
 
 import type { OrbitAgentConfig } from './agent.js';
 import type { AttachmentContentBlock } from './messages.js';
+import type { ProviderSession } from './providers/types.js';
+import type { VaultAuthConfig } from './vault.js';
 
 const logger = createLogger('SessionManager');
 
@@ -23,7 +25,7 @@ type ProviderId = 'anthropic' | 'openai' | 'google' | 'gemini';
 
 const PROVIDER_CAPABILITIES: Record<ProviderId, ProviderCapabilities> = {
   anthropic: { chat: true, agent: true, tools: true, mcp: true, resume: true },
-  openai: { chat: true, agent: false, tools: false, mcp: false, resume: false },
+  openai: { chat: true, agent: true, tools: true, mcp: true, resume: true },
   google: { chat: true, agent: false, tools: false, mcp: false, resume: false },
   gemini: { chat: true, agent: false, tools: false, mcp: false, resume: false },
 };
@@ -161,6 +163,8 @@ export interface SessionConfig {
   credentials?:
     | { kind: 'oauth'; token: string; accountId?: string }
     | { kind: 'api_key'; token: string };
+  /** Cloud vault endpoint/token for hybrid retrieval. Contains an ID token only. */
+  vaultAuth?: VaultAuthConfig;
 }
 
 /**
@@ -363,13 +367,10 @@ export class SessionManager extends Disposable {
   private activeSessions = new Map<string, OrbitAgent>();
 
   /**
-   * Parallel map of chat-only provider sessions, keyed by sessionId. These
+   * Parallel map of non-Anthropic provider sessions, keyed by sessionId. These
    * do NOT share state with the Anthropic `activeSessions` map.
    */
-  private readonly openAISessions = new Map<
-    string,
-    import('./providers/types.js').ProviderSession
-  >();
+  private readonly openAISessions = new Map<string, ProviderSession>();
   private sessionConsumers = new Map<string, { cancel: () => void }>();
   private permissionResolvers = new Map<string, PermissionResolver>();
   /**
@@ -491,7 +492,7 @@ export class SessionManager extends Disposable {
 
     if (sessionMode === 'agent' && !capabilities.agent) {
       throw new Error(
-        `${provider} is chat-only in Solo v1 and cannot create agent-mode sessions. Select a Claude model for tool-running agent sessions.`
+        `${provider} does not support Solo agent-mode sessions. Select a model with tool-running support.`
       );
     }
 
@@ -511,15 +512,26 @@ export class SessionManager extends Disposable {
         credentials: config.credentials,
         maxTokens: config.maxTokens,
         thinkingEnabled: config.thinkingEnabled,
+        agentMode: sessionMode === 'agent',
+        cwd: config.cwd,
+        resumeSessionId: config.resumeSessionId,
+        forkSession: config.forkSession,
       });
       this.openAISessions.set(sessionId, openaiSession);
-
-      this.emitSessionInit({
-        sessionId,
-        sdkSessionId: sessionId, // no separate SDK id for OpenAI
-        isResumed: false,
-        isForked: false,
+      this.sessionToolUseMaps.set(sessionId, new Map());
+      this.sessionResumeState.set(sessionId, {
+        isResumed: !!config.resumeSessionId,
+        isForked: !!config.forkSession,
       });
+
+      if (sessionMode !== 'agent') {
+        this.emitSessionInit({
+          sessionId,
+          sdkSessionId: sessionId,
+          isResumed: false,
+          isForked: false,
+        });
+      }
       return;
     }
 
@@ -540,6 +552,7 @@ export class SessionManager extends Disposable {
         maxTokens: config.maxTokens,
       });
       this.openAISessions.set(sessionId, geminiSession);
+      this.sessionToolUseMaps.set(sessionId, new Map());
 
       this.emitSessionInit({
         sessionId,
@@ -654,6 +667,7 @@ export class SessionManager extends Disposable {
       mcpServers: config?.mcpServers as OrbitAgentConfig['mcpServers'],
       outputFormat: config?.outputFormat as OrbitAgentConfig['outputFormat'],
       agents: config?.agents as OrbitAgentConfig['agents'],
+      vaultAuth: config?.vaultAuth,
       toolPolicy: config?.toolPolicy,
       permissionMode: config?.permissionMode,
       cwd: config?.cwd,
@@ -965,6 +979,9 @@ export class SessionManager extends Disposable {
     if (openaiSession) {
       await openaiSession.close();
       this.openAISessions.delete(sessionId);
+      this.sessionToolUseMaps.delete(sessionId);
+      this.sessionResumeState.delete(sessionId);
+      this.sessionInitFired.delete(sessionId);
       this.sessionTurns.delete(sessionId);
       this.sessionSdkIds.delete(sessionId);
       this.sessionConfigHashes.delete(sessionId);
@@ -1021,7 +1038,7 @@ export class SessionManager extends Disposable {
    * Get the SDK session ID for a session
    */
   getSDKSessionId(sessionId: string): string | undefined {
-    if (this.openAISessions.has(sessionId)) return sessionId;
+    if (this.openAISessions.has(sessionId)) return this.sessionSdkIds.get(sessionId) ?? sessionId;
     const agent = this.activeSessions.get(sessionId);
     return agent?.getCurrentSessionId();
   }
@@ -1029,7 +1046,12 @@ export class SessionManager extends Disposable {
   /**
    * Send a message to a session
    */
-  sendMessage(message: string, sessionId: string, attachments?: AttachmentContentBlock[]): void {
+  sendMessage(
+    message: string,
+    sessionId: string,
+    attachments?: AttachmentContentBlock[],
+    vaultAuth?: VaultAuthConfig,
+  ): void {
     const openaiSession = this.openAISessions.get(sessionId);
     if (openaiSession) {
       this.emitTurnStart(sessionId);
@@ -1062,7 +1084,16 @@ export class SessionManager extends Disposable {
       'Sending message'
     );
 
-    agent.queueMessage(message, attachments);
+    void agent.queueMessage(message, attachments, vaultAuth).catch((err) => {
+      logger.warn({ sessionId, err: String(err) }, 'Failed to queue message with vault context');
+      try {
+        agent.queueMessage(message, attachments).catch((fallbackErr) => {
+          logger.error({ sessionId, err: String(fallbackErr) }, 'Failed to queue fallback message');
+        });
+      } catch (fallbackErr) {
+        logger.error({ sessionId, err: String(fallbackErr) }, 'Failed to queue fallback message');
+      }
+    });
   }
 
   /**
@@ -1085,7 +1116,10 @@ export class SessionManager extends Disposable {
    */
   async setThinkingMode(sessionId: string, enabled: boolean, maxTokens?: number): Promise<void> {
     if (this.openAISessions.has(sessionId)) {
-      logger.warn({ sessionId, method: 'setThinkingMode' }, 'not supported on chat-only sessions');
+      const prefs = this.modePreferences.get(sessionId) ?? {};
+      prefs.thinkingEnabled = enabled;
+      prefs.maxThinkingTokens = maxTokens;
+      this.modePreferences.set(sessionId, prefs);
       return;
     }
     const agent = this.activeSessions.get(sessionId);
@@ -1107,7 +1141,9 @@ export class SessionManager extends Disposable {
    * Get thinking mode for a session
    */
   getThinkingMode(sessionId: string): boolean {
-    if (this.openAISessions.has(sessionId)) return false;
+    if (this.openAISessions.has(sessionId)) {
+      return this.modePreferences.get(sessionId)?.thinkingEnabled ?? false;
+    }
     const agent = this.activeSessions.get(sessionId);
     if (agent === undefined) {
       const prefs = this.modePreferences.get(sessionId);
@@ -1120,8 +1156,14 @@ export class SessionManager extends Disposable {
    * Set model for a session
    */
   async setModel(sessionId: string, model: string): Promise<void> {
-    if (this.openAISessions.has(sessionId)) {
-      logger.warn({ sessionId, method: 'setModel' }, 'not supported on chat-only sessions');
+    const openaiSession = this.openAISessions.get(sessionId);
+    if (openaiSession) {
+      if (openaiSession.setModel) {
+        await openaiSession.setModel(model);
+      }
+      const prefs = this.modePreferences.get(sessionId) ?? {};
+      prefs.model = model;
+      this.modePreferences.set(sessionId, prefs);
       return;
     }
     const agent = this.activeSessions.get(sessionId);
@@ -1193,7 +1235,7 @@ export class SessionManager extends Disposable {
    */
   setPlanMode(sessionId: string, enabled: boolean): void {
     if (this.openAISessions.has(sessionId)) {
-      logger.warn({ sessionId, method: 'setPlanMode' }, 'not supported on chat-only sessions');
+      logger.warn({ sessionId, method: 'setPlanMode' }, 'not supported on provider sessions');
       return;
     }
     const agent = this.activeSessions.get(sessionId);
@@ -1234,7 +1276,7 @@ export class SessionManager extends Disposable {
    */
   setAcceptMode(sessionId: string, enabled: boolean): void {
     if (this.openAISessions.has(sessionId)) {
-      logger.warn({ sessionId, method: 'setAcceptMode' }, 'not supported on chat-only sessions');
+      logger.warn({ sessionId, method: 'setAcceptMode' }, 'not supported on provider sessions');
       return;
     }
     const agent = this.activeSessions.get(sessionId);
@@ -1278,7 +1320,7 @@ export class SessionManager extends Disposable {
    */
   setDebugMode(sessionId: string, enabled: boolean): void {
     if (this.openAISessions.has(sessionId)) {
-      logger.warn({ sessionId, method: 'setDebugMode' }, 'not supported on chat-only sessions');
+      logger.warn({ sessionId, method: 'setDebugMode' }, 'not supported on provider sessions');
       return;
     }
     const agent = this.activeSessions.get(sessionId);
@@ -1360,7 +1402,7 @@ export class SessionManager extends Disposable {
    */
   setToolPolicy(sessionId: string, mode: string, _isWorktreeSession: boolean): void {
     if (this.openAISessions.has(sessionId)) {
-      logger.warn({ sessionId, method: 'setToolPolicy' }, 'not supported on chat-only sessions');
+      logger.warn({ sessionId, method: 'setToolPolicy' }, 'not supported on provider sessions');
       return;
     }
     const agent = this.activeSessions.get(sessionId);
@@ -1396,19 +1438,31 @@ export class SessionManager extends Disposable {
   }
 
   /**
-   * Drive a chat-only provider session's receiveResponse() loop and emit
+   * Drive a non-Anthropic provider session's receiveResponse() loop and emit
    * AgentMessage events through the same channel the Anthropic path uses.
-   *
-   * Much simpler than the Anthropic path — no tool calls, no permissions, no
-   * hooks. Each event type maps directly to an AgentMessage.
    */
   private async runChatProviderLoop(
     sessionId: string,
-    session: import('./providers/types.js').ProviderSession
+    session: ProviderSession
   ): Promise<void> {
+    let lastUsage: AgentMessage['usage'] | undefined;
+    let toolUseMap = this.sessionToolUseMaps.get(sessionId);
+    if (!toolUseMap) {
+      toolUseMap = new Map();
+      this.sessionToolUseMaps.set(sessionId, toolUseMap);
+    }
+
     try {
       for await (const ev of session.receiveResponse()) {
         switch (ev.type) {
+          case 'session_init':
+            this.emitSessionInit({
+              sessionId,
+              sdkSessionId: ev.sdkSessionId,
+              isResumed: ev.isResumed,
+              isForked: ev.isForked,
+            });
+            break;
           case 'text_delta':
             this.emitAgentMessage(sessionId, {
               type: 'text',
@@ -1421,26 +1475,60 @@ export class SessionManager extends Disposable {
               content: ev.text,
             });
             break;
-          case 'usage':
+          case 'tool_call':
+            toolUseMap.set(ev.id, {
+              name: ev.name,
+              input: ev.input,
+              permissionResolved: true,
+            });
             this.emitAgentMessage(sessionId, {
-              type: 'text',
-              content: '',
-              usage: {
-                inputTokens: ev.inputTokens,
-                outputTokens: ev.outputTokens,
+              type: 'tool_use',
+              content: `Using tool: ${ev.name}`,
+              metadata: {
+                toolName: ev.name,
+                toolId: ev.id,
+                toolInput: ev.input,
+                status: 'running',
               },
             });
+            break;
+          case 'tool_result': {
+            const toolInfo = toolUseMap.get(ev.toolCallId);
+            const toolName = toolInfo?.name ?? 'unknown';
+            const toolInput = toolInfo?.input ?? {};
+            this.emitAgentMessage(sessionId, {
+              type: 'tool_result',
+              content: ev.isError ? `Tool ${toolName} failed` : `Tool ${toolName} completed`,
+              metadata: {
+                toolName,
+                toolId: ev.toolCallId,
+                toolInput,
+                toolOutput: ev.output,
+                status: ev.isError ? 'error' : 'success',
+              },
+            });
+            toolUseMap.delete(ev.toolCallId);
+            break;
+          }
+          case 'usage':
+            lastUsage = {
+              inputTokens: ev.inputTokens,
+              outputTokens: ev.outputTokens,
+              cacheReadInputTokens: ev.cacheReadInputTokens,
+              cacheCreationInputTokens: ev.cacheCreationInputTokens,
+            };
             break;
           case 'done':
             this.emitAgentMessage(sessionId, {
               type: 'result',
               content: 'Turn complete',
+              usage: lastUsage,
               resultSubtype: ev.stopReason,
               totalCostUsd: ev.totalCostUsd,
               durationMs: ev.durationMs,
             });
+            lastUsage = undefined;
             break;
-          // v1 chat providers don't emit tool_call / tool_result.
           default:
             break;
         }
@@ -1476,10 +1564,10 @@ export class SessionManager extends Disposable {
     this.activeSessions.clear();
     this.sessionToolUseMaps.clear();
 
-    // Close all chat-only provider sessions
+    // Close all non-Anthropic provider sessions
     for (const [sessionId, session] of this.openAISessions.entries()) {
       void session.close().catch((err: unknown) => {
-        logger.error({ sessionId, error: err }, 'Error closing chat-only provider session');
+        logger.error({ sessionId, error: err }, 'Error closing provider session');
       });
     }
     this.openAISessions.clear();

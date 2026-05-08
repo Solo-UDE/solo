@@ -11,13 +11,12 @@ pub mod provider;
 // Re-export commonly used types
 pub use credentials::{CredentialManager, CredentialSource};
 pub use models::{get_all_models, get_models_for_provider, AIModel};
-pub use provider::{ProviderConfig, ProviderError, ProviderResult, ProviderStatus, ProviderType};
 pub use oauth::{
-    AuthMethodInfo, AuthType, GitHubOAuthConfig, OAuthFlowResult, OAuthMethod, OAuthState,
-    OAuthToken, AnthropicOAuthConfig, OpenAIOAuthConfig,
-    DeviceCodeResponse, DevicePollResult,
-    start_callback_server,
+    start_callback_server, AnthropicOAuthConfig, AuthMethodInfo, AuthType, DeviceCodeResponse,
+    DevicePollResult, GitHubOAuthConfig, OAuthFlowResult, OAuthMethod, OAuthState, OAuthToken,
+    OpenAIOAuthConfig,
 };
+pub use provider::{ProviderConfig, ProviderError, ProviderResult, ProviderStatus, ProviderType};
 
 /// Issue a single-turn Claude completion using whatever Anthropic credential
 /// is stored in `credentials` (Solo OAuth, API key, Claude Code OAuth, or env).
@@ -56,7 +55,8 @@ pub async fn claude_simple_completion(
     let req = match cred_info.source {
         CredentialSource::SoloOAuth
         | CredentialSource::ClaudeOAuth
-        | CredentialSource::ClaudeOAuthFile => client
+        | CredentialSource::ClaudeOAuthFile
+        | CredentialSource::CodexOAuthFile => client
             .post("https://api.anthropic.com/v1/messages")
             .bearer_auth(&cred_info.api_key)
             .header("anthropic-version", "2023-06-01"),
@@ -84,10 +84,7 @@ pub async fn claude_simple_completion(
         .and_then(|first| first.get("text"))
         .and_then(|t| t.as_str())
         .ok_or_else(|| {
-            ProviderError::ApiError(format!(
-                "unexpected Claude response shape: {}",
-                resp
-            ))
+            ProviderError::ApiError(format!("unexpected Claude response shape: {}", resp))
         })?
         .to_string();
 

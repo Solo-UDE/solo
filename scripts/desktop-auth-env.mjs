@@ -10,6 +10,7 @@ export const DESKTOP_AUTH_ENV_KEYS = [
   "SOLO_COGNITO_CLIENT_ID",
   "SOLO_AWS_REGION",
   "SOLO_API_ENDPOINT",
+  "SOLO_VAULT_API_ENDPOINT",
 ];
 
 export const CALLBACK_URI = "soloide://auth/callback";
@@ -88,6 +89,7 @@ export function resolveDesktopAuthEnv(baseEnv = process.env) {
     "SOLO_COGNITO_IDENTITY_POOL_ID",
     "SOLO_AWS_REGION",
     "SOLO_API_ENDPOINT",
+    "SOLO_VAULT_API_ENDPOINT",
     "SOLO_GITHUB_OIDC_ISSUER",
     "SOLO_GITHUB_CALLBACK",
   ]);

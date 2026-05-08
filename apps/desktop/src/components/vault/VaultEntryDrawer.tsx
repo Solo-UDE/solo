@@ -26,6 +26,10 @@ import {
   Globe,
   Database,
   Copy,
+  CloudCheck,
+  CloudOff,
+  CloudUpload,
+  AlertCircle,
 } from 'lucide-react';
 import type { VaultEntry, VaultScope } from '@/lib/tauri/vault';
 import { vaultDelete, vaultSetPinned, vaultUpdateTags, vaultMoveScope } from '@/lib/tauri/vault';
@@ -40,12 +44,16 @@ interface Props {
 export const VaultEntryDrawer: FC<Props> = ({ entry, onClose }) => {
   const upsertEntry = useVaultStore((s) => s.upsertEntry);
   const removeEntry = useVaultStore((s) => s.removeEntry);
+  const syncEntry = useVaultStore((s) => s.syncEntry);
   const fetchUnsortedCount = useVaultStore((s) => s.fetchUnsortedCount);
 
   const [tagInput, setTagInput] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [isSyncingCloud, setIsSyncingCloud] = useState(false);
   const tagInputRef = useRef<HTMLInputElement>(null);
+  const deleteRemote = entry.cloud_sync_state !== 'offline';
+  const canSyncCloud = entry.cloud_sync_state !== 'synced';
 
   // Close on Esc. Local keydown is cheaper than a global listener.
   useEffect(() => {
@@ -133,7 +141,7 @@ export const VaultEntryDrawer: FC<Props> = ({ entry, onClose }) => {
     }
     setBusy(true);
     try {
-      await vaultDelete(entry.id, false);
+      await vaultDelete(entry.id, deleteRemote);
       removeEntry(entry.id);
       await fetchUnsortedCount();
       onClose();
@@ -141,6 +149,19 @@ export const VaultEntryDrawer: FC<Props> = ({ entry, onClose }) => {
       // eslint-disable-next-line no-console
       console.error('[vault] delete failed:', err);
       setBusy(false);
+    }
+  };
+
+  const onSyncCloud = async () => {
+    if (!canSyncCloud || isSyncingCloud) return;
+    setIsSyncingCloud(true);
+    try {
+      await syncEntry(entry.id);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[vault] cloud sync failed:', err);
+    } finally {
+      setIsSyncingCloud(false);
     }
   };
 
@@ -308,6 +329,37 @@ export const VaultEntryDrawer: FC<Props> = ({ entry, onClose }) => {
             )}
           </div>
         </section>
+
+        {/* Cloud status */}
+        <section className="flex flex-col gap-1.5">
+          <div className="text-[10px] text-muted-foreground/80 font-medium flex items-center gap-1">
+            <CloudStatusIcon state={entry.cloud_sync_state} syncing={isSyncingCloud} />
+            Cloud
+          </div>
+          <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+            <span>
+              Status:{' '}
+              <span className="font-medium text-foreground">
+                {cloudStatusLabel(entry.cloud_sync_state)}
+              </span>
+            </span>
+            {canSyncCloud && (
+              <button
+                type="button"
+                onClick={() => void onSyncCloud()}
+                disabled={isSyncingCloud}
+                className="ml-auto h-6 px-2 rounded-md flex items-center gap-1 text-[10px] font-medium bg-primary/10 text-primary hover:bg-primary/15 transition-all duration-150 active:scale-[0.97] disabled:opacity-60"
+              >
+                <CloudUpload className="w-3 h-3" />
+                {entry.cloud_sync_state === 'failed'
+                  ? 'Retry sync'
+                  : entry.cloud_sync_state === 'offline'
+                    ? 'Sync'
+                    : 'Refresh'}
+              </button>
+            )}
+          </div>
+        </section>
       </div>
 
       {/* Danger zone */}
@@ -325,7 +377,13 @@ export const VaultEntryDrawer: FC<Props> = ({ entry, onClose }) => {
           )}
         >
           <Trash2 className={cn('w-3.5 h-3.5', confirmDelete && 'fill-current')} />
-          {confirmDelete ? 'Click again to confirm delete' : 'Delete entry'}
+          {confirmDelete
+            ? deleteRemote
+              ? 'Click again to delete everywhere'
+              : 'Click again to confirm delete'
+            : deleteRemote
+              ? 'Delete everywhere'
+              : 'Delete entry'}
         </button>
         {confirmDelete && (
           <button
@@ -339,6 +397,43 @@ export const VaultEntryDrawer: FC<Props> = ({ entry, onClose }) => {
       </div>
     </div>
   );
+};
+
+const CloudStatusIcon: FC<{ state: VaultEntry['cloud_sync_state']; syncing: boolean }> = ({
+  state,
+  syncing,
+}) => {
+  const className = cn(
+    'w-3 h-3',
+    state === 'synced' && 'text-primary',
+    (state === 'pending' || state === 'uploading' || state === 'indexing_remote') &&
+      'text-primary/70',
+    state === 'failed' && 'text-destructive',
+    state === 'offline' && 'text-muted-foreground/60',
+    syncing && 'animate-pulse',
+  );
+
+  if (state === 'synced') return <CloudCheck className={className} />;
+  if (state === 'failed') return <AlertCircle className={className} />;
+  if (state === 'offline') return <CloudOff className={className} />;
+  return <CloudUpload className={className} />;
+};
+
+const cloudStatusLabel = (state: VaultEntry['cloud_sync_state']) => {
+  switch (state) {
+    case 'offline':
+      return 'local only';
+    case 'pending':
+      return 'queued';
+    case 'uploading':
+      return 'uploading';
+    case 'indexing_remote':
+      return 'indexing';
+    case 'synced':
+      return 'synced';
+    case 'failed':
+      return 'failed';
+  }
 };
 
 const MetaRow: FC<{

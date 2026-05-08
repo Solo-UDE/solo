@@ -10,9 +10,10 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { Registry } from '../../bindings/Registry';
 import type { RegistryEntry } from '../../bindings/RegistryEntry';
+import type { SkillDetail } from '../../bindings/SkillDetail';
 import type { SkillSuggestion } from '../../bindings/SkillSuggestion';
 
-export type { Registry, RegistryEntry, SkillSuggestion };
+export type { Registry, RegistryEntry, SkillDetail, SkillSuggestion };
 
 /**
  * Fetch the marketplace registry JSON from `solo/skills-registry`.
@@ -22,6 +23,10 @@ export type { Registry, RegistryEntry, SkillSuggestion };
 export const fetchRegistry = (force = false) =>
   invoke<Registry>('skills_fetch_registry', { force });
 
+/** Fetch one page from the skills.sh leaderboard. */
+export const fetchRegistryPage = (view: string, page: number, force = false) =>
+  invoke<Registry>('skills_fetch_registry_page', { view, page, force });
+
 /**
  * Semantically search the cached marketplace for skills matching `query`.
  * The caller passes `installedIds` so the Rust side can filter already-installed
@@ -29,6 +34,10 @@ export const fetchRegistry = (force = false) =>
  */
 export const searchMarketplace = (query: string, installedIds: string[]) =>
   invoke<SkillSuggestion[]>('skills_search_marketplace', { query, installedIds });
+
+/** Resolve full skill metadata and source files for the preview drawer. */
+export const fetchSkillDetail = (entry: RegistryEntry) =>
+  invoke<SkillDetail>('skills_fetch_detail', { entry });
 
 /** Download + verify + extract a registry skill to `~/.solo/skills/<id>/`. */
 export const installSkill = (entry: RegistryEntry) =>

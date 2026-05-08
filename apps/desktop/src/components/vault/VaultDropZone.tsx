@@ -6,7 +6,7 @@
  */
 
 import { useState, type DragEvent, type FC } from 'react';
-import { Upload, Plus } from 'lucide-react';
+import { CloudUpload, HardDrive, Plus, Upload } from 'lucide-react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { vaultDropPaths } from '@/lib/tauri/vault';
 import { useVaultStore } from '@/stores/vaultStore';
@@ -16,6 +16,8 @@ export const VaultDropZone: FC = () => {
   const [isOver, setIsOver] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
   const activeScope = useVaultStore((s) => s.activeScope);
+  const syncToCloud = useVaultStore((s) => s.syncToCloud);
+  const setSyncToCloud = useVaultStore((s) => s.setSyncToCloud);
   const fetchEntries = useVaultStore((s) => s.fetchEntries);
   const fetchUnsortedCount = useVaultStore((s) => s.fetchUnsortedCount);
 
@@ -23,7 +25,7 @@ export const VaultDropZone: FC = () => {
     if (paths.length === 0) return;
     setIsBusy(true);
     try {
-      await vaultDropPaths(paths, activeScope, 'project');
+      await vaultDropPaths(paths, activeScope, 'project', syncToCloud);
       await fetchEntries();
       await fetchUnsortedCount();
     } catch (err) {
@@ -69,8 +71,46 @@ export const VaultDropZone: FC = () => {
         )}
       />
       <p className="text-xs font-medium text-muted-foreground">
-        {isBusy ? 'Indexing…' : 'Add files to the vault'}
+        {isBusy
+          ? syncToCloud
+            ? 'Indexing and syncing…'
+            : 'Indexing locally…'
+          : 'Add files to the vault'}
       </p>
+      <div
+        className="flex h-7 items-center rounded-lg bg-muted/40 p-0.5"
+        role="group"
+        aria-label="Vault storage mode"
+      >
+        <button
+          type="button"
+          onClick={() => setSyncToCloud(true)}
+          className={cn(
+            'flex h-6 items-center gap-1 rounded-md px-2 text-[10px] font-medium transition-all duration-150 active:scale-[0.97]',
+            syncToCloud
+              ? 'bg-background text-foreground shadow-sm'
+              : 'text-muted-foreground hover:text-foreground',
+          )}
+          title="Sync new files to cloud"
+        >
+          <CloudUpload className="h-3 w-3" />
+          Cloud
+        </button>
+        <button
+          type="button"
+          onClick={() => setSyncToCloud(false)}
+          className={cn(
+            'flex h-6 items-center gap-1 rounded-md px-2 text-[10px] font-medium transition-all duration-150 active:scale-[0.97]',
+            !syncToCloud
+              ? 'bg-background text-foreground shadow-sm'
+              : 'text-muted-foreground hover:text-foreground',
+          )}
+          title="Keep new files local"
+        >
+          <HardDrive className="h-3 w-3" />
+          Local
+        </button>
+      </div>
       <button
         type="button"
         onClick={onPick}

@@ -729,6 +729,21 @@ pub enum VaultSearchMode {
     Fts,
     /// Vector similarity (embedding)
     Semantic,
+    /// Lexical + semantic retrieval, merged by reciprocal-rank fusion
+    Hybrid,
+}
+
+/// Retrieval source for vault_search.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+#[serde(rename_all = "snake_case")]
+pub enum VaultRetrievalSource {
+    /// On-device SQLite/embedding cache only
+    Local,
+    /// Cloud-indexed chunks only
+    Cloud,
+    /// Local first plus cloud when signed in
+    Hybrid,
 }
 
 /// A single result from vault_search.
@@ -737,6 +752,10 @@ pub enum VaultSearchMode {
 pub struct VaultSearchResult {
     pub chunk: VaultChunk,
     pub entry: VaultEntry,
+    pub source: VaultRetrievalSource,
+    pub mode: VaultSearchMode,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub embedding_model: Option<String>,
     /// Similarity score (semantic) or BM25 rank (fts), higher = more relevant
     pub score: f32,
 }
@@ -1480,6 +1499,10 @@ pub enum BackendEvent {
         state: CloudSyncState,
     },
 
+    /// Non-fatal cloud retrieval status while local results remain usable.
+    #[serde(rename = "vault:retrieval_warning")]
+    VaultRetrievalWarning { message: String },
+
     /// Count of entries in the Unsorted review tray changed
     #[serde(rename = "vault:unsorted_count_changed")]
     VaultUnsortedCountChanged { count: u32 },
@@ -1582,11 +1605,20 @@ pub enum BackendEvent {
 
     /// Incremental progress — summary text of latest event (truncated).
     #[serde(rename = "tasks:run_progress")]
-    TaskRunProgress { task_id: String, run_id: String, summary: String },
+    TaskRunProgress {
+        task_id: String,
+        run_id: String,
+        summary: String,
+    },
 
     /// Terminal — the run ended with an outcome.
     #[serde(rename = "tasks:run_ended")]
-    TaskRunEnded { task_id: String, run_id: String, outcome: RunOutcome, summary: Option<String> },
+    TaskRunEnded {
+        task_id: String,
+        run_id: String,
+        outcome: RunOutcome,
+        summary: Option<String>,
+    },
 
     /// A task in a worktree finished with pending changes; show review modal.
     #[serde(rename = "tasks:review_ready")]
@@ -2308,7 +2340,13 @@ fn default_true_plugins() -> bool {
 #[ts(export, export_to = "../apps/desktop/src/bindings/")]
 pub struct RegistryEntry {
     pub id: String,
+    #[serde(default)]
+    pub skill_id: String,
     pub name: String,
+    #[serde(default)]
+    pub source: String,
+    #[serde(default)]
+    pub source_type: String,
     pub version: String,
     pub description: String,
     pub categories: Vec<String>,
@@ -2318,6 +2356,16 @@ pub struct RegistryEntry {
     pub sha256: String,
     pub tags: Vec<String>,
     pub updated_at: String,
+    #[serde(default)]
+    pub install_url: String,
+    #[serde(default)]
+    pub url: String,
+    #[serde(default)]
+    pub installs: u32,
+    #[serde(default)]
+    pub is_official: bool,
+    #[serde(default)]
+    pub is_duplicate: bool,
 }
 
 /// The full parsed `registry.json` pulled from `solo/skills-registry`.
@@ -2327,6 +2375,14 @@ pub struct Registry {
     pub version: u32,
     pub generated_at: String,
     pub skills: Vec<RegistryEntry>,
+    #[serde(default)]
+    pub total_skills: u32,
+    #[serde(default)]
+    pub has_more: bool,
+    #[serde(default)]
+    pub next_page: Option<u32>,
+    #[serde(default)]
+    pub view: String,
 }
 
 /// A marketplace hit scored against the current user query.
@@ -2336,6 +2392,42 @@ pub struct SkillSuggestion {
     pub entry: RegistryEntry,
     pub score: f32,
     pub reason: String,
+}
+
+/// A text file bundled inside a skill.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct SkillFile {
+    pub path: String,
+    pub contents: String,
+    pub bytes: u32,
+}
+
+/// A normalized skills.sh security audit row.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct SkillAudit {
+    pub provider: String,
+    pub status: String,
+    pub summary: String,
+    pub risk_level: String,
+    pub audited_at: String,
+}
+
+/// Details used by the in-app skills.sh preview and installer.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct SkillDetail {
+    pub entry: RegistryEntry,
+    pub description: String,
+    pub install_command: String,
+    pub web_url: String,
+    pub source_url: String,
+    pub hash: Option<String>,
+    pub files: Vec<SkillFile>,
+    pub audits: Vec<SkillAudit>,
+    pub installable: bool,
+    pub install_note: String,
 }
 
 /// Where an installed skill came from.

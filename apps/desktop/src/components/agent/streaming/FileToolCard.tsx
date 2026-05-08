@@ -62,24 +62,27 @@ export const FileToolCard: FC<FileToolCardProps> = ({
 			status={status}
 			icon={getFileIcon(toolName)}
 			label={getLabel(toolName, status)}
+			primaryDisplay={filePath}
 			collapsible={!!output || !!children}
 			defaultExpanded={false}
 			output={output}
 			style={style}
 		>
-			<div className="flex items-center gap-1.5 text-xs">
-				{/* Directory path (muted) + filename (foreground) */}
-				<span className="font-mono truncate" title={filePath}>
-					<span className="text-muted-foreground/60">{dirPath}</span>
-					<span className="text-foreground font-medium">{fileName}</span>
-				</span>
-				{lineCount !== undefined ? (
-					<span className="shrink-0 rounded-full bg-muted/50 px-2 py-0.5 text-[10px] tabular-nums text-muted-foreground">
-						{lineCount} lines
+			{lineCount !== undefined || children ? (
+				<div className="flex min-w-0 items-center gap-1.5 text-xs">
+					{/* Directory path (muted) + filename (foreground) */}
+					<span className="min-w-0 truncate font-mono" title={filePath}>
+						<span className="text-muted-foreground/60">{dirPath}</span>
+						<span className="font-medium text-foreground">{fileName}</span>
 					</span>
-				) : null}
-			</div>
-			{children}
+					{lineCount !== undefined ? (
+						<span className="shrink-0 rounded-full bg-muted/50 px-2 py-0.5 text-[10px] text-muted-foreground tabular-nums">
+							{lineCount} lines
+						</span>
+					) : null}
+					{children}
+				</div>
+			) : null}
 		</ToolCard>
 	);
 };

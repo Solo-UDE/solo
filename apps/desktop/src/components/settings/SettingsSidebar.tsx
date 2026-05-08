@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { SunIcon, CodeIcon, ArrowLeftIcon, ExitIcon, ExternalLinkIcon, ReaderIcon, CounterClockwiseClockIcon, StarIcon, RocketIcon } from '@radix-ui/react-icons';
-import { Terminal, FolderOpen, Keyboard, Brain, Mic, UserRound, Zap, Puzzle } from 'lucide-react';
+import { Terminal, FolderOpen, Keyboard, Brain, Mic, UserRound, Zap, Puzzle, Palette } from 'lucide-react';
 import { useUIStore, type SettingsTabId } from '../../stores/uiStore';
 import { useAuthStore } from '../../stores/authStore';
 import { useSettingsStore } from '../../stores/settingsStore';
@@ -17,6 +17,7 @@ const TABS: TabDef[] = [
   { id: 'leaderboard', label: 'Leaderboard', icon: StarIcon },
   { id: 'account', label: 'Account', icon: UserRound },
   { id: 'general', label: 'General', icon: SunIcon },
+  { id: 'appearance', label: 'Appearance', icon: Palette },
   { id: 'editor', label: 'Editor', icon: CodeIcon },
   { id: 'terminal', label: 'Terminal', icon: Terminal },
   { id: 'files', label: 'Files', icon: FolderOpen },
@@ -73,6 +74,8 @@ export function SettingsSidebar() {
               key={tab.id}
               type="button"
               onClick={() => setSettingsTab(tab.id)}
+              data-sidebar-active={isActive}
+              data-sidebar-hover
               className={cn(
                 'w-full flex items-center gap-3 rounded-[8px] px-3 py-2 text-sm transition-colors text-left cursor-pointer',
                 isActive

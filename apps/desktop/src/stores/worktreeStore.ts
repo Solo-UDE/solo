@@ -8,12 +8,29 @@ import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import { enableMapSet } from 'immer';
 import type { WorktreeInfo } from '../bindings';
+import * as fsApi from '../lib/tauri/fs';
 import * as worktreeApi from '../lib/tauri/worktree';
 import { wtLog, wtTrace, wtSnapshot } from '../lib/worktreeLogger';
 
 enableMapSet();
 
 const EMPTY_WORKTREES: WorktreeInfo[] = [];
+
+async function ensureBackendWorkspaceRoot(): Promise<boolean> {
+	const { useFileExplorerStore } = await import('./fileExplorerStore');
+	if (useFileExplorerStore.getState().rootPath) {
+		return true;
+	}
+
+	const { useRepoStore } = await import('./repoStore');
+	const activeRepoPath = useRepoStore.getState().activeRepoPath;
+	if (!activeRepoPath) {
+		return false;
+	}
+
+	await fsApi.setWorkspaceRoot(activeRepoPath);
+	return true;
+}
 
 interface WorktreeState {
 	worktrees: Map<string, WorktreeInfo>;
@@ -73,6 +90,14 @@ export const useWorktreeStore = create<WorktreeStore>()(
 			});
 
 			try {
+				const hasWorkspace = await ensureBackendWorkspaceRoot();
+				if (!hasWorkspace) {
+					set((state) => {
+						state.isLoading = false;
+					});
+					return;
+				}
+
 				const list = await wtTrace('loadWorktrees', {}, () => worktreeApi.listWorktrees());
 				set((state) => {
 					state.worktrees = new Map(list.map((wt) => [wt.id, wt]));

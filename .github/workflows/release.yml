@@ -31,6 +31,7 @@ jobs:
       SOLO_COGNITO_CLIENT_ID: ${{ vars.SOLO_PROD_COGNITO_CLIENT_ID }}
       SOLO_AWS_REGION: ${{ vars.SOLO_PROD_AWS_REGION }}
       SOLO_API_ENDPOINT: ${{ vars.SOLO_PROD_API_ENDPOINT }}
+      SOLO_VAULT_API_ENDPOINT: ${{ vars.SOLO_PROD_VAULT_API_ENDPOINT }}
       RELEASE_INPUT_VERSION: ${{ github.event.inputs.version }}
 
     steps:
@@ -103,6 +104,7 @@ jobs:
           test -n "$SOLO_COGNITO_CLIENT_ID" || { echo "Missing SOLO_PROD_COGNITO_CLIENT_ID" >&2; exit 1; }
           test -n "$SOLO_AWS_REGION" || { echo "Missing SOLO_PROD_AWS_REGION" >&2; exit 1; }
           test -n "$SOLO_API_ENDPOINT" || { echo "Missing SOLO_PROD_API_ENDPOINT" >&2; exit 1; }
+          test -n "$SOLO_VAULT_API_ENDPOINT" || { echo "Missing SOLO_PROD_VAULT_API_ENDPOINT" >&2; exit 1; }
 
       - name: Prepare Apple notarization key
         run: |

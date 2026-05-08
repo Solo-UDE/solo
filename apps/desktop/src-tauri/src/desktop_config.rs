@@ -21,12 +21,16 @@ pub const COGNITO_DOMAIN_ENV_KEYS: &[&str] = &["SOLO_COGNITO_DOMAIN"];
 pub const COGNITO_CLIENT_ID_ENV_KEYS: &[&str] = &["SOLO_COGNITO_CLIENT_ID"];
 pub const COGNITO_REGION_ENV_KEYS: &[&str] = &["SOLO_AWS_REGION", "AWS_REGION"];
 pub const API_ENDPOINT_ENV_KEYS: &[&str] = &["SOLO_API_ENDPOINT"];
+pub const VAULT_API_ENDPOINT_ENV_KEYS: &[&str] = &["SOLO_VAULT_API_ENDPOINT"];
 
 const DEFAULT_AWS_REGION: &str = "us-east-1";
 const DEFAULT_API_ENDPOINT: &str = "https://vd8wm2yqle.execute-api.us-east-1.amazonaws.com";
+const DEFAULT_VAULT_API_ENDPOINT: &str =
+    "https://tlrskvdxe2.execute-api.us-east-1.amazonaws.com/prod";
 
 static COGNITO_CONFIG: OnceLock<Result<CognitoConfig, String>> = OnceLock::new();
 static API_ENDPOINT: OnceLock<String> = OnceLock::new();
+static VAULT_API_ENDPOINT: OnceLock<String> = OnceLock::new();
 
 #[cfg(debug_assertions)]
 static DEV_ENV_LOADED: OnceLock<()> = OnceLock::new();
@@ -86,6 +90,19 @@ pub fn api_endpoint() -> &'static str {
                 option_env!("SOLO_API_ENDPOINT"),
                 read_env(API_ENDPOINT_ENV_KEYS),
             )
+        })
+        .as_str()
+}
+
+pub fn vault_api_endpoint() -> &'static str {
+    maybe_load_local_env();
+    VAULT_API_ENDPOINT
+        .get_or_init(|| {
+            resolve_value(
+                option_env!("SOLO_VAULT_API_ENDPOINT"),
+                read_env(VAULT_API_ENDPOINT_ENV_KEYS),
+            )
+            .unwrap_or_else(|| DEFAULT_VAULT_API_ENDPOINT.to_string())
         })
         .as_str()
 }

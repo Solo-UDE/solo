@@ -66,11 +66,15 @@ pub async fn settings_save(
 
     // Re-merge and broadcast.
     let ws_merge = ws.clone();
-    let merged = tokio::task::spawn_blocking(move || settings::load_merged(&ws_merge).map_err(to_err))
-        .await
-        .map_err(to_err)??;
+    let merged =
+        tokio::task::spawn_blocking(move || settings::load_merged(&ws_merge).map_err(to_err))
+            .await
+            .map_err(to_err)??;
 
-    let _ = app.emit("backend-event", BackendEvent::SettingsChanged { settings: merged });
+    let _ = app.emit(
+        "backend-event",
+        BackendEvent::SettingsChanged { settings: merged },
+    );
     Ok(())
 }
 
@@ -220,7 +224,8 @@ pub async fn settings_default_mode(workspace: String) -> Result<PermissionMode, 
 pub async fn settings_get_planner_notes() -> Result<String, String> {
     let home = dirs::home_dir().ok_or_else(|| "home directory not found".to_string())?;
     tokio::task::spawn_blocking(move || {
-        let user = settings::load_scope(solo_protocol::SettingsScope::User, &home).map_err(to_err)?;
+        let user =
+            settings::load_scope(solo_protocol::SettingsScope::User, &home).map_err(to_err)?;
         Ok::<String, String>(user.planner_notes)
     })
     .await
@@ -246,9 +251,16 @@ pub async fn settings_set_planner_notes(
     .map_err(to_err)??;
 
     // Emit settings:changed so UI listeners can refresh (best-effort).
-    if let Ok(merged) = tokio::task::spawn_blocking(move || settings::load_merged(&home).map_err(to_err)).await.map_err(to_err) {
+    if let Ok(merged) =
+        tokio::task::spawn_blocking(move || settings::load_merged(&home).map_err(to_err))
+            .await
+            .map_err(to_err)
+    {
         if let Ok(merged) = merged {
-            let _ = app.emit("backend-event", solo_protocol::BackendEvent::SettingsChanged { settings: merged });
+            let _ = app.emit(
+                "backend-event",
+                solo_protocol::BackendEvent::SettingsChanged { settings: merged },
+            );
         }
     }
     Ok(())

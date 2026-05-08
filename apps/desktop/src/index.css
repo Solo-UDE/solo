@@ -16,6 +16,10 @@
 /* CRITICAL: Tell Tailwind v4 how to handle dark mode */
 @custom-variant dark (&:is(.dark *));
 
+:root {
+  --font-sans: "Inter Variable", Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
 /* =============================================================================
    BASE STYLES (Critical for shadcn/ui)
    ============================================================================= */
@@ -34,11 +38,20 @@
   body {
     background-color: transparent;
     color: var(--foreground);
-    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
+    font-family: var(--font-sans, "Inter Variable", Inter, ui-sans-serif, system-ui, sans-serif);
     font-feature-settings: "rlig" 1, "calt" 1;
     font-variant-numeric: tabular-nums;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+  }
+
+  html[data-font-smoothing="auto"] body {
+    -webkit-font-smoothing: auto;
+    -moz-osx-font-smoothing: auto;
+  }
+
+  code, pre, kbd, samp {
+    font-family: var(--font-mono, "SF Mono", SFMono-Regular, ui-monospace, monospace);
   }
 }
 
@@ -101,6 +114,41 @@ html[data-vibrancy] .terminal-panel {
 
 html[data-vibrancy] .terminal-panel .xterm-viewport {
   background-color: transparent !important;
+}
+
+.liquid-sidebar {
+  position: relative;
+  isolation: isolate;
+  background: var(--liquid-sidebar-bg, var(--sidebar)) !important;
+  border-color: var(--liquid-sidebar-border, var(--border)) !important;
+  box-shadow: var(--liquid-sidebar-shadow, none);
+  backdrop-filter: saturate(1.45) blur(28px);
+  -webkit-backdrop-filter: saturate(1.45) blur(28px);
+}
+
+.liquid-sidebar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, var(--liquid-sidebar-highlight, transparent), transparent 54%),
+    radial-gradient(circle at 24px 18px, color-mix(in srgb, var(--primary) 12%, transparent), transparent 36%);
+}
+
+html[data-translucent-sidebar="false"] .liquid-sidebar {
+  background: var(--sidebar) !important;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.liquid-sidebar [data-sidebar-active="true"] {
+  background: var(--liquid-sidebar-active, var(--accent));
+}
+
+.liquid-sidebar [data-sidebar-hover]:hover {
+  background: var(--liquid-sidebar-hover, var(--accent));
 }
 
 /* =============================================================================
@@ -742,10 +790,11 @@ html.dark [data-streamdown='code-block-copy-button']:hover {
    CHAT SURFACE (13px VS-Code scale — scoped to agent chat only)
    ============================================================================= */
 .chat-surface {
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
+  font-family: var(--font-sans, "Inter Variable", Inter, ui-sans-serif, system-ui, sans-serif);
   font-size: 13px;
   line-height: 1.68;
   font-feature-settings: "rlig" 1, "calt" 1, "cv11" 1;
+  text-rendering: geometricPrecision;
 }
 
 .chat-surface code,
@@ -759,6 +808,7 @@ html.dark [data-streamdown='code-block-copy-button']:hover {
   line-height: 1.8;
   color: color-mix(in oklch, var(--foreground) 96%, white 4%);
   font-weight: 430;
+  text-wrap: pretty;
 }
 
 .chat-surface .chat-markdown p,
@@ -812,9 +862,12 @@ html.dark [data-streamdown='code-block-copy-button']:hover {
 }
 
 .tool-widget-output {
-  background: var(--tool-output-bg);
-  border: 0;
+  background: color-mix(in oklch, var(--tool-output-bg) 86%, transparent);
+  border: 1px solid color-mix(in oklch, var(--border-tool) 78%, transparent);
   border-radius: 0.5rem;
+  box-shadow:
+    inset 0 1px 0 color-mix(in oklch, white 4%, transparent),
+    0 8px 24px -22px color-mix(in oklch, black 45%, transparent);
 }
 
 .tool-widget-inline-chip {

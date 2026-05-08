@@ -34,7 +34,7 @@ export const SkillsSection: FC = () => {
       <div
         role="tablist"
         aria-label="Skills"
-        className="flex shrink-0 items-center gap-1 border-b border-border/50 px-3 py-2.5"
+        className="flex shrink-0 items-center gap-1 border-b border-border/50 px-4 py-2.5"
       >
         {TABS.map((tab) => (
           <button
@@ -44,7 +44,7 @@ export const SkillsSection: FC = () => {
             aria-selected={active === tab.id}
             onClick={() => setActive(tab.id)}
             className={cn(
-              'relative flex-1 rounded-[10px] py-1.5 text-[12px] font-medium',
+              'relative min-h-9 flex-1 rounded-[10px] px-3 py-1.5 text-[12px] font-medium transition-[color,background-color] duration-150',
               active === tab.id
                 ? 'text-foreground'
                 : 'text-muted-foreground hover:text-foreground',

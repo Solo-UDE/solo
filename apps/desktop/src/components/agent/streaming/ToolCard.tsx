@@ -1,11 +1,11 @@
 /**
- * ToolCard — Glass-morphism base component for tool call visualization.
+ * ToolCard — Codex-style base component for tool call visualization.
  *
  * Features:
- * - Frosted glass container with subtle border and shadow
- * - Collapsible output via CSS grid-rows transition (0fr → 1fr)
+ * - Flat receipt row with tool label and primary command/path preview
+ * - Collapsible output via CSS grid-rows transition
  * - Status-aware icons: spinner (running), check (success), X (error), shield (permission)
- * - Truncated output with "show more" fade gradient
+ * - Truncated output with "show more" control
  * - Slot for specialized content via children prop
  */
 
@@ -53,7 +53,9 @@ const StatusIcon: FC<{ status: ToolStatus }> = ({ status }) => {
 };
 
 const defaultLabel = (toolName: string, status: ToolStatus): string => {
-	const name = toolName.charAt(0).toUpperCase() + toolName.slice(1);
+	const name = toolName
+		.replace(/_/g, ' ')
+		.replace(/\b\w/g, (c) => c.toUpperCase());
 	switch (status) {
 		case 'running': return `Running ${name}`;
 		case 'success': return `Ran ${name}`;
@@ -96,6 +98,8 @@ export const ToolCard: FC<ToolCardProps> = ({
 
 	const hasContent = !!(output || children);
 	const canExpand = collapsible && hasContent;
+	const outputLineCount = output?.split('\n').filter(Boolean).length ?? 0;
+	const outputLineCountLabel = `${outputLineCount} ${outputLineCount === 1 ? 'line' : 'lines'}`;
 
 	const toggleExpanded = () => {
 		if (canExpand) setIsExpanded(!isExpanded);
@@ -103,45 +107,57 @@ export const ToolCard: FC<ToolCardProps> = ({
 
 	return (
 		<div
-			className={`group my-0.5 animate-in fade-in-0 duration-150 ${className}`}
+			className={`group my-0.5 min-w-0 animate-in fade-in-0 duration-150 ${className}`}
 			style={style}
 		>
-			{/* Single-line Codex-style header — flat, no card chrome */}
+			{/* Single-line Codex-style receipt header: flat, compact, and expandable. */}
 			<button
 				type="button"
 				onClick={toggleExpanded}
-				className={`flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors py-0.5 ${
+				className={`flex max-w-full items-center gap-1.5 rounded-md py-0.5 text-xs text-muted-foreground outline-none transition-[color,transform] duration-150 hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary/35 active:scale-[0.99] ${
 					canExpand ? 'cursor-pointer' : 'cursor-default'
 				}`}
 				aria-expanded={isExpanded}
+				aria-label={`${label ?? defaultLabel(toolName, status)}${primaryDisplay ? ` ${primaryDisplay}` : ''}`}
 				disabled={!canExpand}
 			>
-				{icon ?? <StatusIcon status={status} />}
+				<span className="flex h-4 w-4 shrink-0 items-center justify-center">
+					{icon ?? <StatusIcon status={status} />}
+				</span>
 
-				<span className="text-foreground/85">
+				<span className="shrink-0 text-[13px] leading-5 text-foreground/86">
 					{label ?? defaultLabel(toolName, status)}
 				</span>
 
 				{primaryDisplay ? (
-					<code className="font-mono text-muted-foreground truncate max-w-[480px]">
+					<code
+						className="min-w-0 max-w-[min(42rem,66vw)] truncate font-mono text-[12px] leading-5 text-muted-foreground/62"
+						title={primaryDisplay}
+					>
 						{primaryDisplay}
 					</code>
+				) : null}
+
+				{outputLineCount > 0 ? (
+					<span className="shrink-0 rounded-full bg-muted/40 px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground/70 tabular-nums">
+						{outputLineCountLabel}
+					</span>
 				) : null}
 
 				{canExpand ? (
 					<ChevronRightIcon
 						width={12} height={12}
-						className={`text-muted-foreground/50 transition-transform duration-200 ${
+						className={`shrink-0 text-muted-foreground/46 transition-transform duration-200 ${
 							isExpanded ? 'rotate-90' : ''
 						}`}
 					/>
 				) : null}
 			</button>
 
-			{/* Expanded content — subtle tinted block, no border, indented under header */}
+			{/* Expanded content — quiet and indented under the receipt header. */}
 			<ExpandRegion isExpanded={isExpanded}>
 				{children ? (
-					<div className="mt-1.5 ml-5">
+					<div className="mt-1.5 ml-5 min-w-0">
 						{children}
 					</div>
 				) : null}
@@ -152,16 +168,16 @@ export const ToolCard: FC<ToolCardProps> = ({
 						<span>Processing...</span>
 					</div>
 				) : displayOutput ? (
-					<div className="mt-1.5 ml-5">
+					<div className="mt-1.5 ml-5 min-w-0">
 						<div className="relative font-mono text-xs tool-widget-output p-2.5 max-h-[320px] overflow-y-auto">
-							<pre className="whitespace-pre-wrap break-words text-foreground/85">
+							<pre className="whitespace-pre-wrap break-words text-[12px] leading-5 text-foreground/84">
 								{showAllOutput ? output : displayOutput}
 							</pre>
 							{isTruncated && !showAllOutput ? (
 								<button
 									type="button"
 									onClick={(e) => { e.stopPropagation(); setShowAllOutput(true); }}
-									className="mt-2 text-[11px] text-primary hover:text-primary/80 transition-colors"
+									className="mt-2 min-h-8 rounded-md px-1 text-[11px] text-primary transition-colors hover:text-primary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
 								>
 									Show all {totalLines} lines
 								</button>

@@ -11,7 +11,10 @@ use tracing::debug;
 use crate::task_commands::{get_store, TaskState};
 
 fn emit_projects(app: &AppHandle, project_ids: Vec<String>) {
-    let _ = app.emit("backend-event", BackendEvent::ProjectsChanged { project_ids });
+    let _ = app.emit(
+        "backend-event",
+        BackendEvent::ProjectsChanged { project_ids },
+    );
 }
 
 fn emit_tasks(app: &AppHandle, task_ids: Vec<String>) {
@@ -22,15 +25,18 @@ fn emit_tasks(app: &AppHandle, task_ids: Vec<String>) {
 
 #[tauri::command]
 pub async fn project_list(state: State<'_, TaskState>) -> Result<Vec<Project>, String> {
-    get_store(&state).await?.project_list().map_err(|e| e.to_string())
+    get_store(&state)
+        .await?
+        .project_list()
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn project_get(
-    id: String,
-    state: State<'_, TaskState>,
-) -> Result<Project, String> {
-    get_store(&state).await?.project_get(&id).map_err(|e| e.to_string())
+pub async fn project_get(id: String, state: State<'_, TaskState>) -> Result<Project, String> {
+    get_store(&state)
+        .await?
+        .project_get(&id)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -39,7 +45,8 @@ pub async fn project_create(
     app: AppHandle,
     state: State<'_, TaskState>,
 ) -> Result<Project, String> {
-    let project = get_store(&state).await?
+    let project = get_store(&state)
+        .await?
         .project_create(draft)
         .map_err(|e| e.to_string())?;
     debug!(id = %project.id, "project created");
@@ -54,7 +61,8 @@ pub async fn project_update(
     app: AppHandle,
     state: State<'_, TaskState>,
 ) -> Result<Project, String> {
-    let project = get_store(&state).await?
+    let project = get_store(&state)
+        .await?
         .project_update(&id, patch)
         .map_err(|e| e.to_string())?;
     emit_projects(&app, vec![id]);
@@ -67,7 +75,8 @@ pub async fn project_delete(
     app: AppHandle,
     state: State<'_, TaskState>,
 ) -> Result<(), String> {
-    let affected_tasks = get_store(&state).await?
+    let affected_tasks = get_store(&state)
+        .await?
         .project_delete(&id)
         .map_err(|e| e.to_string())?;
     emit_projects(&app, vec![id]);

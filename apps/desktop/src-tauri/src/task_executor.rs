@@ -341,7 +341,7 @@ pub async fn spawn_agent_for_task(
         .create_session(&session_id, session_config)
         .map_err(|e| format!("agent create_session failed: {e}"))?;
     session_manager
-        .send_message(&session_id, &prompt, None)
+        .send_message(&session_id, &prompt, None, None)
         .map_err(|e| format!("agent send_message failed: {e}"))?;
 
     // Flip task to Running

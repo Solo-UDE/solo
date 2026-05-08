@@ -22,7 +22,10 @@ fn emit_tasks(app: &AppHandle, task_ids: Vec<String>) {
 
 #[tauri::command]
 pub async fn label_list(state: State<'_, TaskState>) -> Result<Vec<Label>, String> {
-    get_store(&state).await?.label_list().map_err(|e| e.to_string())
+    get_store(&state)
+        .await?
+        .label_list()
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -31,7 +34,10 @@ pub async fn label_create(
     app: AppHandle,
     state: State<'_, TaskState>,
 ) -> Result<Label, String> {
-    let label = get_store(&state).await?.label_create(draft).map_err(|e| e.to_string())?;
+    let label = get_store(&state)
+        .await?
+        .label_create(draft)
+        .map_err(|e| e.to_string())?;
     debug!(id = %label.id, "label created");
     emit_labels(&app, vec![label.id.clone()]);
     Ok(label)
@@ -44,7 +50,10 @@ pub async fn label_update(
     app: AppHandle,
     state: State<'_, TaskState>,
 ) -> Result<Label, String> {
-    let label = get_store(&state).await?.label_update(&id, patch).map_err(|e| e.to_string())?;
+    let label = get_store(&state)
+        .await?
+        .label_update(&id, patch)
+        .map_err(|e| e.to_string())?;
     emit_labels(&app, vec![id]);
     Ok(label)
 }
@@ -55,7 +64,10 @@ pub async fn label_delete(
     app: AppHandle,
     state: State<'_, TaskState>,
 ) -> Result<(), String> {
-    let affected_tasks = get_store(&state).await?.label_delete(&id).map_err(|e| e.to_string())?;
+    let affected_tasks = get_store(&state)
+        .await?
+        .label_delete(&id)
+        .map_err(|e| e.to_string())?;
     emit_labels(&app, vec![id]);
     emit_tasks(&app, affected_tasks);
     Ok(())
@@ -68,7 +80,8 @@ pub async fn task_label_add(
     app: AppHandle,
     state: State<'_, TaskState>,
 ) -> Result<Task, String> {
-    let task = get_store(&state).await?
+    let task = get_store(&state)
+        .await?
         .task_label_add(&task_id, &label_id)
         .map_err(|e| e.to_string())?;
     emit_tasks(&app, vec![task.id.clone()]);
@@ -82,7 +95,8 @@ pub async fn task_label_remove(
     app: AppHandle,
     state: State<'_, TaskState>,
 ) -> Result<Task, String> {
-    let task = get_store(&state).await?
+    let task = get_store(&state)
+        .await?
         .task_label_remove(&task_id, &label_id)
         .map_err(|e| e.to_string())?;
     emit_tasks(&app, vec![task.id.clone()]);

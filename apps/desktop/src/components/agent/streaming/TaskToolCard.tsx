@@ -34,7 +34,7 @@ export const TaskToolCard: FC<TaskToolCardProps> = ({
 		toolName="Task"
 		status={status}
 		icon={<Bot className={`h-3.5 w-3.5 shrink-0 ${status === 'running' ? 'text-primary animate-pulse' : 'text-muted-foreground'}`} />}
-		label={status === 'running' ? 'Running Task...' : 'Task'}
+		label={status === 'running' ? 'Running Task' : 'Ran Task'}
 		primaryDisplay={description}
 		output={output}
 		defaultExpanded={false}

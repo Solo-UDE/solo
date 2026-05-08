@@ -17,12 +17,124 @@ export type CursorStyle = 'line' | 'block' | 'underline';
 export type RenderWhitespace = 'none' | 'boundary' | 'all';
 export type LineEnding = 'lf' | 'crlf' | 'auto';
 export type ToolPermissionPolicy = 'ask-all' | 'smart' | 'approve-all';
+export type ThemeSurface = 'light' | 'dark';
+export type ThemePresetId = 'solo' | 'codex' | 'watermelon' | 'custom';
+
+export interface ThemePalette {
+  accent: string;
+  background: string;
+  foreground: string;
+  uiFontFamily: string;
+  codeFontFamily: string;
+  translucentSidebar: boolean;
+  contrast: number;
+  fontSmoothing: boolean;
+}
+
+export interface AppearanceSettings {
+  activePreset: ThemePresetId;
+  light: ThemePalette;
+  dark: ThemePalette;
+}
+
+const DEFAULT_UI_FONT = '"Inter Variable", Inter, ui-sans-serif, system-ui, sans-serif';
+const DEFAULT_CODE_FONT = '"SF Mono", SFMono-Regular, ui-monospace, monospace';
+
+export const UI_FONT_FAMILIES = [
+  { label: 'Inter', value: DEFAULT_UI_FONT },
+  { label: 'System', value: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif' },
+  { label: 'Geist', value: '"Geist Variable", Geist, ui-sans-serif, system-ui, sans-serif' },
+  { label: 'Atkinson', value: '"Atkinson Hyperlegible Next Variable", ui-sans-serif, system-ui, sans-serif' },
+] as const;
 
 export const FONT_FAMILIES = [
-  { label: 'SF Mono', value: '"SF Mono", SFMono-Regular, ui-monospace, monospace' },
+  { label: 'SF Mono', value: DEFAULT_CODE_FONT },
+  { label: 'Geist Mono', value: '"Geist Mono Variable", "SF Mono", ui-monospace, monospace' },
   { label: 'Menlo', value: 'Menlo, Monaco, ui-monospace, monospace' },
   { label: 'System Default', value: 'ui-monospace, system-ui, monospace' },
 ] as const;
+
+export const APPEARANCE_PRESETS: Record<Exclude<ThemePresetId, 'custom'>, {
+  label: string;
+  light: ThemePalette;
+  dark: ThemePalette;
+}> = {
+  solo: {
+    label: 'Solo',
+    light: {
+      accent: '#2563eb',
+      background: '#f8f7f4',
+      foreground: '#171615',
+      uiFontFamily: DEFAULT_UI_FONT,
+      codeFontFamily: DEFAULT_CODE_FONT,
+      translucentSidebar: true,
+      contrast: 56,
+      fontSmoothing: true,
+    },
+    dark: {
+      accent: '#60a5fa',
+      background: '#181818',
+      foreground: '#f7f7f5',
+      uiFontFamily: DEFAULT_UI_FONT,
+      codeFontFamily: DEFAULT_CODE_FONT,
+      translucentSidebar: true,
+      contrast: 62,
+      fontSmoothing: true,
+    },
+  },
+  codex: {
+    label: 'Codex',
+    light: {
+      accent: '#339cff',
+      background: '#f4f4f2',
+      foreground: '#1f1f1f',
+      uiFontFamily: DEFAULT_UI_FONT,
+      codeFontFamily: DEFAULT_CODE_FONT,
+      translucentSidebar: true,
+      contrast: 52,
+      fontSmoothing: true,
+    },
+    dark: {
+      accent: '#339cff',
+      background: '#181818',
+      foreground: '#ffffff',
+      uiFontFamily: DEFAULT_UI_FONT,
+      codeFontFamily: DEFAULT_CODE_FONT,
+      translucentSidebar: true,
+      contrast: 60,
+      fontSmoothing: true,
+    },
+  },
+  watermelon: {
+    label: 'Watermelon',
+    light: {
+      accent: '#ff4f2e',
+      background: '#fff7f3',
+      foreground: '#241714',
+      uiFontFamily: DEFAULT_UI_FONT,
+      codeFontFamily: '"Geist Mono Variable", ' + DEFAULT_CODE_FONT,
+      translucentSidebar: true,
+      contrast: 54,
+      fontSmoothing: true,
+    },
+    dark: {
+      accent: '#ff633d',
+      background: '#161311',
+      foreground: '#fff8f3',
+      uiFontFamily: DEFAULT_UI_FONT,
+      codeFontFamily: '"Geist Mono Variable", ' + DEFAULT_CODE_FONT,
+      translucentSidebar: true,
+      contrast: 64,
+      fontSmoothing: true,
+    },
+  },
+};
+
+const clonePreset = (preset: Exclude<ThemePresetId, 'custom'>): AppearanceSettings => ({
+  activePreset: preset,
+  light: { ...APPEARANCE_PRESETS[preset].light },
+  dark: { ...APPEARANCE_PRESETS[preset].dark },
+});
 
 export const AUTOSAVE_OPTIONS: { label: string; value: AutosaveDelay }[] = [
   { label: 'Immediate', value: 0 },
@@ -116,6 +228,7 @@ interface AISettings {
 
 interface SettingsState {
   general: GeneralSettings;
+  appearance: AppearanceSettings;
   editor: EditorSettings;
   terminal: TerminalSettings;
   files: FilesSettings;
@@ -128,9 +241,10 @@ interface SettingsState {
 const DEFAULT_SETTINGS: SettingsState = {
   general: {
     colorScheme: 'system',
-    editorFontFamily: '"SF Mono", SFMono-Regular, ui-monospace, monospace',
+    editorFontFamily: DEFAULT_CODE_FONT,
     editorFontSize: 13,
   },
+  appearance: clonePreset('solo'),
   editor: {
     tabSize: 2,
     wordWrap: false,
@@ -144,7 +258,7 @@ const DEFAULT_SETTINGS: SettingsState = {
     smoothScrolling: true,
   },
   terminal: {
-    fontFamily: '"SF Mono", SFMono-Regular, ui-monospace, monospace',
+    fontFamily: DEFAULT_CODE_FONT,
     fontSize: 13,
     scrollback: 10000,
     cursorStyle: 'line',
@@ -181,6 +295,9 @@ interface SettingsActions {
   setColorScheme: (scheme: ColorScheme) => void;
   setEditorFontFamily: (family: string) => void;
   setEditorFontSize: (size: number) => void;
+  setThemePalette: (surface: ThemeSurface, patch: Partial<ThemePalette>) => void;
+  setAppearancePreset: (preset: Exclude<ThemePresetId, 'custom'>) => void;
+  resetAppearance: () => void;
 
   // Editor
   setTabSize: (size: TabSize) => void;
@@ -247,6 +364,30 @@ function migrateV1ToV2(persistedState: unknown): SettingsState {
   return newState;
 }
 
+function mergeAppearance(
+  current: AppearanceSettings,
+  persisted?: Partial<AppearanceSettings>,
+): AppearanceSettings {
+  return normalizeAppearanceFonts({
+    activePreset: persisted?.activePreset ?? current.activePreset,
+    light: { ...current.light, ...persisted?.light },
+    dark: { ...current.dark, ...persisted?.dark },
+  });
+}
+
+function normalizeAppearanceFonts(appearance: AppearanceSettings): AppearanceSettings {
+  const oldSystemFont = '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif';
+  const normalizePalette = (palette: ThemePalette): ThemePalette => ({
+    ...palette,
+    uiFontFamily: palette.uiFontFamily === oldSystemFont ? DEFAULT_UI_FONT : palette.uiFontFamily,
+  });
+  return {
+    ...appearance,
+    light: normalizePalette(appearance.light),
+    dark: normalizePalette(appearance.dark),
+  };
+}
+
 // Drop legacy elevenlabs keys on load (safe no-op if absent)
 const raw = localStorage.getItem('solo-settings');
 if (raw) {
@@ -278,6 +419,28 @@ export const useSettingsStore = create<SettingsStore>()(
       setEditorFontSize: (size) =>
         set((s) => {
           s.general.editorFontSize = Math.max(10, Math.min(24, size));
+        }),
+
+      setThemePalette: (surface, patch) =>
+        set((s) => {
+          Object.assign(s.appearance[surface], patch);
+          s.appearance.activePreset = 'custom';
+        }),
+
+      setAppearancePreset: (preset) =>
+        set((s) => {
+          const next = clonePreset(preset);
+          s.appearance.activePreset = next.activePreset;
+          s.appearance.light = next.light;
+          s.appearance.dark = next.dark;
+        }),
+
+      resetAppearance: () =>
+        set((s) => {
+          const next = clonePreset('solo');
+          s.appearance.activePreset = next.activePreset;
+          s.appearance.light = next.light;
+          s.appearance.dark = next.dark;
         }),
 
       // Editor actions
@@ -445,7 +608,7 @@ export const useSettingsStore = create<SettingsStore>()(
     })),
     {
       name: 'solo-settings',
-      version: 3,
+      version: 5,
       storage: createJSONStorage(() => localStorage),
       // Deep-merge at category level so new fields (e.g. ai.toolPermissionPolicy)
       // aren't lost when persisted state predates their addition.
@@ -454,6 +617,10 @@ export const useSettingsStore = create<SettingsStore>()(
         return {
           ...currentState,
           general: { ...(currentState as SettingsStore).general, ...persisted.general },
+          appearance: mergeAppearance(
+            (currentState as SettingsStore).appearance,
+            persisted.appearance,
+          ),
           editor: { ...(currentState as SettingsStore).editor, ...persisted.editor },
           files: { ...(currentState as SettingsStore).files, ...persisted.files },
           shortcuts: persisted.shortcuts ?? (currentState as SettingsStore).shortcuts,
@@ -467,16 +634,45 @@ export const useSettingsStore = create<SettingsStore>()(
           return migrateV1ToV2(persistedState);
         }
         if (version === 2) {
-          // v2 → v3: Add terminal, expanded editor, expanded files settings
+          // v2 → v4: Add terminal, expanded editor/files settings, appearance controls
           const v2 = persistedState as Partial<SettingsState>;
           return {
             ...DEFAULT_SETTINGS,
             general: { ...DEFAULT_SETTINGS.general, ...v2.general },
+            appearance: mergeAppearance(DEFAULT_SETTINGS.appearance, v2.appearance),
             editor: { ...DEFAULT_SETTINGS.editor, ...v2.editor },
             files: { ...DEFAULT_SETTINGS.files, ...v2.files },
             shortcuts: v2.shortcuts ?? DEFAULT_SETTINGS.shortcuts,
             ai: { ...DEFAULT_SETTINGS.ai, ...v2.ai },
             voiceShortcuts: v2.voiceShortcuts ?? DEFAULT_SETTINGS.voiceShortcuts,
+          };
+        }
+        if (version === 3) {
+          const v3 = persistedState as Partial<SettingsState>;
+          return {
+            ...DEFAULT_SETTINGS,
+            general: { ...DEFAULT_SETTINGS.general, ...v3.general },
+            appearance: mergeAppearance(DEFAULT_SETTINGS.appearance, v3.appearance),
+            editor: { ...DEFAULT_SETTINGS.editor, ...v3.editor },
+            files: { ...DEFAULT_SETTINGS.files, ...v3.files },
+            shortcuts: v3.shortcuts ?? DEFAULT_SETTINGS.shortcuts,
+            ai: { ...DEFAULT_SETTINGS.ai, ...v3.ai },
+            terminal: { ...DEFAULT_SETTINGS.terminal, ...v3.terminal },
+            voiceShortcuts: v3.voiceShortcuts ?? DEFAULT_SETTINGS.voiceShortcuts,
+          };
+        }
+        if (version === 4) {
+          const v4 = persistedState as Partial<SettingsState>;
+          return {
+            ...DEFAULT_SETTINGS,
+            general: { ...DEFAULT_SETTINGS.general, ...v4.general },
+            appearance: mergeAppearance(DEFAULT_SETTINGS.appearance, v4.appearance),
+            editor: { ...DEFAULT_SETTINGS.editor, ...v4.editor },
+            files: { ...DEFAULT_SETTINGS.files, ...v4.files },
+            shortcuts: v4.shortcuts ?? DEFAULT_SETTINGS.shortcuts,
+            ai: { ...DEFAULT_SETTINGS.ai, ...v4.ai },
+            terminal: { ...DEFAULT_SETTINGS.terminal, ...v4.terminal },
+            voiceShortcuts: v4.voiceShortcuts ?? DEFAULT_SETTINGS.voiceShortcuts,
           };
         }
         return persistedState as SettingsState;
@@ -487,6 +683,7 @@ export const useSettingsStore = create<SettingsStore>()(
 
 // Convenience selectors
 export const useColorScheme = () => useSettingsStore((s) => s.general.colorScheme);
+export const useAppearanceSettings = () => useSettingsStore((s) => s.appearance);
 export const useEditorFontFamily = () => useSettingsStore((s) => s.general.editorFontFamily);
 export const useEditorFontSize = () => useSettingsStore((s) => s.general.editorFontSize);
 export const useTabSize = () => useSettingsStore((s) => s.editor.tabSize);

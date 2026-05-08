@@ -16,6 +16,7 @@ jobs:
       SOLO_COGNITO_CLIENT_ID: ${{ vars.SOLO_DEV_COGNITO_CLIENT_ID }}
       SOLO_AWS_REGION: ${{ vars.SOLO_DEV_AWS_REGION }}
       SOLO_API_ENDPOINT: ${{ vars.SOLO_DEV_API_ENDPOINT }}
+      SOLO_VAULT_API_ENDPOINT: ${{ vars.SOLO_DEV_VAULT_API_ENDPOINT }}
 
     steps:
       - name: Checkout
@@ -61,6 +62,10 @@ jobs:
           }
           test -n "$SOLO_API_ENDPOINT" || {
             echo "Missing GitHub repository variable: SOLO_DEV_API_ENDPOINT" >&2
+            exit 1
+          }
+          test -n "$SOLO_VAULT_API_ENDPOINT" || {
+            echo "Missing GitHub repository variable: SOLO_DEV_VAULT_API_ENDPOINT" >&2
             exit 1
           }
 

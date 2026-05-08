@@ -216,8 +216,8 @@ export function TabBar({
     <div
       ref={dropRef}
       className={cn(
-        'flex bg-background/20 backdrop-blur-md border-b border-white/[0.04]',
-        'py-1 pl-2 transition-colors duration-150',
+        'flex h-11 shrink-0 bg-background/20 backdrop-blur-md border-b border-white/[0.04]',
+        'px-2 pt-1 pb-1.5 transition-colors duration-150',
         isOver && 'bg-primary/10'
       )}
     >
@@ -239,7 +239,7 @@ export function TabBar({
       {/* Tabs container with horizontal scroll */}
       <div
         ref={scrollContainerRef}
-        className="flex-1 flex items-center gap-0.5 overflow-x-auto tab-scrollbar-none"
+        className="flex-1 min-w-0 flex items-center gap-0.5 overflow-x-auto overflow-y-hidden tab-scrollbar-none"
         role="tablist"
       >
         <LayoutGroup>

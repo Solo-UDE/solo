@@ -12,6 +12,7 @@ import type {
   SessionInitEvent,
   SerializableError,
 } from './session-manager.js';
+import type { VaultAuthConfig } from './vault.js';
 
 
 // ============================================================================
@@ -43,6 +44,7 @@ export interface SendMessageRequest {
   sessionId: string;
   message: string;
   attachments?: AttachmentContentBlock[];
+  vaultAuth?: VaultAuthConfig;
 }
 
 /**

@@ -45,7 +45,7 @@ export const PrimarySidebar = forwardRef<HTMLElement, PrimarySidebarProps>(({ wi
   return (
     <motion.aside
       ref={ref}
-      className={`relative flex h-full flex-col overflow-hidden bg-sidebar ${
+      className={`liquid-sidebar relative flex h-full flex-col overflow-hidden bg-sidebar ${
         isResizing ? '' : 'transition-[width] duration-200 ease-[var(--ease-smooth)]'
       }`}
       style={{ width, paddingTop: HEIGHTS.titlebar }}

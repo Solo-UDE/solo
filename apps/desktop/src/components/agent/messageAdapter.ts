@@ -90,7 +90,7 @@ function convertBlocksToRenderBlocks(
           type: 'thinking',
           content: block.text,
           durationMs: msg.thinkingDurationMs,
-          isStreaming: msg.isStreaming,
+          isStreaming: block.isStreaming,
         });
         break;
       case 'tool_use': {

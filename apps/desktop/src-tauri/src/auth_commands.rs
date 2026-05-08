@@ -26,6 +26,26 @@ fn now_epoch_secs() -> i64 {
         .unwrap_or(0)
 }
 
+#[derive(Debug, Deserialize)]
+struct JwtExpiryClaims {
+    exp: Option<i64>,
+}
+
+fn jwt_expires_within(token: &str, leeway_secs: i64) -> bool {
+    let Some(payload) = token.split('.').nth(1) else {
+        return true;
+    };
+    let Ok(decoded) = URL_SAFE_NO_PAD.decode(payload) else {
+        return true;
+    };
+    let Ok(claims) = serde_json::from_slice::<JwtExpiryClaims>(&decoded) else {
+        return true;
+    };
+    claims
+        .exp
+        .map_or(true, |exp| exp <= now_epoch_secs() + leeway_secs)
+}
+
 // =============================================================================
 // Configuration
 // =============================================================================
@@ -353,11 +373,7 @@ pub struct HttpProbe {
 }
 
 async fn probe_url(client: &reqwest::Client, url: &str) -> HttpProbe {
-    match client
-        .get(url)
-        .send()
-        .await
-    {
+    match client.get(url).send().await {
         Ok(resp) => {
             let status = resp.status().as_u16();
             let location = resp
@@ -834,6 +850,30 @@ pub async fn access_token_snapshot(
     vault_read(auth, VAULT_KEY_ACCESS_TOKEN).await
 }
 
+/// Non-command helper: returns a non-expired ID token, refreshing through
+/// Cognito when the keychain token is absent or near expiry.
+pub async fn fresh_id_token_snapshot(
+    state: &State<'_, AuthState>,
+    auth: &State<'_, ProviderAuthState>,
+) -> Option<String> {
+    let current = vault_read(auth, VAULT_KEY_ID_TOKEN).await;
+    if current
+        .as_deref()
+        .is_some_and(|token| !jwt_expires_within(token, 60))
+    {
+        return current;
+    }
+
+    let refresh_token = vault_read(auth, VAULT_KEY_REFRESH_TOKEN).await?;
+    match refresh_session_internal(state, auth, &refresh_token).await {
+        Ok(_) => vault_read(auth, VAULT_KEY_ID_TOKEN).await,
+        Err(error) => {
+            warn!("fresh_id_token_snapshot: refresh failed: {}", error);
+            None
+        }
+    }
+}
+
 /// Returns the stored ID token (JWT with identity claims) — useful for
 /// offline inspection of the current user without hitting Cognito.
 #[tauri::command]
@@ -845,7 +885,14 @@ pub async fn auth_get_id_token(
 
 #[cfg(test)]
 mod tests {
-    use super::cognito_identity_provider;
+    use super::{cognito_identity_provider, jwt_expires_within, now_epoch_secs, URL_SAFE_NO_PAD};
+    use base64::Engine;
+
+    fn unsigned_jwt_with_exp(exp: i64) -> String {
+        let header = URL_SAFE_NO_PAD.encode(r#"{"alg":"none"}"#);
+        let payload = URL_SAFE_NO_PAD.encode(format!(r#"{{"exp":{exp}}}"#));
+        format!("{header}.{payload}.")
+    }
 
     #[test]
     fn maps_providers() {
@@ -854,5 +901,17 @@ mod tests {
         assert_eq!(cognito_identity_provider("email").unwrap(), None);
         assert_eq!(cognito_identity_provider("").unwrap(), None);
         assert!(cognito_identity_provider("facebook").is_err());
+    }
+
+    #[test]
+    fn detects_expired_or_near_expiry_jwts() {
+        let expired = unsigned_jwt_with_exp(now_epoch_secs() - 1);
+        let near_expiry = unsigned_jwt_with_exp(now_epoch_secs() + 30);
+        let fresh = unsigned_jwt_with_exp(now_epoch_secs() + 300);
+
+        assert!(jwt_expires_within(&expired, 60));
+        assert!(jwt_expires_within(&near_expiry, 60));
+        assert!(!jwt_expires_within(&fresh, 60));
+        assert!(jwt_expires_within("not-a-jwt", 60));
     }
 }

@@ -117,12 +117,7 @@ export const VaultSidebar: FC = () => {
 
       <div className="mx-4 h-px shrink-0 bg-border/60" />
 
-      <div className="flex-1 min-h-0 px-4 py-3">
-        <p className="text-[10px] text-muted-foreground/50 leading-relaxed">
-          Click any section to open it as a workspace tab.
-          The vault is shared across all agent sessions in this project.
-        </p>
-      </div>
+      <div className="flex-1 min-h-0" />
     </div>
   );
 };

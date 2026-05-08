@@ -45,6 +45,13 @@ export function useVaultStream(): void {
           if (existing) {
             store.upsertEntry({ ...existing, cloud_sync_state: evt.payload.state });
           }
+          void vaultGet(evt.payload.entry_id).then((entry) => {
+            if (entry) useVaultStore.getState().upsertEntry(entry);
+          });
+          break;
+        }
+        case 'vault:retrieval_warning': {
+          store.setRetrievalWarning(evt.payload.message);
           break;
         }
         case 'vault:unsorted_count_changed': {

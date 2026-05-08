@@ -19,6 +19,7 @@ import { registerBuiltinPanels, BUILTIN_PANEL_TYPES, DEFAULT_TILES } from "./lib
 import { SettingsView } from "./components/settings";
 import { useAutosave } from "./hooks/useAutosave";
 import { useAppZoom } from "./hooks/useAppZoom";
+import { useAppearanceTheme } from "./hooks/useAppearanceTheme";
 import { useColorScheme } from "./hooks/useColorScheme";
 import { useTitlebarStyle } from "./hooks/usePlatform";
 import { useVoiceStore } from "./stores/voiceStore";
@@ -46,6 +47,7 @@ import { KeyboardShortcutsOverlay } from "./components/KeyboardShortcutsOverlay"
 import { BugReportDialog } from "./components/bug-report/BugReportDialog";
 import { TabSwitcher } from "./components/panels/TabSwitcher";
 import { SkillsOnboardingDialog } from "./components/agent/SkillsOnboardingDialog";
+import { GlobalTitleTooltip } from "./components/shared/GlobalTitleTooltip";
 import { getEffectiveKeybinding, matchesKeybinding } from "./lib/keybindings";
 
 // Shared easing curve matching --ease-smooth
@@ -144,6 +146,7 @@ function AppContent() {
 
   // Apply color scheme to document
   const resolvedTheme = useColorScheme();
+  useAppearanceTheme(resolvedTheme);
 
   // Set vibrancy attribute from React (Rust's window.eval fires before DOM is ready)
   useEffect(() => {
@@ -773,6 +776,7 @@ function AppContent() {
       {bugReportOpen && <BugReportDialog onClose={() => setBugReportOpen(false)} />}
       <TabSwitcher open={tabSwitcherOpen} onClose={() => setTabSwitcherOpen(false)} />
       <SkillsOnboardingDialog />
+      <GlobalTitleTooltip />
       <Toaster richColors position="bottom-right" theme={resolvedTheme} />
     </div>
   );

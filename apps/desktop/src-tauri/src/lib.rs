@@ -33,13 +33,16 @@ mod agent;
 mod agent_commands;
 mod auth_commands;
 mod commands;
+mod cycles_commands;
 mod desktop_config;
 mod embedding_commands;
 mod fs_commands;
 mod git_commands;
+mod labels_commands;
 mod parse_commands;
 mod plan_commands;
 mod plugins_commands;
+mod projects_commands;
 mod provider_commands;
 mod session_commands;
 mod settings_commands;
@@ -49,15 +52,13 @@ mod skills_commands;
 mod skills_marketplace;
 mod skills_origin;
 mod stats_commands;
-mod cycles_commands;
-mod labels_commands;
-mod projects_commands;
 mod task_commands;
 mod task_executor;
 mod task_planner;
 mod terminal_commands;
 mod update_commands;
 mod vault_commands;
+mod vault_sync_commands;
 mod voice;
 mod voice_commands;
 mod worktree_commands;
@@ -69,10 +70,10 @@ use git_commands::GitState;
 use plugins_commands::PluginsState;
 use provider_commands::ProviderAuthState;
 use stats_commands::StatsState;
-use tauri::Emitter;
 use task_commands::TaskState;
 use task_executor::ExecutorMap;
 use task_planner::ProactiveGate;
+use tauri::Emitter;
 use terminal_commands::TerminalState;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use vault_commands::VaultState;
@@ -119,9 +120,14 @@ fn resolve_agent_bridge_path() -> PathBuf {
 
 async fn dispatch_fire(app: &tauri::AppHandle, task_id: String) {
     use tauri::Manager as _;
-    let exec_map = app.state::<Arc<task_executor::ExecutorMap>>().inner().clone();
+    let exec_map = app
+        .state::<Arc<task_executor::ExecutorMap>>()
+        .inner()
+        .clone();
     let session_mgr = app.state::<Arc<agent::SessionManager>>().inner().clone();
-    let Ok(store) = task_commands::get_store_for_setup(app).await else { return };
+    let Ok(store) = task_commands::get_store_for_setup(app).await else {
+        return;
+    };
 
     // Capacity gate: respect MAX_ACTIVE_SESSIONS (3). If at capacity, skip this
     // tick; the task's next_fire already advanced, so this fire is dropped for
@@ -130,9 +136,10 @@ async fn dispatch_fire(app: &tauri::AppHandle, task_id: String) {
     // TODO (v2): proper queueing persists dropped fires until capacity frees.
     // For Phase 4 we accept skipped fires — they appear as missed days in the
     // Runs history which the user can run manually.
-    if let Err(e) = task_executor::spawn_agent_for_task(
-        app, store, exec_map, session_mgr, task_id.clone(),
-    ).await {
+    if let Err(e) =
+        task_executor::spawn_agent_for_task(app, store, exec_map, session_mgr, task_id.clone())
+            .await
+    {
         tracing::warn!(task_id, error = %e, "scheduled fire: dispatch failed");
     }
 }
@@ -145,7 +152,7 @@ pub fn run() {
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "solo_desktop_lib=debug,solo_voice=debug,tauri=info".into()),
+                .unwrap_or_else(|_| "solo_desktop_lib=info,solo_voice=warn,tauri=info".into()),
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
@@ -241,8 +248,16 @@ pub fn run() {
             tauri::async_runtime::block_on(async {
                 if let Ok(store) = task_commands::get_store_for_setup(&handle_for_listeners).await {
                     use tauri::Manager as _;
-                    let map = handle_for_listeners.state::<std::sync::Arc<ExecutorMap>>().inner().clone();
-                    task_executor::install_agent_listeners(&handle_for_listeners, store, map, sm_for_listeners);
+                    let map = handle_for_listeners
+                        .state::<std::sync::Arc<ExecutorMap>>()
+                        .inner()
+                        .clone();
+                    task_executor::install_agent_listeners(
+                        &handle_for_listeners,
+                        store,
+                        map,
+                        sm_for_listeners,
+                    );
                 }
             });
 
@@ -254,7 +269,8 @@ pub fn run() {
                     use tauri::Manager as _;
                     // Wait a moment for stores to initialize
                     tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-                    let Ok(store) = task_commands::get_store_for_setup(&handle_for_scheduler).await else {
+                    let Ok(store) = task_commands::get_store_for_setup(&handle_for_scheduler).await
+                    else {
                         tracing::warn!("task scheduler: store unavailable");
                         return;
                     };
@@ -297,12 +313,17 @@ pub fn run() {
             // if not already present. Idempotent — subsequent launches are a no-op.
             {
                 tauri::async_runtime::spawn(async move {
-                    let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")) else {
+                    let Some(home) =
+                        std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"))
+                    else {
                         return;
                     };
                     let user_skills = std::path::PathBuf::from(home).join(".solo").join("skills");
                     match skills_bundled::extract_bundled_if_missing(&user_skills).await {
-                        Ok(true) => tracing::info!("extracted bundled ui skill to {}", user_skills.display()),
+                        Ok(true) => tracing::info!(
+                            "extracted bundled ui skill to {}",
+                            user_skills.display()
+                        ),
                         Ok(false) => tracing::debug!("bundled ui skill already present"),
                         Err(e) => tracing::warn!("failed to extract bundled skill: {}", e),
                     }
@@ -394,6 +415,7 @@ pub fn run() {
             provider_commands::get_models_for_provider_cmd,
             provider_commands::get_auth_method,
             provider_commands::validate_api_key,
+            provider_commands::verify_provider_model,
             provider_commands::start_oauth_flow,
             provider_commands::complete_oauth_flow,
             provider_commands::wait_for_oauth_callback,
@@ -519,7 +541,9 @@ pub fn run() {
             skills_commands::skills_set_imports,
             skills_aggregate::skills_write_workspace_agents_md,
             skills_marketplace::skills_fetch_registry,
+            skills_marketplace::skills_fetch_registry_page,
             skills_marketplace::skills_search_marketplace,
+            skills_marketplace::skills_fetch_detail,
             skills_marketplace::skills_install,
             skills_marketplace::skills_uninstall,
             skills_marketplace::skills_read_installed,
@@ -597,8 +621,10 @@ pub fn run() {
             update_commands::install_update,
             // Vault commands
             vault_commands::vault_drop_paths,
+            vault_commands::vault_add_text,
             vault_commands::vault_list,
             vault_commands::vault_get,
+            vault_commands::vault_sync_entry,
             vault_commands::vault_update_tags,
             vault_commands::vault_set_pinned,
             vault_commands::vault_move_scope,

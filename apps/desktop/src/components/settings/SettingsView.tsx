@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useUIStore, type SettingsTabId } from '../../stores/uiStore';
 import { SettingsSidebar } from './SettingsSidebar';
 import { AccountTab } from './tabs/AccountTab';
+import { AppearanceTab } from './tabs/AppearanceTab';
 import { GeneralTab } from './tabs/GeneralTab';
 import { EditorTab } from './tabs/EditorTab';
 import { TerminalTab } from './tabs/TerminalTab';
@@ -15,13 +16,14 @@ import { PluginsTab } from './tabs/PluginsTab';
 import { JourneyPage } from './journey/JourneyPage';
 import { LeaderboardPage } from './leaderboard/LeaderboardPage';
 
-const TAB_ORDER: SettingsTabId[] = ['journey', 'leaderboard', 'account', 'general', 'editor', 'terminal', 'files', 'shortcuts', 'ai', 'voice', 'skills', 'plugins'];
+const TAB_ORDER: SettingsTabId[] = ['journey', 'leaderboard', 'account', 'general', 'appearance', 'editor', 'terminal', 'files', 'shortcuts', 'ai', 'voice', 'skills', 'plugins'];
 
 const TAB_LABELS: Record<SettingsTabId, string> = {
   journey: 'Your Journey',
   leaderboard: 'Leaderboard',
   account: 'Account',
   general: 'General',
+  appearance: 'Appearance',
   editor: 'Editor',
   terminal: 'Terminal',
   files: 'Files',
@@ -36,7 +38,8 @@ const TAB_DESCRIPTIONS: Record<SettingsTabId, string> = {
   journey: 'Your tier, stats, and progress through Solo.',
   leaderboard: 'Top climbers across Solo, filterable by tier.',
   account: 'See which Solo account is signed in and which GitHub account is connected.',
-  general: 'Global desktop behavior, appearance, and app defaults.',
+  general: 'Global desktop behavior and app defaults.',
+  appearance: 'Theme, glass, colors, and app typography.',
   editor: 'Code editing preferences and panel ergonomics.',
   terminal: 'Terminal session behavior and shell integration.',
   files: 'Project scanning, file explorer, and workspace file rules.',
@@ -63,6 +66,8 @@ export function SettingsView() {
         return <AccountTab />;
       case 'general':
         return <GeneralTab />;
+      case 'appearance':
+        return <AppearanceTab />;
       case 'editor':
         return <EditorTab />;
       case 'terminal':
@@ -128,7 +133,7 @@ export function SettingsView() {
       transition={{ duration: 0.2 }}
       tabIndex={-1}
     >
-      <div className="hidden w-[272px] shrink-0 overflow-hidden rounded-[14px] border border-border/70 bg-sidebar/88 backdrop-blur-xl md:block">
+      <div className="liquid-sidebar hidden w-[272px] shrink-0 overflow-hidden rounded-[14px] border border-border/70 bg-sidebar/88 backdrop-blur-xl md:block">
         <SettingsSidebar />
       </div>
 
@@ -136,10 +141,7 @@ export function SettingsView() {
         <div className="h-full overflow-y-auto">
           <div className="mx-auto max-w-3xl px-7 py-7 lg:px-9 lg:py-8">
             <div className="mb-7">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground/65">
-                Settings
-              </p>
-              <h1 className="mt-2 text-[32px] font-semibold tracking-tight text-foreground">
+              <h1 className="text-[32px] font-semibold tracking-tight text-foreground">
                 {TAB_LABELS[settingsTab]}
               </h1>
               <p className="mt-2 text-sm leading-7 text-muted-foreground">

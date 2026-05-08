@@ -298,12 +298,14 @@ pub async fn skills_write_skill(req: SkillWriteRequest) -> Result<String, String
         .ok_or_else(|| "skill name must be non-empty and contain only [A-Za-z0-9_-]".to_string())?;
 
     let base_dir = match req.scope {
-        SkillSource::User => solo_user_skills_dir()
-            .ok_or_else(|| "could not resolve home directory".to_string())?,
+        SkillSource::User => {
+            solo_user_skills_dir().ok_or_else(|| "could not resolve home directory".to_string())?
+        }
         SkillSource::Project => {
-            let cwd = req.cwd.clone().ok_or_else(|| {
-                "cwd is required for project-scoped skill writes".to_string()
-            })?;
+            let cwd = req
+                .cwd
+                .clone()
+                .ok_or_else(|| "cwd is required for project-scoped skill writes".to_string())?;
             PathBuf::from(cwd).join(".solo").join("skills")
         }
         other => {
@@ -365,9 +367,12 @@ pub async fn skills_onboarding_apply(
     let workspace = PathBuf::from(&cwd);
     let mut imported: u32 = 0;
 
-    if matches!(mode, OnboardingImportMode::Copy | OnboardingImportMode::Symlink) {
-        let target = solo_user_skills_dir()
-            .ok_or_else(|| "could not resolve home directory".to_string())?;
+    if matches!(
+        mode,
+        OnboardingImportMode::Copy | OnboardingImportMode::Symlink
+    ) {
+        let target =
+            solo_user_skills_dir().ok_or_else(|| "could not resolve home directory".to_string())?;
         fs::create_dir_all(&target)
             .await
             .map_err(|e| format!("create_dir_all {}: {}", target.display(), e))?;
@@ -521,10 +526,7 @@ mod tests {
         assert!(sanitize_skill_name("../evil").is_none());
         assert!(sanitize_skill_name("a b").is_none());
         assert!(sanitize_skill_name("").is_none());
-        assert_eq!(
-            sanitize_skill_name("my-skill_1"),
-            Some("my-skill_1".into())
-        );
+        assert_eq!(sanitize_skill_name("my-skill_1"), Some("my-skill_1".into()));
     }
 
     #[test]

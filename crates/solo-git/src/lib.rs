@@ -104,9 +104,7 @@ impl WorktreeManager {
 
         // Canonicalize once — git2 already resolved symlinks, but this
         // ensures macOS /tmp → /private/tmp is handled consistently
-        let actual_repo_path = actual_repo_path
-            .canonicalize()
-            .unwrap_or(actual_repo_path);
+        let actual_repo_path = actual_repo_path.canonicalize().unwrap_or(actual_repo_path);
 
         let worktrees_dir = config::worktrees_base_dir(&actual_repo_path)?;
         let config_path = worktrees_dir.join("worktrees.json");
@@ -1125,36 +1123,57 @@ mod tests {
 
     // -- E. Prune tests --
 
+    fn insert_missing_worktree_metadata(
+        mgr: &WorktreeManager,
+        id: &str,
+        branch: &str,
+        is_locked: bool,
+    ) {
+        let mut config = WorktreeConfig::load(&mgr.config_path).unwrap();
+        config.insert(WorktreeMetadata {
+            id: id.to_string(),
+            branch: branch.to_string(),
+            path: mgr
+                .worktrees_dir
+                .join(format!("{id}-missing"))
+                .display()
+                .to_string(),
+            created_at: 1,
+            agent_session_id: None,
+            is_locked,
+            lock_reason: is_locked.then(|| "in use".to_string()),
+        });
+        config.save(&mgr.config_path).unwrap();
+    }
+
     #[test]
     fn test_prune_missing_directory() {
         let (_dir, repo_path) = setup_test_repo();
         let mgr = WorktreeManager::new(&repo_path).unwrap();
-        let info = create_test_worktree(&mgr, "feature-prune");
 
-        // Manually nuke the worktree directory
-        std::fs::remove_dir_all(&info.path).unwrap();
+        insert_missing_worktree_metadata(&mgr, "feature-prune-missing", "feature-prune", false);
 
         let pruned = mgr.prune_stale().unwrap();
-        assert!(pruned.contains(&info.id));
+        assert!(pruned.contains(&"feature-prune-missing".to_string()));
 
         // Config should no longer reference this worktree
-        assert!(mgr.worktree_path(&info.id).is_none());
+        assert!(mgr.worktree_path("feature-prune-missing").is_none());
     }
 
     #[test]
     fn test_prune_skips_locked() {
         let (_dir, repo_path) = setup_test_repo();
         let mgr = WorktreeManager::new(&repo_path).unwrap();
-        let info = create_test_worktree(&mgr, "feature-prune-lock");
-
-        mgr.lock(&info.id, Some("in use")).unwrap();
-
-        // Manually nuke the directory
-        std::fs::remove_dir_all(&info.path).unwrap();
+        insert_missing_worktree_metadata(
+            &mgr,
+            "feature-prune-lock-missing",
+            "feature-prune-lock",
+            true,
+        );
 
         let pruned = mgr.prune_stale().unwrap();
         assert!(
-            !pruned.contains(&info.id),
+            !pruned.contains(&"feature-prune-lock-missing".to_string()),
             "locked worktree should not be pruned"
         );
     }
@@ -1320,10 +1339,7 @@ mod tests {
 
     #[test]
     fn test_sanitize_preserves_underscore_and_dot() {
-        assert_eq!(
-            sanitize_worktree_id("feat_name.v2"),
-            "feat_name.v2"
-        );
+        assert_eq!(sanitize_worktree_id("feat_name.v2"), "feat_name.v2");
     }
 
     // -- I. Slash branch integration test --
@@ -1341,8 +1357,16 @@ mod tests {
         };
 
         let info = mgr.create(&req).unwrap();
-        assert!(!info.id.contains('/'), "ID must not contain slash: {}", info.id);
-        assert!(info.id.starts_with("feat-slash-test-"), "ID should start with sanitized branch: {}", info.id);
+        assert!(
+            !info.id.contains('/'),
+            "ID must not contain slash: {}",
+            info.id
+        );
+        assert!(
+            info.id.starts_with("feat-slash-test-"),
+            "ID should start with sanitized branch: {}",
+            info.id
+        );
         assert_eq!(info.branch, Some("feat/slash-test".to_string()));
         assert!(Path::new(&info.path).exists());
 

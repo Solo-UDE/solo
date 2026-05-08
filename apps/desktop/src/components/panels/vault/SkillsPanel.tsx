@@ -9,6 +9,7 @@ export function SkillsPanel(_props: PanelProps) {
       icon={Sparkles}
       title="Skills"
       description="Curate agent capabilities available to this project. Install from the marketplace, tweak installed skills locally, or manage forks."
+      wide
     >
       <SkillsSection />
     </VaultPanelShell>

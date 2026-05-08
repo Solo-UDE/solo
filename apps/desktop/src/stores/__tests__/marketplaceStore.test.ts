@@ -7,14 +7,30 @@ const mockFetchRegistry = mock(async () => ({
   version: 1,
   generated_at: '2026-04-18T00:00:00Z',
   skills: [] as RegistryEntry[],
+  total_skills: 0,
+  has_more: false,
+  next_page: null,
+  view: 'all-time',
+}));
+const mockFetchRegistryPage = mock(async () => ({
+  version: 1,
+  generated_at: '2026-04-18T00:00:00Z',
+  skills: [] as RegistryEntry[],
+  total_skills: 0,
+  has_more: false,
+  next_page: null,
+  view: 'all-time',
 }));
 const mockSearchMarketplace = mock(async () => []);
+const mockFetchSkillDetail = mock(async () => null);
 const mockInstallSkill = mock(async () => undefined);
 const mockUninstallSkill = mock(async () => undefined);
 
 mock.module('@/lib/tauri/marketplace', () => ({
   fetchRegistry: mockFetchRegistry,
+  fetchRegistryPage: mockFetchRegistryPage,
   searchMarketplace: mockSearchMarketplace,
+  fetchSkillDetail: mockFetchSkillDetail,
   installSkill: mockInstallSkill,
   uninstallSkill: mockUninstallSkill,
   writeInstalledSkill: mock(async () => undefined),
@@ -26,7 +42,10 @@ const { useMarketplaceStore } = await import('@/stores/marketplaceStore');
 function entry(id: string, overrides: Partial<RegistryEntry> = {}): RegistryEntry {
   return {
     id,
+    skill_id: id,
     name: id,
+    source: 'tester/skills',
+    source_type: 'github',
     version: '1.0.0',
     description: `${id} description`,
     categories: [],
@@ -36,6 +55,11 @@ function entry(id: string, overrides: Partial<RegistryEntry> = {}): RegistryEntr
     sha256: '0'.repeat(64),
     tags: [],
     updated_at: '2026-04-18',
+    install_url: 'https://github.com/tester/skills',
+    url: `https://skills.sh/tester/skills/${id}`,
+    installs: 0,
+    is_official: false,
+    is_duplicate: false,
     ...overrides,
   };
 }
@@ -43,7 +67,10 @@ function entry(id: string, overrides: Partial<RegistryEntry> = {}): RegistryEntr
 function resetStore(): void {
   useMarketplaceStore.setState({
     registry: null,
+    nextPage: null,
+    hasMore: false,
     loading: false,
+    loadingMore: false,
     error: null,
     suggestions: [],
     dismissedIds: new Set<string>(),

@@ -113,7 +113,9 @@ mod tests {
     async fn creates_file_when_missing() {
         let tmp = tempfile::tempdir().unwrap();
         let skills = vec![sample("ui", "Build UIs.")];
-        write_workspace_agents_md(tmp.path(), &skills).await.unwrap();
+        write_workspace_agents_md(tmp.path(), &skills)
+            .await
+            .unwrap();
         let content = std::fs::read_to_string(tmp.path().join("AGENTS.md")).unwrap();
         assert!(content.contains(BEGIN_FENCE));
         assert!(content.contains("**ui** — Build UIs."));
@@ -128,7 +130,9 @@ mod tests {
         )
         .unwrap();
         let skills = vec![sample("ui", "Build UIs.")];
-        write_workspace_agents_md(tmp.path(), &skills).await.unwrap();
+        write_workspace_agents_md(tmp.path(), &skills)
+            .await
+            .unwrap();
         let content = std::fs::read_to_string(tmp.path().join("AGENTS.md")).unwrap();
         assert!(content.contains("Some custom notes."));
         assert!(content.contains(BEGIN_FENCE));
@@ -143,7 +147,9 @@ mod tests {
         )
         .unwrap();
         let skills = vec![sample("ui", "Build UIs.")];
-        write_workspace_agents_md(tmp.path(), &skills).await.unwrap();
+        write_workspace_agents_md(tmp.path(), &skills)
+            .await
+            .unwrap();
         let content = std::fs::read_to_string(tmp.path().join("AGENTS.md")).unwrap();
         assert!(!content.contains("OLD CONTENT"));
         assert!(content.contains("**ui** — Build UIs."));
@@ -154,9 +160,13 @@ mod tests {
     async fn idempotent_across_runs() {
         let tmp = tempfile::tempdir().unwrap();
         let skills = vec![sample("ui", "Build UIs."), sample("poetry", "Rhymes.")];
-        write_workspace_agents_md(tmp.path(), &skills).await.unwrap();
+        write_workspace_agents_md(tmp.path(), &skills)
+            .await
+            .unwrap();
         let first = std::fs::read_to_string(tmp.path().join("AGENTS.md")).unwrap();
-        write_workspace_agents_md(tmp.path(), &skills).await.unwrap();
+        write_workspace_agents_md(tmp.path(), &skills)
+            .await
+            .unwrap();
         let second = std::fs::read_to_string(tmp.path().join("AGENTS.md")).unwrap();
         assert_eq!(first, second, "regenerating must be idempotent");
     }

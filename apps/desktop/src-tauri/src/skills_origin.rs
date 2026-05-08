@@ -44,7 +44,11 @@ pub async fn mark_modified(skill_dir: &Path) -> std::io::Result<()> {
 
 /// Convenience: build a `registry`-source meta for a fresh install.
 #[allow(dead_code)] // Wired by Phase 3 (skills_install command).
-pub fn registry_meta(id: &str, version: &str, upstream_sha256: Option<String>) -> InstalledSkillMeta {
+pub fn registry_meta(
+    id: &str,
+    version: &str,
+    upstream_sha256: Option<String>,
+) -> InstalledSkillMeta {
     InstalledSkillMeta {
         source: OriginSource::Registry,
         id: id.to_string(),

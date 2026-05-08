@@ -15,6 +15,7 @@ export type SettingsTabId =
   | 'leaderboard'
   | 'account'
   | 'general'
+  | 'appearance'
   | 'editor'
   | 'terminal'
   | 'files'

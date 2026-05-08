@@ -52,6 +52,8 @@ export interface ChatInputContainerHandle {
   abortWithRecall: () => void;
   /** Focus the editor. */
   focus: () => void;
+  /** Insert plain text at the end of the composer. */
+  insertText: (text: string) => void;
 }
 
 export interface ChatInputContainerProps {
@@ -207,6 +209,16 @@ function ChatInputContainerInner(
     editorRef.current?.focus();
   }, [handleRecallQueue, onAbort]);
 
+  const insertTextIntoEditor = useCallback((text: string): void => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    const hasContent = content.trim().length > 0;
+    const insertion = hasContent ? `\n\n${trimmed}` : trimmed;
+    editorRef.current?.focus();
+    editorRef.current?.insertText(insertion);
+    setContent((prev) => (prev.trim().length > 0 ? `${prev}\n\n${trimmed}` : trimmed));
+  }, [content]);
+
   const handleAgentCommand = (commandText: string): void => {
     onSubmit(commandText, messageMode, selectedModel || DEFAULT_MODEL_ID);
   };
@@ -248,6 +260,9 @@ function ChatInputContainerInner(
     },
     focus: () => {
       editorRef.current?.focus();
+    },
+    insertText: (text: string) => {
+      insertTextIntoEditor(text);
     },
   }));
 

@@ -2,7 +2,7 @@
  * Provider abstraction for the agent bridge.
  *
  * Anthropic wraps the existing OrbitAgent / @anthropic-ai/claude-agent-sdk.
- * OpenAI and Gemini implement chat-only sessions. The shape is deliberately
+ * OpenAI and Gemini implement provider sessions. The shape is deliberately
  * close to what @anthropic-ai/claude-agent-sdk emits so the existing
  * StreamManager + stdout event wiring doesn't need to change.
  */
@@ -16,10 +16,11 @@ import type { AttachmentContentBlock } from '../messages.js';
  * (session-manager.ts, stdout emitter) expects.
  */
 export type ProviderEvent =
+  | { type: 'session_init'; sdkSessionId: string; isResumed: boolean; isForked: boolean }
   | { type: 'text_delta'; text: string }
   | { type: 'thinking_delta'; text: string }
   | { type: 'tool_call'; id: string; name: string; input: Record<string, unknown> }
-  | { type: 'tool_result'; toolCallId: string; output: string }
+  | { type: 'tool_result'; toolCallId: string; output: string; isError?: boolean }
   | {
       type: 'usage';
       inputTokens: number;
@@ -34,7 +35,7 @@ export type ProviderEvent =
  *
  * When absent (e.g. legacy callers), the Anthropic adapter falls back to
  * resolving credentials itself via `ClaudeCredentials.getCredentials()`.
- * Chat-only provider adapters require credentials in this shape.
+ * Non-Anthropic provider adapters require credentials in this shape.
  */
 export type SessionCredentials =
   | { kind: 'oauth'; token: string; accountId?: string }
@@ -64,4 +65,7 @@ export interface ProviderSession {
 
   /** Dispose resources. Idempotent. */
   close(): Promise<void>;
+
+  /** Update the model used for later turns when the provider supports it. */
+  setModel?(model: string): Promise<void>;
 }

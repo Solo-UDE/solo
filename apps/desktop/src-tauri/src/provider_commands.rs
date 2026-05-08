@@ -4,6 +4,7 @@
 //! They are separate from the agent bridge commands.
 
 use solo_auth::{
+    credentials::CredentialSource,
     models::{get_all_models, get_models_for_provider},
     oauth::{
         start_callback_server, start_callback_server_on, AnthropicOAuthConfig, AuthMethodInfo,
@@ -15,6 +16,7 @@ use solo_protocol::ClaudeSetupStatus;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Instant;
 use tauri::State;
 use tokio::sync::RwLock;
 use tracing::{debug, info};
@@ -123,6 +125,49 @@ pub struct ModelInfoResponse {
     pub description: String,
     pub context_window: u32,
     pub max_output_tokens: u32,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderModelDiagnosticResponse {
+    pub provider: ProviderType,
+    pub model: String,
+    pub ok: bool,
+    pub authenticated: bool,
+    pub credential_source: Option<String>,
+    pub status: String,
+    pub message: String,
+    pub latency_ms: Option<u64>,
+    pub error: Option<String>,
+}
+
+fn truncate_response_body(body: &str) -> String {
+    const MAX_LEN: usize = 360;
+    let trimmed = body.trim();
+    if trimmed.len() <= MAX_LEN {
+        trimmed.to_string()
+    } else {
+        format!("{}...", &trimmed[..MAX_LEN])
+    }
+}
+
+fn resolve_model_for_provider(provider: ProviderType, model: String) -> Result<String, String> {
+    let models = get_models_for_provider(provider);
+    if model.trim().is_empty() {
+        return models
+            .iter()
+            .find(|m| m.is_default)
+            .or_else(|| models.first())
+            .map(|m| m.id.clone())
+            .ok_or_else(|| format!("No models configured for {}", provider.as_str()));
+    }
+
+    let needle = model.trim().to_ascii_lowercase();
+    models
+        .iter()
+        .find(|m| m.id.to_ascii_lowercase() == needle || m.alias.to_ascii_lowercase() == needle)
+        .map(|m| m.id.clone())
+        .ok_or_else(|| format!("{} is not a configured {} model", model, provider.as_str()))
 }
 
 // =============================================================================
@@ -343,6 +388,206 @@ pub async fn validate_api_key(provider: String, api_key: String) -> Result<(), S
     solo_auth::CredentialManager::validate_api_key_http(provider_type, &api_key)
         .await
         .map_err(|e| e.to_string())
+}
+
+/// Verify that a provider is authenticated and can reach a selected model.
+#[tauri::command]
+pub async fn verify_provider_model(
+    provider: String,
+    model: String,
+    state: State<'_, ProviderAuthState>,
+) -> Result<ProviderModelDiagnosticResponse, String> {
+    info!(provider = %provider, model = %model, "Verifying provider model");
+
+    let provider_type = ProviderType::from_str(&provider)
+        .ok_or_else(|| format!("Unknown provider: {}", provider))?;
+    let model_id = resolve_model_for_provider(provider_type, model)?;
+
+    // External sign-in tools can change credentials while Solo is open.
+    state.credentials.clear_cache().await;
+
+    let started = Instant::now();
+    let credential_info = match state
+        .credentials
+        .get_credentials_with_source(provider_type)
+        .await
+        .map_err(|e| e.to_string())?
+    {
+        Some(info) => info,
+        None => {
+            return Ok(ProviderModelDiagnosticResponse {
+                provider: provider_type,
+                model: model_id,
+                ok: false,
+                authenticated: false,
+                credential_source: None,
+                status: "error".to_string(),
+                message: format!(
+                    "No credentials configured for {}",
+                    provider_type.display_name()
+                ),
+                latency_ms: None,
+                error: None,
+            });
+        }
+    };
+
+    let source = credential_info.source;
+    let source_label = Some(source.to_string());
+
+    if provider_type == ProviderType::Anthropic
+        && matches!(
+            source,
+            CredentialSource::ClaudeOAuth | CredentialSource::ClaudeOAuthFile
+        )
+    {
+        let cli_path = find_claude_cli();
+        return Ok(ProviderModelDiagnosticResponse {
+            provider: provider_type,
+            model: model_id.clone(),
+            ok: cli_path.is_some(),
+            authenticated: true,
+            credential_source: source_label,
+            status: if cli_path.is_some() { "ok" } else { "error" }.to_string(),
+            message: if let Some(path) = cli_path {
+                format!(
+                    "{} is available through Claude Code CLI at {}",
+                    model_id,
+                    path.to_string_lossy()
+                )
+            } else {
+                "Claude Code credentials were found, but the Claude CLI is not installed"
+                    .to_string()
+            },
+            latency_ms: Some(started.elapsed().as_millis() as u64),
+            error: None,
+        });
+    }
+
+    if provider_type == ProviderType::Gemini {
+        return Ok(ProviderModelDiagnosticResponse {
+            provider: provider_type,
+            model: model_id,
+            ok: false,
+            authenticated: true,
+            credential_source: source_label,
+            status: "warning".to_string(),
+            message: "Gemini model diagnostics are not implemented yet".to_string(),
+            latency_ms: Some(started.elapsed().as_millis() as u64),
+            error: None,
+        });
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(20))
+        .build()
+        .map_err(|e| format!("HTTP client: {}", e))?;
+
+    let request = match provider_type {
+        ProviderType::OpenAI => {
+            let uses_chatgpt_backend = matches!(
+                source,
+                CredentialSource::SoloOAuth | CredentialSource::CodexOAuthFile
+            );
+            let url = if uses_chatgpt_backend {
+                "https://chatgpt.com/backend-api/codex/responses"
+            } else {
+                "https://api.openai.com/v1/responses"
+            };
+            let body = if uses_chatgpt_backend {
+                serde_json::json!({
+                    "model": model_id.clone(),
+                    "instructions": "You are Solo. Reply directly and concisely.",
+                    "input": [{
+                        "role": "user",
+                        "content": [{ "type": "input_text", "text": "Reply with ok." }],
+                    }],
+                    "stream": true,
+                    "store": false,
+                    "tools": [],
+                })
+            } else {
+                serde_json::json!({
+                    "model": model_id.clone(),
+                    "input": "Reply with ok.",
+                    "max_output_tokens": 8,
+                    "tools": [],
+                })
+            };
+            let mut req = client
+                .post(url)
+                .bearer_auth(&credential_info.api_key)
+                .header("content-type", "application/json")
+                .json(&body);
+
+            if uses_chatgpt_backend {
+                if let Some(account_id) = state
+                    .credentials
+                    .get_openai_account_id()
+                    .await
+                    .map_err(|e| e.to_string())?
+                {
+                    req = req.header("ChatGPT-Account-Id", account_id);
+                }
+            }
+
+            req
+        }
+        ProviderType::Anthropic => {
+            let mut req = client
+                .post("https://api.anthropic.com/v1/messages")
+                .header("anthropic-version", "2023-06-01")
+                .header("content-type", "application/json")
+                .json(&serde_json::json!({
+                    "model": model_id.clone(),
+                    "max_tokens": 8,
+                    "messages": [{ "role": "user", "content": "Reply with ok." }],
+                }));
+
+            if source == CredentialSource::SoloOAuth {
+                req = req
+                    .bearer_auth(&credential_info.api_key)
+                    .header("anthropic-beta", "oauth-2025-04-20");
+            } else {
+                req = req.header("x-api-key", &credential_info.api_key);
+            }
+
+            req
+        }
+        ProviderType::Gemini => unreachable!(),
+    };
+
+    let resp = request
+        .send()
+        .await
+        .map_err(|e| format!("Network error while checking {}: {}", model_id, e))?;
+
+    let status_code = resp.status();
+    let latency_ms = started.elapsed().as_millis() as u64;
+    let ok = status_code.is_success();
+    let body = if ok {
+        String::new()
+    } else {
+        truncate_response_body(&resp.text().await.unwrap_or_default())
+    };
+
+    Ok(ProviderModelDiagnosticResponse {
+        provider: provider_type,
+        model: model_id.clone(),
+        ok,
+        authenticated: ok || !matches!(status_code.as_u16(), 401 | 403),
+        credential_source: source_label,
+        status: if ok { "ok" } else { "error" }.to_string(),
+        message: if ok {
+            format!("{} responded successfully", model_id)
+        } else if matches!(status_code.as_u16(), 401 | 403) {
+            format!("Authentication failed for {}", provider_type.display_name())
+        } else {
+            format!("{} returned HTTP {}", model_id, status_code.as_u16())
+        },
+        latency_ms: Some(latency_ms),
+        error: (!ok).then_some(body).filter(|value| !value.is_empty()),
+    })
 }
 
 // =============================================================================
