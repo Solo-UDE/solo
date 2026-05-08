@@ -82,16 +82,14 @@ pub async fn session_write_file(session_id: String, content: String) -> Result<(
         .await
         .map_err(|e| format!("Failed to write temp session file: {e}"))?;
 
-    fs::rename(&tmp, &target)
-        .await
-        .map_err(|e| {
-            // Clean up temp file on rename failure
-            let tmp_clone = tmp.clone();
-            tokio::spawn(async move {
-                let _ = fs::remove_file(&tmp_clone).await;
-            });
-            format!("Failed to rename session file: {e}")
-        })?;
+    fs::rename(&tmp, &target).await.map_err(|e| {
+        // Clean up temp file on rename failure
+        let tmp_clone = tmp.clone();
+        tokio::spawn(async move {
+            let _ = fs::remove_file(&tmp_clone).await;
+        });
+        format!("Failed to rename session file: {e}")
+    })?;
 
     debug!("Wrote session file: {session_id}");
     Ok(())
