@@ -3,7 +3,13 @@
  */
 
 import { query, createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk';
-import { vaultSearchTool, fetchVaultContext, loadEmbeddingsCache } from './vault.js';
+import {
+  createVaultAddTool,
+  createVaultSearchTool,
+  fetchVaultContext,
+  loadEmbeddingsCache,
+  type VaultAuthConfig,
+} from './vault.js';
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -190,6 +196,8 @@ export interface OrbitAgentConfig {
   toolPolicy?: ToolPolicyConfig;
   /** Initial permission mode requested by the caller. */
   permissionMode?: 'default' | 'plan' | 'accept' | 'debug';
+  /** Cloud vault endpoint/token for hybrid retrieval. Contains an ID token only. */
+  vaultAuth?: VaultAuthConfig;
   /**
    * Structured output format - when set, the agent will return validated JSON
    * matching the provided JSON Schema in the result message's structured_output field.
@@ -318,6 +326,7 @@ export class OrbitAgent {
   private _maxTokens?: number;
   private _allowedTools?: string[];
   private _sessionMode: OrbitSessionMode;
+  private _vaultAuth?: VaultAuthConfig;
 
   // Session resume/fork fields
   private _resumeSessionId?: string;
@@ -364,6 +373,7 @@ export class OrbitAgent {
     this._debugMode = config.debugEnabled ?? (config.permissionMode === 'debug');
     this._critiqueMode = config.critiqueEnabled ?? false;
     this._sessionMode = config.sessionMode ?? 'agent';
+    this._vaultAuth = config.vaultAuth;
     this._resumeSessionId = config.resumeSessionId;
     this._forkSession = config.forkSession ?? false;
     if (config.model !== undefined) {
@@ -585,7 +595,14 @@ data, screenshots, notes). It functions as your durable memory across sessions.
   indexed ("the schema I added", "my notes on X", "did I put Y in the
   vault?"), call the \`mcp__vault__vault_search\` tool with keywords from
   their message. Prefer this over re-asking the user or grepping the
-  filesystem for vault content.
+  filesystem for vault content. Default to \`source="hybrid"\` and
+  \`mode="hybrid"\`; use \`source="local"\` when the user wants to keep
+  retrieval local. Cloud retrieval sends the query to the cloud and requires
+  sign-in.
+- **Memory writes**: when the user asks you to remember something, save a
+  note, or add content to the vault, call \`mcp__vault__vault_add\`. Save
+  locally by default. Use \`sync_to_cloud=true\` only when the user explicitly
+  asks for cloud sync or cloud-backed retrieval of that saved memory.
 - **Pinned entries** appear with a \`[pinned]\` badge. They are
   user-designated sources of truth — treat them as higher priority than
   other retrieved chunks.
@@ -1076,7 +1093,10 @@ Do NOT overwhelm the user with a full checklist every time — pick the most imp
     const vaultMcp = createSdkMcpServer({
       name: 'vault',
       version: '0.1.0',
-      tools: [vaultSearchTool],
+      tools: [
+        createVaultSearchTool(() => this._vaultAuth, () => this.cwd),
+        createVaultAddTool(() => this._vaultAuth, () => this.cwd),
+      ],
     });
     const skillsMcp = createSkillsMcpServer(this.cwd, this._selectedSkills);
     const mergedMcp = { ...this._mcpServers, vault: vaultMcp, solo_skills: skillsMcp };
@@ -1201,13 +1221,24 @@ Do NOT overwhelm the user with a full checklist every time — pick the most imp
     return this.sessionActive && this.messageQueue !== null;
   }
 
-  queueMessage(message: string, attachments?: AttachmentContentBlock[]): void {
+  updateVaultAuth(vaultAuth?: VaultAuthConfig): void {
+    this._vaultAuth = vaultAuth;
+  }
+
+  async queueMessage(
+    message: string,
+    attachments?: AttachmentContentBlock[],
+    vaultAuth?: VaultAuthConfig,
+  ): Promise<void> {
     /**
      * Add a message to the streaming session queue.
      * The message will be processed by the ongoing query session.
      */
     if (!this.sessionActive || !this.messageQueue) {
       throw new Error('Session not started. Call startSession() first.');
+    }
+    if (vaultAuth !== undefined) {
+      this.updateVaultAuth(vaultAuth);
     }
 
     // Log comprehensive SDK settings for each message
@@ -1241,7 +1272,13 @@ Do NOT overwhelm the user with a full checklist every time — pick the most imp
     // choose to call the vault_search tool.
     let finalMessage = message;
     try {
-      const ctx = fetchVaultContext(message, { projectId: this.cwd, maxChunks: 5 });
+      const ctx = await fetchVaultContext(message, {
+        projectId: this.cwd,
+        maxChunks: 5,
+        mode: 'hybrid',
+        source: this._vaultAuth?.retrievalSource ?? 'hybrid',
+        vaultAuth: this._vaultAuth,
+      });
       if (ctx) {
         finalMessage = `${ctx}\n\n${message}`;
         logger.info(
