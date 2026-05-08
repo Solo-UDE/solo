@@ -216,7 +216,11 @@ impl AgentBridge {
                     // Log raw JSON from bridge for debugging (pretty-printed)
                     if tracing::enabled!(tracing::Level::DEBUG) {
                         if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&line) {
-                            tracing::debug!("[bridge:raw]\n{}", serde_json::to_string_pretty(&parsed).unwrap_or_else(|_| line.clone()));
+                            tracing::debug!(
+                                "[bridge:raw]\n{}",
+                                serde_json::to_string_pretty(&parsed)
+                                    .unwrap_or_else(|_| line.clone())
+                            );
                         } else {
                             tracing::debug!("[bridge:raw] {}", line);
                         }
@@ -248,16 +252,16 @@ impl AgentBridge {
                                 tracing::debug!("Response channel closed, exiting reader thread");
                                 break;
                             }
-                        },
+                        }
                         Err(e) => {
                             tracing::error!("Failed to parse response: {e}\nLine: {line}");
-                        },
+                        }
                     }
-                },
+                }
                 Err(e) => {
                     tracing::error!("Failed to read line: {e}");
                     break;
-                },
+                }
             }
         }
 
@@ -295,13 +299,13 @@ impl AgentBridge {
                         return Ok(());
                     }
                     // Ignore other events during startup
-                },
+                }
                 Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
                     return Err(BridgeError::Timeout);
-                },
+                }
                 Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
                     return Err(BridgeError::SidecarCrashed);
-                },
+                }
             }
         }
     }
@@ -339,14 +343,14 @@ impl AgentBridge {
                         return Ok(cmd.clone());
                     }
                     // Skip events, continue waiting for command response
-                },
+                }
                 Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
                     return Err(BridgeError::Timeout);
-                },
+                }
                 Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
                     // Channel disconnected = reader thread exited = sidecar crashed
                     return Err(BridgeError::SidecarCrashed);
-                },
+                }
             }
         }
     }
