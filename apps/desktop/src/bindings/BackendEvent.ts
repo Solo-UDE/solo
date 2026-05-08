@@ -17,55 +17,55 @@ import type { WorktreeInfo } from "./WorktreeInfo";
  * (agent:message, agent:permission_request, etc.) from the agent bridge,
  * not through BackendEvent.
  */
-export type BackendEvent = { "type": "terminal:data", "payload": { id: string, data: string, } } | { "type": "terminal:exit", "payload": { id: string, code: number | null, } } | { "type": "file:changed", "payload": { path: string, } } | { "type": "file:created", "payload": { path: string, } } | { "type": "file:deleted", "payload": { path: string, } } | { "type": "file:renamed", "payload": { old_path: string, new_path: string, } } | { "type": "parse:complete", "payload": { path: string, symbol_count: number, } } | { "type": "git:progress", "payload": { operation: string, message: string, } } | { "type": "git:changes_updated", "payload": Record<string, never> } | { "type": "worktree:progress", "payload": { worktree_id: string, message: string, } } | { "type": "worktree:ready", "payload": { worktree_id: string, info: WorktreeInfo, } } | { "type": "worktree:error", "payload": { worktree_id: string, error: string, } } | { "type": "worktree:removed", "payload": { worktree_id: string, } } | { "type": "worktree:setup_progress", "payload": { worktree_id: string, command: string, output: string, is_error: boolean, is_complete: boolean, } } | { "type": "update:available", "payload": { version: string, body: string | null, date: string | null, } } | { "type": "update:progress", "payload": { chunk_length: number, content_length: bigint | null, } } | { "type": "update:ready", "payload": Record<string, never> } | { "type": "update:error", "payload": { error: string, } } | { "type": "vault:entry_added", "payload": { entry_id: string, } } | { "type": "vault:entry_updated", "payload": { entry_id: string, } } | { "type": "vault:entry_deleted", "payload": { entry_id: string, } } | { "type": "vault:index_progress", "payload": { entry_id: string, 
+export type BackendEvent = { "type": "terminal:data", "payload": { id: string, data: string, } } | { "type": "terminal:exit", "payload": { id: string, code: number | null, } } | { "type": "file:changed", "payload": { path: string, } } | { "type": "file:created", "payload": { path: string, } } | { "type": "file:deleted", "payload": { path: string, } } | { "type": "file:renamed", "payload": { old_path: string, new_path: string, } } | { "type": "parse:complete", "payload": { path: string, symbol_count: number, } } | { "type": "git:progress", "payload": { operation: string, message: string, } } | { "type": "git:changes_updated", "payload": Record<string, never> } | { "type": "worktree:progress", "payload": { worktree_id: string, message: string, } } | { "type": "worktree:ready", "payload": { worktree_id: string, info: WorktreeInfo, } } | { "type": "worktree:error", "payload": { worktree_id: string, error: string, } } | { "type": "worktree:removed", "payload": { worktree_id: string, } } | { "type": "worktree:setup_progress", "payload": { worktree_id: string, command: string, output: string, is_error: boolean, is_complete: boolean, } } | { "type": "update:available", "payload": { version: string, body: string | null, date: string | null, } } | { "type": "update:progress", "payload": { chunk_length: number, content_length: bigint | null, } } | { "type": "update:ready", "payload": Record<string, never> } | { "type": "update:error", "payload": { error: string, } } | { "type": "vault:entry_added", "payload": { entry_id: string, } } | { "type": "vault:entry_updated", "payload": { entry_id: string, } } | { "type": "vault:entry_deleted", "payload": { entry_id: string, } } | { "type": "vault:index_progress", "payload": { entry_id: string,
 /**
  * One of: validate, extract, chunk, embed, store, notify
  */
-stage: string, 
+stage: string,
 /**
  * [0, 100]
  */
-pct: number, } } | { "type": "vault:cloud_sync_updated", "payload": { entry_id: string, state: CloudSyncState, } } | { "type": "vault:unsorted_count_changed", "payload": { count: number, } } | { "type": "vault:backfill_progress", "payload": { 
+pct: number, } } | { "type": "vault:cloud_sync_updated", "payload": { entry_id: string, state: CloudSyncState, } } | { "type": "vault:retrieval_warning", "payload": { message: string, } } | { "type": "vault:unsorted_count_changed", "payload": { count: number, } } | { "type": "vault:backfill_progress", "payload": {
 /**
  * Total chunks pending embedding at start of this backfill run.
  */
-total: bigint, 
+total: bigint,
 /**
  * Chunks successfully embedded so far (cumulative across batches).
  */
-completed: bigint, 
+completed: bigint,
 /**
  * Chunks that failed (dim mismatch, corrupt BLOB, provider error).
  */
-failed: bigint, 
+failed: bigint,
 /**
  * Wall-clock milliseconds elapsed since backfill started.
  */
-elapsed_ms: bigint, 
+elapsed_ms: bigint,
 /**
  * `true` on the last event for this run; `false` for ticks.
  */
-done: boolean, } } | { "type": "vault:reextract_progress", "payload": { 
+done: boolean, } } | { "type": "vault:reextract_progress", "payload": {
 /**
  * Total legacy entries pending at start of this run.
  */
-total: bigint, 
+total: bigint,
 /**
  * Entries attempted so far.
  */
-completed: bigint, 
+completed: bigint,
 /**
  * Entries that produced at least one chunk.
  */
-recovered: bigint, 
+recovered: bigint,
 /**
  * Entries that still produced no searchable text.
  */
-failed: bigint, 
+failed: bigint,
 /**
  * Wall-clock milliseconds elapsed since re-extract started.
  */
-elapsed_ms: bigint, 
+elapsed_ms: bigint,
 /**
  * `true` on the last event for this run; `false` for ticks.
  */
