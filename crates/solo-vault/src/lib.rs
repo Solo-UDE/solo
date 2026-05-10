@@ -233,6 +233,8 @@ impl Vault {
         paths: &[String],
         scope: VaultScope,
         memory_type: MemoryType,
+        label_ids: Vec<String>,
+        expires_at: Option<u64>,
     ) -> Vec<Result<VaultEntry>> {
         let blobs = self.blobs_dir();
         let provider = self.current_provider();
@@ -245,6 +247,8 @@ impl Vault {
                 &self.store,
                 scope.clone(),
                 memory_type,
+                label_ids.clone(),
+                expires_at,
                 provider.clone(),
                 extractor.clone(),
             )
@@ -260,6 +264,8 @@ impl Vault {
         title: Option<String>,
         scope: VaultScope,
         memory_type: MemoryType,
+        label_ids: Vec<String>,
+        expires_at: Option<u64>,
     ) -> Result<VaultEntry> {
         let content = text.trim();
         if content.is_empty() {
@@ -284,6 +290,8 @@ impl Vault {
             memory_type,
             pinned: false,
             tags: vec!["chat".to_string()],
+            label_ids,
+            expires_at,
             mime: Some("text/plain".to_string()),
             size_bytes: Some(content.len() as u64),
             index_status: IndexStatus::Indexed,
@@ -355,6 +363,20 @@ impl Vault {
         self.store.update_tags(id, tags, unix_now())
     }
 
+    pub fn update_labels_and_expiry(
+        &self,
+        id: &str,
+        label_ids: &[String],
+        expires_at: Option<u64>,
+    ) -> Result<Option<VaultEntry>> {
+        self.store
+            .update_labels_and_expiry(id, label_ids, expires_at, unix_now())
+    }
+
+    pub fn prune_label_id(&self, label_id: &str) -> Result<Vec<String>> {
+        self.store.prune_label_id(label_id, unix_now())
+    }
+
     pub fn set_pinned(&self, id: &str, pinned: bool) -> Result<Option<VaultEntry>> {
         self.store.set_pinned(id, pinned, unix_now())
     }
@@ -385,6 +407,7 @@ impl Vault {
         query: &str,
         scope: &VaultScope,
         top_k: usize,
+        include_expired: bool,
     ) -> Result<Vec<VaultSearchResult>> {
         let start = Instant::now();
         info!(
@@ -394,7 +417,9 @@ impl Vault {
             top_k,
             "vault.search.query"
         );
-        let hits = self.store.fts_search(query, scope, top_k)?;
+        let hits = self
+            .store
+            .fts_search(query, scope, top_k, include_expired)?;
         let now = unix_now();
         for (_, entry, _) in &hits {
             let _ = self.store.bump_retrieval(&entry.id, now);
@@ -428,6 +453,7 @@ impl Vault {
         query: &str,
         scope: &VaultScope,
         top_k: usize,
+        include_expired: bool,
     ) -> Result<Vec<VaultSearchResult>> {
         let start = Instant::now();
         info!(
@@ -445,7 +471,7 @@ impl Vault {
                     "vault.search.fallback (semantic → fts, add an OpenAI key to enable)"
                 );
             }
-            return self.fts_search(query, scope, top_k);
+            return self.fts_search(query, scope, top_k, include_expired);
         };
 
         let embed_start = Instant::now();
@@ -456,7 +482,7 @@ impl Vault {
                     err = %e,
                     "vault.search.embed_query_failed (falling back to fts)"
                 );
-                return self.fts_search(query, scope, top_k);
+                return self.fts_search(query, scope, top_k, include_expired);
             }
         };
         info!(
@@ -467,7 +493,7 @@ impl Vault {
 
         let hits = self
             .store
-            .semantic_search(&query_emb.values, scope, top_k)?;
+            .semantic_search(&query_emb.values, scope, top_k, include_expired)?;
         let now = unix_now();
         for (_, entry, _) in &hits {
             let _ = self.store.bump_retrieval(&entry.id, now);
