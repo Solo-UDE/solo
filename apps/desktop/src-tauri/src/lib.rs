@@ -33,6 +33,7 @@ mod agent;
 mod agent_commands;
 mod auth_commands;
 mod commands;
+mod connectors_commands;
 mod cycles_commands;
 mod desktop_config;
 mod embedding_commands;
@@ -429,6 +430,14 @@ pub fn run() {
             provider_commands::start_claude_login,
             provider_commands::install_claude_cli,
             provider_commands::verify_claude_setup,
+            // Connector commands
+            connectors_commands::connectors_list_accounts,
+            connectors_commands::connectors_store_token,
+            connectors_commands::connectors_delete_token,
+            connectors_commands::connectors_start_oauth,
+            connectors_commands::connectors_wait_for_oauth_callback,
+            connectors_commands::connectors_complete_oauth,
+            connectors_commands::connectors_list_plugin_requirements,
             // Parse commands
             parse_commands::parse_file,
             parse_commands::parse_content,
@@ -628,6 +637,7 @@ pub fn run() {
             vault_commands::vault_get,
             vault_commands::vault_sync_entry,
             vault_commands::vault_update_tags,
+            vault_commands::vault_update_labels_and_expiry,
             vault_commands::vault_set_pinned,
             vault_commands::vault_move_scope,
             vault_commands::vault_move_bucket,
