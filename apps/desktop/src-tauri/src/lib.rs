@@ -442,6 +442,7 @@ pub fn run() {
             embedding_commands::embedding_get_stats,
             // Auth commands
             auth_commands::auth_start_oauth,
+            auth_commands::auth_open_external_url,
             auth_commands::auth_start_magic_link,
             auth_commands::auth_exchange_code,
             auth_commands::auth_get_session,
@@ -484,6 +485,7 @@ pub fn run() {
             git_commands::git_stash_list,
             git_commands::github_start_auth,
             git_commands::github_complete_auth,
+            git_commands::github_start_link,
             git_commands::github_get_token,
             git_commands::github_disconnect,
             git_commands::github_start_device_auth,
