@@ -4,6 +4,7 @@ import { useState } from 'react';
 
 import type { FC } from 'react';
 
+import { VirtualList } from '@/components/ui/virtual-list';
 import { DiffStat } from './diff-stat';
 
 interface EditToolWidgetProps {
@@ -31,6 +32,13 @@ export const EditToolWidget: FC<EditToolWidgetProps> = ({
   const displayOldLines = isExpanded ? oldLines : oldLines.slice(0, maxCollapsedLines);
   const displayNewLines = isExpanded ? newLines : newLines.slice(0, maxCollapsedLines);
   const hasMore = oldLines.length > maxCollapsedLines || newLines.length > maxCollapsedLines;
+  const displayRows = [
+    ...displayOldLines.map((line, index) => ({ kind: 'old' as const, line, index })),
+    ...(displayOldLines.length > 0 && displayNewLines.length > 0
+      ? [{ kind: 'separator' as const, line: '', index: -1 }]
+      : []),
+    ...displayNewLines.map((line, index) => ({ kind: 'new' as const, line, index })),
+  ];
 
   return (
     <div className="my-2 tool-widget-frame">
@@ -66,30 +74,32 @@ export const EditToolWidget: FC<EditToolWidgetProps> = ({
         className={`border-t tool-widget-divider overflow-hidden ${isExpanded ? 'max-h-[500px]' : 'max-h-[250px]'}`}
         style={{ transition: 'max-height 250ms cubic-bezier(0.25, 1, 0.5, 1)' }}
       >
-        <div className="overflow-auto">
-          {/* Deleted lines (old) */}
-          {displayOldLines.map((line, index) => (
-            <div key={`old-${String(index)}`} className="flex font-mono text-xs leading-5 bg-destructive/10">
-              <div className="w-1 bg-destructive shrink-0" />
-              <div className="w-6 px-1 text-center text-destructive/70 select-none shrink-0">-</div>
-              <div className="flex-1 px-3 text-foreground/70 whitespace-pre overflow-x-auto">{line || ' '}</div>
-            </div>
-          ))}
-
-          {/* Separator */}
-          {displayOldLines.length > 0 && displayNewLines.length > 0 ? (
-            <div className="h-px" style={{ background: 'var(--border-tool)' }} />
-          ) : null}
-
-          {/* Added lines (new) */}
-          {displayNewLines.map((line, index) => (
-            <div key={`new-${String(index)}`} className="flex font-mono text-xs leading-5 bg-success/10">
-              <div className="w-1 bg-success shrink-0" />
-              <div className="w-6 px-1 text-center text-success/70 select-none shrink-0">+</div>
-              <div className="flex-1 px-3 text-foreground whitespace-pre overflow-x-auto">{line || ' '}</div>
-            </div>
-          ))}
-        </div>
+        <VirtualList
+          items={displayRows}
+          estimateSize={() => 20}
+          overscan={16}
+          measureElement={false}
+          className={isExpanded ? 'max-h-[500px]' : 'max-h-[250px]'}
+          getItemKey={(row) => `${row.kind}:${row.index}`}
+          testId="legacy-edit-tool-lines"
+          renderItem={(row) => {
+            if (row.kind === 'separator') {
+              return <div className="h-px" style={{ background: 'var(--border-tool)' }} />;
+            }
+            const isDelete = row.kind === 'old';
+            return (
+              <div className={`flex font-mono text-xs leading-5 ${isDelete ? 'bg-destructive/10' : 'bg-success/10'}`}>
+                <div className={`w-1 shrink-0 ${isDelete ? 'bg-destructive' : 'bg-success'}`} />
+                <div className={`w-6 px-1 text-center select-none shrink-0 ${isDelete ? 'text-destructive/70' : 'text-success/70'}`}>
+                  {isDelete ? '-' : '+'}
+                </div>
+                <div className={`flex-1 px-3 whitespace-pre overflow-x-auto ${isDelete ? 'text-foreground/70' : 'text-foreground'}`}>
+                  {row.line || ' '}
+                </div>
+              </div>
+            );
+          }}
+        />
 
         {/* Expand bar */}
         {hasMore && !isExpanded ? (
