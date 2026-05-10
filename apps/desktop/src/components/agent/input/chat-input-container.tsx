@@ -1,6 +1,6 @@
 import React, { useRef, useState, useCallback, useEffect, useMemo, useImperativeHandle, forwardRef, lazy, Suspense } from 'react';
 import { StopIcon } from '@radix-ui/react-icons';
-import { Paintbrush } from 'lucide-react';
+import { MessageSquare, Paintbrush, X } from 'lucide-react';
 
 import { ContextMenu } from './context-menu';
 import { ContextTracker } from './context-tracker';
@@ -44,6 +44,114 @@ const LazySketchPopoverContent = lazy(() =>
   import('./sketch/SketchPopoverContent').then((m) => ({ default: m.SketchPopoverContent })),
 );
 
+interface SelectionPill {
+  id: string;
+  text: string;
+  title: string;
+  preview: string;
+}
+
+const SELECTION_PREVIEW_LIMIT = 64;
+
+function selectionPreview(text: string): string {
+  const compact = text.trim().replace(/\s+/g, ' ');
+  if (compact.length <= SELECTION_PREVIEW_LIMIT) return compact;
+  return `${compact.slice(0, SELECTION_PREVIEW_LIMIT - 1).trimEnd()}…`;
+}
+
+function createSelectionPill(text: string): SelectionPill | null {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  const id = typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `selection-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return {
+    id,
+    text: trimmed,
+    title: '1 selection',
+    preview: selectionPreview(trimmed),
+  };
+}
+
+function selectionPart(selection: SelectionPill): UserContentPart {
+  return {
+    type: 'selection',
+    text: selection.text,
+    title: selection.title,
+    preview: selection.preview,
+  };
+}
+
+function isSelectionPart(part: UserContentPart): part is Extract<UserContentPart, { type: 'selection' }> {
+  return part.type === 'selection';
+}
+
+function selectionContext(selections: SelectionPill[]): string {
+  return selections
+    .map((selection, index) => `<chat-selection index="${index + 1}">\n${selection.text}\n</chat-selection>`)
+    .join('\n\n');
+}
+
+function buildSubmittedContent(content: string, selections: SelectionPill[]): string {
+  const blocks = [
+    selections.length > 0 ? selectionContext(selections) : '',
+    content.trim(),
+  ].filter(Boolean);
+  return blocks.join('\n\n');
+}
+
+function buildSubmittedParts(selections: SelectionPill[], editorParts: UserContentPart[]): UserContentPart[] {
+  const parts = selections.map(selectionPart);
+  if (parts.length > 0 && editorParts.length > 0) {
+    parts.push({ type: 'text', text: '\n\n' });
+  }
+  parts.push(...editorParts);
+  return parts;
+}
+
+function SelectionPillBar({
+  selections,
+  onRemove,
+}: {
+  selections: SelectionPill[];
+  onRemove: (id: string) => void;
+}) {
+  if (selections.length === 0) return null;
+
+  return (
+    <div className="flex flex-wrap gap-2 px-1 pb-1.5 pt-1">
+      {selections.map((selection) => (
+        <div
+          key={selection.id}
+          className="group flex min-w-0 max-w-[280px] items-center gap-2 rounded-[10px] border border-border/75 bg-background/72 py-2 pl-2 pr-1.5 shadow-[0_10px_24px_-22px_rgba(0,0,0,0.55)]"
+          title={selection.text}
+        >
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] bg-foreground text-background">
+            <MessageSquare className="h-4 w-4" aria-hidden="true" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-medium leading-4 text-foreground">
+              {selection.title}
+            </span>
+            <span className="mt-0.5 block truncate text-xs leading-4 text-muted-foreground">
+              {selection.preview}
+            </span>
+          </span>
+          <button
+            type="button"
+            onClick={() => onRemove(selection.id)}
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-[background-color,color,transform] duration-150 hover:bg-muted hover:text-foreground active:scale-[0.96]"
+            aria-label="Remove selection"
+            title="Remove selection"
+          >
+            <X className="h-3.5 w-3.5" aria-hidden="true" />
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /** Imperative API for the panel to invoke composer actions when focus is elsewhere (feed, buttons, etc.). */
 export interface ChatInputContainerHandle {
   /** Send or enqueue whatever is in the composer right now. No-op if empty. */
@@ -54,6 +162,8 @@ export interface ChatInputContainerHandle {
   focus: () => void;
   /** Insert plain text at the end of the composer. */
   insertText: (text: string) => void;
+  /** Attach selected chat text as a compact pill above the editor. */
+  addSelection: (text: string) => void;
 }
 
 export interface ChatInputContainerProps {
@@ -61,7 +171,7 @@ export interface ChatInputContainerProps {
   /** Called instead of `onSubmit` when `isAgentRunning` is true — message should be queued, not sent. */
   onEnqueue?: (content: string, mode: 'planning' | 'fast', model: string, attachments?: Attachment[], mentions?: FileMention[], skills?: string[], parts?: UserContentPart[]) => void;
   /** Pops all queued messages back into the composer for editing. Returns `null` if the queue is empty. */
-  onRecallQueue?: () => { text: string; mentions?: FileMention[]; skills?: string[] } | null;
+  onRecallQueue?: () => { text: string; mentions?: FileMention[]; skills?: string[]; parts?: UserContentPart[] } | null;
   onLocalCommand?: (commandId: string) => void;
   onAbort?: () => void;
   isAgentRunning?: boolean;
@@ -97,6 +207,7 @@ function ChatInputContainerInner(
   forwardedRef: React.ForwardedRef<ChatInputContainerHandle>,
 ) {
   const [content, setContent] = useState('');
+  const [selectionPills, setSelectionPills] = useState<SelectionPill[]>([]);
   // Derive initial mode from bridge state so remounted components get the right mode
   const [mode, setMode] = useState<Mode>(() => {
     if (planModeActive) return 'plan';
@@ -139,28 +250,30 @@ function ChatInputContainerInner(
   const messageMode = mode === 'plan' ? 'planning' : 'fast';
 
   const handleSubmit = (): void => {
-    const hasContent = content.trim() || attachments.length > 0 || skillNames.length > 0;
+    const hasContent = content.trim() || attachments.length > 0 || skillNames.length > 0 || selectionPills.length > 0;
     if (!hasContent) return;
 
     const model = selectedModel || DEFAULT_MODEL_ID;
+    const submittedContent = buildSubmittedContent(content, selectionPills);
     const attachmentsArg = attachments.length > 0 ? [...attachments] : undefined;
     const mentionsArg = mentions.length > 0 ? [...mentions] : undefined;
     const skillsArg = skillNames.length > 0 ? [...skillNames] : undefined;
     // Ordered parts snapshot the exact interleaving of text and chips so the
     // rendered bubble can preserve chip-in-the-middle order.
-    const orderedParts = editorRef.current?.getOrderedParts() ?? [];
+    const orderedParts = buildSubmittedParts(selectionPills, editorRef.current?.getOrderedParts() ?? []);
     const partsArg = orderedParts.length > 0 ? orderedParts : undefined;
 
     if (isAgentRunning) {
       // Agent is busy — queue the message instead of sending. If the parent
       // didn't wire `onEnqueue`, fall back to the legacy block (no-op).
       if (!onEnqueue) return;
-      onEnqueue(content, messageMode, model, attachmentsArg, mentionsArg, skillsArg, partsArg);
+      onEnqueue(submittedContent, messageMode, model, attachmentsArg, mentionsArg, skillsArg, partsArg);
     } else {
-      onSubmit(content, messageMode, model, attachmentsArg, mentionsArg, skillsArg, partsArg);
+      onSubmit(submittedContent, messageMode, model, attachmentsArg, mentionsArg, skillsArg, partsArg);
     }
 
     setContent('');
+    setSelectionPills([]);
     setMentions([]);
     setSkillNames([]);
     clearAttachments();
@@ -171,9 +284,30 @@ function ChatInputContainerInner(
     if (!onRecallQueue) return false;
     const recalled = onRecallQueue();
     if (!recalled) return false;
+    const recalledParts = recalled.parts ?? [];
+    const recalledSelections = recalledParts
+      .filter(isSelectionPart)
+      .map((part) => ({
+        id: typeof crypto !== 'undefined' && 'randomUUID' in crypto
+          ? crypto.randomUUID()
+          : `selection-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        text: part.text,
+        title: part.title ?? '1 selection',
+        preview: part.preview ?? selectionPreview(part.text),
+      }));
+    if (recalledSelections.length > 0) {
+      setSelectionPills((prev) => [...recalledSelections, ...prev]);
+    }
+
+    const recalledTextFromParts = recalledParts
+      .filter((part): part is Extract<UserContentPart, { type: 'text' }> => part.type === 'text')
+      .map((part) => part.text)
+      .join('')
+      .trim();
+    const recalledText = recalledParts.length > 0 ? recalledTextFromParts : recalled.text;
     // Merge recalled text with whatever the user has already typed (current
     // content goes at the end so the cursor lands past everything).
-    const merged = [recalled.text, content].filter((s) => s.length > 0).join('\n\n');
+    const merged = [recalledText, content].filter((s) => s.length > 0).join('\n\n');
     editorRef.current?.setText(merged);
     setContent(merged);
     if (recalled.mentions && recalled.mentions.length > 0) {
@@ -264,6 +398,12 @@ function ChatInputContainerInner(
     insertText: (text: string) => {
       insertTextIntoEditor(text);
     },
+    addSelection: (text: string) => {
+      const selection = createSelectionPill(text);
+      if (!selection) return;
+      setSelectionPills((prev) => [...prev, selection]);
+      editorRef.current?.focus();
+    },
   }));
 
   const handleModeChange = (newMode: Mode) => {
@@ -296,8 +436,13 @@ function ChatInputContainerInner(
     setShowVoiceSuggestion(false);
   }, []);
 
+  const handleRemoveSelection = useCallback((id: string) => {
+    setSelectionPills((prev) => prev.filter((selection) => selection.id !== id));
+  }, []);
+
   // Only show the selector when there are linked worktrees (more than just main)
   const showWorktreeSelector = onWorktreeChange && worktrees.length > 1;
+  const canSubmit = Boolean(content.trim() || attachments.length > 0 || skillNames.length > 0 || selectionPills.length > 0);
 
   // Drive marketplace suggestions from the composer text (debounced inside hook).
   useSkillSuggestions(content);
@@ -315,6 +460,7 @@ function ChatInputContainerInner(
 
           <DropZoneOverlay>
             <div className="px-2.5 pt-1.5">
+              <SelectionPillBar selections={selectionPills} onRemove={handleRemoveSelection} />
               <LexicalEditor
                 ref={editorRef}
                 onChange={setContent}
@@ -439,7 +585,7 @@ function ChatInputContainerInner(
                 ) : (
                   <SubmitButton
                     onClick={handleSubmit}
-                    disabled={!content.trim()}
+                    disabled={!canSubmit}
                     className="shrink-0"
                   />
                 )}
