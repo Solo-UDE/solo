@@ -16,6 +16,7 @@ import { createTerminal, killTerminal } from '@/lib/tauri/terminal';
 import { useInlineRename } from '@/hooks/useInlineRename';
 import { TERMINAL_SECTION } from '@/lib/constants';
 import { cn } from '@/lib/utils';
+import { VirtualList } from '@/components/ui/virtual-list';
 
 export const SidebarTerminal: FC = () => {
   const terminals = useTerminalStore((s) => s.terminals);
@@ -105,53 +106,61 @@ export const SidebarTerminal: FC = () => {
           {(scrollState === 'right' || scrollState === 'both') && (
             <div className="absolute right-0 top-0 bottom-0 w-4 bg-gradient-to-l from-sidebar to-transparent z-10 pointer-events-none" />
           )}
-          <div
-            ref={tabsContainerRef}
-            className="flex items-center gap-0.5 overflow-x-auto scrollbar-none"
+          <VirtualList
+            items={terminalList}
+            horizontal
+            estimateSize={() => 132}
+            overscan={6}
+            className="h-full overflow-x-auto overflow-y-hidden scrollbar-none"
+            itemClassName="h-full"
+            getItemKey={(t) => t.id}
+            testId="sidebar-terminal-tabs"
+            scrollToIndex={terminalList.findIndex((t) => t.id === activeTerminalId)}
+            scrollElementRef={(node) => {
+              tabsContainerRef.current = node;
+            }}
             onScroll={updateScrollState}
-          >
-          {terminalList.map((t) => (
-            <div
-              key={t.id}
-              role="tab"
-              tabIndex={0}
-              aria-selected={t.id === activeTerminalId}
-              onClick={() => setActiveTerminal(t.id)}
-              onMouseDown={(e) => { if (e.button === 1) { e.preventDefault(); handleCloseTab(t.id); } }}
-              onDoubleClick={() => rename.startRename(t.id, t.title)}
-              className={cn(
-                'group relative flex items-center gap-1 px-3 py-2 text-[11px] max-w-40 shrink-0 cursor-pointer',
-                'transition-colors duration-150 ease-[cubic-bezier(0.4,0,0.2,1)]',
-                !t.isAlive && 'opacity-60',
-                t.id === activeTerminalId
-                  ? 'text-foreground'
-                  : 'text-muted-foreground hover:text-foreground',
-              )}
-            >
-              <Terminal className={cn('w-3 h-3 shrink-0', !t.isAlive && 'opacity-50')} />
-              {rename.renamingId === t.id ? (
-                <input
-                  {...rename.getInputProps()}
-                  type="text"
-                  className="w-full min-w-[60px] bg-muted/50 outline-none ring-1 ring-primary/40 rounded-[4px] text-[11px] text-foreground px-1.5 py-0.5 -my-0.5 selection:bg-primary/20"
-                />
-              ) : (
-                <span className="truncate">{t.title}</span>
-              )}
-              <button
-                aria-label={`Close ${t.title}`}
-                onClick={(e) => { e.stopPropagation(); handleCloseTab(t.id); }}
-                className="ml-auto shrink-0 p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-muted-foreground/20 transition-opacity duration-100 focus:opacity-100 focus:outline-none focus:ring-1 focus:ring-primary/50"
+            renderItem={(t) => (
+              <div
+                role="tab"
+                tabIndex={0}
+                aria-selected={t.id === activeTerminalId}
+                onClick={() => setActiveTerminal(t.id)}
+                onMouseDown={(e) => { if (e.button === 1) { e.preventDefault(); handleCloseTab(t.id); } }}
+                onDoubleClick={() => rename.startRename(t.id, t.title)}
+                className={cn(
+                  'group relative flex h-full max-w-40 cursor-pointer items-center gap-1 px-3 py-2 text-[11px]',
+                  'transition-colors duration-150 ease-[cubic-bezier(0.4,0,0.2,1)]',
+                  !t.isAlive && 'opacity-60',
+                  t.id === activeTerminalId
+                    ? 'text-foreground'
+                    : 'text-muted-foreground hover:text-foreground',
+                )}
               >
-                <Cross2Icon className="w-3 h-3" />
-              </button>
-              {/* Accent bar under active tab */}
-              {t.id === activeTerminalId && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full bg-primary" />
-              )}
-            </div>
-          ))}
-          </div>
+                <Terminal className={cn('w-3 h-3 shrink-0', !t.isAlive && 'opacity-50')} />
+                {rename.renamingId === t.id ? (
+                  <input
+                    {...rename.getInputProps()}
+                    type="text"
+                    className="w-full min-w-[60px] bg-muted/50 outline-none ring-1 ring-primary/40 rounded-[4px] text-[11px] text-foreground px-1.5 py-0.5 -my-0.5 selection:bg-primary/20"
+                  />
+                ) : (
+                  <span className="truncate">{t.title}</span>
+                )}
+                <button
+                  aria-label={`Close ${t.title}`}
+                  onClick={(e) => { e.stopPropagation(); handleCloseTab(t.id); }}
+                  className="ml-auto shrink-0 p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-muted-foreground/20 transition-opacity duration-100 focus:opacity-100 focus:outline-none focus:ring-1 focus:ring-primary/50"
+                >
+                  <Cross2Icon className="w-3 h-3" />
+                </button>
+                {/* Accent bar under active tab */}
+                {t.id === activeTerminalId && (
+                  <div className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full bg-primary" />
+                )}
+              </div>
+            )}
+          />
         </div>
 
         {/* Actions */}
