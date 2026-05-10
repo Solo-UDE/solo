@@ -67,6 +67,10 @@ interface VaultChunkRow {
   rank: number;
 }
 
+interface VaultEntryColumnsRow {
+  name: string;
+}
+
 export interface VaultHit {
   chunkId?: string;
   entryId: string;
@@ -96,9 +100,10 @@ function openDb(): Database | null {
     return null;
   }
   try {
-    // Rust side already configured WAL mode on the database file; opening
-    // read-only here inherits that setting.
-    return new Database(VAULT_DB, { readonly: true });
+    const db = new Database(VAULT_DB);
+    db.run('PRAGMA busy_timeout = 5000');
+    ensureVaultMetadataColumns(db);
+    return db;
   } catch (err) {
     logger.warn({ err: String(err), path: VAULT_DB }, 'vault: open failed');
     return null;
@@ -112,11 +117,33 @@ function openWritableDb(): Database | null {
   try {
     const db = new Database(VAULT_DB);
     db.run('PRAGMA busy_timeout = 5000');
+    ensureVaultMetadataColumns(db);
     return db;
   } catch (err) {
     logger.warn({ err: String(err), path: VAULT_DB }, 'vault: writable open failed');
     return null;
   }
+}
+
+function ensureVaultMetadataColumns(db: Database): void {
+  try {
+    const columns = new Set(
+      (db.query('PRAGMA table_info(entries)').all() as VaultEntryColumnsRow[]).map((row) => row.name),
+    );
+    if (!columns.has('label_ids')) {
+      db.run("ALTER TABLE entries ADD COLUMN label_ids TEXT NOT NULL DEFAULT '[]'");
+    }
+    if (!columns.has('expires_at')) {
+      db.run('ALTER TABLE entries ADD COLUMN expires_at INTEGER');
+    }
+    db.run('CREATE INDEX IF NOT EXISTS idx_entries_expires ON entries(expires_at)');
+  } catch (err) {
+    logger.warn({ err: String(err) }, 'vault: metadata migration failed');
+  }
+}
+
+function defaultExpiry(): number {
+  return unixNow() + 7 * 24 * 60 * 60;
 }
 
 /**
@@ -128,9 +155,9 @@ function openWritableDb(): Database | null {
  */
 export function searchVault(
   query: string,
-  opts: { projectId?: string; topK?: number } = {},
+  opts: { projectId?: string; topK?: number; includeExpired?: boolean } = {},
 ): VaultHit[] {
-  const { projectId, topK = 6 } = opts;
+  const { projectId, topK = 6, includeExpired = false } = opts;
   const db = openDb();
   if (!db) return [];
 
@@ -160,11 +187,14 @@ export function searchVault(
       WHERE chunks_fts MATCH ?
         AND (e.scope_type = 'global'
              OR (e.scope_type = 'project' AND e.scope_project_id = ?))
+        AND (? = 1 OR e.expires_at IS NULL OR e.expires_at > ?)
       ORDER BY rank
       LIMIT ?
     `);
 
-    const rows = stmt.all(ftsQuery, projectId ?? null, topK) as VaultChunkRow[];
+    const includeFlag = includeExpired ? 1 : 0;
+    const now = unixNow();
+    const rows = stmt.all(ftsQuery, projectId ?? null, includeFlag, now, topK) as VaultChunkRow[];
 
     db.close();
     return rows.map((r) => ({
@@ -216,10 +246,11 @@ export function pinnedEntries(opts: { projectId?: string; limit?: number } = {})
       WHERE e.pinned = 1
         AND (e.scope_type = 'global'
              OR (e.scope_type = 'project' AND e.scope_project_id = ?))
+        AND (e.expires_at IS NULL OR e.expires_at > ?)
       ORDER BY e.updated_at DESC
       LIMIT ?
     `);
-    const rows = stmt.all(projectId ?? null, limit) as VaultChunkRow[];
+    const rows = stmt.all(projectId ?? null, unixNow(), limit) as VaultChunkRow[];
     db.close();
     return rows.map((r) => ({
       chunkId: r.chunk_id,
@@ -389,8 +420,9 @@ export async function loadEmbeddingsCache(projectId?: string): Promise<void> {
         WHERE c.embedding IS NOT NULL
           AND (e.scope_type = 'global'
                OR (e.scope_type = 'project' AND e.scope_project_id = ?))
+          AND (e.expires_at IS NULL OR e.expires_at > ?)
       `);
-      const rows = stmt.all(projectId ?? null) as Array<{
+      const rows = stmt.all(projectId ?? null, unixNow()) as Array<{
         chunk_id: string;
         entry_id: string;
         chunk_index: number;
@@ -759,6 +791,8 @@ interface CloudVaultSearchResponse {
       title?: string;
       kind?: string;
       pinned?: number | boolean;
+      label_ids?: string;
+      expires_at?: number | null;
     };
   }>;
   cloud_error?: string;
@@ -795,6 +829,7 @@ async function searchVaultCloud(
         mode,
         scope_type: projectId ? 'project' : 'global',
         scope_project_id: projectId,
+        include_expired: false,
       }),
       signal: controller.signal,
     });
@@ -952,6 +987,8 @@ async function syncAddedTextToCloud(
     memoryType: VaultMemoryType;
     pinned: boolean;
     tags: string[];
+    labelIds: string[];
+    expiresAt: number;
     sizeBytes: number;
     createdAt: number;
     updatedAt: number;
@@ -983,6 +1020,8 @@ async function syncAddedTextToCloud(
       memory_type: entry.memoryType,
       pinned: entry.pinned ? 1 : 0,
       tags: JSON.stringify(entry.tags),
+      label_ids: JSON.stringify(entry.labelIds),
+      expires_at: entry.expiresAt,
       mime: 'text/plain',
       size_bytes: entry.sizeBytes,
       index_status: 'indexed',
@@ -1011,6 +1050,8 @@ export async function addTextToVault(
     memoryType?: VaultMemoryType;
     pinned?: boolean;
     tags?: string[];
+    labelIds?: string[];
+    expiresAt?: number;
     syncToCloud?: boolean;
     vaultAuth?: VaultAuthConfig;
   } = {},
@@ -1037,6 +1078,8 @@ export async function addTextToVault(
   const memoryType = opts.memoryType ?? (scopeType === 'project' ? 'project' : 'user');
   const pinned = opts.pinned ?? false;
   const tags = Array.from(new Set(['agent', ...(opts.tags ?? [])].map((tag) => tag.trim()).filter(Boolean))).slice(0, 12);
+  const labelIds = Array.from(new Set((opts.labelIds ?? []).map((id) => id.trim()).filter(Boolean))).slice(0, 24);
+  const expiresAt = opts.expiresAt ?? defaultExpiry();
   const chunks = chunkTextForVault(content);
   const embeddings = await embedTextChunksForVault(chunks);
   const embeddedCount = embeddings.filter(Boolean).length;
@@ -1047,11 +1090,11 @@ export async function addTextToVault(
     db.run(
       `INSERT INTO entries (
         id, kind, subkind, title, content, source_path, vault_blob_path,
-        scope_type, scope_project_id, memory_type, pinned, tags,
+        scope_type, scope_project_id, memory_type, pinned, tags, label_ids, expires_at,
         mime, size_bytes, index_status, cloud_sync_state,
         classifier_confidence, hit_count, last_retrieved_at,
         created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         'note',
@@ -1065,6 +1108,8 @@ export async function addTextToVault(
         memoryType,
         pinned ? 1 : 0,
         JSON.stringify(tags),
+        JSON.stringify(labelIds),
+        expiresAt,
         'text/plain',
         Buffer.byteLength(content, 'utf8'),
         'indexed',
@@ -1120,6 +1165,8 @@ export async function addTextToVault(
           memoryType,
           pinned,
           tags,
+          labelIds,
+          expiresAt,
           sizeBytes: Buffer.byteLength(content, 'utf8'),
           createdAt: now,
           updatedAt: now,
@@ -1296,7 +1343,8 @@ export function createVaultAddTool(
       'asks you to remember something, save a note, add something to the vault, ' +
       'or preserve an instruction/preference for future sessions. Do not use it ' +
       'for incidental facts unless the user explicitly asks you to remember/save ' +
-      'them. By default this saves locally. Set sync_to_cloud=true only when the ' +
+      'them. New memories expire into archive-only retrieval after expiry_days. ' +
+      'By default this saves locally. Set sync_to_cloud=true only when the ' +
       'user asks for cloud sync or explicitly wants the memory available through cloud retrieval.',
     {
       text: z
@@ -1327,6 +1375,18 @@ export function createVaultAddTool(
         .max(10)
         .default([])
         .describe('Optional lightweight tags for the saved memory.'),
+      label_ids: z
+        .array(z.string().min(1).max(120))
+        .max(24)
+        .default([])
+        .describe('Optional shared Vault/Tasks label ids that group this memory with an idea workspace.'),
+      expiry_days: z
+        .number()
+        .int()
+        .min(1)
+        .max(365)
+        .default(7)
+        .describe('How many days this memory should stay active before moving to archive-only retrieval.'),
       sync_to_cloud: z
         .boolean()
         .default(false)
@@ -1342,6 +1402,8 @@ export function createVaultAddTool(
         memoryType: args.memory_type,
         pinned: args.pinned ?? false,
         tags: args.tags ?? [],
+        labelIds: args.label_ids ?? [],
+        expiresAt: unixNow() + (args.expiry_days ?? 7) * 24 * 60 * 60,
         syncToCloud: args.sync_to_cloud ?? false,
         vaultAuth,
       });
