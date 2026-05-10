@@ -12,6 +12,7 @@ import { useFileExplorerStore } from '@/stores/fileExplorerStore';
 import * as marketplaceApi from '@/lib/tauri/marketplace';
 import type { RegistryEntry, SkillDetail } from '@/lib/tauri/marketplace';
 import { cn } from '@/lib/utils';
+import { VirtualList, VirtualTextLines } from '@/components/ui/virtual-list';
 
 const formatInstalls = (value: number) => {
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
@@ -214,7 +215,13 @@ export const MarketplaceTab: FC = () => {
             {trimmedQuery.length >= 2 ? 'No matches.' : 'No skills found.'}
           </p>
         ) : (
-          <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
+          <div
+            ref={listRef}
+            className="min-h-0 flex-1 overflow-y-auto px-2 pb-4"
+            data-virtualized-list="marketplace-results"
+            data-total-items={entries.length}
+            data-rendered-items={virtualizer.getVirtualItems().length}
+          >
             <div
               className="relative w-full"
               style={{ height: `${virtualizer.getTotalSize()}px` }}
@@ -228,6 +235,8 @@ export const MarketplaceTab: FC = () => {
                 return (
                   <div
                     key={entryKey(entry)}
+                    data-virtual-row
+                    data-index={item.index}
                     className="absolute left-0 top-0 w-full px-2 py-1"
                     style={{ transform: `translateY(${item.start}px)` }}
                   >
@@ -404,19 +413,25 @@ const SkillPreview: FC<SkillPreviewProps> = ({
                 Contains
               </h4>
               {detail.files.length > 0 ? (
-                <ul className="mt-2 max-h-44 overflow-y-auto rounded-[10px] border border-border/55 bg-background/35">
-                  {detail.files.map((file) => (
-                    <li
-                      key={file.path}
-                      className="flex items-center justify-between gap-3 border-b border-border/45 px-3 py-2 text-[12px] last:border-b-0"
-                    >
+                <VirtualList
+                  items={detail.files}
+                  estimateSize={() => 34}
+                  overscan={8}
+                  measureElement={false}
+                  role="list"
+                  className="mt-2 max-h-44 rounded-[10px] border border-border/55 bg-background/35"
+                  itemClassName="border-b border-border/45 last:border-b-0"
+                  getItemKey={(file) => file.path}
+                  testId="marketplace-detail-files"
+                  renderItem={(file) => (
+                    <div className="flex items-center justify-between gap-3 px-3 py-2 text-[12px]" role="listitem">
                       <span className="min-w-0 truncate text-foreground">{file.path}</span>
                       <span className="shrink-0 tabular-nums text-muted-foreground">
                         {file.bytes.toLocaleString()} B
                       </span>
-                    </li>
-                  ))}
-                </ul>
+                    </div>
+                  )}
+                />
               ) : (
                 <p className="mt-2 text-[12px] leading-5 text-muted-foreground text-pretty">
                   File preview is not available for this source yet.
@@ -429,9 +444,14 @@ const SkillPreview: FC<SkillPreviewProps> = ({
                 <h4 className="text-[11px] font-semibold uppercase text-muted-foreground">
                   {primaryFile.path}
                 </h4>
-                <pre className="mt-2 max-h-[440px] overflow-auto rounded-[10px] border border-border/55 bg-background/45 p-3 text-[11px] leading-5 text-muted-foreground">
-                  {primaryFile.contents}
-                </pre>
+                <VirtualTextLines
+                  lines={primaryFile.contents.split('\n')}
+                  estimateSize={() => 20}
+                  overscan={18}
+                  className="mt-2 max-h-[440px] rounded-[10px] border border-border/55 bg-background/45 p-3 font-mono text-[11px]"
+                  lineClassName="whitespace-pre leading-5 text-muted-foreground"
+                  testId="marketplace-primary-file"
+                />
               </section>
             )}
 
