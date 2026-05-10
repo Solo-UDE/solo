@@ -7,6 +7,7 @@ import { useCallback, useState } from 'react';
 import { Cross2Icon, FileTextIcon } from '@radix-ui/react-icons';
 import { useEditorStore, getFileName } from '../../stores/editorStore';
 import { ConfirmDialog } from '../ui/confirm-dialog';
+import { VirtualList } from '../ui/virtual-list';
 
 interface EditorTabsProps {
   className?: string;
@@ -78,12 +79,22 @@ export function EditorTabs({ className = '' }: EditorTabsProps) {
     return null;
   }
 
+  const activeIndex = activeTab ? tabOrder.indexOf(activeTab) : -1;
+
   return (
     <>
-      <div
-        className={`flex items-center h-8 bg-card/80 backdrop-blur-sm border-b border-border/30 overflow-x-auto ${className}`}
-      >
-        {tabOrder.map((path) => {
+      <VirtualList
+        items={tabOrder}
+        horizontal
+        estimateSize={() => 178}
+        overscan={8}
+        measureElement
+        className={`h-8 bg-card/80 backdrop-blur-sm border-b border-border/30 overflow-x-auto overflow-y-hidden ${className}`}
+        itemClassName="h-full"
+        getItemKey={(path) => path}
+        testId="editor-tabs"
+        scrollToIndex={activeIndex >= 0 ? activeIndex : null}
+        renderItem={(path) => {
           const tab = tabs.get(path);
           if (!tab) return null;
 
@@ -93,12 +104,11 @@ export function EditorTabs({ className = '' }: EditorTabsProps) {
 
           return (
             <div
-              key={path}
               onClick={() => handleTabClick(path)}
               onMouseDown={(e) => handleMouseDown(e, path)}
               className={`
-                group flex items-center gap-2 px-3 py-1.5 cursor-pointer
-                min-w-0 max-w-48 rounded-t-lg transition-[background-color,color] duration-200
+                group flex h-full min-w-28 max-w-48 items-center gap-2 px-3 py-1.5 cursor-pointer
+                rounded-t-lg transition-[background-color,color] duration-200
                 ${isActive
                   ? 'bg-background shadow-sm'
                   : 'hover:bg-muted/60 hover:scale-[1.01]'}
@@ -135,8 +145,8 @@ export function EditorTabs({ className = '' }: EditorTabsProps) {
               </div>
             </div>
           );
-        })}
-      </div>
+        }}
+      />
 
       {/* Unsaved changes confirmation dialog */}
       {confirmClose && (
