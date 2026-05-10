@@ -39,9 +39,14 @@ export async function setWorkspaceRoot(path: string): Promise<void> {
  */
 export async function readDirectory(
   path: string,
-  depth: number = 1
+  depth: number = 1,
+  options: { includeTotalCount?: boolean } = {}
 ): Promise<DirectoryReadResponse> {
-  const request: DirectoryReadRequest = { path, depth };
+  const request: DirectoryReadRequest = {
+    path,
+    depth,
+    include_total_count: options.includeTotalCount ?? null,
+  };
   return invoke<DirectoryReadResponse>('read_directory', { request });
 }
 
