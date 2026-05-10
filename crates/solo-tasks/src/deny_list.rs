@@ -6,14 +6,14 @@
 pub const DEFAULT_DENY_LIST: &[&str] = &[
     "rm -rf /*",
     "rm -rf /",
-    "sudo ",          // any sudo invocation
+    "sudo ", // any sudo invocation
     "curl * | sh",
     "curl * | bash",
     "wget * | sh",
     "git push --force",
     "git push -f",
     "git reset --hard",
-    ":(){:|:&};:",    // fork bomb
+    ":(){:|:&};:", // fork bomb
     "mkfs",
     "dd if=/dev",
 ];
@@ -40,7 +40,9 @@ fn matches_pattern(cmd: &str, pattern: &str) -> bool {
     let pieces: Vec<&str> = pattern.split('*').collect();
     let mut cursor = 0;
     for piece in &pieces {
-        if piece.is_empty() { continue; }
+        if piece.is_empty() {
+            continue;
+        }
         match cmd[cursor..].find(piece) {
             Some(i) => cursor += i + piece.len(),
             None => return false,
