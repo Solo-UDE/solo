@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 
 import { ToggleSwitch } from '../controls';
+import { VirtualList } from '../../ui/virtual-list';
 import { usePluginsStore } from '../../../stores/pluginsStore';
 import { useFileExplorerStore } from '../../../stores/fileExplorerStore';
 import { cn } from '../../../lib/utils';
@@ -50,6 +51,14 @@ const TONE_CLASS: Record<'native' | 'claude' | 'codex', string> = {
 function idKey(id: PluginId): string {
   return `${id.marketplace}/${id.name}`;
 }
+
+const chunkPlugins = (plugins: PluginSummary[]) => {
+  const rows: PluginSummary[][] = [];
+  for (let i = 0; i < plugins.length; i += 2) {
+    rows.push(plugins.slice(i, i + 2));
+  }
+  return rows;
+};
 
 export const PluginsTab: FC = () => {
   const rootPath = useFileExplorerStore((s) => s.rootPath);
@@ -82,6 +91,8 @@ export const PluginsTab: FC = () => {
     }
     return { installed: ins, adapter: adp };
   }, [plugins]);
+  const installedRows = useMemo(() => chunkPlugins(installed), [installed]);
+  const adapterRows = useMemo(() => chunkPlugins(adapter), [adapter]);
 
   const handleRefresh = () => {
     if (rootPath) void list(rootPath);
@@ -193,18 +204,29 @@ export const PluginsTab: FC = () => {
           <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-4">
             Installed ({installed.length})
           </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {installed.map((p) => (
-              <PluginTile
-                key={idKey(p.id)}
-                plugin={p}
-                rootPath={rootPath}
-                mutating={mutating === idKey(p.id)}
-                onToggle={(enabled) => setEnabled(rootPath, p.id, enabled)}
-                onOpen={() => openDetail(rootPath, p.id)}
-              />
-            ))}
-          </div>
+          <VirtualList
+            items={installedRows}
+            estimateSize={() => 124}
+            overscan={6}
+            className="max-h-[520px]"
+            itemClassName="pb-3"
+            getItemKey={(row) => row.map((p) => idKey(p.id)).join('|')}
+            testId="settings-installed-plugins"
+            renderItem={(row) => (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {row.map((p) => (
+                  <PluginTile
+                    key={idKey(p.id)}
+                    plugin={p}
+                    rootPath={rootPath}
+                    mutating={mutating === idKey(p.id)}
+                    onToggle={(enabled) => setEnabled(rootPath, p.id, enabled)}
+                    onOpen={() => openDetail(rootPath, p.id)}
+                  />
+                ))}
+              </div>
+            )}
+          />
         </section>
       )}
 
@@ -216,18 +238,29 @@ export const PluginsTab: FC = () => {
           <p className="text-xs text-muted-foreground/80 -mt-2 mb-3">
             Plugins installed via Claude Code or Codex, read-only. Toggle to include their skills in this workspace.
           </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {adapter.map((p) => (
-              <PluginTile
-                key={idKey(p.id)}
-                plugin={p}
-                rootPath={rootPath}
-                mutating={mutating === idKey(p.id)}
-                onToggle={(enabled) => setEnabled(rootPath, p.id, enabled)}
-                onOpen={() => openDetail(rootPath, p.id)}
-              />
-            ))}
-          </div>
+          <VirtualList
+            items={adapterRows}
+            estimateSize={() => 124}
+            overscan={6}
+            className="max-h-[520px]"
+            itemClassName="pb-3"
+            getItemKey={(row) => row.map((p) => idKey(p.id)).join('|')}
+            testId="settings-adapter-plugins"
+            renderItem={(row) => (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {row.map((p) => (
+                  <PluginTile
+                    key={idKey(p.id)}
+                    plugin={p}
+                    rootPath={rootPath}
+                    mutating={mutating === idKey(p.id)}
+                    onToggle={(enabled) => setEnabled(rootPath, p.id, enabled)}
+                    onOpen={() => openDetail(rootPath, p.id)}
+                  />
+                ))}
+              </div>
+            )}
+          />
         </section>
       )}
 
