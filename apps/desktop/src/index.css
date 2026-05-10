@@ -150,20 +150,29 @@ html[data-translucent-sidebar="false"] .liquid-sidebar {
    ============================================================================= */
 .split-divider {
   flex-shrink: 0;
-  width: 1px;
+  width: 16px;
+  margin-left: -8px;
+  margin-right: -8px;
   cursor: col-resize;
   position: relative;
-  background-color: var(--sidebar);
+  z-index: 20;
+  touch-action: none;
 }
 
-/* Invisible hit-area extension so the 1px line stays easy to grab. */
-.split-divider::before {
+.split-divider::after {
   content: '';
   position: absolute;
   top: 0;
   bottom: 0;
-  left: -4px;
-  right: -4px;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+  background-color: var(--sidebar);
+  transition: background-color 150ms ease;
+}
+
+.split-divider:hover::after {
+  background-color: color-mix(in oklch, var(--ring) 55%, var(--sidebar));
 }
 
 .sidebar-reopen-sliver {
