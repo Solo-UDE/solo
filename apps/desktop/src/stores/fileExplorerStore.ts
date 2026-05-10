@@ -122,6 +122,68 @@ const initialState: FileTreeState = {
   error: null,
 };
 
+const ROOT_SNAPSHOT_LIMIT = 3;
+
+interface CachedRootSnapshot {
+  entries: Map<string, FileTreeEntry>;
+  expanded: Set<string>;
+}
+
+const rootSnapshotCache = new Map<string, CachedRootSnapshot>();
+
+function cloneEntry(entry: FileTreeEntry): FileTreeEntry {
+  return {
+    ...entry,
+    children: entry.children ? entry.children.map(cloneEntry) : entry.children,
+  };
+}
+
+function cloneEntryMap(entries: Map<string, FileTreeEntry>): Map<string, FileTreeEntry> {
+  return new Map(Array.from(entries, ([path, entry]) => [path, cloneEntry(entry)]));
+}
+
+function rememberRootSnapshot(
+  rootPath: string,
+  entries: Map<string, FileTreeEntry>,
+  expanded: Set<string>,
+): void {
+  if (entries.size === 0) return;
+  rootSnapshotCache.delete(rootPath);
+  rootSnapshotCache.set(rootPath, {
+    entries: cloneEntryMap(entries),
+    expanded: new Set(expanded),
+  });
+  while (rootSnapshotCache.size > ROOT_SNAPSHOT_LIMIT) {
+    const oldest = rootSnapshotCache.keys().next().value as string | undefined;
+    if (!oldest) break;
+    rootSnapshotCache.delete(oldest);
+  }
+}
+
+function getRootSnapshot(rootPath: string): CachedRootSnapshot | null {
+  const snapshot = rootSnapshotCache.get(rootPath);
+  if (!snapshot) return null;
+  rootSnapshotCache.delete(rootPath);
+  rootSnapshotCache.set(rootPath, snapshot);
+  return {
+    entries: cloneEntryMap(snapshot.entries),
+    expanded: new Set(snapshot.expanded),
+  };
+}
+
+function rememberCurrentRoot(): void {
+  const state = useFileExplorerStore.getState();
+  if (!state.rootPath) return;
+  rememberRootSnapshot(state.rootPath, state.entries, state.expanded);
+}
+
+function sortChildren(children: FileTreeEntry[]): void {
+  children.sort((a: FileTreeEntry, b: FileTreeEntry) => {
+    if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1;
+    return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+  });
+}
+
 export const useFileExplorerStore = create<FileExplorerStore>()(
   immer((set, get) => ({
     ...initialState,
@@ -142,20 +204,36 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
     },
 
     setRootPath: async (path: string) => {
+      const current = get();
+      if (current.rootPath) {
+        rememberRootSnapshot(current.rootPath, current.entries, current.expanded);
+      }
+
+      const cached = getRootSnapshot(path);
+      set((state) => {
+        state.rootPath = path;
+        state.entries = cached?.entries ?? new Map();
+        state.expanded = cached?.expanded ?? new Set([path]);
+        state.selected = new Set();
+        state.loading = cached ? new Set() : new Set([path]);
+        state.error = null;
+        state.renamingPath = null;
+        state.creatingInPath = null;
+        state.creatingType = null;
+      });
+
       try {
         // Set workspace root in backend
         await fs.setWorkspaceRoot(path);
 
         // Start watching for changes (non-blocking - folder can still be used without live updates)
-        try {
-          await fs.startWatching(path, true);
-        } catch (watchError) {
+        void fs.startWatching(path, true).catch((watchError) => {
           console.warn('Failed to start file watcher:', watchError);
-          // Continue without live updates - the folder is still usable
-        }
+        });
 
         // Read the root directory
         const response = await fs.readDirectory(path, 1);
+        if (get().rootPath !== path) return;
 
         set((state) => {
           state.rootPath = path;
@@ -175,14 +253,21 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
             }
           }
         });
+        rememberCurrentRoot();
       } catch (error) {
         set((state) => {
+          state.loading.delete(path);
           state.error = `Failed to open folder: ${error}`;
         });
       }
     },
 
     closeFolder: async () => {
+      const current = get();
+      if (current.rootPath) {
+        rememberRootSnapshot(current.rootPath, current.entries, current.expanded);
+      }
+
       await fs.stopWatching().catch(console.error);
 
       set((state) => {
@@ -199,8 +284,29 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
       const entry = get().entries.get(path);
       if (!entry || !entry.is_dir) return;
 
-      // Already expanded with children loaded
-      if (get().expanded.has(path) && entry.children !== null) return;
+      // Already loaded: expand synchronously from the in-memory tree.
+      if (entry.children !== null) {
+        set((state) => {
+          state.expanded.add(path);
+        });
+        rememberCurrentRoot();
+        return;
+      }
+
+      const rootPath = get().rootPath;
+      const cachedEntry = rootPath ? getRootSnapshot(rootPath)?.entries.get(path) : null;
+      if (cachedEntry?.children !== null && cachedEntry?.children !== undefined) {
+        set((state) => {
+          state.expanded.add(path);
+          state.entries.set(path, cachedEntry);
+          for (const child of cachedEntry.children ?? []) {
+            state.entries.set(child.path, child);
+          }
+          state.loading.delete(path);
+        });
+        rememberCurrentRoot();
+        return;
+      }
 
       set((state) => {
         state.loading.add(path);
@@ -226,6 +332,7 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
             }
           }
         });
+        rememberCurrentRoot();
       } catch (error) {
         set((state) => {
           state.loading.delete(path);
@@ -238,6 +345,7 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
       set((state) => {
         state.expanded.delete(path);
       });
+      rememberCurrentRoot();
     },
 
     toggleDirectory: async (path: string) => {
@@ -281,16 +389,13 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
           const parent = state.entries.get(parentPath);
           if (parent && parent.children) {
             parent.children.push(entry);
-            // Sort children
-            parent.children.sort((a: FileTreeEntry, b: FileTreeEntry) => {
-              if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1;
-              return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
-            });
+            sortChildren(parent.children);
           }
 
           // Select the new file
           state.selected = new Set([path]);
         });
+        rememberCurrentRoot();
       } catch (error) {
         set((state) => {
           state.error = `Failed to create file: ${error}`;
@@ -311,17 +416,14 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
           const parent = state.entries.get(parentPath);
           if (parent && parent.children) {
             parent.children.push(entry);
-            // Sort children
-            parent.children.sort((a: FileTreeEntry, b: FileTreeEntry) => {
-              if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1;
-              return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
-            });
+            sortChildren(parent.children);
           }
 
           // Expand the new directory
           state.expanded.add(path);
           state.selected = new Set([path]);
         });
+        rememberCurrentRoot();
       } catch (error) {
         set((state) => {
           state.error = `Failed to create directory: ${error}`;
@@ -398,16 +500,13 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
             const index = parent.children.findIndex((c: FileTreeEntry) => c.path === path);
             if (index !== -1) {
               parent.children[index] = updatedEntry;
-              // Re-sort children
-              parent.children.sort((a: FileTreeEntry, b: FileTreeEntry) => {
-                if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1;
-                return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
-              });
+              sortChildren(parent.children);
             }
           }
 
           state.renamingPath = null;
         });
+        rememberCurrentRoot();
       } catch (error) {
         set((state) => {
           state.error = `Failed to rename: ${error}`;
@@ -460,6 +559,7 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
             }
           }
         });
+        rememberCurrentRoot();
       }
 
       // Report errors if any
@@ -557,6 +657,7 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
                 }
               }
             });
+            rememberCurrentRoot();
           })
           .catch(console.error);
       }
@@ -576,6 +677,7 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
           parent.children = parent.children.filter((c: FileTreeEntry) => c.path !== path);
         }
       });
+      rememberCurrentRoot();
     },
 
     handleFileChanged: (path: string) => {
@@ -607,6 +709,7 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
                 }
               }
             });
+            rememberCurrentRoot();
           })
           .catch(console.error);
       }
@@ -668,6 +771,7 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
           }
         }
       });
+      rememberCurrentRoot();
     },
 
     collapseAll: () => {
@@ -678,6 +782,7 @@ export const useFileExplorerStore = create<FileExplorerStore>()(
           state.expanded = new Set();
         }
       });
+      rememberCurrentRoot();
     },
 
     setError: (error: string | null) => {
