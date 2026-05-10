@@ -194,7 +194,7 @@ function AppContent() {
     }
   }, [hasRepos, rootPath, splashComplete]);
 
-  // Load GitHub token from keychain so the header shows auth status
+  // Load GitHub token linked to the current Solo account so the header shows auth status
   useEffect(() => {
     useGitHubAccountsStore.getState().loadToken();
   }, []);
