@@ -117,7 +117,6 @@ pub fn worktrees_base_dir(repo_path: &Path) -> Result<PathBuf, GitError> {
         .join(format!("{}-{}", repo_name, hash)))
 }
 
-
 fn dirs_home() -> Result<PathBuf, GitError> {
     std::env::var("HOME")
         .or_else(|_| std::env::var("USERPROFILE"))
@@ -251,5 +250,4 @@ mod tests {
         let dir_b = worktrees_base_dir(b).unwrap();
         assert_ne!(dir_a, dir_b);
     }
-
 }
