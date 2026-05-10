@@ -9,14 +9,20 @@ import {
   KEYBINDING_CATEGORIES,
   buildEffectiveKeybindings,
   formatKeybinding,
+  type KeybindingDefinition,
 } from '@/lib/keybindings/registry';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { VirtualList } from './ui/virtual-list';
 
 interface KeyboardShortcutsOverlayProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onOpenSettings: () => void;
 }
+
+type ShortcutOverlayRow =
+  | { kind: 'category'; key: string; label: string }
+  | { kind: 'binding'; key: string; binding: KeybindingDefinition };
 
 export const KeyboardShortcutsOverlay = ({
   open,
@@ -51,6 +57,16 @@ export const KeyboardShortcutsOverlay = ({
       }))
       .filter((cat) => cat.bindings.length > 0);
   }, [search, effectiveKeybindings]);
+  const rows = useMemo((): ShortcutOverlayRow[] => {
+    const next: ShortcutOverlayRow[] = [];
+    for (const category of filteredCategories) {
+      next.push({ kind: 'category', key: `category:${category.id}`, label: category.label });
+      for (const binding of category.bindings) {
+        next.push({ kind: 'binding', key: `binding:${binding.id}`, binding });
+      }
+    }
+    return next;
+  }, [filteredCategories]);
 
   // Reset search when dialog closes
   const handleOpenChange = (nextOpen: boolean) => {
@@ -83,25 +99,33 @@ export const KeyboardShortcutsOverlay = ({
         </div>
 
         {/* Shortcuts grid */}
-        <div className="px-5 pb-2 max-h-[60vh] overflow-y-auto overflow-x-hidden">
-          {filteredCategories.length === 0 ? (
+        <div className="px-5 pb-2">
+          {rows.length === 0 ? (
             <div className="py-8 text-center text-sm text-muted-foreground/60">
               No shortcuts found for "{search}"
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-x-6 gap-y-1">
-              {filteredCategories.map((category) => (
-                <div key={category.id} className="mb-3">
-                  <div className="text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wider mb-1.5 px-1">
-                    {category.label}
-                  </div>
-                  <div className="space-y-0.5">
-                    {category.bindings.map((binding) => {
+            <VirtualList
+              items={rows}
+              estimateSize={() => 34}
+              overscan={12}
+              className="max-h-[60vh] overflow-x-hidden"
+              getItemKey={(row) => row.key}
+              testId="keyboard-shortcuts-overlay"
+              renderItem={(row) => {
+                if (row.kind === 'category') {
+                  return (
+                    <div className="px-1 pb-1.5 pt-3 text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wider">
+                      {row.label}
+                    </div>
+                  );
+                }
+
+                const binding = row.binding;
                       const key = effectiveKeybindings[binding.id] ?? binding.defaultKey;
                       const isImplemented = binding.implemented !== false;
                       return (
                         <div
-                          key={binding.id}
                           className={`flex items-center justify-between py-1.5 px-1 rounded-md group ${
                             isImplemented ? '' : 'opacity-40'
                           }`}
@@ -115,11 +139,8 @@ export const KeyboardShortcutsOverlay = ({
                           </kbd>
                         </div>
                       );
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
+              }}
+            />
           )}
         </div>
 
