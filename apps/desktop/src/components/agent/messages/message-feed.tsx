@@ -312,6 +312,9 @@ export const MessageFeed: FC<MessageFeedProps> = ({
         onKeyUp={updateSelectionAction}
         className={`flex-1 overflow-y-auto overflow-x-hidden px-1 pb-2 pt-2 ${className}`}
         style={{ contain: 'layout style', scrollbarGutter: 'stable' }}
+        data-virtualized-list="agent-message-feed"
+        data-total-items={messageGroups.length}
+        data-rendered-items={virtualizer.getVirtualItems().length}
       >
         <div
           style={{
@@ -338,6 +341,7 @@ export const MessageFeed: FC<MessageFeedProps> = ({
               <div
                 key={virtualItem.key}
                 data-index={virtualItem.index}
+                data-virtual-row
                 ref={virtualizer.measureElement}
                 className={isNew ? 'animate-in fade-in-0 slide-in-from-bottom-2 duration-200 fill-mode-backwards' : undefined}
                 style={{
