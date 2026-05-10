@@ -27,13 +27,31 @@ const region = process.env.AWS_REGION ?? "us-east-1";
 
 function aws(args) {
   const result = spawnSync("aws", args, { encoding: "utf8" });
+  if (result.error && result.error.code === "ENOENT") {
+    return undefined;
+  }
   if (result.status !== 0) {
     throw new Error(`aws ${args.join(" ")} failed: ${result.stderr || result.stdout}`);
   }
   return JSON.parse(result.stdout);
 }
 
-function stackOutput(stackName) {
+let cloudFormationClient;
+
+async function stackOutputViaSdk(stackName) {
+  const [{ CloudFormationClient, DescribeStacksCommand }, { fromIni }] = await Promise.all([
+    import("@aws-sdk/client-cloudformation"),
+    import("@aws-sdk/credential-providers"),
+  ]);
+  cloudFormationClient ??= new CloudFormationClient({
+    region,
+    credentials: profile ? fromIni({ profile }) : undefined,
+  });
+  const out = await cloudFormationClient.send(new DescribeStacksCommand({ StackName: stackName }));
+  return out.Stacks?.[0]?.Outputs ?? [];
+}
+
+async function stackOutput(stackName) {
   const json = aws([
     "--profile", profile,
     "--region", region,
@@ -41,7 +59,7 @@ function stackOutput(stackName) {
     "--stack-name", stackName,
     "--query", "Stacks[0].Outputs",
     "--output", "json",
-  ]);
+  ]) ?? await stackOutputViaSdk(stackName);
   const map = {};
   for (const { OutputKey, OutputValue } of json) {
     map[OutputKey] = OutputValue;
@@ -51,7 +69,7 @@ function stackOutput(stackName) {
 
 console.log(`Syncing infra/.env.${stage} from CloudFormation stacks (profile=${profile}, region=${region})`);
 
-const auth = stackOutput(`SoloAuth-${stage}`);
+const auth = await stackOutput(`SoloAuth-${stage}`);
 const envPath = path.join(INFRA_ROOT, `.env.${stage}`);
 
 // Preserve any hand-managed keys (RDS password ARNs, etc) while overwriting
@@ -73,13 +91,13 @@ const authoritative = {
 
 // Best-effort: pull API + GitHub wrapper endpoints if those stacks exist.
 try {
-  const api = stackOutput(`SoloApi-${stage}`);
+  const api = await stackOutput(`SoloApi-${stage}`);
   if (api.ApiEndpoint) authoritative.SOLO_API_ENDPOINT = api.ApiEndpoint;
 } catch (e) {
   console.warn(`! SoloApi-${stage}: ${e.message.split("\n")[0]}`);
 }
 try {
-  const gh = stackOutput(`SoloGitHub-${stage}`);
+  const gh = await stackOutput(`SoloGitHub-${stage}`);
   const oidcIssuer = gh.OidcIssuerUrl ?? gh.OidcIssuer ?? gh.OidcApiUrl;
   const callbackUrl = gh.CallbackUrl ?? gh.GitHubCallbackUrl;
   if (oidcIssuer) authoritative.SOLO_GITHUB_OIDC_ISSUER = oidcIssuer;
