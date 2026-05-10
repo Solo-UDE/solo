@@ -9,6 +9,7 @@ import { diffFromBase } from '@/lib/tauri/worktree';
 import { usePanelTabsStore } from '@/stores/panelTabsStore';
 import { BUILTIN_PANEL_TYPES } from '@/lib/panels';
 import { cn } from '@/lib/utils';
+import { VirtualList } from '@/components/ui/virtual-list';
 import type { PanelProps } from '@/lib/panels/types';
 import type { WorktreeDiffEntry } from '@/bindings';
 
@@ -91,9 +92,15 @@ export const WorktreeDiffPanel = ({
   }
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="py-1">
-        {entries.map((entry) => {
+    <VirtualList
+      items={entries}
+      estimateSize={() => 34}
+      overscan={10}
+      measureElement={false}
+      className="h-full py-1"
+      getItemKey={(entry) => entry.path}
+      testId="worktree-diff-entries"
+      renderItem={(entry) => {
           const config = STATUS_CONFIG[entry.status] ?? STATUS_CONFIG.modified;
           const Icon = config.icon;
           const fileName = entry.path.split('/').pop() ?? entry.path;
@@ -126,8 +133,7 @@ export const WorktreeDiffPanel = ({
               </span>
             </button>
           );
-        })}
-      </div>
-    </div>
+        }}
+    />
   );
 };
