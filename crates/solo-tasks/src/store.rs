@@ -1,14 +1,13 @@
 //! SQLite-backed task store (FTS5 in Task 5).
 
+use rusqlite::{params, Connection, OptionalExtension};
+use solo_protocol::{
+    Cycle, CycleDraft, CyclePatch, Executor, Label, LabelDraft, LabelPatch, Project, ProjectDraft,
+    ProjectHealth, ProjectPatch, ProjectStatus, RunOutcome, Subtask, Task, TaskDraft,
+    TaskListFilters, TaskOrigin, TaskPatch, TaskPriority, TaskRun, TaskStatus,
+};
 use std::path::Path;
 use std::sync::Mutex;
-use rusqlite::{Connection, OptionalExtension, params};
-use solo_protocol::{
-    Cycle, CycleDraft, CyclePatch, Executor, Label, LabelDraft, LabelPatch,
-    Project, ProjectDraft, ProjectHealth, ProjectPatch, ProjectStatus,
-    RunOutcome, Subtask, Task, TaskDraft, TaskListFilters, TaskOrigin, TaskPatch,
-    TaskPriority, TaskRun, TaskStatus,
-};
 use uuid::Uuid;
 
 use crate::error::{TaskError, TaskResult};
@@ -24,7 +23,9 @@ impl TaskStore {
             std::fs::create_dir_all(parent)?;
         }
         let conn = Connection::open(db_path)?;
-        let store = Self { conn: Mutex::new(conn) };
+        let store = Self {
+            conn: Mutex::new(conn),
+        };
         store.migrate()?;
         Ok(store)
     }
@@ -33,7 +34,9 @@ impl TaskStore {
     #[cfg(test)]
     pub fn open_in_memory() -> TaskResult<Self> {
         let conn = Connection::open_in_memory()?;
-        let store = Self { conn: Mutex::new(conn) };
+        let store = Self {
+            conn: Mutex::new(conn),
+        };
         store.migrate()?;
         Ok(store)
     }
@@ -136,10 +139,7 @@ impl TaskStore {
                 "project_id",
                 "ALTER TABLE tasks ADD COLUMN project_id TEXT;",
             )?;
-            add_column(
-                "cycle_id",
-                "ALTER TABLE tasks ADD COLUMN cycle_id TEXT;",
-            )?;
+            add_column("cycle_id", "ALTER TABLE tasks ADD COLUMN cycle_id TEXT;")?;
 
             conn.execute_batch(
                 r"
@@ -222,8 +222,7 @@ impl TaskStore {
 
     pub fn get(&self, id: &str) -> TaskResult<Task> {
         let conn = self.conn.lock().expect("poisoned");
-        let task = load_task_row(&conn, id)?
-            .ok_or_else(|| TaskError::NotFound(id.to_string()))?;
+        let task = load_task_row(&conn, id)?.ok_or_else(|| TaskError::NotFound(id.to_string()))?;
         Ok(task)
     }
 
@@ -263,10 +262,9 @@ impl TaskStore {
 
         let mut stmt = conn.prepare(&sql)?;
         let ids: Vec<String> = stmt
-            .query_map(
-                rusqlite::params_from_iter(params_vec.iter()),
-                |row| row.get::<_, String>(0),
-            )?
+            .query_map(rusqlite::params_from_iter(params_vec.iter()), |row| {
+                row.get::<_, String>(0)
+            })?
             .collect::<Result<_, _>>()?;
 
         let mut out = Vec::with_capacity(ids.len());
@@ -276,7 +274,8 @@ impl TaskStore {
                 if let Some(q) = &filter.query {
                     let needle = q.to_lowercase();
                     if !t.title.to_lowercase().contains(&needle)
-                        && !t.description.to_lowercase().contains(&needle) {
+                        && !t.description.to_lowercase().contains(&needle)
+                    {
                         continue;
                     }
                 }
@@ -288,21 +287,45 @@ impl TaskStore {
 
     pub fn update(&self, id: &str, patch: TaskPatch) -> TaskResult<Task> {
         let mut task = self.get(id)?;
-        if let Some(v) = patch.title { task.title = v; }
-        if let Some(v) = patch.description { task.description = v; }
-        if let Some(v) = patch.status { task.status = v; }
-        if let Some(v) = patch.priority { task.priority = v; }
-        if let Some(v) = patch.agent_config { task.agent_config = Some(v); }
-        if let Some(v) = patch.schedule { task.schedule = Some(v); }
-        if let Some(v) = patch.catch_up_on_launch { task.catch_up_on_launch = v; }
-        if let Some(v) = patch.subtasks { task.subtasks = v; }
-        if let Some(v) = patch.label_ids { task.label_ids = v; }
-        if patch.clear_project == Some(true) { task.project_id = None; }
-        else if let Some(v) = patch.project_id { task.project_id = Some(v); }
-        if patch.clear_cycle == Some(true) { task.cycle_id = None; }
-        else if let Some(v) = patch.cycle_id { task.cycle_id = Some(v); }
+        if let Some(v) = patch.title {
+            task.title = v;
+        }
+        if let Some(v) = patch.description {
+            task.description = v;
+        }
+        if let Some(v) = patch.status {
+            task.status = v;
+        }
+        if let Some(v) = patch.priority {
+            task.priority = v;
+        }
+        if let Some(v) = patch.agent_config {
+            task.agent_config = Some(v);
+        }
+        if let Some(v) = patch.schedule {
+            task.schedule = Some(v);
+        }
+        if let Some(v) = patch.catch_up_on_launch {
+            task.catch_up_on_launch = v;
+        }
+        if let Some(v) = patch.subtasks {
+            task.subtasks = v;
+        }
+        if let Some(v) = patch.label_ids {
+            task.label_ids = v;
+        }
+        if patch.clear_project == Some(true) {
+            task.project_id = None;
+        } else if let Some(v) = patch.project_id {
+            task.project_id = Some(v);
+        }
+        if patch.clear_cycle == Some(true) {
+            task.cycle_id = None;
+        } else if let Some(v) = patch.cycle_id {
+            task.cycle_id = Some(v);
+        }
         task.updated_at = now_ms();
-        self.insert(&task)?;     // INSERT OR REPLACE — upsert semantics
+        self.insert(&task)?; // INSERT OR REPLACE — upsert semantics
         Ok(task)
     }
 
@@ -375,11 +398,7 @@ impl TaskStore {
 
     /// Reorder subtasks to match `ordered_ids` exactly. Must be a permutation
     /// of the current subtask ids (same length, same set).
-    pub fn subtask_reorder(
-        &self,
-        task_id: &str,
-        ordered_ids: &[String],
-    ) -> TaskResult<Task> {
+    pub fn subtask_reorder(&self, task_id: &str, ordered_ids: &[String]) -> TaskResult<Task> {
         let mut task = self.get(task_id)?;
         if ordered_ids.len() != task.subtasks.len() {
             return Err(TaskError::Invalid(format!(
@@ -388,16 +407,13 @@ impl TaskStore {
                 task.subtasks.len()
             )));
         }
-        let mut by_id: std::collections::HashMap<String, Subtask> = task
-            .subtasks
-            .drain(..)
-            .map(|s| (s.id.clone(), s))
-            .collect();
+        let mut by_id: std::collections::HashMap<String, Subtask> =
+            task.subtasks.drain(..).map(|s| (s.id.clone(), s)).collect();
         let mut next = Vec::with_capacity(ordered_ids.len());
         for id in ordered_ids {
-            let s = by_id.remove(id).ok_or_else(|| {
-                TaskError::Invalid(format!("subtask reorder unknown id: {id}"))
-            })?;
+            let s = by_id
+                .remove(id)
+                .ok_or_else(|| TaskError::Invalid(format!("subtask reorder unknown id: {id}")))?;
             next.push(s);
         }
         if !by_id.is_empty() {
@@ -434,14 +450,16 @@ impl TaskStore {
             "SELECT t.id FROM tasks_fts
              JOIN tasks t ON t.rowid = tasks_fts.rowid
              WHERE tasks_fts MATCH ?
-             ORDER BY rank"
+             ORDER BY rank",
         )?;
         let ids: Vec<String> = stmt
             .query_map([match_expr], |row| row.get::<_, String>(0))?
             .collect::<Result<_, _>>()?;
         let mut out = Vec::with_capacity(ids.len());
         for id in ids {
-            if let Some(t) = load_task_row(&conn, &id)? { out.push(t); }
+            if let Some(t) = load_task_row(&conn, &id)? {
+                out.push(t);
+            }
         }
         Ok(out)
     }
@@ -461,11 +479,14 @@ impl TaskStore {
         let mut stmt = conn.prepare(
             "SELECT id FROM tasks WHERE schedule_json IS NOT NULL AND status IN ('queued','done') ORDER BY updated_at DESC"
         )?;
-        let ids: Vec<String> = stmt.query_map([], |r| r.get::<_, String>(0))?
+        let ids: Vec<String> = stmt
+            .query_map([], |r| r.get::<_, String>(0))?
             .collect::<Result<_, _>>()?;
         let mut out = Vec::with_capacity(ids.len());
         for id in ids {
-            if let Some(t) = load_task_row(&conn, &id)? { out.push(t); }
+            if let Some(t) = load_task_row(&conn, &id)? {
+                out.push(t);
+            }
         }
         Ok(out)
     }
@@ -509,11 +530,13 @@ impl TaskStore {
     /// Resolve the task that owns a run.
     pub fn task_id_for_run(&self, run_id: &str) -> TaskResult<Option<String>> {
         let conn = self.conn.lock().expect("poisoned");
-        let tid: Option<String> = conn.query_row(
-            "SELECT task_id FROM task_runs WHERE id = ?",
-            [run_id],
-            |r| r.get(0),
-        ).optional()?;
+        let tid: Option<String> = conn
+            .query_row(
+                "SELECT task_id FROM task_runs WHERE id = ?",
+                [run_id],
+                |r| r.get(0),
+            )
+            .optional()?;
         Ok(tid)
     }
 
@@ -532,11 +555,16 @@ impl TaskStore {
     pub fn label_list(&self) -> TaskResult<Vec<Label>> {
         let conn = self.conn.lock().expect("poisoned");
         let mut stmt = conn.prepare(
-            "SELECT id, name, color, created_at FROM labels ORDER BY name COLLATE NOCASE"
+            "SELECT id, name, color, created_at FROM labels ORDER BY name COLLATE NOCASE",
         )?;
-        let rows = stmt.query_map([], |r| Ok(Label {
-            id: r.get(0)?, name: r.get(1)?, color: r.get(2)?, created_at: r.get(3)?,
-        }))?;
+        let rows = stmt.query_map([], |r| {
+            Ok(Label {
+                id: r.get(0)?,
+                name: r.get(1)?,
+                color: r.get(2)?,
+                created_at: r.get(3)?,
+            })
+        })?;
         rows.collect::<Result<_, _>>().map_err(Into::into)
     }
 
@@ -557,31 +585,44 @@ impl TaskStore {
 
     pub fn label_update(&self, id: &str, patch: LabelPatch) -> TaskResult<Label> {
         let conn = self.conn.lock().expect("poisoned");
-        let existing: Option<(String, String, String, i64)> = conn.query_row(
-            "SELECT id, name, color, created_at FROM labels WHERE id = ?",
-            [id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
-        ).optional()?;
+        let existing: Option<(String, String, String, i64)> = conn
+            .query_row(
+                "SELECT id, name, color, created_at FROM labels WHERE id = ?",
+                [id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+            )
+            .optional()?;
         let Some((lid, mut name, mut color, created_at)) = existing else {
             return Err(TaskError::NotFound(id.into()));
         };
-        if let Some(v) = patch.name { name = v; }
-        if let Some(v) = patch.color { color = v; }
+        if let Some(v) = patch.name {
+            name = v;
+        }
+        if let Some(v) = patch.color {
+            color = v;
+        }
         conn.execute(
             "UPDATE labels SET name = ?2, color = ?3 WHERE id = ?1",
             params![lid, name, color],
         )?;
-        Ok(Label { id: lid, name, color, created_at })
+        Ok(Label {
+            id: lid,
+            name,
+            color,
+            created_at,
+        })
     }
 
     /// Delete a label and prune its id from every task's `label_ids_json`.
     pub fn label_delete(&self, id: &str) -> TaskResult<Vec<String>> {
         let conn = self.conn.lock().expect("poisoned");
         let affected = conn.execute("DELETE FROM labels WHERE id = ?", [id])?;
-        if affected == 0 { return Err(TaskError::NotFound(id.into())); }
+        if affected == 0 {
+            return Err(TaskError::NotFound(id.into()));
+        }
         // Prune from all tasks that carry it.
-        let mut stmt = conn.prepare(
-            "SELECT id, label_ids_json FROM tasks WHERE label_ids_json LIKE ?"
-        )?;
+        let mut stmt =
+            conn.prepare("SELECT id, label_ids_json FROM tasks WHERE label_ids_json LIKE ?")?;
         let affected_ids: Vec<(String, String)> = stmt
             .query_map([format!("%\"{id}\"%")], |r| Ok((r.get(0)?, r.get(1)?)))?
             .collect::<Result<_, _>>()?;
@@ -629,22 +670,24 @@ impl TaskStore {
         let conn = self.conn.lock().expect("poisoned");
         let mut stmt = conn.prepare(
             "SELECT id, name, description, status, health, color, start_at, target_at,
-                    created_at, updated_at FROM projects ORDER BY updated_at DESC"
+                    created_at, updated_at FROM projects ORDER BY updated_at DESC",
         )?;
-        let rows = stmt.query_map([], |r| Ok(Project {
-            id: r.get(0)?,
-            name: r.get(1)?,
-            description: r.get(2)?,
-            status: project_status_from(&r.get::<_, String>(3)?)
-                .map_err(|_| rusqlite::Error::InvalidQuery)?,
-            health: project_health_from(&r.get::<_, String>(4)?)
-                .map_err(|_| rusqlite::Error::InvalidQuery)?,
-            color: r.get(5)?,
-            start_at: r.get(6)?,
-            target_at: r.get(7)?,
-            created_at: r.get(8)?,
-            updated_at: r.get(9)?,
-        }))?;
+        let rows = stmt.query_map([], |r| {
+            Ok(Project {
+                id: r.get(0)?,
+                name: r.get(1)?,
+                description: r.get(2)?,
+                status: project_status_from(&r.get::<_, String>(3)?)
+                    .map_err(|_| rusqlite::Error::InvalidQuery)?,
+                health: project_health_from(&r.get::<_, String>(4)?)
+                    .map_err(|_| rusqlite::Error::InvalidQuery)?,
+                color: r.get(5)?,
+                start_at: r.get(6)?,
+                target_at: r.get(7)?,
+                created_at: r.get(8)?,
+                updated_at: r.get(9)?,
+            })
+        })?;
         rows.collect::<Result<_, _>>().map_err(Into::into)
     }
 
@@ -668,13 +711,27 @@ impl TaskStore {
 
     pub fn project_update(&self, id: &str, patch: ProjectPatch) -> TaskResult<Project> {
         let mut p = self.project_get(id)?;
-        if let Some(v) = patch.name { p.name = v; }
-        if let Some(v) = patch.description { p.description = v; }
-        if let Some(v) = patch.status { p.status = v; }
-        if let Some(v) = patch.health { p.health = v; }
-        if let Some(v) = patch.color { p.color = v; }
-        if let Some(v) = patch.start_at { p.start_at = Some(v); }
-        if let Some(v) = patch.target_at { p.target_at = Some(v); }
+        if let Some(v) = patch.name {
+            p.name = v;
+        }
+        if let Some(v) = patch.description {
+            p.description = v;
+        }
+        if let Some(v) = patch.status {
+            p.status = v;
+        }
+        if let Some(v) = patch.health {
+            p.health = v;
+        }
+        if let Some(v) = patch.color {
+            p.color = v;
+        }
+        if let Some(v) = patch.start_at {
+            p.start_at = Some(v);
+        }
+        if let Some(v) = patch.target_at {
+            p.target_at = Some(v);
+        }
         p.updated_at = now_ms();
         self.project_insert(&p)?;
         Ok(p)
@@ -682,20 +739,52 @@ impl TaskStore {
 
     pub fn project_get(&self, id: &str) -> TaskResult<Project> {
         let conn = self.conn.lock().expect("poisoned");
-        let row: Option<(String, String, String, String, String, String, Option<i64>, Option<i64>, i64, i64)> = conn.query_row(
-            "SELECT id, name, description, status, health, color, start_at, target_at,
+        let row: Option<(
+            String,
+            String,
+            String,
+            String,
+            String,
+            String,
+            Option<i64>,
+            Option<i64>,
+            i64,
+            i64,
+        )> = conn
+            .query_row(
+                "SELECT id, name, description, status, health, color, start_at, target_at,
                     created_at, updated_at FROM projects WHERE id = ?",
-            [id],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?,
-                    r.get(6)?, r.get(7)?, r.get(8)?, r.get(9)?)),
-        ).optional()?;
-        let Some(r) = row else { return Err(TaskError::NotFound(id.into())); };
+                [id],
+                |r| {
+                    Ok((
+                        r.get(0)?,
+                        r.get(1)?,
+                        r.get(2)?,
+                        r.get(3)?,
+                        r.get(4)?,
+                        r.get(5)?,
+                        r.get(6)?,
+                        r.get(7)?,
+                        r.get(8)?,
+                        r.get(9)?,
+                    ))
+                },
+            )
+            .optional()?;
+        let Some(r) = row else {
+            return Err(TaskError::NotFound(id.into()));
+        };
         Ok(Project {
-            id: r.0, name: r.1, description: r.2,
+            id: r.0,
+            name: r.1,
+            description: r.2,
             status: project_status_from(&r.3)?,
             health: project_health_from(&r.4)?,
-            color: r.5, start_at: r.6, target_at: r.7,
-            created_at: r.8, updated_at: r.9,
+            color: r.5,
+            start_at: r.6,
+            target_at: r.7,
+            created_at: r.8,
+            updated_at: r.9,
         })
     }
 
@@ -703,9 +792,12 @@ impl TaskStore {
     pub fn project_delete(&self, id: &str) -> TaskResult<Vec<String>> {
         let conn = self.conn.lock().expect("poisoned");
         let affected = conn.execute("DELETE FROM projects WHERE id = ?", [id])?;
-        if affected == 0 { return Err(TaskError::NotFound(id.into())); }
+        if affected == 0 {
+            return Err(TaskError::NotFound(id.into()));
+        }
         let mut stmt = conn.prepare("SELECT id FROM tasks WHERE project_id = ?")?;
-        let ids: Vec<String> = stmt.query_map([id], |r| r.get::<_, String>(0))?
+        let ids: Vec<String> = stmt
+            .query_map([id], |r| r.get::<_, String>(0))?
             .collect::<Result<_, _>>()?;
         drop(stmt);
         conn.execute(
@@ -722,10 +814,16 @@ impl TaskStore {
                 color, start_at, target_at, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![
-                p.id, p.name, p.description,
+                p.id,
+                p.name,
+                p.description,
                 project_status_str(&p.status),
                 project_health_str(&p.health),
-                p.color, p.start_at, p.target_at, p.created_at, p.updated_at,
+                p.color,
+                p.start_at,
+                p.target_at,
+                p.created_at,
+                p.updated_at,
             ],
         )?;
         Ok(())
@@ -736,12 +834,17 @@ impl TaskStore {
     pub fn cycle_list(&self) -> TaskResult<Vec<Cycle>> {
         let conn = self.conn.lock().expect("poisoned");
         let mut stmt = conn.prepare(
-            "SELECT id, name, start_at, end_at, created_at FROM cycles ORDER BY start_at DESC"
+            "SELECT id, name, start_at, end_at, created_at FROM cycles ORDER BY start_at DESC",
         )?;
-        let rows = stmt.query_map([], |r| Ok(Cycle {
-            id: r.get(0)?, name: r.get(1)?, start_at: r.get(2)?,
-            end_at: r.get(3)?, created_at: r.get(4)?,
-        }))?;
+        let rows = stmt.query_map([], |r| {
+            Ok(Cycle {
+                id: r.get(0)?,
+                name: r.get(1)?,
+                start_at: r.get(2)?,
+                end_at: r.get(3)?,
+                created_at: r.get(4)?,
+            })
+        })?;
         rows.collect::<Result<_, _>>().map_err(Into::into)
     }
 
@@ -756,37 +859,61 @@ impl TaskStore {
         };
         conn.execute(
             "INSERT INTO cycles(id, name, start_at, end_at, created_at) VALUES(?1, ?2, ?3, ?4, ?5)",
-            params![cycle.id, cycle.name, cycle.start_at, cycle.end_at, cycle.created_at],
+            params![
+                cycle.id,
+                cycle.name,
+                cycle.start_at,
+                cycle.end_at,
+                cycle.created_at
+            ],
         )?;
         Ok(cycle)
     }
 
     pub fn cycle_update(&self, id: &str, patch: CyclePatch) -> TaskResult<Cycle> {
         let conn = self.conn.lock().expect("poisoned");
-        let row: Option<(String, String, i64, i64, i64)> = conn.query_row(
-            "SELECT id, name, start_at, end_at, created_at FROM cycles WHERE id = ?",
-            [id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
-        ).optional()?;
+        let row: Option<(String, String, i64, i64, i64)> = conn
+            .query_row(
+                "SELECT id, name, start_at, end_at, created_at FROM cycles WHERE id = ?",
+                [id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+            )
+            .optional()?;
         let Some((cid, mut name, mut start_at, mut end_at, created_at)) = row else {
             return Err(TaskError::NotFound(id.into()));
         };
-        if let Some(v) = patch.name { name = v; }
-        if let Some(v) = patch.start_at { start_at = v; }
-        if let Some(v) = patch.end_at { end_at = v; }
+        if let Some(v) = patch.name {
+            name = v;
+        }
+        if let Some(v) = patch.start_at {
+            start_at = v;
+        }
+        if let Some(v) = patch.end_at {
+            end_at = v;
+        }
         conn.execute(
             "UPDATE cycles SET name = ?2, start_at = ?3, end_at = ?4 WHERE id = ?1",
             params![cid, name, start_at, end_at],
         )?;
-        Ok(Cycle { id: cid, name, start_at, end_at, created_at })
+        Ok(Cycle {
+            id: cid,
+            name,
+            start_at,
+            end_at,
+            created_at,
+        })
     }
 
     /// Delete a cycle and null out `cycle_id` on every task that pointed to it.
     pub fn cycle_delete(&self, id: &str) -> TaskResult<Vec<String>> {
         let conn = self.conn.lock().expect("poisoned");
         let affected = conn.execute("DELETE FROM cycles WHERE id = ?", [id])?;
-        if affected == 0 { return Err(TaskError::NotFound(id.into())); }
+        if affected == 0 {
+            return Err(TaskError::NotFound(id.into()));
+        }
         let mut stmt = conn.prepare("SELECT id FROM tasks WHERE cycle_id = ?")?;
-        let ids: Vec<String> = stmt.query_map([id], |r| r.get::<_, String>(0))?
+        let ids: Vec<String> = stmt
+            .query_map([id], |r| r.get::<_, String>(0))?
             .collect::<Result<_, _>>()?;
         drop(stmt);
         conn.execute(
@@ -818,8 +945,14 @@ impl TaskStore {
                 priority_str(task.priority),
                 task.created_at,
                 task.updated_at,
-                task.agent_config.as_ref().map(serde_json::to_string).transpose()?,
-                task.schedule.as_ref().map(serde_json::to_string).transpose()?,
+                task.agent_config
+                    .as_ref()
+                    .map(serde_json::to_string)
+                    .transpose()?,
+                task.schedule
+                    .as_ref()
+                    .map(serde_json::to_string)
+                    .transpose()?,
                 serde_json::to_string(&task.context_anchors)?,
                 task.last_error,
                 i64::from(task.catch_up_on_launch),
@@ -846,108 +979,148 @@ fn now_ms() -> i64 {
 
 fn status_str(s: TaskStatus) -> &'static str {
     match s {
-        TaskStatus::Suggested    => "suggested",
-        TaskStatus::Queued       => "queued",
-        TaskStatus::Running      => "running",
-        TaskStatus::NeedsReview  => "needs_review",
-        TaskStatus::Done         => "done",
-        TaskStatus::Failed       => "failed",
-        TaskStatus::Archived     => "archived",
+        TaskStatus::Suggested => "suggested",
+        TaskStatus::Queued => "queued",
+        TaskStatus::Running => "running",
+        TaskStatus::NeedsReview => "needs_review",
+        TaskStatus::Done => "done",
+        TaskStatus::Failed => "failed",
+        TaskStatus::Archived => "archived",
     }
 }
 fn status_from(s: &str) -> TaskResult<TaskStatus> {
     Ok(match s {
-        "suggested"    => TaskStatus::Suggested,
-        "queued"       => TaskStatus::Queued,
-        "running"      => TaskStatus::Running,
+        "suggested" => TaskStatus::Suggested,
+        "queued" => TaskStatus::Queued,
+        "running" => TaskStatus::Running,
         "needs_review" => TaskStatus::NeedsReview,
-        "done"         => TaskStatus::Done,
-        "failed"       => TaskStatus::Failed,
-        "archived"     => TaskStatus::Archived,
-        other          => return Err(TaskError::Invalid(format!("status={other}"))),
+        "done" => TaskStatus::Done,
+        "failed" => TaskStatus::Failed,
+        "archived" => TaskStatus::Archived,
+        other => return Err(TaskError::Invalid(format!("status={other}"))),
     })
 }
 
 fn executor_str(e: Executor) -> &'static str {
     match e {
         Executor::Manual => "manual",
-        Executor::Agent  => "agent",
+        Executor::Agent => "agent",
     }
 }
 fn executor_from(s: &str) -> TaskResult<Executor> {
     Ok(match s {
         "manual" => Executor::Manual,
-        "agent"  => Executor::Agent,
-        other    => return Err(TaskError::Invalid(format!("executor={other}"))),
+        "agent" => Executor::Agent,
+        other => return Err(TaskError::Invalid(format!("executor={other}"))),
     })
 }
 
 fn priority_str(p: TaskPriority) -> &'static str {
     match p {
-        TaskPriority::Low    => "low",
+        TaskPriority::Low => "low",
         TaskPriority::Medium => "medium",
-        TaskPriority::High   => "high",
+        TaskPriority::High => "high",
         TaskPriority::Urgent => "urgent",
     }
 }
 fn priority_from(s: &str) -> TaskResult<TaskPriority> {
     Ok(match s {
-        "low"    => TaskPriority::Low,
+        "low" => TaskPriority::Low,
         "medium" => TaskPriority::Medium,
-        "high"   => TaskPriority::High,
+        "high" => TaskPriority::High,
         "urgent" => TaskPriority::Urgent,
-        other    => return Err(TaskError::Invalid(format!("priority={other}"))),
+        other => return Err(TaskError::Invalid(format!("priority={other}"))),
     })
 }
 
 fn load_task_row(conn: &Connection, id: &str) -> TaskResult<Option<Task>> {
     #[allow(clippy::type_complexity)]
     let row: Option<(
-        String, String, String, String, String, String,
-        i64, i64, Option<String>, Option<String>,
-        String, Option<String>, i64, String, String,
-        String, Option<String>, Option<String>,
-    )> = conn.query_row(
-        "SELECT id, title, description, status, executor, priority,
+        String,
+        String,
+        String,
+        String,
+        String,
+        String,
+        i64,
+        i64,
+        Option<String>,
+        Option<String>,
+        String,
+        Option<String>,
+        i64,
+        String,
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+    )> = conn
+        .query_row(
+            "SELECT id, title, description, status, executor, priority,
                 created_at, updated_at, agent_config_json, schedule_json,
                 context_anchors_json, last_error, catch_up_on_launch, origin_json,
                 subtasks_json, label_ids_json, project_id, cycle_id
          FROM tasks WHERE id = ?",
-        [id],
-        |r| Ok((
-            r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?,
-            r.get(6)?, r.get(7)?, r.get(8)?, r.get(9)?,
-            r.get(10)?, r.get(11)?, r.get(12)?, r.get(13)?, r.get(14)?,
-            r.get(15)?, r.get(16)?, r.get(17)?,
-        ))
-    ).optional()?;
+            [id],
+            |r| {
+                Ok((
+                    r.get(0)?,
+                    r.get(1)?,
+                    r.get(2)?,
+                    r.get(3)?,
+                    r.get(4)?,
+                    r.get(5)?,
+                    r.get(6)?,
+                    r.get(7)?,
+                    r.get(8)?,
+                    r.get(9)?,
+                    r.get(10)?,
+                    r.get(11)?,
+                    r.get(12)?,
+                    r.get(13)?,
+                    r.get(14)?,
+                    r.get(15)?,
+                    r.get(16)?,
+                    r.get(17)?,
+                ))
+            },
+        )
+        .optional()?;
 
-    let Some(r) = row else { return Ok(None); };
+    let Some(r) = row else {
+        return Ok(None);
+    };
 
     let runs = conn
         .prepare(
             "SELECT id, started_at, ended_at, outcome, session_id, worktree_id, summary
              FROM task_runs WHERE task_id = ? ORDER BY started_at DESC",
         )?
-        .query_map([id], |r| Ok(TaskRun {
-            id:          r.get(0)?,
-            started_at:  r.get(1)?,
-            ended_at:    r.get(2)?,
-            outcome:     run_outcome_from(&r.get::<_, String>(3)?).map_err(|_| rusqlite::Error::InvalidQuery)?,
-            session_id:  r.get(4)?,
-            worktree_id: r.get(5)?,
-            summary:     r.get(6)?,
-        }))?
+        .query_map([id], |r| {
+            Ok(TaskRun {
+                id: r.get(0)?,
+                started_at: r.get(1)?,
+                ended_at: r.get(2)?,
+                outcome: run_outcome_from(&r.get::<_, String>(3)?)
+                    .map_err(|_| rusqlite::Error::InvalidQuery)?,
+                session_id: r.get(4)?,
+                worktree_id: r.get(5)?,
+                summary: r.get(6)?,
+            })
+        })?
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(Some(Task {
-        id: r.0, title: r.1, description: r.2,
+        id: r.0,
+        title: r.1,
+        description: r.2,
         status: status_from(&r.3)?,
         executor: executor_from(&r.4)?,
         priority: priority_from(&r.5)?,
-        created_at: r.6, updated_at: r.7,
+        created_at: r.6,
+        updated_at: r.7,
         agent_config: r.8.as_deref().map(serde_json::from_str).transpose()?,
-        schedule:     r.9.as_deref().map(serde_json::from_str).transpose()?,
+        schedule: r.9.as_deref().map(serde_json::from_str).transpose()?,
         context_anchors: serde_json::from_str(&r.10)?,
         runs,
         last_error: r.11,
@@ -962,57 +1135,57 @@ fn load_task_row(conn: &Connection, id: &str) -> TaskResult<Option<Task>> {
 
 fn project_status_str(s: &ProjectStatus) -> &'static str {
     match s {
-        ProjectStatus::Planned    => "planned",
+        ProjectStatus::Planned => "planned",
         ProjectStatus::InProgress => "in_progress",
-        ProjectStatus::Paused     => "paused",
-        ProjectStatus::Completed  => "completed",
-        ProjectStatus::Cancelled  => "cancelled",
+        ProjectStatus::Paused => "paused",
+        ProjectStatus::Completed => "completed",
+        ProjectStatus::Cancelled => "cancelled",
     }
 }
 fn project_status_from(s: &str) -> TaskResult<ProjectStatus> {
     Ok(match s {
-        "planned"     => ProjectStatus::Planned,
+        "planned" => ProjectStatus::Planned,
         "in_progress" => ProjectStatus::InProgress,
-        "paused"      => ProjectStatus::Paused,
-        "completed"   => ProjectStatus::Completed,
-        "cancelled"   => ProjectStatus::Cancelled,
-        other         => return Err(TaskError::Invalid(format!("project status={other}"))),
+        "paused" => ProjectStatus::Paused,
+        "completed" => ProjectStatus::Completed,
+        "cancelled" => ProjectStatus::Cancelled,
+        other => return Err(TaskError::Invalid(format!("project status={other}"))),
     })
 }
 
 fn project_health_str(h: &ProjectHealth) -> &'static str {
     match h {
-        ProjectHealth::OnTrack  => "on_track",
-        ProjectHealth::AtRisk   => "at_risk",
+        ProjectHealth::OnTrack => "on_track",
+        ProjectHealth::AtRisk => "at_risk",
         ProjectHealth::OffTrack => "off_track",
-        ProjectHealth::Unknown  => "unknown",
+        ProjectHealth::Unknown => "unknown",
     }
 }
 fn project_health_from(s: &str) -> TaskResult<ProjectHealth> {
     Ok(match s {
-        "on_track"  => ProjectHealth::OnTrack,
-        "at_risk"   => ProjectHealth::AtRisk,
+        "on_track" => ProjectHealth::OnTrack,
+        "at_risk" => ProjectHealth::AtRisk,
         "off_track" => ProjectHealth::OffTrack,
-        "unknown"   => ProjectHealth::Unknown,
-        other       => return Err(TaskError::Invalid(format!("project health={other}"))),
+        "unknown" => ProjectHealth::Unknown,
+        other => return Err(TaskError::Invalid(format!("project health={other}"))),
     })
 }
 
 fn run_outcome_from(s: &str) -> TaskResult<RunOutcome> {
     Ok(match s {
-        "running"   => RunOutcome::Running,
+        "running" => RunOutcome::Running,
         "succeeded" => RunOutcome::Succeeded,
-        "failed"    => RunOutcome::Failed,
+        "failed" => RunOutcome::Failed,
         "cancelled" => RunOutcome::Cancelled,
-        other       => return Err(TaskError::Invalid(format!("outcome={other}"))),
+        other => return Err(TaskError::Invalid(format!("outcome={other}"))),
     })
 }
 
 fn run_outcome_str(o: RunOutcome) -> &'static str {
     match o {
-        RunOutcome::Running   => "running",
+        RunOutcome::Running => "running",
         RunOutcome::Succeeded => "succeeded",
-        RunOutcome::Failed    => "failed",
+        RunOutcome::Failed => "failed",
         RunOutcome::Cancelled => "cancelled",
     }
 }
@@ -1070,16 +1243,28 @@ mod tests {
     fn list_filters_by_status() {
         let store = TaskStore::open_in_memory().unwrap();
         let t = store.create(draft("x")).unwrap();
-        store.update(&t.id, TaskPatch { status: Some(TaskStatus::Done), ..Default::default() }).unwrap();
-        let only_done = store.list(&TaskListFilters {
-            status: Some(vec![TaskStatus::Done]),
-            ..Default::default()
-        }).unwrap();
+        store
+            .update(
+                &t.id,
+                TaskPatch {
+                    status: Some(TaskStatus::Done),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let only_done = store
+            .list(&TaskListFilters {
+                status: Some(vec![TaskStatus::Done]),
+                ..Default::default()
+            })
+            .unwrap();
         assert_eq!(only_done.len(), 1);
-        let only_queued = store.list(&TaskListFilters {
-            status: Some(vec![TaskStatus::Queued]),
-            ..Default::default()
-        }).unwrap();
+        let only_queued = store
+            .list(&TaskListFilters {
+                status: Some(vec![TaskStatus::Queued]),
+                ..Default::default()
+            })
+            .unwrap();
         assert!(only_queued.is_empty());
     }
 
@@ -1088,10 +1273,12 @@ mod tests {
         let store = TaskStore::open_in_memory().unwrap();
         store.create(draft("ship billing dashboard")).unwrap();
         store.create(draft("refactor auth")).unwrap();
-        let hits = store.list(&TaskListFilters {
-            query: Some("billing".into()),
-            ..Default::default()
-        }).unwrap();
+        let hits = store
+            .list(&TaskListFilters {
+                query: Some("billing".into()),
+                ..Default::default()
+            })
+            .unwrap();
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].title, "ship billing dashboard");
     }
@@ -1102,11 +1289,16 @@ mod tests {
         let t = store.create(draft("todo")).unwrap();
         let original_updated = t.updated_at;
         std::thread::sleep(std::time::Duration::from_millis(2));
-        let upd = store.update(&t.id, TaskPatch {
-            title: Some("todo v2".into()),
-            status: Some(TaskStatus::Done),
-            ..Default::default()
-        }).unwrap();
+        let upd = store
+            .update(
+                &t.id,
+                TaskPatch {
+                    title: Some("todo v2".into()),
+                    status: Some(TaskStatus::Done),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
         assert_eq!(upd.title, "todo v2");
         assert_eq!(upd.status, TaskStatus::Done);
         assert!(upd.updated_at > original_updated);
@@ -1122,27 +1314,37 @@ mod tests {
             conn.execute(
                 "INSERT INTO task_runs(id,task_id,started_at,outcome) VALUES(?,?,?,?)",
                 params!["r1", t.id, 1i64, "succeeded"],
-            ).unwrap();
+            )
+            .unwrap();
         }
         store.delete(&t.id).unwrap();
         assert!(matches!(store.get(&t.id), Err(TaskError::NotFound(_))));
         let conn = store.conn.lock().unwrap();
-        let count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM task_runs WHERE task_id = ?", [&t.id], |r| r.get(0)
-        ).unwrap();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM task_runs WHERE task_id = ?",
+                [&t.id],
+                |r| r.get(0),
+            )
+            .unwrap();
         assert_eq!(count, 0, "task_runs cascade delete");
     }
 
     #[test]
     fn delete_missing_errors() {
         let store = TaskStore::open_in_memory().unwrap();
-        assert!(matches!(store.delete("missing"), Err(TaskError::NotFound(_))));
+        assert!(matches!(
+            store.delete("missing"),
+            Err(TaskError::NotFound(_))
+        ));
     }
 
     #[test]
     fn fts_search_matches_title_tokens() {
         let store = TaskStore::open_in_memory().unwrap();
-        store.create(draft("refactor the authentication module")).unwrap();
+        store
+            .create(draft("refactor the authentication module"))
+            .unwrap();
         store.create(draft("update deployment docs")).unwrap();
         let hits = store.search("auth").unwrap();
         assert_eq!(hits.len(), 1);
@@ -1155,7 +1357,9 @@ mod tests {
         let t = store.create(draft("x")).unwrap();
         let run_id = store.create_run(&t.id).unwrap();
         store.update_run_summary(&run_id, "halfway").unwrap();
-        store.end_run(&run_id, RunOutcome::Succeeded, Some("done ok")).unwrap();
+        store
+            .end_run(&run_id, RunOutcome::Succeeded, Some("done ok"))
+            .unwrap();
         let got = store.get(&t.id).unwrap();
         assert_eq!(got.runs.len(), 1);
         assert!(matches!(got.runs[0].outcome, RunOutcome::Succeeded));
@@ -1168,22 +1372,29 @@ mod tests {
         let store = TaskStore::open_in_memory().unwrap();
         let t = store.create(draft("y")).unwrap();
         let run_id = store.create_run(&t.id).unwrap();
-        assert_eq!(store.task_id_for_run(&run_id).unwrap().as_deref(), Some(t.id.as_str()));
+        assert_eq!(
+            store.task_id_for_run(&run_id).unwrap().as_deref(),
+            Some(t.id.as_str())
+        );
         assert_eq!(store.task_id_for_run("nope").unwrap(), None);
     }
 
     #[test]
     fn update_sets_agent_config() {
-        use solo_protocol::{AgentConfig, ExecutionLocation, AgentPermissionMode};
+        use solo_protocol::{AgentConfig, AgentPermissionMode, ExecutionLocation};
         let store = TaskStore::open_in_memory().unwrap();
-        let t = store.create(TaskDraft {
-            title: "run".into(), description: String::new(),
-            executor: Executor::Agent, priority: TaskPriority::Medium,
-            subtasks: Vec::new(),
-            label_ids: Vec::new(),
-            project_id: None,
-            cycle_id: None,
-        }).unwrap();
+        let t = store
+            .create(TaskDraft {
+                title: "run".into(),
+                description: String::new(),
+                executor: Executor::Agent,
+                priority: TaskPriority::Medium,
+                subtasks: Vec::new(),
+                label_ids: Vec::new(),
+                project_id: None,
+                cycle_id: None,
+            })
+            .unwrap();
         assert!(t.agent_config.is_none());
 
         let cfg = AgentConfig {
@@ -1191,25 +1402,42 @@ mod tests {
             execution_location: ExecutionLocation::Worktree,
             ..Default::default()
         };
-        let updated = store.update(&t.id, TaskPatch {
-            agent_config: Some(cfg.clone()),
-            ..Default::default()
-        }).unwrap();
-        assert_eq!(updated.agent_config.unwrap().permission_mode, AgentPermissionMode::Bypass);
+        let updated = store
+            .update(
+                &t.id,
+                TaskPatch {
+                    agent_config: Some(cfg.clone()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            updated.agent_config.unwrap().permission_mode,
+            AgentPermissionMode::Bypass
+        );
     }
 
     #[test]
     fn list_scheduled_returns_only_scheduled() {
-        use solo_protocol::{Schedule, PresetKind};
+        use solo_protocol::{PresetKind, Schedule};
         let store = TaskStore::open_in_memory().unwrap();
         let _manual = store.create(draft("no schedule")).unwrap();
         let scheduled = store.create(draft("will run")).unwrap();
-        store.update(&scheduled.id, TaskPatch {
-            schedule: Some(Schedule::Preset {
-                kind: PresetKind::Daily, hour: 3, minute: 0, weekday: None, next_fire: 0,
-            }),
-            ..Default::default()
-        }).unwrap();
+        store
+            .update(
+                &scheduled.id,
+                TaskPatch {
+                    schedule: Some(Schedule::Preset {
+                        kind: PresetKind::Daily,
+                        hour: 3,
+                        minute: 0,
+                        weekday: None,
+                        next_fire: 0,
+                    }),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
         let list = store.list_scheduled().unwrap();
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].id, scheduled.id);
@@ -1269,7 +1497,9 @@ mod tests {
         let t = store.subtask_add(&t.id, "old name".into()).unwrap();
         let sub_id = t.subtasks[0].id.clone();
 
-        let renamed = store.subtask_rename(&t.id, &sub_id, "new name".into()).unwrap();
+        let renamed = store
+            .subtask_rename(&t.id, &sub_id, "new name".into())
+            .unwrap();
         assert_eq!(renamed.subtasks[0].title, "new name");
         assert_eq!(renamed.subtasks[0].id, sub_id);
     }
@@ -1326,7 +1556,9 @@ mod tests {
         let t = store.subtask_add(&t.id, "b".into()).unwrap();
 
         // Wrong length
-        let err = store.subtask_reorder(&t.id, &[t.subtasks[0].id.clone()]).unwrap_err();
+        let err = store
+            .subtask_reorder(&t.id, &[t.subtasks[0].id.clone()])
+            .unwrap_err();
         assert!(matches!(err, TaskError::Invalid(_)));
 
         // Unknown id
@@ -1345,8 +1577,12 @@ mod tests {
             executor: Executor::Manual,
             priority: TaskPriority::Medium,
             subtasks: vec![
-                solo_protocol::SubtaskDraft { title: "one".into() },
-                solo_protocol::SubtaskDraft { title: "two".into() },
+                solo_protocol::SubtaskDraft {
+                    title: "one".into(),
+                },
+                solo_protocol::SubtaskDraft {
+                    title: "two".into(),
+                },
             ],
             label_ids: Vec::new(),
             project_id: None,
