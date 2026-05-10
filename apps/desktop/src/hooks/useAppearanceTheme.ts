@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useLayoutEffect } from 'react';
 
 import { useSettingsStore } from '@/stores/settingsStore';
 
@@ -14,7 +14,7 @@ export function useAppearanceTheme(surface: ThemeSurface): void {
   const appearance = useSettingsStore((s) => s.appearance);
   const theme = appearance[surface];
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const root = document.documentElement;
     const contrast = clamp(theme.contrast, 0, 100);
     const sidebarOpacity = clamp(58 + contrast * 0.38, 62, 94);
@@ -22,6 +22,8 @@ export function useAppearanceTheme(surface: ThemeSurface): void {
     const borderOpacity = clamp(8 + contrast * 0.18, 10, 28);
     const mutedText = clamp(42 + contrast * 0.24, 46, 70);
     const accentWash = surface === 'dark' ? 16 : 10;
+    const panelWash = surface === 'dark' ? 12 : 5;
+    const toolWash = surface === 'dark' ? 14 : 7;
 
     root.style.setProperty('--solo-theme-accent', theme.accent);
     root.style.setProperty('--solo-theme-background', theme.background);
@@ -30,6 +32,8 @@ export function useAppearanceTheme(surface: ThemeSurface): void {
     root.style.setProperty('--foreground', theme.foreground);
     root.style.setProperty('--primary', theme.accent);
     root.style.setProperty('--primary-foreground', surface === 'dark' ? '#0b0b0b' : '#ffffff');
+    root.style.setProperty('--secondary', mix(theme.foreground, panelWash, theme.background));
+    root.style.setProperty('--secondary-foreground', theme.foreground);
     root.style.setProperty('--ring', mix(theme.accent, 72, 'transparent'));
     root.style.setProperty('--accent', mix(theme.accent, accentWash, theme.background));
     root.style.setProperty('--accent-foreground', theme.foreground);
@@ -46,6 +50,13 @@ export function useAppearanceTheme(surface: ThemeSurface): void {
     root.style.setProperty('--sidebar-primary', theme.accent);
     root.style.setProperty('--sidebar-accent', mix(theme.accent, accentWash + 3, theme.background));
     root.style.setProperty('--sidebar-border', mix(theme.foreground, borderOpacity, 'transparent'));
+    root.style.setProperty('--chat-area', mix(theme.background, surface === 'dark' ? 98 : 96, theme.foreground));
+    root.style.setProperty('--tool-output-bg', mix(theme.foreground, toolWash, theme.background));
+    root.style.setProperty('--border-tool', mix(theme.foreground, borderOpacity + 2, 'transparent'));
+    root.style.setProperty('--agent-user-bg', mix(theme.foreground, toolWash, theme.background));
+    root.style.setProperty('--agent-assistant-bg', 'transparent');
+    root.style.setProperty('--agent-tool-bg', mix(theme.foreground, toolWash, theme.background));
+    root.style.setProperty('--agent-streaming', mix(theme.foreground, mutedText + 8, theme.background));
     root.style.setProperty('--font-sans', theme.uiFontFamily);
     root.style.setProperty('--font-mono', theme.codeFontFamily);
     root.style.setProperty('--liquid-sidebar-bg', mix(theme.background, sidebarOpacity, 'transparent'));
@@ -59,7 +70,9 @@ export function useAppearanceTheme(surface: ThemeSurface): void {
         ? '24px 0 60px -44px rgb(0 0 0 / 0.75), inset -1px 0 0 rgb(255 255 255 / 0.04)'
         : '20px 0 44px -38px rgb(25 20 12 / 0.32), inset -1px 0 0 rgb(255 255 255 / 0.58)',
     );
+    root.style.colorScheme = surface;
     root.dataset.translucentSidebar = String(theme.translucentSidebar);
     root.dataset.fontSmoothing = theme.fontSmoothing ? 'antialiased' : 'auto';
+    root.dataset.soloThemeSurface = surface;
   }, [surface, theme]);
 }
