@@ -21,8 +21,7 @@ import { usePanelTabsStore } from '@/stores/panelTabsStore';
 import { BUILTIN_PANEL_TYPES } from '@/lib/panels';
 import { launchReviewSession } from '@/lib/reviewSession';
 import { motion } from 'motion/react';
-import { FileChangeItem } from '@/components/source-control/FileChangeItem';
-import { AnimatedList } from '@/components/ui/animated-list';
+import { VirtualFileChangeList } from '@/components/source-control/VirtualFileChangeList';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -382,18 +381,15 @@ export const WorktreeChangesView: FC<WorktreeChangesViewProps> = ({ className })
             </button>
 
             {stagedOpen && (
-              <AnimatedList className="overflow-y-auto px-1">
-                {stagedFiles.map((file) => (
-                  <FileChangeItem
-                    key={`staged-${file.path}`}
-                    file={file}
-                    onDiscard={handleDiscardFile}
-                    onViewDiff={handleViewDiff}
-                    onStage={handleStageFile}
-                    onUnstage={handleUnstageFile}
-                  />
-                ))}
-              </AnimatedList>
+              <VirtualFileChangeList
+                files={stagedFiles}
+                className="max-h-40 px-1"
+                testId="worktree-changes-staged-files"
+                onDiscard={handleDiscardFile}
+                onViewDiff={handleViewDiff}
+                onStage={handleStageFile}
+                onUnstage={handleUnstageFile}
+              />
             )}
           </>
         )}
@@ -483,18 +479,15 @@ export const WorktreeChangesView: FC<WorktreeChangesViewProps> = ({ className })
                 <p className="text-[11px] text-muted-foreground/50">No changes detected</p>
               </motion.div>
             ) : (
-              <AnimatedList>
-                {unstagedFiles.map((file) => (
-                  <FileChangeItem
-                    key={file.path}
-                    file={file}
-                    onDiscard={handleDiscardFile}
-                    onViewDiff={handleViewDiff}
-                    onStage={handleStageFile}
-                    onUnstage={handleUnstageFile}
-                  />
-                ))}
-              </AnimatedList>
+              <VirtualFileChangeList
+                files={unstagedFiles}
+                className="h-full"
+                testId="worktree-changes-unstaged-files"
+                onDiscard={handleDiscardFile}
+                onViewDiff={handleViewDiff}
+                onStage={handleStageFile}
+                onUnstage={handleUnstageFile}
+              />
             )}
           </div>
         )}
