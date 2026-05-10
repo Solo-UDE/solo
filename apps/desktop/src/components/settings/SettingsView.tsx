@@ -150,13 +150,13 @@ export function SettingsView() {
             </div>
 
             <div className="rounded-[10px] border border-border/60 bg-background/55 p-4 lg:p-5">
-              <AnimatePresence initial={false}>
+              <AnimatePresence mode="popLayout" initial={false}>
                 <motion.div
                   key={settingsTab}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.08 }}
+                  initial={{ opacity: 0, y: 2 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -2 }}
+                  transition={{ duration: 0.09, ease: [0.2, 0, 0, 1] }}
                 >
                   {renderTabContent()}
                 </motion.div>
