@@ -10,6 +10,7 @@ import {
   CloudOff,
   AlertCircle,
   Trash2,
+  CalendarClock,
 } from 'lucide-react';
 import type { VaultEntry, CloudSyncState } from '@/lib/tauri/vault';
 import { useVaultStore } from '@/stores/vaultStore';
@@ -55,6 +56,9 @@ export const VaultEntryCard: FC<Props> = ({ entry }) => {
   const SyncIcon = SYNC_ICON[entry.cloud_sync_state];
   const canSync = entry.cloud_sync_state !== 'synced';
   const deleteRemote = entry.cloud_sync_state !== 'offline';
+  const expiresAt = toOptionalNumber(entry.expires_at);
+  const expired = expiresAt !== null && expiresAt <= Math.floor(Date.now() / 1000);
+  const labelCount = entry.label_ids?.length ?? 0;
   const deleteLabel = deleteRemote ? 'Delete everywhere' : 'Delete from Vault';
   const syncLabel =
     entry.cloud_sync_state === 'failed'
@@ -110,7 +114,7 @@ export const VaultEntryCard: FC<Props> = ({ entry }) => {
           onClick={openEntry}
           onKeyDown={onKey}
           className={cn(
-            'group flex items-center gap-2 h-9 px-2 rounded-lg transition-all duration-150 text-left w-full cursor-pointer select-none',
+            'group flex items-center gap-2 h-9 px-2 rounded-lg transition-[background-color,color,box-shadow,opacity,transform] duration-150 text-left w-full cursor-pointer select-none',
             'hover:bg-muted/60 hover:scale-[1.01] active:scale-[0.995]',
             'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/40',
             entry.pinned && 'bg-primary/5',
@@ -125,7 +129,7 @@ export const VaultEntryCard: FC<Props> = ({ entry }) => {
               void togglePinned(entry.id);
             }}
             className={cn(
-              'w-5 h-5 rounded-md flex items-center justify-center transition-all duration-150',
+              'w-5 h-5 rounded-md flex items-center justify-center transition-[background-color,color,box-shadow,opacity,transform] duration-150',
               entry.pinned
                 ? 'text-primary hover:bg-primary/10'
                 : 'text-muted-foreground/40 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover:bg-muted/80 hover:text-foreground',
@@ -138,9 +142,16 @@ export const VaultEntryCard: FC<Props> = ({ entry }) => {
 
           <div className="flex-1 min-w-0">
             <div className="text-[11px] font-medium truncate">{entry.title}</div>
-            {entry.tags.length > 0 && (
-              <div className="text-[9px] text-muted-foreground/60 truncate">
-                {entry.tags.join(' · ')}
+            {(entry.tags.length > 0 || labelCount > 0 || expired) && (
+              <div className="flex min-w-0 items-center gap-1.5 text-[9px] text-muted-foreground/60">
+                {labelCount > 0 ? <span className="shrink-0">{labelCount} label{labelCount === 1 ? '' : 's'}</span> : null}
+                {expired ? (
+                  <span className="inline-flex shrink-0 items-center gap-0.5 text-amber-600 dark:text-amber-300">
+                    <CalendarClock className="h-2.5 w-2.5" />
+                    expired
+                  </span>
+                ) : null}
+                {entry.tags.length > 0 ? <span className="truncate">{entry.tags.join(' · ')}</span> : null}
               </div>
             )}
           </div>
@@ -153,7 +164,7 @@ export const VaultEntryCard: FC<Props> = ({ entry }) => {
             }}
             disabled={!canSync || isSyncingEntry}
             className={cn(
-              'h-6 w-6 rounded-md flex items-center justify-center shrink-0 transition-all duration-150',
+              'h-6 w-6 rounded-md flex items-center justify-center shrink-0 transition-[background-color,color,box-shadow,opacity,transform] duration-150',
               canSync && 'hover:bg-primary/10',
               !canSync && 'cursor-default',
               isSyncingEntry && 'opacity-70',
@@ -178,7 +189,7 @@ export const VaultEntryCard: FC<Props> = ({ entry }) => {
             }}
             disabled={isDeleting}
             className={cn(
-              'w-6 h-6 rounded-md flex items-center justify-center shrink-0 transition-all duration-150',
+              'w-6 h-6 rounded-md flex items-center justify-center shrink-0 transition-[background-color,color,box-shadow,opacity,transform] duration-150',
               'text-muted-foreground/55 hover:bg-destructive/10 hover:text-destructive',
               'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-destructive/30',
               'disabled:opacity-50 disabled:cursor-not-allowed',
@@ -213,3 +224,9 @@ export const VaultEntryCard: FC<Props> = ({ entry }) => {
     </ContextMenu>
   );
 };
+
+function toOptionalNumber(value: number | bigint | null | undefined): number | null {
+  if (value == null) return null;
+  const n = typeof value === 'bigint' ? Number(value) : value;
+  return Number.isFinite(n) ? n : null;
+}
