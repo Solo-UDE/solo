@@ -18,9 +18,11 @@ pub mod schedule_preview;
 pub mod scheduler;
 pub mod store;
 
-pub use context::{ContextFragment, render_prompt, trim_to_budget, DEFAULT_BUNDLE, DEFAULT_TOKEN_BUDGET};
+pub use context::{
+    render_prompt, trim_to_budget, ContextFragment, DEFAULT_BUNDLE, DEFAULT_TOKEN_BUDGET,
+};
 pub use deny_list::{is_denied, DEFAULT_DENY_LIST};
 pub use error::{TaskError, TaskResult};
 pub use schedule_preview::next_fires;
-pub use scheduler::{Scheduler, FireOrder};
+pub use scheduler::{FireOrder, Scheduler};
 pub use store::TaskStore;
