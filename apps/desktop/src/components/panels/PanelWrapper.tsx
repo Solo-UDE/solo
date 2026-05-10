@@ -3,7 +3,7 @@
  * Provides callbacks for panels to update their state
  */
 
-import { useCallback, useMemo, useRef, useState, useEffect } from 'react';
+import { useCallback, useMemo } from 'react';
 import { panelRegistry } from '@/lib/panels/registry';
 import { usePanelTabsStore } from '@/stores/panelTabsStore';
 import type { PanelInstance, PanelProps } from '@/lib/panels/types';
@@ -16,19 +16,6 @@ interface PanelWrapperProps {
 }
 
 export function PanelWrapper({ instance, isActive, className }: PanelWrapperProps) {
-  // Track when panel becomes active to trigger fade-in
-  const wasActive = useRef(isActive);
-  const [shouldAnimate, setShouldAnimate] = useState(false);
-
-  useEffect(() => {
-    if (isActive && !wasActive.current) {
-      setShouldAnimate(true);
-      const timer = setTimeout(() => setShouldAnimate(false), 150);
-      return () => clearTimeout(timer);
-    }
-    wasActive.current = isActive;
-  }, [isActive]);
-
   // Get actions directly from store to avoid selector subscription issues
   const actions = useMemo(() => {
     const state = usePanelTabsStore.getState();
@@ -111,7 +98,6 @@ export function PanelWrapper({ instance, isActive, className }: PanelWrapperProp
       className={cn(
         'h-full w-full overflow-hidden',
         !isActive && 'hidden',
-        isActive && shouldAnimate && 'animate-in fade-in-0 duration-150',
         className
       )}
     >
