@@ -10,6 +10,7 @@ import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
 import { Cross2Icon } from '@radix-ui/react-icons';
 import { Brush, ChevronDown, FileText, MessageCircle, MoreHorizontal } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { VirtualList } from '@/components/ui/virtual-list';
 import { Tab } from './Tab';
 import { TabGroupComponent } from './TabGroup';
 import { computeTabGroups, usePanelTabsStore, type PanelTabsState } from '@/stores/panelTabsStore';
@@ -408,18 +409,24 @@ function TabOverflowMenu({
             role="menu"
             aria-label="Overflow tabs"
           >
-            <div className="max-h-[360px] overflow-y-auto pr-0.5">
-              {tabs.map((tab) => (
+            <VirtualList
+              items={tabs}
+              estimateSize={() => 44}
+              overscan={8}
+              className="max-h-[360px] pr-0.5"
+              itemClassName="pb-1"
+              getItemKey={(tab) => tab.id}
+              testId="tab-overflow-menu"
+              renderItem={(tab) => (
                 <OverflowTabItem
-                  key={tab.id}
                   tab={tab}
                   isActive={tab.id === activeTabId}
                   onActivate={() => onTabActivate(tab.id)}
                   onClose={() => onTabClose(tab.id)}
                   onContextMenu={(event) => onTabContextMenu(event, tab.id)}
                 />
-              ))}
-            </div>
+              )}
+            />
           </motion.div>
         ) : null}
       </AnimatePresence>
