@@ -146,7 +146,11 @@ pub async fn install(shared: &SharedGitRefWatcher, workspace: &Path) -> FsResult
     let new_watcher = match GitRefWatcher::start(workspace) {
         Ok(w) => w,
         Err(e) => {
-            warn!("GitRefWatcher: failed to start for {}: {}", workspace.display(), e);
+            warn!(
+                "GitRefWatcher: failed to start for {}: {}",
+                workspace.display(),
+                e
+            );
             return Err(e);
         }
     };
