@@ -80,8 +80,10 @@ try {
 }
 try {
   const gh = stackOutput(`SoloGitHub-${stage}`);
-  if (gh.OidcIssuerUrl) authoritative.SOLO_GITHUB_OIDC_ISSUER = gh.OidcIssuerUrl;
-  if (gh.CallbackUrl) authoritative.SOLO_GITHUB_CALLBACK = gh.CallbackUrl;
+  const oidcIssuer = gh.OidcIssuerUrl ?? gh.OidcIssuer ?? gh.OidcApiUrl;
+  const callbackUrl = gh.CallbackUrl ?? gh.GitHubCallbackUrl;
+  if (oidcIssuer) authoritative.SOLO_GITHUB_OIDC_ISSUER = oidcIssuer;
+  if (callbackUrl) authoritative.SOLO_GITHUB_CALLBACK = callbackUrl;
 } catch (e) {
   console.warn(`! SoloGitHub-${stage}: ${e.message.split("\n")[0]}`);
 }
