@@ -252,7 +252,11 @@ fn process_interface(
         terms_of_service_url,
         default_prompts: resolve_default_prompts(default_prompt).unwrap_or_default(),
         brand_color,
-        composer_icon: resolve_manifest_path(plugin_root, "interface.composerIcon", composer_icon.as_deref()),
+        composer_icon: resolve_manifest_path(
+            plugin_root,
+            "interface.composerIcon",
+            composer_icon.as_deref(),
+        ),
         logo: resolve_manifest_path(plugin_root, "interface.logo", logo.as_deref()),
         screenshots: screenshots
             .iter()
@@ -278,9 +282,7 @@ fn process_interface(
     has_any.then_some(interface)
 }
 
-fn resolve_default_prompts(
-    raw: Option<RawPluginManifestDefaultPrompt>,
-) -> Option<Vec<String>> {
+fn resolve_default_prompts(raw: Option<RawPluginManifestDefaultPrompt>) -> Option<Vec<String>> {
     let raw = raw?;
     let mut prompts = Vec::new();
 
@@ -374,7 +376,11 @@ mod tests {
         let tmp = tempdir().unwrap();
         let root = tmp.path().join("sample");
         write_manifest(&root, ".solo-plugin/plugin.json", r#"{"name":"from-solo"}"#);
-        write_manifest(&root, ".claude-plugin/plugin.json", r#"{"name":"from-claude"}"#);
+        write_manifest(
+            &root,
+            ".claude-plugin/plugin.json",
+            r#"{"name":"from-claude"}"#,
+        );
         let manifest = load_plugin_manifest(&root).unwrap();
         assert_eq!(manifest.name, "from-solo");
     }
@@ -383,7 +389,11 @@ mod tests {
     fn claude_plugin_path_accepted_as_fallback() {
         let tmp = tempdir().unwrap();
         let root = tmp.path().join("sample");
-        write_manifest(&root, ".claude-plugin/plugin.json", r#"{"name":"from-claude"}"#);
+        write_manifest(
+            &root,
+            ".claude-plugin/plugin.json",
+            r#"{"name":"from-claude"}"#,
+        );
         let manifest = load_plugin_manifest(&root).unwrap();
         assert_eq!(manifest.name, "from-claude");
     }
@@ -414,7 +424,11 @@ mod tests {
     fn empty_version_becomes_none() {
         let tmp = tempdir().unwrap();
         let root = tmp.path().join("sample");
-        write_manifest(&root, ".solo-plugin/plugin.json", r#"{"name":"x","version":"  "}"#);
+        write_manifest(
+            &root,
+            ".solo-plugin/plugin.json",
+            r#"{"name":"x","version":"  "}"#,
+        );
         let manifest = load_plugin_manifest(&root).unwrap();
         assert_eq!(manifest.version, None);
     }
@@ -454,7 +468,10 @@ mod tests {
         );
         let manifest = load_plugin_manifest(&root).unwrap();
         let interface = manifest.interface.unwrap();
-        assert_eq!(interface.logo.unwrap().as_path(), root.join("assets/logo.png"));
+        assert_eq!(
+            interface.logo.unwrap().as_path(),
+            root.join("assets/logo.png")
+        );
         assert_eq!(interface.screenshots.len(), 2);
     }
 
@@ -476,7 +493,11 @@ mod tests {
     fn empty_interface_object_returns_none() {
         let tmp = tempdir().unwrap();
         let root = tmp.path().join("sample");
-        write_manifest(&root, ".solo-plugin/plugin.json", r#"{"name":"x","interface":{}}"#);
+        write_manifest(
+            &root,
+            ".solo-plugin/plugin.json",
+            r#"{"name":"x","interface":{}}"#,
+        );
         let manifest = load_plugin_manifest(&root).unwrap();
         assert!(manifest.interface.is_none());
     }
@@ -501,7 +522,10 @@ mod tests {
         );
         let manifest = load_plugin_manifest(&root).unwrap();
         let interface = manifest.interface.unwrap();
-        assert_eq!(interface.default_prompts, vec!["Summarize my inbox".to_string()]);
+        assert_eq!(
+            interface.default_prompts,
+            vec!["Summarize my inbox".to_string()]
+        );
     }
 
     #[test]
