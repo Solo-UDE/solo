@@ -246,7 +246,7 @@ export function TabbedContainer({ tileId }: TabbedContainerProps) {
       />
 
       {/* Panel content area */}
-      <div className="flex-1 overflow-hidden">
+      <div className="relative z-0 flex-1 overflow-hidden">
         {tabs.length === 0 ? (
           <EmptyTile />
         ) : (
