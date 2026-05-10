@@ -5,6 +5,7 @@
 import type { FC } from 'react';
 import { FolderPlus } from 'lucide-react';
 import { useRepoList } from '@/stores/repoStore';
+import { VirtualList } from '@/components/ui/virtual-list';
 import { RepoItem } from './RepoItem';
 
 interface RepoListProps {
@@ -35,10 +36,14 @@ export const RepoList: FC<RepoListProps> = ({ onAddRepo }) => {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto py-1">
-      {repos.map((repo) => (
-        <RepoItem key={repo.path} repo={repo} />
-      ))}
-    </div>
+    <VirtualList
+      items={repos}
+      estimateSize={() => 58}
+      overscan={8}
+      className="flex-1 py-1"
+      getItemKey={(repo) => repo.path}
+      testId="repo-list"
+      renderItem={(repo) => <RepoItem repo={repo} />}
+    />
   );
 };
