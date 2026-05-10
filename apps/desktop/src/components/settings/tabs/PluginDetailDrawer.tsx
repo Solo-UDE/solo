@@ -1,9 +1,9 @@
 /**
- * PluginDetailDrawer — slide-in panel showing full PluginDetail.
+ * PluginDetailDrawer — in-flow right sidebar showing full PluginDetail.
  *
- * Opened by clicking a plugin tile. Uses the same detail projection as
- * `plugins_get_detail` — long description, capabilities, default prompts,
- * screenshots, links, and an uninstall action for Solo-native plugins.
+ * Opened by clicking a plugin tile. It follows the Tasks drawer pattern:
+ * a shrink-0 right column inside the panel rather than a fixed window-level
+ * overlay.
  */
 
 import type { FC } from 'react';
@@ -40,78 +40,70 @@ export const PluginDetailDrawer: FC<{ rootPath: string }> = ({ rootPath }) => {
   return (
     <AnimatePresence>
       {detailOpen && detail && (
-        <>
-          <motion.button
-            type="button"
-            className="fixed inset-0 bg-background/60 backdrop-blur-sm z-40"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={closeDetail}
-            aria-label="Close plugin details"
-          />
-          <motion.aside
-            className="fixed right-0 top-0 h-full w-full max-w-[480px] z-50 bg-card border-l border-border/70 shadow-2xl overflow-y-auto"
-            initial={{ x: '100%' }}
-            animate={{ x: 0 }}
-            exit={{ x: '100%' }}
-            transition={{ type: 'spring', stiffness: 400, damping: 40 }}
-          >
-            <div className="px-6 py-5">
-              {/* Header */}
-              <div className="flex items-start gap-4">
-                <div
-                  className="shrink-0 w-14 h-14 rounded-[12px] flex items-center justify-center overflow-hidden bg-muted/40"
+        <motion.aside
+          className={cn(
+            'flex h-full w-[480px] shrink-0 flex-col',
+            'border-l border-border/40 bg-background shadow-[0_-8px_32px_-16px_rgba(0,0,0,0.3)]',
+          )}
+          initial={{ x: '100%' }}
+          animate={{ x: 0 }}
+          exit={{ x: '100%' }}
+          transition={{ type: 'spring', stiffness: 380, damping: 38 }}
+        >
+          <header className="flex shrink-0 items-start gap-4 border-b border-border/50 px-4 py-3">
+            <div
+              className="shrink-0 w-14 h-14 rounded-[12px] flex items-center justify-center overflow-hidden bg-muted/40"
+              style={
+                detail.interface?.brand_color
+                  ? { backgroundColor: `${detail.interface.brand_color}20` }
+                  : undefined
+              }
+            >
+              {detail.interface?.logo ? (
+                <img
+                  src={`asset://localhost/${encodeURIComponent(detail.interface.logo)}`}
+                  alt=""
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                  }}
+                />
+              ) : (
+                <Puzzle
+                  className="w-7 h-7"
                   style={
                     detail.interface?.brand_color
-                      ? { backgroundColor: `${detail.interface.brand_color}20` }
+                      ? { color: detail.interface.brand_color }
                       : undefined
                   }
-                >
-                  {detail.interface?.logo ? (
-                    <img
-                      src={`asset://localhost/${encodeURIComponent(detail.interface.logo)}`}
-                      alt=""
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        e.currentTarget.style.display = 'none';
-                      }}
-                    />
-                  ) : (
-                    <Puzzle
-                      className="w-7 h-7"
-                      style={
-                        detail.interface?.brand_color
-                          ? { color: detail.interface.brand_color }
-                          : undefined
-                      }
-                    />
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h2 className="text-base font-semibold text-foreground truncate">
-                    {detail.interface?.display_name ?? detail.id.name}
-                  </h2>
-                  {detail.interface?.developer_name && (
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      by {detail.interface.developer_name}
-                    </p>
-                  )}
-                  <p className="text-[11px] font-mono text-muted-foreground/60 mt-1 truncate">
-                    {detail.id.marketplace}/{detail.id.name} · v{detail.version}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={closeDetail}
-                  className="shrink-0 p-1 rounded hover:bg-muted/40 text-muted-foreground hover:text-foreground transition-colors"
-                  aria-label="Close"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
+                />
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <h2 className="text-base font-semibold text-foreground truncate">
+                {detail.interface?.display_name ?? detail.id.name}
+              </h2>
+              {detail.interface?.developer_name && (
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  by {detail.interface.developer_name}
+                </p>
+              )}
+              <p className="text-[11px] font-mono text-muted-foreground/60 mt-1 truncate">
+                {detail.id.marketplace}/{detail.id.name} · v{detail.version}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={closeDetail}
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+              aria-label="Close plugin details"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </header>
 
-              {/* Enabled toggle */}
+          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+            {/* Enabled toggle */}
               <div className="mt-5 flex items-center gap-3 rounded-[10px] border border-border/60 bg-background/55 px-4 py-3">
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium text-foreground">
@@ -318,9 +310,8 @@ export const PluginDetailDrawer: FC<{ rootPath: string }> = ({ rootPath }) => {
                   </button>
                 </div>
               )}
-            </div>
-          </motion.aside>
-        </>
+          </div>
+        </motion.aside>
       )}
     </AnimatePresence>
   );
