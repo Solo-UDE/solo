@@ -10,8 +10,11 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
+#[cfg(target_os = "macos")]
+use std::process::Command;
 use std::sync::Arc;
-use tauri::State;
+use std::time::Duration;
+use tauri::{AppHandle, Emitter, State};
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 use url::Url;
@@ -175,6 +178,56 @@ impl Default for AuthState {
     }
 }
 
+fn generate_oauth_state() -> String {
+    let mut rng = rand::thread_rng();
+    let state_bytes: [u8; 32] = rng.gen();
+    URL_SAFE_NO_PAD.encode(state_bytes)
+}
+
+async fn start_desktop_callback_listener(
+    app: AppHandle,
+    expected_state: String,
+) -> Result<(), String> {
+    let listener = solo_auth::bind_callback_listener_on(solo_auth::CALLBACK_PORT)
+        .await
+        .map_err(|e| format!("Failed to start local auth callback server: {}", e))?;
+
+    info!(
+        port = solo_auth::CALLBACK_PORT,
+        "auth callback listener bound"
+    );
+
+    tauri::async_runtime::spawn(async move {
+        let result = solo_auth::start_callback_server_with_listener(
+            &expected_state,
+            Some(Duration::from_secs(300)),
+            listener,
+        )
+        .await;
+
+        let callback_url = match result {
+            Ok(callback) => format!(
+                "soloide://auth/callback?code={}&state={}",
+                urlencoding::encode(&callback.code),
+                urlencoding::encode(&callback.state)
+            ),
+            Err(error) => {
+                warn!(error = %error, "auth callback listener failed");
+                format!(
+                    "soloide://auth/callback?error=callback_server&error_description={}",
+                    urlencoding::encode(&error.to_string())
+                )
+            }
+        };
+
+        if let Err(error) = app.emit("auth-callback", callback_url) {
+            warn!(error = %error, "failed to emit auth callback event");
+        }
+    });
+
+    Ok(())
+}
+
 /// Maps a caller-facing provider string to the Cognito IdP name (or None for
 /// email/password via the Hosted UI). Accepted inputs are case-insensitive.
 fn cognito_identity_provider(provider: &str) -> Result<Option<&'static str>, String> {
@@ -184,6 +237,44 @@ fn cognito_identity_provider(provider: &str) -> Result<Option<&'static str>, Str
         "email" | "" | "cognito" => Ok(None),
         other => Err(format!("Unsupported OAuth provider: {}", other)),
     }
+}
+
+/// Open an auth URL in the user's external browser.
+///
+/// The frontend shell plugin can report success while some macOS browser/profile
+/// handlers open a blank tab. Running the OS opener from Rust keeps the URL
+/// handoff outside the webview popup path.
+#[tauri::command]
+pub async fn auth_open_external_url(url: String) -> Result<(), String> {
+    let parsed = Url::parse(&url).map_err(|e| format!("Invalid URL: {}", e))?;
+    match parsed.scheme() {
+        "http" | "https" => {}
+        scheme => {
+            return Err(format!(
+                "Refusing to open unsupported URL scheme: {}",
+                scheme
+            ))
+        }
+    }
+
+    info!(url = %url, "auth_open_external_url: opening in external browser");
+
+    #[cfg(target_os = "macos")]
+    {
+        let status = Command::new("/usr/bin/open")
+            .arg(&url)
+            .status()
+            .map_err(|e| format!("Failed to run /usr/bin/open: {}", e))?;
+        if status.success() {
+            return Ok(());
+        }
+        warn!(
+            status = ?status.code(),
+            "auth_open_external_url: /usr/bin/open failed; trying webbrowser fallback"
+        );
+    }
+
+    webbrowser::open(&url).map_err(|e| format!("Failed to open browser: {}", e))
 }
 
 // =============================================================================
@@ -291,6 +382,7 @@ async fn fetch_user_info(
 pub async fn auth_start_oauth(
     provider: String,
     state: State<'_, AuthState>,
+    app: AppHandle,
 ) -> Result<String, String> {
     info!(provider = %provider, "[auth_start_oauth] begin");
     let config = match desktop_config::cognito_config() {
@@ -316,6 +408,8 @@ pub async fn auth_start_oauth(
     );
 
     let pkce = AuthState::generate_pkce();
+    let oauth_state = generate_oauth_state();
+    start_desktop_callback_listener(app, oauth_state.clone()).await?;
 
     let mut url = Url::parse(&format!("{}/oauth2/authorize", config.base_url()))
         .map_err(|e| format!("Failed to build authorize URL: {}", e))?;
@@ -325,6 +419,7 @@ pub async fn auth_start_oauth(
         q.append_pair("client_id", &config.client_id);
         q.append_pair("redirect_uri", REDIRECT_URL);
         q.append_pair("scope", "openid email profile");
+        q.append_pair("state", &oauth_state);
         q.append_pair("code_challenge", &pkce.challenge);
         q.append_pair("code_challenge_method", "S256");
         if let Some(provider_name) = idp {
@@ -453,6 +548,7 @@ pub async fn auth_diagnose(
                 q.append_pair("client_id", &cfg.client_id);
                 q.append_pair("redirect_uri", REDIRECT_URL);
                 q.append_pair("scope", "openid email profile");
+                q.append_pair("state", "diagnostic");
                 q.append_pair("code_challenge", &sample_pkce.challenge);
                 q.append_pair("code_challenge_method", "S256");
                 q.append_pair("identity_provider", "GitHub");
@@ -489,10 +585,13 @@ pub async fn auth_diagnose(
 pub async fn auth_start_magic_link(
     email: String,
     state: State<'_, AuthState>,
+    app: AppHandle,
 ) -> Result<String, String> {
     info!(email = %email, "Opening email signin (Cognito Hosted UI)");
     let config = desktop_config::cognito_config()?;
     let pkce = AuthState::generate_pkce();
+    let oauth_state = generate_oauth_state();
+    start_desktop_callback_listener(app, oauth_state.clone()).await?;
 
     let mut url = Url::parse(&format!("{}/oauth2/authorize", config.base_url()))
         .map_err(|e| format!("Failed to build authorize URL: {}", e))?;
@@ -502,6 +601,7 @@ pub async fn auth_start_magic_link(
         q.append_pair("client_id", &config.client_id);
         q.append_pair("redirect_uri", REDIRECT_URL);
         q.append_pair("scope", "openid email profile");
+        q.append_pair("state", &oauth_state);
         q.append_pair("code_challenge", &pkce.challenge);
         q.append_pair("code_challenge_method", "S256");
         q.append_pair("login_hint", &email);
