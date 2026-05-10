@@ -38,6 +38,10 @@ export interface SoloApiStackProps extends cdk.StackProps {
   readonly githubLinkStartFn?: lambda.IFunction;
   readonly githubGetTokenFn?: lambda.IFunction;
   readonly githubUnlinkFn?: lambda.IFunction;
+  readonly connectorsListTokensFn?: lambda.IFunction;
+  readonly connectorsGetTokenFn?: lambda.IFunction;
+  readonly connectorsPutTokenFn?: lambda.IFunction;
+  readonly connectorsDeleteTokenFn?: lambda.IFunction;
 }
 
 export class SoloApiStack extends cdk.Stack {
@@ -63,6 +67,8 @@ export class SoloApiStack extends cdk.Stack {
         allowMethods: [
           apigw.CorsHttpMethod.GET,
           apigw.CorsHttpMethod.POST,
+          apigw.CorsHttpMethod.PUT,
+          apigw.CorsHttpMethod.DELETE,
           apigw.CorsHttpMethod.OPTIONS,
         ],
         allowHeaders: ["authorization", "content-type"],
@@ -198,6 +204,30 @@ export class SoloApiStack extends cdk.Stack {
     }
     if (props.githubUnlinkFn) {
       addRoute(apigw.HttpMethod.DELETE, "/v1/github/link", props.githubUnlinkFn);
+    }
+    if (props.connectorsListTokensFn) {
+      addRoute(apigw.HttpMethod.GET, "/v1/connectors/tokens", props.connectorsListTokensFn);
+    }
+    if (props.connectorsGetTokenFn) {
+      addRoute(
+        apigw.HttpMethod.GET,
+        "/v1/connectors/tokens/{provider}/{accountId}",
+        props.connectorsGetTokenFn,
+      );
+    }
+    if (props.connectorsPutTokenFn) {
+      addRoute(
+        apigw.HttpMethod.PUT,
+        "/v1/connectors/tokens/{provider}/{accountId}",
+        props.connectorsPutTokenFn,
+      );
+    }
+    if (props.connectorsDeleteTokenFn) {
+      addRoute(
+        apigw.HttpMethod.DELETE,
+        "/v1/connectors/tokens/{provider}/{accountId}",
+        props.connectorsDeleteTokenFn,
+      );
     }
 
     new cdk.CfnOutput(this, "ApiEndpoint", {
