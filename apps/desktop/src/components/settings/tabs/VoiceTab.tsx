@@ -3,6 +3,7 @@ import { voiceApi, onVoiceModelProgress } from '@/lib/tauri/voice';
 import { useVoiceStore } from '@/stores/voiceStore';
 import type { VoiceTranscriptResult } from '@/bindings/VoiceTranscriptResult';
 import { Button } from '@solo/ui';
+import { VirtualList } from '../../ui/virtual-list';
 
 export function VoiceTab() {
   const enabled = useVoiceStore((s) => s.enabled);
@@ -98,9 +99,17 @@ export function VoiceTab() {
             {history.length === 0 ? (
               <p className="text-xs text-muted-foreground">No transcripts yet.</p>
             ) : (
-              <ul className="space-y-2 max-h-80 overflow-auto">
-                {history.map((r) => (
-                  <li key={r.id} className="text-xs border rounded p-2 flex gap-2">
+              <VirtualList
+                items={history}
+                estimateSize={() => 52}
+                overscan={8}
+                role="list"
+                className="max-h-80"
+                itemClassName="pb-2"
+                getItemKey={(r) => r.id}
+                testId="voice-history"
+                renderItem={(r) => (
+                  <div className="text-xs border rounded p-2 flex gap-2" role="listitem">
                     <span className="flex-1">{r.formatted}</span>
                     <button
                       className="text-muted-foreground hover:text-foreground"
@@ -110,9 +119,9 @@ export function VoiceTab() {
                       className="text-muted-foreground hover:text-foreground"
                       onClick={() => deleteRow(r.id)}
                     >Delete</button>
-                  </li>
-                ))}
-              </ul>
+                  </div>
+                )}
+              />
             )}
           </section>
 
