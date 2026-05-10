@@ -6,6 +6,7 @@ import {
 } from '@atlaskit/pragmatic-drag-and-drop/element/adapter';
 import { cn } from '@/lib/utils';
 import { useTaskStore } from '@/stores/taskStore';
+import { VirtualList } from '@/components/ui/virtual-list';
 import type { Task } from '@/bindings/Task';
 import type { Subtask } from '@/bindings/Subtask';
 
@@ -71,18 +72,26 @@ export const SubtaskList: FC<Props> = ({ task }) => {
       </header>
 
       {totalCount > 0 && (
-        <ul className="flex flex-col gap-0.5">
-          {task.subtasks.map((s) => (
+        <VirtualList
+          items={task.subtasks}
+          estimateSize={() => 34}
+          overscan={8}
+          measureElement={false}
+          role="list"
+          className="max-h-[260px]"
+          itemClassName="pb-0.5"
+          getItemKey={(s) => s.id}
+          testId="task-subtasks"
+          renderItem={(s) => (
             <SubtaskRow
-              key={s.id}
               subtask={s}
               onToggle={(c) => void toggleSubtask(task.id, s.id, c)}
               onRename={(title) => void renameSubtask(task.id, s.id, title)}
               onRemove={() => void removeSubtask(task.id, s.id)}
               onDrop={(dragId) => void handleDrop(dragId, s.id)}
             />
-          ))}
-        </ul>
+          )}
+        />
       )}
 
       <form
