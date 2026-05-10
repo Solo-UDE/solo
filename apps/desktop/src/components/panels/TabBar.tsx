@@ -225,7 +225,7 @@ export function TabBar({
     <div
       ref={dropRef}
       className={cn(
-        'flex h-11 shrink-0 bg-background/20 backdrop-blur-md border-b border-white/[0.04]',
+        'relative z-30 flex h-11 shrink-0 overflow-visible bg-background/20 backdrop-blur-md border-b border-white/[0.04]',
         'px-2 pt-1 pb-1.5 transition-colors duration-150',
         isOver && 'bg-primary/10'
       )}
