@@ -115,15 +115,15 @@ pub static ANTHROPIC_MODELS: LazyLock<Vec<AIModel>> = LazyLock::new(|| {
 pub static GEMINI_MODELS: LazyLock<Vec<AIModel>> = LazyLock::new(|| {
     vec![
         AIModel {
-            id: "gemini-3-pro".to_string(),
-            display_name: "Gemini 3 Pro".to_string(),
+            id: "gemini-3.1-pro-preview".to_string(),
+            display_name: "Gemini 3.1 Pro".to_string(),
             alias: "gemini-pro".to_string(),
             provider: ProviderType::Gemini,
             capabilities: ModelCapabilities {
                 context_window: 1_000_000,
                 max_output_tokens: 65536,
                 supports_vision: true,
-                supports_tools: false,
+                supports_tools: true,
                 supports_streaming: true,
                 supports_thinking: true,
             },
@@ -131,20 +131,20 @@ pub static GEMINI_MODELS: LazyLock<Vec<AIModel>> = LazyLock::new(|| {
             description: "Advanced reasoning".to_string(),
         },
         AIModel {
-            id: "gemini-3-flash".to_string(),
+            id: "gemini-3-flash-preview".to_string(),
             display_name: "Gemini 3 Flash".to_string(),
             alias: "flash".to_string(),
             provider: ProviderType::Gemini,
             capabilities: ModelCapabilities {
                 context_window: 1_000_000,
-                max_output_tokens: 8192,
+                max_output_tokens: 65536,
                 supports_vision: true,
-                supports_tools: false,
+                supports_tools: true,
                 supports_streaming: true,
-                supports_thinking: false,
+                supports_thinking: true,
             },
             is_default: false,
-            description: "Fast multimodal model".to_string(),
+            description: "Fast multimodal preview".to_string(),
         },
     ]
 });
