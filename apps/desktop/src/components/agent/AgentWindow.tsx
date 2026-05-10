@@ -195,16 +195,21 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 		[sessionId, enqueueMessage]
 	);
 
-	const handleRecallQueue = useCallback((): { text: string; mentions?: FileMention[]; skills?: string[] } | null => {
+	const handleRecallQueue = useCallback((): { text: string; mentions?: FileMention[]; skills?: string[]; parts?: UserContentPart[] } | null => {
 		if (!sessionId) return null;
 		const popped = popQueueForRecall(sessionId);
 		if (popped.length === 0) return null;
 		const text = popped.map((q) => q.content).join('\n\n');
 		const mentionMap = new Map<string, FileMention>();
 		const skillSet = new Set<string>();
+		const parts: UserContentPart[] = [];
 		for (const q of popped) {
 			for (const m of q.mentions ?? []) mentionMap.set(m.path, m);
 			for (const n of q.skills ?? []) skillSet.add(n);
+			if (parts.length > 0 && (q.parts?.length ?? 0) > 0) {
+				parts.push({ type: 'text', text: '\n\n' });
+			}
+			if (q.parts) parts.push(...q.parts);
 		}
 		const mentions = Array.from(mentionMap.values());
 		const skills = Array.from(skillSet);
@@ -212,6 +217,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 			text,
 			mentions: mentions.length ? mentions : undefined,
 			skills: skills.length ? skills : undefined,
+			parts: parts.length ? parts : undefined,
 		};
 	}, [sessionId, popQueueForRecall]);
 
@@ -303,7 +309,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 	}, [sendMessage, handleNewSession]);
 
 	const handleAddSelectionToChat = useCallback((text: string) => {
-		chatInputRef.current?.insertText(text);
+		chatInputRef.current?.addSelection(text);
 		chatInputRef.current?.focus();
 	}, []);
 
