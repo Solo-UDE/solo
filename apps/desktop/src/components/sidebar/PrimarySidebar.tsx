@@ -15,6 +15,7 @@ import { useUIStore, useIsLeftSidebarCollapsed } from '@/stores/uiStore';
 import { useRepoStore, useRepoList } from '@/stores/repoStore';
 import { openFolderDialog } from '@/lib/tauri/fs';
 import { HEIGHTS } from '@/lib/constants';
+import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 interface PrimarySidebarProps {
@@ -96,12 +97,13 @@ export const PrimarySidebar = forwardRef<HTMLElement, PrimarySidebarProps>(({ wi
           ) : (
             <>
               <ModeToggle />
-              <div className="min-h-0 flex-1 flex flex-col overflow-hidden">
-                {sidebarMode === 'dev' ? (
-                  <DevSidebar onFileOpen={onFileOpen} />
-                ) : (
-                  <VaultSidebar />
-                )}
+              <div className="relative min-h-0 flex-1 overflow-hidden">
+                <div className={cn('absolute inset-0 flex min-h-0 flex-col', sidebarMode !== 'dev' && 'hidden')}>
+                  <DevSidebar onFileOpen={onFileOpen} isActive={sidebarMode === 'dev'} />
+                </div>
+                <div className={cn('absolute inset-0 flex min-h-0 flex-col', sidebarMode !== 'vault' && 'hidden')}>
+                  <VaultSidebar isActive={sidebarMode === 'vault'} />
+                </div>
               </div>
             </>
           )}
