@@ -16,6 +16,10 @@ impl ContextFragment {
     pub fn new(source: impl Into<String>, content: impl Into<String>) -> Self {
         let content = content.into();
         let token_estimate = content.len() / 4;
-        Self { source: source.into(), content, token_estimate }
+        Self {
+            source: source.into(),
+            content,
+            token_estimate,
+        }
     }
 }
