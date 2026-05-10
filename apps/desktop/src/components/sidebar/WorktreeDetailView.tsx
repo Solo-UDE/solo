@@ -147,7 +147,7 @@ export const WorktreeDetailView: FC<WorktreeDetailViewProps> = ({ onFileOpen }) 
               onClick={() => handleSectionChange(key)}
               className={cn(
                 'relative w-8 h-8 flex items-center justify-center rounded-lg',
-                'transition-[transform,background-color,color] duration-200',
+                'transition-[transform,background-color,color] duration-150',
                 'active:scale-95',
                 activeSection === key
                   ? 'text-foreground'
@@ -184,7 +184,7 @@ export const WorktreeDetailView: FC<WorktreeDetailViewProps> = ({ onFileOpen }) 
             className={cn(
               'ml-auto w-6 h-6 flex items-center justify-center rounded-md',
               'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
-              'active:scale-95 transition-all duration-200',
+              'active:scale-95 transition-[background-color,color,transform] duration-150',
             )}
             title="New Session"
           >
@@ -195,14 +195,14 @@ export const WorktreeDetailView: FC<WorktreeDetailViewProps> = ({ onFileOpen }) 
 
       {/* Content area with scroll preservation */}
       <div ref={contentRef} className="flex-1 min-h-0 overflow-y-auto">
-        <AnimatePresence mode="wait">
+        <AnimatePresence initial={false}>
           {activeSection === 'explorer' && (
             <motion.div
               key="explorer"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.1 }}
+              transition={{ duration: 0.08 }}
               className="h-full"
             >
               <FileExplorer onFileOpen={onFileOpen} className="h-full" />
@@ -214,7 +214,7 @@ export const WorktreeDetailView: FC<WorktreeDetailViewProps> = ({ onFileOpen }) 
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.1 }}
+              transition={{ duration: 0.08 }}
               className="h-full"
             >
               <SessionList
@@ -230,7 +230,7 @@ export const WorktreeDetailView: FC<WorktreeDetailViewProps> = ({ onFileOpen }) 
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.1 }}
+              transition={{ duration: 0.08 }}
               className="h-full"
             >
               <WorktreeChangesView />
