@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils';
 import { HEIGHTS, SIDEBAR } from '@/lib/constants';
 import { useUIStore, useIsLeftSidebarCollapsed } from '@/stores/uiStore';
 import { toast } from 'sonner';
+import { VirtualList } from '@/components/ui/virtual-list';
 import {
   ContextMenu,
   ContextMenuTrigger,
@@ -116,23 +117,27 @@ export const RepoRail: FC = () => {
         </button>
       </div>
 
-      <div
+      <VirtualList
+        items={repos}
+        estimateSize={() => (isExpanded ? 52 : 48)}
+        overscan={8}
         className={cn(
-          'mt-3 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-1',
-          isExpanded ? 'items-stretch' : 'items-center',
+          'mt-3 min-h-0 flex-1 px-2 pb-1',
+          isExpanded ? '' : 'mx-auto w-full',
         )}
-      >
-        {repos.map((repo) => (
+        itemClassName="pb-2"
+        getItemKey={(repo) => repo.path}
+        testId="repo-rail"
+        renderItem={(repo) => (
           <RailIcon
-            key={repo.path}
             repo={repo}
             isActive={repo.path === activeRepoPath}
             expanded={isExpanded}
             onClick={() => selectWorktree(repo.path, null)}
             onRemove={() => removeRepo(repo.path)}
           />
-        ))}
-      </div>
+        )}
+      />
     </motion.aside>
   );
 };
