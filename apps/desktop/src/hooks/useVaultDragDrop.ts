@@ -17,8 +17,6 @@
 
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
-import { vaultDropPaths } from '@/lib/tauri/vault';
-import { useVaultStore } from '@/stores/vaultStore';
 
 interface Options {
   /** Element whose bounding rect defines the "valid drop region". */
@@ -44,30 +42,6 @@ export function useVaultDragDrop({ targetRef, enabled = true }: Options): Result
   useEffect(() => {
     targetRefInner.current = targetRef;
   }, [targetRef]);
-
-  const activeScope = useVaultStore((s) => s.activeScope);
-  const syncToCloud = useVaultStore((s) => s.syncToCloud);
-  const fetchEntries = useVaultStore((s) => s.fetchEntries);
-  const fetchUnsortedCount = useVaultStore((s) => s.fetchUnsortedCount);
-  const fetchPendingEmbeddings = useVaultStore((s) => s.fetchPendingEmbeddings);
-
-  // Capture scope/fetchers in refs so the listener closure stays stable.
-  const stateRef = useRef({
-    activeScope,
-    syncToCloud,
-    fetchEntries,
-    fetchUnsortedCount,
-    fetchPendingEmbeddings,
-  });
-  useEffect(() => {
-    stateRef.current = {
-      activeScope,
-      syncToCloud,
-      fetchEntries,
-      fetchUnsortedCount,
-      fetchPendingEmbeddings,
-    };
-  }, [activeScope, syncToCloud, fetchEntries, fetchUnsortedCount, fetchPendingEmbeddings]);
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -114,29 +88,11 @@ export function useVaultDragDrop({ targetRef, enabled = true }: Options): Result
             const paths = payload.paths ?? [];
             if (paths.length === 0) return;
 
-            const {
-              activeScope: scope,
-              syncToCloud: shouldSyncToCloud,
-              fetchEntries: fe,
-              fetchUnsortedCount: fuc,
-              fetchPendingEmbeddings: fpe,
-            } =
-              stateRef.current;
-
-            // Fire ingestion. vault_drop_paths already emits VaultEntryAdded
-            // events which the store stream listener will pick up, but we
-            // still re-fetch the list + badges to catch anything the stream
-            // might miss (e.g. the very first open where the listener was
-            // attaching).
-            try {
-              await vaultDropPaths(paths, scope, 'project', shouldSyncToCloud);
-              await fe();
-              await fuc();
-              await fpe();
-            } catch (err) {
-              // eslint-disable-next-line no-console
-              console.error('[vault] drag-drop ingestion failed:', err);
-            }
+            window.dispatchEvent(
+              new CustomEvent('solo:vault-files-selected', {
+                detail: { paths },
+              }),
+            );
           }
         } catch (err) {
           // eslint-disable-next-line no-console
