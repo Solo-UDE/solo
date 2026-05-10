@@ -22,5 +22,20 @@ export const handler = async (
       Limit: limit,
     }),
   );
-  return json(200, { tier, leaderboard: Items, count: Items.length });
+  const entries = Items.map(projectRow);
+  return json(200, { tier, entries, leaderboard: entries, count: entries.length });
 };
+
+function projectRow(item: Record<string, unknown>) {
+  const githubUsername = item.githubUsername ?? item.github_username ?? null;
+  return {
+    userId: item.userId,
+    tier: item.tier,
+    score: item.score,
+    commits: item.commits ?? 0,
+    tokens: item.tokens ?? 0,
+    worktrees: item.worktrees ?? 0,
+    githubUsername,
+    github_username: githubUsername,
+  };
+}
