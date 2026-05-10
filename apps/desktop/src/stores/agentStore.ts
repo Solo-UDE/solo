@@ -114,7 +114,8 @@ export interface FileMention {
  */
 export type UserContentPart =
 	| { type: 'text'; text: string }
-	| { type: 'skill'; name: string };
+	| { type: 'skill'; name: string }
+	| { type: 'selection'; text: string; title?: string; preview?: string };
 
 export interface Message {
 	id: string;
