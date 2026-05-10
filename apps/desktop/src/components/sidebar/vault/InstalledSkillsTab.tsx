@@ -11,6 +11,7 @@ import { useSkillStore } from '@/stores/skillStore';
 import { useMarketplaceStore } from '@/stores/marketplaceStore';
 import { useFileExplorerStore } from '@/stores/fileExplorerStore';
 import { SkillTweakModal } from './SkillTweakModal';
+import { VirtualList } from '@/components/ui/virtual-list';
 
 export const InstalledSkillsTab: FC = () => {
   const skills = useSkillStore((s) => s.available);
@@ -67,12 +68,17 @@ export const InstalledSkillsTab: FC = () => {
           <p className="mb-2 px-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground/65">
             {source.replace('_', ' ')}
           </p>
-          <ul
+          <VirtualList
+            items={list}
+            estimateSize={() => 76}
+            overscan={8}
             role="list"
-            className="divide-y divide-border/50 overflow-hidden rounded-[12px] border border-border/60 bg-background/35"
-          >
-            {list.map((skill) => (
-              <li key={`${source}:${skill.name}`} className="px-3.5 py-3">
+            className="max-h-[420px] rounded-[12px] border border-border/60 bg-background/35"
+            itemClassName="border-b border-border/50 last:border-b-0"
+            getItemKey={(skill) => `${source}:${skill.name}`}
+            testId={`installed-skills-${source}`}
+            renderItem={(skill) => (
+              <div className="px-3.5 py-3" role="listitem">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[13px] font-medium text-foreground">
@@ -106,9 +112,9 @@ export const InstalledSkillsTab: FC = () => {
                     </button>
                   </div>
                 </div>
-              </li>
-            ))}
-          </ul>
+              </div>
+            )}
+          />
         </li>
       ))}
     </ul>
