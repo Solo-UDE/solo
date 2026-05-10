@@ -98,10 +98,26 @@ export const PrimarySidebar = forwardRef<HTMLElement, PrimarySidebarProps>(({ wi
             <>
               <ModeToggle />
               <div className="relative min-h-0 flex-1 overflow-hidden">
-                <div className={cn('absolute inset-0 flex min-h-0 flex-col', sidebarMode !== 'dev' && 'hidden')}>
+                <div
+                  aria-hidden={sidebarMode !== 'dev'}
+                  className={cn(
+                    'absolute inset-0 flex min-h-0 flex-col transition-[opacity,transform] duration-100 ease-[cubic-bezier(0.2,0,0,1)]',
+                    sidebarMode === 'dev'
+                      ? 'translate-y-0 opacity-100'
+                      : 'invisible pointer-events-none translate-y-0.5 opacity-0',
+                  )}
+                >
                   <DevSidebar onFileOpen={onFileOpen} isActive={sidebarMode === 'dev'} />
                 </div>
-                <div className={cn('absolute inset-0 flex min-h-0 flex-col', sidebarMode !== 'vault' && 'hidden')}>
+                <div
+                  aria-hidden={sidebarMode !== 'vault'}
+                  className={cn(
+                    'absolute inset-0 flex min-h-0 flex-col transition-[opacity,transform] duration-100 ease-[cubic-bezier(0.2,0,0,1)]',
+                    sidebarMode === 'vault'
+                      ? 'translate-y-0 opacity-100'
+                      : 'invisible pointer-events-none translate-y-0.5 opacity-0',
+                  )}
+                >
                   <VaultSidebar isActive={sidebarMode === 'vault'} />
                 </div>
               </div>
