@@ -52,7 +52,12 @@ impl SileroVad {
         let session = Session::builder()
             .map_err(|e| VoiceError::Vad(format!("ort session builder failed: {e}")))?
             .commit_from_file(model_path)
-            .map_err(|e| VoiceError::Vad(format!("failed to load VAD model from {}: {e}", model_path.display())))?;
+            .map_err(|e| {
+                VoiceError::Vad(format!(
+                    "failed to load VAD model from {}: {e}",
+                    model_path.display()
+                ))
+            })?;
 
         Ok(Self {
             session,
