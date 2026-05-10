@@ -54,7 +54,14 @@ const EMPTY_INDEX: WorkspaceFileIndex = Object.freeze({
 });
 
 const inFlight = new Map<string, Promise<FileEntry[]>>();
-let scanSeq = 0;
+const scanSeqByRoot = new Map<string, number>();
+
+class ScanCancelledError extends Error {
+  constructor() {
+    super('Workspace file index scan cancelled');
+    this.name = 'ScanCancelledError';
+  }
+}
 
 function getExtension(name: string): string {
   const dot = name.lastIndexOf('.');
@@ -69,6 +76,22 @@ function shouldSkipFile(name: string): boolean {
   return IGNORED_EXTENSIONS.has(getExtension(name));
 }
 
+function nextScanSeq(rootPath: string): number {
+  const next = (scanSeqByRoot.get(rootPath) ?? 0) + 1;
+  scanSeqByRoot.set(rootPath, next);
+  return next;
+}
+
+function isCurrentScan(rootPath: string, seq: number): boolean {
+  return scanSeqByRoot.get(rootPath) === seq;
+}
+
+function assertCurrentScan(rootPath: string, seq: number): void {
+  if (!isCurrentScan(rootPath, seq)) {
+    throw new ScanCancelledError();
+  }
+}
+
 function touchRoot(indexes: Map<string, WorkspaceFileIndex>, rootPath: string): Map<string, WorkspaceFileIndex> {
   const existing = indexes.get(rootPath);
   if (!existing) return indexes;
@@ -80,6 +103,7 @@ function touchRoot(indexes: Map<string, WorkspaceFileIndex>, rootPath: string): 
     if (!oldest) break;
     next.delete(oldest);
     inFlight.delete(oldest);
+    scanSeqByRoot.delete(oldest);
   }
   return next;
 }
@@ -89,7 +113,7 @@ async function scanWorkspace(rootPath: string, seq: number): Promise<FileEntry[]
   const queue: string[] = [rootPath];
 
   while (queue.length > 0 && result.length < MAX_FILE_COUNT) {
-    if (seq !== scanSeq) return result;
+    assertCurrentScan(rootPath, seq);
     const dirPath = queue.shift();
     if (!dirPath) break;
 
@@ -98,7 +122,7 @@ async function scanWorkspace(rootPath: string, seq: number): Promise<FileEntry[]
       const entries: FileTreeEntry[] = response.entry.children ?? [];
 
       for (const entry of entries) {
-        if (seq !== scanSeq) return result;
+        assertCurrentScan(rootPath, seq);
         if (entry.is_dir) {
           if (!shouldSkipDir(entry.name)) queue.push(entry.path);
           continue;
@@ -135,6 +159,7 @@ function setIndex(rootPath: string, patch: Partial<WorkspaceFileIndex>): void {
       if (!oldest) break;
       indexes.delete(oldest);
       inFlight.delete(oldest);
+      scanSeqByRoot.delete(oldest);
     }
     return { indexes };
   });
@@ -153,11 +178,14 @@ export const useWorkspaceFileIndexStore = create<WorkspaceFileIndexState>()((set
     const pending = inFlight.get(rootPath);
     if (pending) return pending;
 
-    const seq = ++scanSeq;
+    const seq = nextScanSeq(rootPath);
     setIndex(rootPath, { loading: true, error: null });
 
     const promise = scanWorkspace(rootPath, seq)
       .then((files) => {
+        if (!isCurrentScan(rootPath, seq)) {
+          return get().indexes.get(rootPath)?.files ?? [];
+        }
         setIndex(rootPath, {
           files,
           loading: false,
@@ -168,6 +196,9 @@ export const useWorkspaceFileIndexStore = create<WorkspaceFileIndexState>()((set
         return files;
       })
       .catch((error) => {
+        if (error instanceof ScanCancelledError) {
+          return get().indexes.get(rootPath)?.files ?? [];
+        }
         const message = error instanceof Error ? error.message : String(error);
         setIndex(rootPath, { loading: false, error: message });
         throw error;
@@ -186,7 +217,7 @@ export const useWorkspaceFileIndexStore = create<WorkspaceFileIndexState>()((set
   },
 
   refresh: async (rootPath: string) => {
-    scanSeq += 1;
+    nextScanSeq(rootPath);
     inFlight.delete(rootPath);
     set((state) => {
       const indexes = new Map(state.indexes);
@@ -198,8 +229,9 @@ export const useWorkspaceFileIndexStore = create<WorkspaceFileIndexState>()((set
   },
 
   clear: (rootPath: string) => {
-    scanSeq += 1;
+    nextScanSeq(rootPath);
     inFlight.delete(rootPath);
+    scanSeqByRoot.delete(rootPath);
     set((state) => {
       const indexes = new Map(state.indexes);
       indexes.delete(rootPath);
