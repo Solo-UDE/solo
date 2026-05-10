@@ -138,7 +138,7 @@ bun run dev:auth
 - [ ] Click "Continue with Google" → browser opens
 - [ ] URL contains `identity_provider=Google` and `code_challenge=...`
 - [ ] Sign in with your Google account
-- [ ] Browser redirects to `soloide://auth/callback?code=...`
+- [ ] Browser redirects to `http://127.0.0.1:19877/callback?code=...`
 - [ ] Desktop app accepts the code and lands on authenticated state
 - [ ] Your email shows somewhere in the app (settings or titlebar)
 
@@ -147,7 +147,7 @@ bun run dev:auth
 ### 2.2 GitHub sign-in (desktop)
 
 - [ ] Click "Continue with GitHub"
-- [ ] Browser URL chain: wrapper `/authorize` → github.com/login/oauth → wrapper `/callback` → Cognito `/oauth2/idpresponse` → back to `soloide://auth/callback`
+- [ ] Browser URL chain: wrapper `/authorize` → github.com/login/oauth → wrapper `/callback` → Cognito `/oauth2/idpresponse` → back to `http://127.0.0.1:19877/callback`
 - [ ] After completion, check RDS: the Cognito User Pool should have a new user row with `identities` including the GitHub provider
 - [ ] Check DynamoDB `solo-github-tokens-dev`: the user's row should contain an `access_token` (value captured by post-auth Lambda trigger)
 
