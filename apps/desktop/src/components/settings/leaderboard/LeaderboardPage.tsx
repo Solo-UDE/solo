@@ -9,6 +9,7 @@ import { ReloadIcon } from '@radix-ui/react-icons';
 import { TIER_META, type TierIndex } from '@solo/tier-names';
 import { useTierStats } from '../../../hooks/useTierStats';
 import { useCloudStatsStore } from '../../../stores/cloudStatsStore';
+import { VirtualList } from '../../ui/virtual-list';
 
 const TIER_FILTERS: Array<'all' | TierIndex> = ['all', 7, 6, 5, 4, 3, 2, 1];
 
@@ -103,15 +104,23 @@ export function LeaderboardPage() {
 					No climbers at this tier yet.
 				</p>
 			) : (
-				<ol className="divide-y divide-border/50 rounded-[10px] border border-border/60 bg-background/55">
-					{filtered.map((entry, idx) => {
+				<VirtualList
+					items={filtered}
+					estimateSize={() => 62}
+					overscan={10}
+					role="list"
+					className="max-h-[620px] rounded-[10px] border border-border/60 bg-background/55"
+					itemClassName="border-b border-border/50 last:border-b-0"
+					getItemKey={(entry) => entry.userId}
+					testId="leaderboard-entries"
+					renderItem={(entry, idx) => {
 						const globalRank =
 							leaderboard.findIndex((e) => e.userId === entry.userId) + 1;
 						const isMe = myEntry?.userId === entry.userId;
 						const meta = TIER_META[entry.tier as TierIndex] ?? TIER_META[1];
 						return (
-							<li
-								key={entry.userId}
+							<div
+								role="listitem"
 								className={`flex items-center justify-between px-4 py-2.5 text-sm ${
 									isMe ? 'bg-primary/5' : 'hover:bg-background/80'
 								}`}
@@ -147,10 +156,10 @@ export function LeaderboardPage() {
 										commits
 									</p>
 								</div>
-							</li>
+							</div>
 						);
-					})}
-				</ol>
+					}}
+				/>
 			)}
 		</div>
 	);
