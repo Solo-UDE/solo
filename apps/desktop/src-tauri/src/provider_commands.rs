@@ -101,6 +101,13 @@ fn applescript_quote(value: &str) -> String {
     format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
+fn claude_login_command(cli_path: Option<&PathBuf>) -> String {
+    match cli_path {
+        Some(path) => format!("{} /login", shell_quote(&path.to_string_lossy())),
+        None => "claude /login".to_string(),
+    }
+}
+
 // =============================================================================
 // Helper types
 // =============================================================================
@@ -822,7 +829,7 @@ pub async fn sign_out_profile(
 pub async fn check_claude_auth_status(state: State<'_, ProviderAuthState>) -> Result<bool, String> {
     debug!("Checking Claude Code auth status");
 
-    // `claude login` happens outside this process. Force a fresh read so the
+    // `claude /login` happens outside this process. Force a fresh read so the
     // Verify button sees credentials written after the modal was opened.
     state.credentials.clear_cache().await;
 
@@ -843,16 +850,13 @@ pub async fn check_claude_cli_installed() -> Result<bool, String> {
     Ok(find_claude_cli().is_some())
 }
 
-/// Open Terminal and run `claude login` to trigger the native login flow
+/// Open Terminal and run `claude /login` to trigger the native login flow
 #[tauri::command]
 pub async fn start_claude_login() -> Result<(), String> {
     info!("Starting Claude Code login");
 
-    let command = if let Some(path) = find_claude_cli() {
-        format!("{} login", shell_quote(&path.to_string_lossy()))
-    } else {
-        "claude login".to_string()
-    };
+    let cli_path = find_claude_cli();
+    let command = claude_login_command(cli_path.as_ref());
 
     std::process::Command::new("osascript")
         .args([
@@ -863,7 +867,7 @@ pub async fn start_claude_login() -> Result<(), String> {
             ),
         ])
         .spawn()
-        .map_err(|e| format!("Failed to open Terminal with claude login: {}", e))?;
+        .map_err(|e| format!("Failed to open Terminal with claude /login: {}", e))?;
 
     Ok(())
 }
@@ -1005,4 +1009,24 @@ pub async fn verify_claude_setup(
     }
 
     Ok(status)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn claude_login_command_uses_slash_login_with_resolved_path() {
+        let path = PathBuf::from("/opt/homebrew/bin/claude");
+
+        assert_eq!(
+            claude_login_command(Some(&path)),
+            "'/opt/homebrew/bin/claude' /login"
+        );
+    }
+
+    #[test]
+    fn claude_login_command_uses_slash_login_fallback() {
+        assert_eq!(claude_login_command(None), "claude /login");
+    }
 }
