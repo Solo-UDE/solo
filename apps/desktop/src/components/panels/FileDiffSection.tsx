@@ -6,6 +6,7 @@ import { useState, useCallback, memo } from 'react';
 import { ChevronDownIcon, ChevronRightIcon } from '@radix-ui/react-icons';
 import type { FileDiff, DiffHunk } from '@/lib/tauri/git';
 import { cn } from '@/lib/utils';
+import { VirtualList } from '@/components/ui/virtual-list';
 
 interface FileDiffSectionProps {
   readonly file: FileDiff;
@@ -71,10 +72,21 @@ const DiffLineRow = memo(
 );
 DiffLineRow.displayName = 'DiffLineRow';
 
+type DiffBodyRow =
+  | { kind: 'gap'; key: string; count: number }
+  | {
+      kind: 'line';
+      key: string;
+      lineKind: string;
+      content: string;
+      oldLineNo: number | null;
+      newLineNo: number | null;
+    };
+
 /** Render all hunks for a file */
-const HunkList = memo(({ hunks }: { hunks: DiffHunk[] }) => (
-  <div className="border-t border-border/5">
-    {hunks.map((hunk, hunkIdx) => {
+const HunkList = memo(({ hunks }: { hunks: DiffHunk[] }) => {
+  const rows: DiffBodyRow[] = [];
+  hunks.forEach((hunk, hunkIdx) => {
       // Compute gap between previous hunk's last line and this hunk
       const prevHunk = hunkIdx > 0 ? hunks[hunkIdx - 1] : null;
       let gapLines = 0;
@@ -85,23 +97,45 @@ const HunkList = memo(({ hunks }: { hunks: DiffHunk[] }) => (
         gapLines = hunk.new_start - 1;
       }
 
-      return (
-        <div key={hunkIdx}>
-          <UnmodifiedGap count={gapLines} />
-          {hunk.lines.map((line, lineIdx) => (
-            <DiffLineRow
-              key={lineIdx}
-              kind={line.kind}
-              content={line.content}
-              oldLineNo={line.old_line_no}
-              newLineNo={line.new_line_no}
-            />
-          ))}
-        </div>
-      );
-    })}
-  </div>
-));
+      if (gapLines > 0) {
+        rows.push({ kind: 'gap', key: `gap:${hunkIdx}`, count: gapLines });
+      }
+
+      hunk.lines.forEach((line, lineIdx) => {
+        rows.push({
+          kind: 'line',
+          key: `line:${hunkIdx}:${lineIdx}`,
+          lineKind: line.kind,
+          content: line.content,
+          oldLineNo: line.old_line_no,
+          newLineNo: line.new_line_no,
+        });
+      });
+    });
+
+  return (
+    <VirtualList
+      items={rows}
+      estimateSize={() => 20}
+      overscan={20}
+      className="max-h-[560px] border-t border-border/5"
+      getItemKey={(row) => row.key}
+      testId="file-diff-lines"
+      renderItem={(row) =>
+        row.kind === 'gap' ? (
+          <UnmodifiedGap count={row.count} />
+        ) : (
+          <DiffLineRow
+            kind={row.lineKind}
+            content={row.content}
+            oldLineNo={row.oldLineNo}
+            newLineNo={row.newLineNo}
+          />
+        )
+      }
+    />
+  );
+});
 HunkList.displayName = 'HunkList';
 
 export const FileDiffSection = memo(({ file, defaultOpen = true }: FileDiffSectionProps) => {
