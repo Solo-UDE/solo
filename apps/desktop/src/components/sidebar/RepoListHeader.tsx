@@ -76,7 +76,7 @@ export const RepoListHeader: FC<RepoListHeaderProps> = ({ onAddRepo }) => {
               'text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted/60',
               'hover:scale-105 active:scale-95 transition-[transform,background-color,color] duration-200',
             )}
-            title="Sign in to GitHub"
+            title="Link GitHub to Solo"
           >
             <GitHubLogoIcon className="w-3.5 h-3.5" />
           </button>
