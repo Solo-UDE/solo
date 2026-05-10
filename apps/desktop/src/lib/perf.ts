@@ -106,13 +106,22 @@ export function trace(name: string, detail?: string): SoloPerfHandle {
   return getPerfGlobal()?.start(name, detail) ?? start(name, detail);
 }
 
+export function settleAfterPaint(perf: SoloPerfHandle): void {
+  if (typeof requestAnimationFrame === 'undefined') {
+    setTimeout(() => perf.settle(), 0);
+    return;
+  }
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => perf.settle());
+  });
+}
+
 export function traceSync<T>(name: string, detail: string | undefined, fn: () => T): T {
   const perf = trace(name, detail);
   try {
     return fn();
   } finally {
     perf.endHandler();
-    perf.settle();
+    settleAfterPaint(perf);
   }
 }
-
