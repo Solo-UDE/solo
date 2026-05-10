@@ -47,7 +47,7 @@ impl Default for VaultState {
 /// Resolve the singleton Vault, opening it lazily on first call. After
 /// the very first open we also kick off a background task to download +
 /// load the local embedding model — subsequent calls are no-ops.
-async fn get_vault(vault_state: &State<'_, VaultState>) -> Result<Arc<Vault>, String> {
+pub(crate) async fn get_vault(vault_state: &State<'_, VaultState>) -> Result<Arc<Vault>, String> {
     // Fast path — already-open vault.
     {
         let guard = vault_state.inner.read().await;
@@ -96,6 +96,7 @@ struct CloudVaultSearchBody<'a> {
     scope_type: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     scope_project_id: Option<&'a str>,
+    include_expired: bool,
 }
 
 #[derive(serde::Deserialize)]
@@ -130,6 +131,9 @@ struct CloudVaultEntryRow {
     memory_type: MemoryType,
     pinned: i64,
     tags: String,
+    #[serde(default)]
+    label_ids: String,
+    expires_at: Option<u64>,
     mime: Option<String>,
     size_bytes: Option<u64>,
     index_status: IndexStatus,
@@ -151,6 +155,7 @@ impl CloudVaultEntryRow {
             VaultScope::Global
         };
         let tags = serde_json::from_str::<Vec<String>>(&self.tags).unwrap_or_default();
+        let label_ids = serde_json::from_str::<Vec<String>>(&self.label_ids).unwrap_or_default();
 
         VaultEntry {
             id: self.id,
@@ -164,6 +169,8 @@ impl CloudVaultEntryRow {
             memory_type: self.memory_type,
             pinned: self.pinned != 0,
             tags,
+            label_ids,
+            expires_at: self.expires_at,
             mime: self.mime,
             size_bytes: self.size_bytes,
             index_status: self.index_status,
@@ -184,6 +191,7 @@ fn search_body<'a>(
     scope: &'a VaultScope,
     top_k: usize,
     mode: VaultSearchMode,
+    include_expired: bool,
 ) -> CloudVaultSearchBody<'a> {
     match scope {
         VaultScope::Global => CloudVaultSearchBody {
@@ -192,6 +200,7 @@ fn search_body<'a>(
             mode,
             scope_type: "global",
             scope_project_id: None,
+            include_expired,
         },
         VaultScope::Project { project_id } => CloudVaultSearchBody {
             query,
@@ -199,6 +208,7 @@ fn search_body<'a>(
             mode,
             scope_type: "project",
             scope_project_id: Some(project_id.as_str()),
+            include_expired,
         },
     }
 }
@@ -209,10 +219,11 @@ async fn remote_search_vault(
     scope: &VaultScope,
     top_k: usize,
     mode: VaultSearchMode,
+    include_expired: bool,
 ) -> Result<Vec<VaultSearchResult>, String> {
     let base = crate::desktop_config::vault_api_endpoint();
     let url = format!("{}/vault/search", base.trim_end_matches('/'));
-    let body = search_body(query, scope, top_k, mode);
+    let body = search_body(query, scope, top_k, mode, include_expired);
     let resp = reqwest::Client::new()
         .post(&url)
         .bearer_auth(token)
@@ -337,21 +348,22 @@ async fn local_search_vault(
     scope: &VaultScope,
     top_k: usize,
     mode: VaultSearchMode,
+    include_expired: bool,
 ) -> Result<Vec<VaultSearchResult>, String> {
     match mode {
         VaultSearchMode::Fts => vault
-            .fts_search(query, scope, top_k)
+            .fts_search(query, scope, top_k, include_expired)
             .map_err(|e| e.to_string()),
         VaultSearchMode::Semantic => vault
-            .semantic_search(query, scope, top_k)
+            .semantic_search(query, scope, top_k, include_expired)
             .await
             .map_err(|e| e.to_string()),
         VaultSearchMode::Hybrid => {
             let fts = vault
-                .fts_search(query, scope, top_k)
+                .fts_search(query, scope, top_k, include_expired)
                 .map_err(|e| e.to_string())?;
             let semantic = vault
-                .semantic_search(query, scope, top_k)
+                .semantic_search(query, scope, top_k, include_expired)
                 .await
                 .map_err(|e| e.to_string())?;
             Ok(fuse_search_results(vec![fts, semantic], mode, false, top_k))
@@ -573,6 +585,8 @@ pub async fn vault_drop_paths(
     paths: Vec<String>,
     scope: VaultScope,
     memory_type: MemoryType,
+    label_ids: Vec<String>,
+    expires_at: Option<u64>,
     sync_to_cloud: bool,
     app: AppHandle,
     state: State<'_, VaultState>,
@@ -586,7 +600,9 @@ pub async fn vault_drop_paths(
         "vault_drop_paths"
     );
 
-    let results = vault.drop_paths(&paths, scope, memory_type).await;
+    let results = vault
+        .drop_paths(&paths, scope, memory_type, label_ids, expires_at)
+        .await;
     let mut ids = Vec::with_capacity(results.len());
     let mut ingested_entries: Vec<VaultEntry> = Vec::new();
 
@@ -650,6 +666,8 @@ pub async fn vault_add_text(
     title: Option<String>,
     scope: VaultScope,
     memory_type: MemoryType,
+    label_ids: Vec<String>,
+    expires_at: Option<u64>,
     sync_to_cloud: bool,
     app: AppHandle,
     state: State<'_, VaultState>,
@@ -658,7 +676,7 @@ pub async fn vault_add_text(
 ) -> Result<VaultEntry, String> {
     let vault = get_vault(&state).await?;
     let entry = vault
-        .add_text_entry(&text, title, scope, memory_type)
+        .add_text_entry(&text, title, scope, memory_type, label_ids, expires_at)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -749,6 +767,27 @@ pub async fn vault_update_tags(
     let vault = get_vault(&state).await?;
     let updated = vault
         .update_tags(&entry_id, &tags)
+        .map_err(|e| e.to_string())?;
+    if updated.is_some() {
+        let _ = app.emit(
+            "backend-event",
+            BackendEvent::VaultEntryUpdated { entry_id },
+        );
+    }
+    Ok(updated)
+}
+
+#[tauri::command]
+pub async fn vault_update_labels_and_expiry(
+    entry_id: String,
+    label_ids: Vec<String>,
+    expires_at: Option<u64>,
+    app: AppHandle,
+    state: State<'_, VaultState>,
+) -> Result<Option<VaultEntry>, String> {
+    let vault = get_vault(&state).await?;
+    let updated = vault
+        .update_labels_and_expiry(&entry_id, &label_ids, expires_at)
         .map_err(|e| e.to_string())?;
     if updated.is_some() {
         let _ = app.emit(
@@ -885,20 +924,23 @@ pub async fn vault_search(
     auth_state: State<'_, crate::auth_commands::AuthState>,
     provider_auth: State<'_, crate::provider_commands::ProviderAuthState>,
     source: VaultRetrievalSource,
+    include_expired: Option<bool>,
 ) -> Result<Vec<VaultSearchResult>, String> {
     let vault = get_vault(&state).await?;
+    let include_expired = include_expired.unwrap_or(false);
     match source {
         VaultRetrievalSource::Local => {
-            local_search_vault(&vault, &query, &scope, top_k, mode).await
+            local_search_vault(&vault, &query, &scope, top_k, mode, include_expired).await
         }
         VaultRetrievalSource::Cloud => {
             let token = crate::auth_commands::fresh_id_token_snapshot(&auth_state, &provider_auth)
                 .await
                 .ok_or_else(|| "Sign in to search cloud vault entries".to_string())?;
-            remote_search_vault(&token, &query, &scope, top_k, mode).await
+            remote_search_vault(&token, &query, &scope, top_k, mode, include_expired).await
         }
         VaultRetrievalSource::Hybrid => {
-            let local = local_search_vault(&vault, &query, &scope, top_k, mode).await?;
+            let local =
+                local_search_vault(&vault, &query, &scope, top_k, mode, include_expired).await?;
             let Some(token) =
                 crate::auth_commands::fresh_id_token_snapshot(&auth_state, &provider_auth).await
             else {
@@ -910,7 +952,7 @@ pub async fn vault_search(
                 );
                 return Ok(local);
             };
-            match remote_search_vault(&token, &query, &scope, top_k, mode).await {
+            match remote_search_vault(&token, &query, &scope, top_k, mode, include_expired).await {
                 Ok(cloud) => Ok(fuse_search_results(vec![local, cloud], mode, true, top_k)),
                 Err(error) => {
                     warn!(error = %error, "vault.search.cloud_degraded_to_local");
