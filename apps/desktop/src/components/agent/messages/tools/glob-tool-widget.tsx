@@ -2,6 +2,7 @@ import { FolderOpen, Loader2 } from 'lucide-react';
 import { useState } from 'react';
 
 import { ExpandRegion } from '../shared/ExpandRegion';
+import { VirtualList } from '@/components/ui/virtual-list';
 
 import type { FC } from 'react';
 
@@ -42,13 +43,20 @@ export const GlobToolWidget: FC<GlobToolWidgetProps> = ({
 
       <ExpandRegion isExpanded={isExpanded}>
         {files.length > 0 ? (
-          <div className="p-2 max-h-[200px] overflow-auto">
-            {files.map((file, i) => (
-              <div key={`file-${String(i)}`} className="text-xs font-mono text-foreground/80 py-0.5 px-2 truncate">
+          <VirtualList
+            items={files}
+            estimateSize={() => 22}
+            overscan={10}
+            measureElement={false}
+            className="max-h-[200px] p-2"
+            getItemKey={(file, i) => `${i}:${file}`}
+            testId="legacy-glob-tool-files"
+            renderItem={(file) => (
+              <div className="text-xs font-mono text-foreground/80 py-0.5 px-2 truncate">
                 {file}
               </div>
-            ))}
-          </div>
+            )}
+          />
         ) : null}
       </ExpandRegion>
     </div>
