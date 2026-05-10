@@ -153,14 +153,14 @@ export const DevSidebar: FC<DevSidebarProps> = ({ onFileOpen, isActive = true })
 
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-      <AnimatePresence initial={false}>
+      <AnimatePresence mode="popLayout" initial={false}>
         {devSidebarView === 'worktree-list' ? (
           <motion.div
             key="session-thread-list"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.08 }}
+            initial={{ opacity: 0, y: 2 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -2 }}
+            transition={{ duration: 0.09, ease: [0.2, 0, 0, 1] }}
             className="flex-1 flex flex-col min-h-0"
           >
             <div className="flex items-center justify-between px-3.5 pb-2 pt-3.5 shrink-0">
@@ -255,10 +255,10 @@ export const DevSidebar: FC<DevSidebarProps> = ({ onFileOpen, isActive = true })
         ) : (
           <motion.div
             key="worktree-detail"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.08 }}
+            initial={{ opacity: 0, y: 2 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -2 }}
+            transition={{ duration: 0.09, ease: [0.2, 0, 0, 1] }}
             className="flex-1 flex flex-col min-h-0"
           >
             <WorktreeDetailView onFileOpen={onFileOpen} />
