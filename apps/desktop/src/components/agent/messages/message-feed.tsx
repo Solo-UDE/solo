@@ -31,7 +31,7 @@ export interface MessageFeedProps {
   onToolApproval?: (toolCallId: string, approved: boolean) => void;
   onAnswerQuestion?: (requestId: string, answers: Record<string, string>) => void;
   onAddSelectionToChat?: (text: string) => void;
-  onAddSelectionToVault?: (text: string) => Promise<void> | void;
+  onAddSelectionToVault?: (text: string) => void;
   /** Reserved space below the message list. Used so floating overlays
       anchored above the input (e.g. sticky tasks pill) never occlude the
       latest streamed content. Auto-scroll lands below this padding. */
@@ -53,8 +53,6 @@ export const MessageFeed: FC<MessageFeedProps> = ({
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
   const [showFollowLatest, setShowFollowLatest] = useState(false);
   const [selectionAction, setSelectionAction] = useState<SelectionActionState | null>(null);
-  const [isSavingSelection, setIsSavingSelection] = useState(false);
-  const [selectionError, setSelectionError] = useState<string | null>(null);
   const selectionPopoverRef = useRef<HTMLDivElement | null>(null);
   const shouldAutoScroll = useRef(autoScroll);
   const lastScrollTopRef = useRef(0);
@@ -201,8 +199,6 @@ export const MessageFeed: FC<MessageFeedProps> = ({
 
   const clearSelectionAction = useCallback((): void => {
     setSelectionAction(null);
-    setSelectionError(null);
-    setIsSavingSelection(false);
   }, []);
 
   const updateSelectionAction = useCallback((): void => {
@@ -249,7 +245,6 @@ export const MessageFeed: FC<MessageFeedProps> = ({
     );
     const y = Math.max(12, rect.top - 54);
     setSelectionAction({ text, x, y });
-    setSelectionError(null);
   }, [clearSelectionAction, onAddSelectionToChat, onAddSelectionToVault, scrollElement]);
 
   useEffect(() => {
@@ -289,20 +284,12 @@ export const MessageFeed: FC<MessageFeedProps> = ({
     clearSelectionAction();
   }, [clearSelectionAction, onAddSelectionToChat, selectionAction]);
 
-  const handleAddSelectionToVault = useCallback(async (): Promise<void> => {
-    if (!selectionAction || !onAddSelectionToVault || isSavingSelection) return;
-    setIsSavingSelection(true);
-    setSelectionError(null);
-    try {
-      await onAddSelectionToVault(selectionAction.text);
-      window.getSelection()?.removeAllRanges();
-      clearSelectionAction();
-    } catch (error) {
-      setSelectionError('Vault save failed');
-      setIsSavingSelection(false);
-      console.error('Failed to add chat selection to vault:', error);
-    }
-  }, [clearSelectionAction, isSavingSelection, onAddSelectionToVault, selectionAction]);
+  const handleAddSelectionToVault = useCallback((): void => {
+    if (!selectionAction || !onAddSelectionToVault) return;
+    onAddSelectionToVault(selectionAction.text);
+    window.getSelection()?.removeAllRanges();
+    clearSelectionAction();
+  }, [clearSelectionAction, onAddSelectionToVault, selectionAction]);
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
@@ -392,20 +379,14 @@ export const MessageFeed: FC<MessageFeedProps> = ({
             {onAddSelectionToVault ? (
               <button
                 type="button"
-                onClick={() => void handleAddSelectionToVault()}
-                disabled={isSavingSelection}
-                className="inline-flex h-10 min-w-0 flex-1 items-center justify-center gap-2 rounded-[8px] px-2.5 text-xs font-medium text-muted-foreground transition-[background-color,color,transform] duration-150 hover:bg-accent hover:text-accent-foreground active:scale-[0.97] disabled:cursor-default disabled:opacity-60"
+                onClick={handleAddSelectionToVault}
+                className="inline-flex h-10 min-w-0 flex-1 items-center justify-center gap-2 rounded-[8px] px-2.5 text-xs font-medium text-muted-foreground transition-[background-color,color,transform] duration-150 hover:bg-accent hover:text-accent-foreground active:scale-[0.97]"
               >
                 <Archive className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                <span className="truncate">{isSavingSelection ? 'Saving...' : 'Add to vault'}</span>
+                <span className="truncate">Add to vault</span>
               </button>
             ) : null}
           </div>
-          {selectionError ? (
-            <div className="px-2 pb-1 pt-1.5 text-[11px] leading-tight text-destructive" role="status">
-              {selectionError}
-            </div>
-          ) : null}
         </div>
       ) : null}
 
