@@ -9,6 +9,7 @@
 //!  - `~/.claude/plugins/**/skills/`           (Claude Code plugin marketplace)
 //!  - `{ancestors}/.claude/skills/`            (project-scoped Claude skills)
 //!  - `~/.codex/skills/`                       (Codex, forward-compat)
+//!  - `~/.codex/plugins/cache/**/skills/`      (Codex plugin marketplace)
 //!
 //! Each adapter can be toggled in user settings (`skills.importClaudeUser`
 //! etc.). Skills from higher-priority sources override those from lower
@@ -234,6 +235,31 @@ async fn discover_codex_user() -> Vec<SkillInfo> {
     }
 }
 
+async fn discover_codex_plugins() -> Vec<SkillInfo> {
+    let Some(cache_dir) = home_dir().map(|h| h.join(".codex").join("plugins").join("cache")) else {
+        return Vec::new();
+    };
+    if !cache_dir.exists() {
+        return Vec::new();
+    }
+
+    let adapter_plugins = solo_plugins::discover_codex_adapter(&cache_dir);
+    let mut skills = Vec::new();
+    for plugin in adapter_plugins {
+        let manifest = solo_plugins::load_plugin_manifest(&plugin.root);
+        let skills_dir = manifest
+            .as_ref()
+            .and_then(|m| m.paths.skills.as_ref())
+            .map(|p| p.as_path().to_path_buf())
+            .unwrap_or_else(|| plugin.root.join("skills"));
+        if !skills_dir.exists() {
+            continue;
+        }
+        skills.extend(scan_skills_dir(&skills_dir, SkillSource::Codex).await);
+    }
+    skills
+}
+
 // ─── Dedup ───────────────────────────────────────────────────────────
 
 /// Collapse duplicates by name, keeping the entry whose `SkillSource`
@@ -275,6 +301,7 @@ pub async fn skills_list_available(cwd: String) -> Result<Vec<SkillInfo>, String
     }
     if config.import_codex {
         all.extend(discover_codex_user().await);
+        all.extend(discover_codex_plugins().await);
     }
 
     let mut skills = dedupe_by_priority(all);
@@ -344,6 +371,7 @@ pub async fn skills_onboarding_status(cwd: String) -> Result<SkillsOnboardingSta
     importable.extend(discover_claude_user().await);
     importable.extend(discover_claude_plugins().await);
     importable.extend(discover_codex_user().await);
+    importable.extend(discover_codex_plugins().await);
 
     let importable_count = u32::try_from(importable.len()).unwrap_or(u32::MAX);
 
@@ -381,6 +409,7 @@ pub async fn skills_onboarding_apply(
         external.extend(discover_claude_user().await);
         external.extend(discover_claude_plugins().await);
         external.extend(discover_codex_user().await);
+        external.extend(discover_codex_plugins().await);
         external = dedupe_by_priority(external);
 
         for skill in external {
