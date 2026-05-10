@@ -11,6 +11,7 @@ import { usePanelLayoutStore } from '@/stores/panelLayoutStore';
 import { useAgentStore } from '@/stores/agentStore';
 import { useProviderStore } from '@/stores/provider-store';
 import { BUILTIN_PANEL_TYPES } from '@/lib/panels';
+import { settleAfterPaint, trace } from '@/lib/perf';
 import { TabBar } from './TabBar';
 import { PanelWrapper } from './PanelWrapper';
 import { TabContextMenu } from './TabContextMenu';
@@ -101,8 +102,12 @@ export function TabbedContainer({ tileId }: TabbedContainerProps) {
   // Handle tab activation
   const handleTabActivate = useCallback(
     (instanceId: PanelInstanceId) => {
+      const instance = usePanelTabsStore.getState().instances.get(instanceId);
+      const perf = trace('panel.tab.activate', instance?.panelType ?? instanceId);
       setActiveTab(tileId, instanceId);
       setFocusedTile(tileId); // Also set focus when activating a tab
+      perf.endHandler();
+      settleAfterPaint(perf);
     },
     [setActiveTab, setFocusedTile, tileId]
   );
@@ -290,7 +295,7 @@ function EmptyTile() {
         <p className="text-muted-foreground/60 text-xs">Open a file from the explorer</p>
         <button
           onClick={handleNewChat}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-primary-foreground bg-primary rounded-lg hover:brightness-110 active:scale-[0.97] transition-all duration-200"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-primary-foreground bg-primary rounded-lg hover:brightness-110 active:scale-[0.97] transition-[filter,transform] duration-150"
         >
           <MessageCircle className="w-3.5 h-3.5" size={14} />
           New AI Chat
