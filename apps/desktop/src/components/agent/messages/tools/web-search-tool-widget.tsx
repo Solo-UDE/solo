@@ -3,6 +3,7 @@ import { Loader2 } from 'lucide-react';
 import { useState } from 'react';
 
 import { ExpandRegion } from '../shared/ExpandRegion';
+import { VirtualTextLines } from '@/components/ui/virtual-list';
 
 import type { FC } from 'react';
 
@@ -18,6 +19,7 @@ export const WebSearchToolWidget: FC<WebSearchToolWidgetProps> = ({
   isRunning = false,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
+  const lines = output?.split('\n') ?? [];
 
   return (
     <div className="my-2 tool-widget-frame">
@@ -35,9 +37,14 @@ export const WebSearchToolWidget: FC<WebSearchToolWidgetProps> = ({
 
       <ExpandRegion isExpanded={isExpanded}>
         {output ? (
-          <div className="p-3 max-h-[300px] overflow-auto">
-            <pre className="text-xs font-mono text-foreground whitespace-pre-wrap break-words">{output}</pre>
-          </div>
+          <VirtualTextLines
+            lines={lines}
+            estimateSize={() => 20}
+            overscan={16}
+            className="max-h-[300px] p-3 font-mono text-xs"
+            lineClassName="whitespace-pre text-foreground"
+            testId="legacy-web-search-output"
+          />
         ) : null}
       </ExpandRegion>
     </div>
