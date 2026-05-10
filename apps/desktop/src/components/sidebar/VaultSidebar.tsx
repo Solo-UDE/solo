@@ -1,7 +1,7 @@
 /**
  * VaultSidebar — launcher for Vault panels.
  *
- * Six entries: Skills, Memory, Tasks, Current Vault, Plugins, Connectors.
+ * Five entries: Skills, Tasks, Current Vault, Plugins, Connectors.
  * Clicking an entry opens or focuses the corresponding panel in the main
  * editor area (`openPanel` with `allowMultiple: false` gives find-or-focus
  * behavior). The sidebar itself holds no content body — each section is
@@ -13,7 +13,6 @@ import { useEffect } from 'react';
 import { motion } from 'motion/react';
 import {
   Sparkles,
-  Brain,
   ListChecks,
   Vault as VaultIcon,
   Puzzle,
@@ -33,7 +32,6 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { key: 'skills', label: 'Skills', icon: Sparkles, panelType: 'vault-skills' },
-  { key: 'memory', label: 'Memory', icon: Brain, panelType: 'vault-memory' },
   { key: 'tasks', label: 'Tasks', icon: ListChecks, panelType: 'vault-tasks' },
   { key: 'current-vault', label: 'Current Vault', icon: VaultIcon, panelType: 'vault-current' },
   { key: 'plugins', label: 'Plugins', icon: Puzzle, panelType: 'vault-plugins' },
