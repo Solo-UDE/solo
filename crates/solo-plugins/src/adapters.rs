@@ -101,9 +101,7 @@ pub fn discover_claude_adapter(claude_plugins_dir: &Path) -> Vec<AdapterPlugin> 
 /// Falls back to `(install_path, install_path.file_name())` if no manifest
 /// is found anywhere nearby — plugins without manifests still surface as
 /// bare tiles, matching the pre-refactor behavior.
-fn resolve_plugin_root_and_name(
-    install_path: &std::path::Path,
-) -> (PathBuf, Option<String>) {
+fn resolve_plugin_root_and_name(install_path: &std::path::Path) -> (PathBuf, Option<String>) {
     use crate::manifest::load_plugin_manifest;
 
     if let Some(m) = load_plugin_manifest(install_path) {
