@@ -23,7 +23,9 @@ use git2::{DiffOptions, Repository};
 use serde_json::{Map as JsonMap, Value as JsonValue};
 use solo_auth::provider::ProviderType;
 use solo_core::settings as settings_io;
-use solo_plugins::{list_plugins, LoaderConfig, PluginRecord};
+use solo_plugins::{
+    expand_mcp_server_config, list_plugins, normalize_mcp_servers, LoaderConfig, PluginRecord,
+};
 
 /// Result type for agent commands
 type Result<T> = result::Result<T, String>;
@@ -33,18 +35,11 @@ fn to_error<E: Display>(e: E) -> String {
     e.to_string()
 }
 
-fn normalize_mcp_servers(value: JsonValue, source: &str) -> Result<JsonMap<String, JsonValue>> {
-    if let Some(servers) = value.get("mcpServers").and_then(JsonValue::as_object) {
-        return Ok(servers.clone());
-    }
-
-    if let Some(servers) = value.as_object() {
-        return Ok(servers.clone());
-    }
-
-    Err(format!(
-        "{source} must be a JSON object or contain a top-level mcpServers object"
-    ))
+fn token_usage_total(usage: &crate::agent::protocol::TokenUsage) -> u64 {
+    u64::from(usage.input_tokens)
+        .saturating_add(u64::from(usage.output_tokens))
+        .saturating_add(u64::from(usage.cache_read_input_tokens.unwrap_or(0)))
+        .saturating_add(u64::from(usage.cache_creation_input_tokens.unwrap_or(0)))
 }
 
 fn prefixed_plugin_mcp_name(record: &PluginRecord, name: &str) -> String {
@@ -68,9 +63,10 @@ fn add_mcp_servers(
     }
 }
 
-fn collect_enabled_plugin_mcp_servers(
+async fn collect_enabled_plugin_mcp_servers(
     cwd: &str,
     plugins_state: &PluginsState,
+    provider_state: &ProviderAuthState,
 ) -> Result<Option<JsonValue>> {
     let workspace = PathBuf::from(cwd);
     let config = settings_io::load_plugins_config(&workspace).unwrap_or_default();
@@ -111,7 +107,17 @@ fn collect_enabled_plugin_mcp_servers(
             .map_err(|err| format!("failed to read {source}: {err}"))?;
         let value: JsonValue =
             serde_json::from_str(&raw).map_err(|err| format!("failed to parse {source}: {err}"))?;
-        let servers = normalize_mcp_servers(value, &source)?;
+        let mut servers = JsonMap::new();
+        for (name, config) in normalize_mcp_servers(value, &source)? {
+            let expanded = expand_mcp_server_config(config, &record.root, &workspace);
+            let expanded =
+                crate::connectors_commands::expand_provider_token_variables_in_mcp_config(
+                    expanded,
+                    &provider_state.credentials,
+                )
+                .await?;
+            servers.insert(name, expanded);
+        }
         add_mcp_servers(&mut merged, servers, |name| {
             prefixed_plugin_mcp_name(&record, name)
         });
@@ -179,6 +185,7 @@ pub(crate) async fn create_session_internal(
     use tauri::Manager as _;
     let session_manager = app.state::<Arc<SessionManager>>();
     let plugins_state = app.state::<PluginsState>();
+    let provider_state = app.state::<ProviderAuthState>();
     let stats = app.state::<crate::stats_commands::StatsState>();
 
     let session_id = uuid::Uuid::new_v4().to_string();
@@ -189,7 +196,8 @@ pub(crate) async fn create_session_internal(
     let config = SessionConfig {
         provider: Some("anthropic".to_string()),
         cwd: Some(cwd.clone()),
-        mcp_servers: collect_enabled_plugin_mcp_servers(&cwd, &plugins_state)?,
+        mcp_servers: collect_enabled_plugin_mcp_servers(&cwd, &plugins_state, &provider_state)
+            .await?,
         ..Default::default()
     };
     session_manager
@@ -248,7 +256,8 @@ pub async fn agent_create_session(
         match provider_type {
             ProviderType::OpenAI | ProviderType::Gemini => {
                 // OpenAI: prefer OAuth, fall back to API key/env.
-                // Gemini: API key/env only.
+                // Gemini: prefer API key/env; agent mode can also use the
+                // Gemini CLI's cached Google login if no key is configured.
                 let resolved = provider_state
                     .credentials
                     .get_credentials_with_source(provider_type)
@@ -276,6 +285,9 @@ pub async fn agent_create_session(
                             }
                         },
                     );
+                } else if provider_type == ProviderType::Gemini && requested_agent_mode {
+                    // Leave credentials unset. The Gemini CLI can authenticate
+                    // with its own cached Google login or Vertex AI environment.
                 } else {
                     return Err(format!(
                         "No credentials configured for {}",
@@ -291,7 +303,12 @@ pub async fn agent_create_session(
         }
     }
 
-    if provider_str_for_mode == "anthropic" {
+    let provider_allows_mcp = config
+        .provider_capabilities
+        .as_ref()
+        .map(|capabilities| capabilities.mcp)
+        .unwrap_or(provider_str_for_mode == "anthropic");
+    if provider_allows_mcp {
         let cwd = config
             .cwd
             .clone()
@@ -301,7 +318,8 @@ pub async fn agent_create_session(
                     .map(|path| path.to_string_lossy().into_owned())
             })
             .unwrap_or_else(|| ".".to_string());
-        let plugin_mcp_servers = collect_enabled_plugin_mcp_servers(&cwd, &plugins_state)?;
+        let plugin_mcp_servers =
+            collect_enabled_plugin_mcp_servers(&cwd, &plugins_state, &provider_state).await?;
         config.mcp_servers = merge_session_mcp_servers(plugin_mcp_servers, config.mcp_servers)?;
     }
 
@@ -629,6 +647,7 @@ pub async fn agent_generate_session_title(
 /// Wire up event callbacks to emit Tauri events
 pub fn setup_event_callbacks(app: &AppHandle, session_manager: &Arc<SessionManager>) {
     use crate::agent::protocol::BridgeEvent;
+    use tauri::Manager as _;
 
     let app_handle = app.clone();
     let session_mgr = Arc::clone(session_manager);
@@ -638,6 +657,16 @@ pub fn setup_event_callbacks(app: &AppHandle, session_manager: &Arc<SessionManag
             session_id,
             message,
         } => {
+            let token_count = message.usage.as_ref().map(token_usage_total).unwrap_or(0);
+            if token_count > 0 {
+                let stats_app = app_handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    let stats = stats_app.state::<crate::stats_commands::StatsState>();
+                    stats
+                        .record(solo_stats::StatsEvent::TokensConsumed { count: token_count })
+                        .await;
+                });
+            }
             if tracing::enabled!(tracing::Level::DEBUG) {
                 let type_str = format!("{:?}", message.message_type);
                 let mut pairs: Vec<(&str, &str)> =
