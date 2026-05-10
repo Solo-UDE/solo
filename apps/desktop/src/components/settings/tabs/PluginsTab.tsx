@@ -123,9 +123,10 @@ export const PluginsTab: FC = () => {
   }
 
   return (
-    <div className="space-y-8">
-      {/* Header actions */}
-      <div className="flex items-center gap-3">
+    <div className="flex h-full min-h-0">
+      <div className="min-h-0 flex-1 space-y-8 overflow-y-auto pr-4">
+        {/* Header actions */}
+        <div className="flex items-center gap-3">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Puzzle className="w-3.5 h-3.5 text-primary" />
           <span>
@@ -289,6 +290,8 @@ export const PluginsTab: FC = () => {
           )}
         </section>
       )}
+
+      </div>
 
       {detailOpen && <PluginDetailDrawer rootPath={rootPath} />}
     </div>
