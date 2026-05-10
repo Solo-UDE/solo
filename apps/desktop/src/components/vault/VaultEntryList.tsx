@@ -6,8 +6,9 @@
  */
 
 import { useMemo, type FC } from 'react';
-import type { EntryKind } from '@/lib/tauri/vault';
+import type { EntryKind, VaultEntry } from '@/lib/tauri/vault';
 import { useVaultStore } from '@/stores/vaultStore';
+import { VirtualList } from '@/components/ui/virtual-list';
 import { VaultEntryCard } from './VaultEntryCard';
 
 const BUCKET_ORDER: EntryKind[] = [
@@ -45,7 +46,7 @@ export const VaultEntryList: FC = () => {
   const entries = useVaultStore((s) => s.entries);
 
   const groups = useMemo(() => {
-    const map = new Map<EntryKind, typeof entries extends Map<string, infer V> ? V[] : never>();
+    const map = new Map<EntryKind, VaultEntry[]>();
     for (const entry of entries.values()) {
       const bucket = entry.kind;
       if (!map.has(bucket)) map.set(bucket, []);
@@ -58,25 +59,49 @@ export const VaultEntryList: FC = () => {
     }));
   }, [entries]);
 
+  const rows = useMemo(() => {
+    const next: Array<
+      | { kind: 'header'; id: string; label: string; count: number }
+      | { kind: 'entry'; id: string; entry: VaultEntry }
+    > = [];
+    for (const group of groups) {
+      next.push({
+        kind: 'header',
+        id: `header:${group.kind}`,
+        label: group.label,
+        count: group.items.length,
+      });
+      for (const entry of group.items) {
+        next.push({ kind: 'entry', id: entry.id, entry });
+      }
+    }
+    return next;
+  }, [groups]);
+
   return (
-    <div className="flex flex-col gap-3">
-      {groups.map(({ kind, label, items }) => (
-        <section key={kind} className="flex flex-col gap-1.5">
-          <div className="px-1 flex items-center gap-2">
+    <VirtualList
+      items={rows}
+      estimateSize={() => 74}
+      overscan={10}
+      className="min-h-[220px] flex-1"
+      getItemKey={(row) => row.id}
+      testId="vault-entry-list"
+      renderItem={(row) => (
+        row.kind === 'header' ? (
+          <div className="flex items-center gap-2 px-1 pb-1 pt-2">
             <span className="text-[10px] font-medium text-muted-foreground/70">
-              {label}
+              {row.label}
             </span>
             <span className="text-[9px] text-muted-foreground/40">
-              {items.length}
+              {row.count}
             </span>
           </div>
-          <div className="flex flex-col gap-1">
-            {items.map((entry) => (
-              <VaultEntryCard key={entry.id} entry={entry} />
-            ))}
+        ) : (
+          <div className="pb-1">
+            <VaultEntryCard entry={row.entry} />
           </div>
-        </section>
-      ))}
-    </div>
+        )
+      )}
+    />
   );
 };
