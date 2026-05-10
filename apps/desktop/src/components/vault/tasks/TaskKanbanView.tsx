@@ -11,6 +11,7 @@ import { groupTasks, type GroupKey } from './groupings';
 import { cn } from '@/lib/utils';
 import { StatusIcon } from './icons/StatusIcon';
 import { PriorityIcon, PRIORITY_CLASSNAME } from './icons/PriorityIcon';
+import { VirtualList } from '@/components/ui/virtual-list';
 
 interface Props { readonly grouping: GroupKey; }
 
@@ -109,7 +110,7 @@ const DropColumn: FC<{
     <section
       ref={ref as React.RefObject<HTMLElement>}
       className={cn(
-        'flex min-w-[280px] max-w-[320px] shrink-0 flex-col gap-1.5 rounded-[12px] border border-border/40 bg-muted/20 p-2 transition-colors',
+        'flex h-full min-w-[280px] max-w-[320px] shrink-0 flex-col gap-1.5 rounded-[12px] border border-border/40 bg-muted/20 p-2 transition-colors',
         hover && accept && 'border-primary/60 bg-primary/10',
       )}
     >
@@ -147,7 +148,7 @@ export const TaskKanbanView: FC<Props> = ({ grouping }) => {
   }
 
   return (
-    <div className="flex min-w-0 gap-3 overflow-x-auto p-3">
+    <div className="flex h-full min-w-0 gap-3 overflow-x-auto p-3">
       {groups.map((g) => (
         <DropColumn
           key={g.id}
@@ -181,9 +182,16 @@ export const TaskKanbanView: FC<Props> = ({ grouping }) => {
               {g.tasks.length}
             </span>
           </header>
-          <ul className="flex flex-col gap-1">
-            {g.tasks.map((t) => (
-              <DraggableRow key={t.id} taskId={t.id} fromGroupId={g.id}>
+          <VirtualList
+            items={g.tasks}
+            estimateSize={() => 58}
+            overscan={8}
+            className="min-h-0 flex-1"
+            itemClassName="pb-1"
+            getItemKey={(task) => task.id}
+            testId={`task-kanban-column-${g.id}`}
+            renderItem={(t) => (
+              <DraggableRow taskId={t.id} fromGroupId={g.id}>
                 <TaskRow
                   task={t}
                   isSelected={selectedId === t.id}
@@ -191,8 +199,8 @@ export const TaskKanbanView: FC<Props> = ({ grouping }) => {
                   onToggleDone={(id, next) => void update(id, { status: next })}
                 />
               </DraggableRow>
-            ))}
-          </ul>
+            )}
+          />
         </DropColumn>
       ))}
     </div>
