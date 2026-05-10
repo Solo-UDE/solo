@@ -1,6 +1,5 @@
 /**
- * Full leaderboard — top 100 global, with tier filter and sticky "your rank"
- * callout if the current user is outside the visible top-N.
+ * Full leaderboard — top 100 global, with tier filter and current-rank callout.
  */
 
 import { useEffect, useMemo, useState } from 'react';
@@ -8,6 +7,7 @@ import { motion } from 'motion/react';
 import { ReloadIcon } from '@radix-ui/react-icons';
 import { TIER_META, type TierIndex } from '@solo/tier-names';
 import { useTierStats } from '../../../hooks/useTierStats';
+import { useAuthStore } from '../../../stores/authStore';
 import { useCloudStatsStore } from '../../../stores/cloudStatsStore';
 import { VirtualList } from '../../ui/virtual-list';
 
@@ -16,36 +16,44 @@ const TIER_FILTERS: Array<'all' | TierIndex> = ['all', 7, 6, 5, 4, 3, 2, 1];
 export function LeaderboardPage() {
 	const stats = useTierStats();
 	const leaderboard = useCloudStatsStore((s) => s.leaderboard);
+	const leaderboardByTier = useCloudStatsStore((s) => s.leaderboardByTier);
 	const isLoading = useCloudStatsStore((s) => s.isLoadingLeaderboard);
 	const loadLeaderboard = useCloudStatsStore((s) => s.loadLeaderboard);
 	const error = useCloudStatsStore((s) => s.error);
+	const userId = useAuthStore((s) => s.user?.id ?? null);
 	const [filter, setFilter] = useState<'all' | TierIndex>('all');
 
 	useEffect(() => {
-		void loadLeaderboard(100);
-	}, [loadLeaderboard]);
+		void stats.initialize();
+	}, [stats.initialize]);
 
-	const filtered = useMemo(() => {
+	useEffect(() => {
+		void loadLeaderboard(100, filter === 'all' ? undefined : filter);
+	}, [filter, loadLeaderboard]);
+
+	const visibleEntries = useMemo(() => {
 		if (filter === 'all') return leaderboard;
-		return leaderboard.filter((e) => e.tier === filter);
-	}, [leaderboard, filter]);
+		return leaderboardByTier[filter] ?? [];
+	}, [leaderboard, leaderboardByTier, filter]);
+
+	const refreshCurrent = () => {
+		void loadLeaderboard(100, filter === 'all' ? undefined : filter);
+	};
 
 	const myEntry = useMemo(() => {
-		if (!stats.cumulative) return null;
-		// Match on score proximity — the server and client compute tiers
-		// identically, so equality is fine in normal cases.
-		return leaderboard.find(
+		if (userId) {
+			return visibleEntries.find((entry) => entry.userId === userId);
+		}
+		return visibleEntries.find(
 			(entry) =>
 				entry.tier === stats.tier &&
 				Math.abs(entry.score - stats.score) < 0.001
 		);
-	}, [leaderboard, stats.tier, stats.score]);
+	}, [visibleEntries, userId, stats.tier, stats.score]);
 
 	const myRank = myEntry
-		? leaderboard.findIndex((e) => e.userId === myEntry.userId) + 1
+		? visibleEntries.findIndex((e) => e.userId === myEntry.userId) + 1
 		: null;
-	const myInVisible =
-		myRank !== null && filtered.some((e) => e.userId === myEntry?.userId);
 
 	return (
 		<div className="flex flex-col gap-4">
@@ -75,7 +83,7 @@ export function LeaderboardPage() {
 				</div>
 				<button
 					type="button"
-					onClick={() => void loadLeaderboard(100)}
+					onClick={refreshCurrent}
 					disabled={isLoading}
 					className="flex items-center gap-1.5 rounded-[8px] border border-border/60 bg-background/70 px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
 				>
@@ -84,28 +92,30 @@ export function LeaderboardPage() {
 				</button>
 			</div>
 
-			{myRank !== null && !myInVisible ? (
+			{myRank !== null ? (
 				<motion.div
 					initial={{ opacity: 0, y: -4 }}
 					animate={{ opacity: 1, y: 0 }}
 					className="sticky top-0 z-10 rounded-[10px] border border-primary/50 bg-background/95 px-3 py-2 text-sm backdrop-blur"
 				>
-					You&apos;re ranked #{myRank} · T{stats.tier} ·{' '}
+					You&apos;re ranked #{myRank}{' '}
+					{filter === 'all' ? 'globally' : `in ${TIER_META[filter].name}`} · T
+					{stats.tier} ·{' '}
 					{Math.round(stats.score * 100)} pts
 				</motion.div>
 			) : null}
 
 			{error ? <p className="text-xs text-destructive">{error}</p> : null}
 
-			{isLoading && leaderboard.length === 0 ? (
+			{isLoading && visibleEntries.length === 0 ? (
 				<p className="text-sm text-muted-foreground">Loading leaderboard…</p>
-			) : filtered.length === 0 ? (
+			) : visibleEntries.length === 0 ? (
 				<p className="text-sm text-muted-foreground">
 					No climbers at this tier yet.
 				</p>
 			) : (
 				<VirtualList
-					items={filtered}
+					items={visibleEntries}
 					estimateSize={() => 62}
 					overscan={10}
 					role="list"
@@ -114,8 +124,10 @@ export function LeaderboardPage() {
 					getItemKey={(entry) => entry.userId}
 					testId="leaderboard-entries"
 					renderItem={(entry, idx) => {
-						const globalRank =
-							leaderboard.findIndex((e) => e.userId === entry.userId) + 1;
+						const rank =
+							filter === 'all'
+								? leaderboard.findIndex((e) => e.userId === entry.userId) + 1
+								: idx + 1;
 						const isMe = myEntry?.userId === entry.userId;
 						const meta = TIER_META[entry.tier as TierIndex] ?? TIER_META[1];
 						return (
@@ -127,7 +139,7 @@ export function LeaderboardPage() {
 							>
 								<div className="flex min-w-0 items-center gap-4">
 									<span className="w-8 text-right text-xs text-muted-foreground">
-										#{globalRank || idx + 1}
+										#{rank || idx + 1}
 									</span>
 									<span className="text-base leading-none">{meta.emoji}</span>
 									<div className="min-w-0">
