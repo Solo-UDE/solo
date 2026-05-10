@@ -59,7 +59,10 @@ export function AgentPanel({
       useAgentStore.getState().setActiveSession(sessionId);
     }
     if (isActive) {
-      useWorktreeStore.getState().setActive(worktreeId ?? null);
+      const targetWorktreeId = worktreeId ?? null;
+      if (useWorktreeStore.getState().activeWorktreeId !== targetWorktreeId) {
+        void useWorktreeStore.getState().setActive(targetWorktreeId);
+      }
     }
   }, [isActive, sessionId, worktreeId]);
 
@@ -114,6 +117,7 @@ export function AgentPanel({
       instanceId={instanceId}
       initialSessionId={sessionId}
       initialWorktreeId={worktreeId}
+      isActive={isActive}
       className="h-full"
     />
   );

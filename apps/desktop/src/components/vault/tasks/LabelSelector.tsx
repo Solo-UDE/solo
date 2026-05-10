@@ -3,6 +3,7 @@ import { Check, Plus, Tag, Trash2 } from 'lucide-react';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { useLabelStore } from '@/stores/labelStore';
+import { VirtualList } from '@/components/ui/virtual-list';
 
 const DEFAULT_COLORS = [
   '#ef4444', '#f97316', '#eab308', '#22c55e',
@@ -83,26 +84,34 @@ export const LabelSelector: FC<Props> = ({ selected, onAdd, onRemove, compact = 
             className="w-full bg-transparent text-[12px] outline-none placeholder:text-muted-foreground"
           />
         </div>
-        <div className="flex max-h-[260px] flex-col overflow-y-auto">
-          {filtered.map((l) => {
-            const isSelected = selectedSet.has(l.id);
-            return (
-              <button
-                key={l.id}
-                type="button"
-                onClick={() => void handleToggle(l.id)}
-                className="group flex items-center gap-2 rounded-[6px] px-1.5 py-1 text-left text-[12px] hover:bg-muted/70"
-              >
-                <span
-                  aria-hidden="true"
-                  className="h-2.5 w-2.5 shrink-0 rounded-full"
-                  style={{ backgroundColor: l.color }}
-                />
-                <span className="flex-1 truncate">{l.name}</span>
-                {isSelected && <Check className="h-3.5 w-3.5 text-muted-foreground" />}
-              </button>
-            );
-          })}
+        <div className="flex max-h-[260px] flex-col">
+          <VirtualList
+            items={filtered}
+            estimateSize={() => 28}
+            overscan={8}
+            measureElement={false}
+            className="max-h-[226px]"
+            getItemKey={(l) => l.id}
+            testId="label-selector-options"
+            renderItem={(l) => {
+              const isSelected = selectedSet.has(l.id);
+              return (
+                <button
+                  type="button"
+                  onClick={() => void handleToggle(l.id)}
+                  className="group flex w-full items-center gap-2 rounded-[6px] px-1.5 py-1 text-left text-[12px] hover:bg-muted/70"
+                >
+                  <span
+                    aria-hidden="true"
+                    className="h-2.5 w-2.5 shrink-0 rounded-full"
+                    style={{ backgroundColor: l.color }}
+                  />
+                  <span className="flex-1 truncate">{l.name}</span>
+                  {isSelected && <Check className="h-3.5 w-3.5 text-muted-foreground" />}
+                </button>
+              );
+            }}
+          />
           {filtered.length === 0 && !noMatchAllowsCreate && (
             <div className="px-1.5 py-2 text-center text-[11px] text-muted-foreground">
               No labels yet

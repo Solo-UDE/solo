@@ -6,6 +6,7 @@
 import { useState, useEffect } from 'react';
 import { FileTextIcon, ExclamationTriangleIcon } from '@radix-ui/react-icons';
 import { CodeSkeleton } from '@/components/ui/skeletons';
+import { VirtualList } from '@/components/ui/virtual-list';
 import * as fs from '../../lib/tauri/fs';
 
 interface FileViewerProps {
@@ -126,33 +127,28 @@ export function FileViewer({ filePath, className = '' }: FileViewerProps) {
       </div>
 
       {/* Editor content */}
-      <div className="flex-1 overflow-auto">
-        <div className="flex min-h-full">
-          {/* Line numbers gutter */}
-          <div className="flex-shrink-0 select-none bg-background border-r border-border">
-            {lines.map((_, i) => (
-              <div
-                key={i}
-                className="text-right text-[13px] text-muted-foreground font-mono leading-[22px] pr-4 pl-4"
-                style={{ minWidth: `${lineNumberWidth + 4}ch` }}
-              >
-                {i + 1}
-              </div>
-            ))}
+      <VirtualList
+        items={lines}
+        estimateSize={() => 22}
+        overscan={24}
+        measureElement={false}
+        className="flex-1 bg-background font-mono text-[13px] leading-[22px]"
+        getItemKey={(_line, index) => index}
+        testId="file-viewer-lines"
+        renderItem={(line, index) => (
+          <div className="flex min-w-max transition-colors duration-150 hover:bg-muted/60">
+            <div
+              className="shrink-0 select-none border-r border-border pl-4 pr-4 text-right text-muted-foreground"
+              style={{ minWidth: `${lineNumberWidth + 4}ch` }}
+            >
+              {index + 1}
+            </div>
+            <pre className="m-0 flex-1 pl-4 pr-4 text-foreground">
+              <code>{line || '\u00A0'}</code>
+            </pre>
           </div>
-
-          {/* Code content */}
-          <pre className="flex-1 pl-4 overflow-x-auto bg-background">
-            <code className="text-[13px] font-mono leading-[22px] text-foreground">
-              {lines.map((line, i) => (
-                <div key={i} className="whitespace-pre hover:bg-muted/60 transition-colors duration-150">
-                  {line || '\u00A0'}
-                </div>
-              ))}
-            </code>
-          </pre>
-        </div>
-      </div>
+        )}
+      />
 
       {/* Status bar */}
       <div className="flex items-center justify-between h-6 px-3 bg-primary text-primary-foreground text-[12px]">

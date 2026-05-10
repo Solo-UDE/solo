@@ -9,6 +9,7 @@ use tauri::{AppHandle, Emitter as _, State};
 use tracing::debug;
 
 use crate::task_commands::{get_store, TaskState};
+use crate::vault_commands::{get_vault, VaultState};
 
 fn emit_labels(app: &AppHandle, label_ids: Vec<String>) {
     let _ = app.emit("backend-event", BackendEvent::LabelsChanged { label_ids });
@@ -63,11 +64,27 @@ pub async fn label_delete(
     id: String,
     app: AppHandle,
     state: State<'_, TaskState>,
+    vault_state: State<'_, VaultState>,
 ) -> Result<(), String> {
     let affected_tasks = get_store(&state)
         .await?
         .label_delete(&id)
         .map_err(|e| e.to_string())?;
+    if let Ok(vault) = get_vault(&vault_state).await {
+        match vault.prune_label_id(&id) {
+            Ok(entry_ids) => {
+                for entry_id in entry_ids {
+                    let _ = app.emit(
+                        "backend-event",
+                        BackendEvent::VaultEntryUpdated { entry_id },
+                    );
+                }
+            }
+            Err(error) => {
+                tracing::warn!(label_id = %id, error = %error, "label_delete: vault label prune failed");
+            }
+        }
+    }
     emit_labels(&app, vec![id]);
     emit_tasks(&app, affected_tasks);
     Ok(())

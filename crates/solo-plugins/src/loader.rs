@@ -3,9 +3,9 @@
 //! Merges Solo's PluginStore with read-only adapters, applies toggles, and
 //! returns a list suitable for the Tauri command layer.
 
-use crate::adapters::{AdapterSource, discover_claude_adapter, discover_codex_adapter};
+use crate::adapters::{discover_claude_adapter, discover_codex_adapter, AdapterSource};
 use crate::id::PluginId;
-use crate::manifest::{PluginManifest, load_plugin_manifest};
+use crate::manifest::{load_plugin_manifest, PluginManifest};
 use crate::store::PluginStore;
 use crate::toggles::PluginToggles;
 use std::collections::HashSet;
@@ -78,7 +78,14 @@ pub fn list_plugins(config: LoaderConfig<'_>) -> PluginListOutcome {
                     AdapterSource::Claude => PluginSource::ClaudeAdapter,
                     AdapterSource::Codex => PluginSource::CodexAdapter, // not reachable here
                 };
-                push_record(&mut outcome, adapter.id, version, adapter.root, source, &toggles);
+                push_record(
+                    &mut outcome,
+                    adapter.id,
+                    version,
+                    adapter.root,
+                    source,
+                    &toggles,
+                );
             }
         }
     }
@@ -138,7 +145,11 @@ fn collect_store(
             continue;
         };
         for plugin_entry in plugins.flatten() {
-            if !plugin_entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            if !plugin_entry
+                .file_type()
+                .map(|t| t.is_dir())
+                .unwrap_or(false)
+            {
                 continue;
             }
             let Some(name) = plugin_entry.file_name().to_str().map(ToString::to_string) else {
@@ -199,7 +210,10 @@ fn push_record(
 }
 
 pub fn get_plugin_detail(config: LoaderConfig<'_>, id: &PluginId) -> Option<PluginRecord> {
-    list_plugins(config).plugins.into_iter().find(|r| &r.id == id)
+    list_plugins(config)
+        .plugins
+        .into_iter()
+        .find(|r| &r.id == id)
 }
 
 #[cfg(test)]
@@ -238,9 +252,7 @@ mod tests {
     #[test]
     fn solo_cache_plugins_discovered() {
         let tmp = tempdir().unwrap();
-        let plugin_root = tmp
-            .path()
-            .join("plugins/cache/local/alpha/local");
+        let plugin_root = tmp.path().join("plugins/cache/local/alpha/local");
         write_plugin(&plugin_root, "alpha");
 
         let out = list_plugins(make_config(tmp.path()));
@@ -292,9 +304,7 @@ mod tests {
     fn solo_wins_on_id_collision() {
         let tmp = tempdir().unwrap();
         // Solo-native plugin with marketplace "claude-user" name "dup".
-        let solo_plugin = tmp
-            .path()
-            .join("plugins/cache/claude-user/dup/local");
+        let solo_plugin = tmp.path().join("plugins/cache/claude-user/dup/local");
         write_plugin(&solo_plugin, "dup");
         // Claude adapter fixture with same id.
         let claude_dir = tmp.path().join("claude");
@@ -348,7 +358,10 @@ mod tests {
         write_plugin(&plugin_root, "alpha");
         // Flip alpha to disabled.
         let mut toggles = PluginToggles::default();
-        toggles.set_enabled(&PluginId::new("local".into(), "alpha".into()).unwrap(), false);
+        toggles.set_enabled(
+            &PluginId::new("local".into(), "alpha".into()).unwrap(),
+            false,
+        );
         toggles.save(&tmp.path().join("plugins")).unwrap();
 
         let out = list_plugins(make_config(tmp.path()));
@@ -365,12 +378,18 @@ mod tests {
         }
         // Disable alpha.
         let mut toggles = PluginToggles::default();
-        toggles.set_enabled(&PluginId::new("local".into(), "alpha".into()).unwrap(), false);
+        toggles.set_enabled(
+            &PluginId::new("local".into(), "alpha".into()).unwrap(),
+            false,
+        );
         toggles.save(&tmp.path().join("plugins")).unwrap();
 
         let out = list_plugins(make_config(tmp.path()));
         assert_eq!(
-            out.plugins.iter().map(|r| r.id.name.as_str()).collect::<Vec<_>>(),
+            out.plugins
+                .iter()
+                .map(|r| r.id.name.as_str())
+                .collect::<Vec<_>>(),
             vec!["beta", "zebra", "alpha"],
         );
     }

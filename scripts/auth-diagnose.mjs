@@ -21,6 +21,7 @@ const requestedStage =
   process.argv[2] === "prod" || process.argv[2] === "dev"
     ? process.argv[2]
     : resolveAuthStage(process.env);
+const AUTH_PROVIDERS = ["GitHub", "Google"];
 
 function section(title) {
   console.log("");
@@ -57,6 +58,24 @@ async function probe(url, label) {
     fmt(label, `ERR: ${e.message}`);
     return { error: e.message };
   }
+}
+
+function authorizeUrlForProvider(domain, clientId, provider) {
+  return `https://${domain}/oauth2/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(CALLBACK_URI)}&scope=${encodeURIComponent("openid email profile")}&identity_provider=${encodeURIComponent(provider)}&state=diagnostic&code_challenge=XXXdiagnosticXXX&code_challenge_method=S256`;
+}
+
+function describeProviderDetails(details = {}) {
+  return Object.entries(details)
+    .map(([key, value]) => {
+      if (/secret/i.test(key)) {
+        return `${key}=${value ? "[present]" : "[missing]"}`;
+      }
+      if (/client_id/i.test(key)) {
+        return `${key}=${value ? "[present]" : "[missing]"}`;
+      }
+      return key;
+    })
+    .join(", ");
 }
 
 // 1. Local env
@@ -120,7 +139,7 @@ if (drift.length === 0) {
   console.log("  ✓ no drift — local env matches deployed stack");
 } else {
   for (const d of drift) console.log(`  ⚠ ${d}`);
-  console.log(`\n  Fix: cd infra && bun run sync-env:${requestedStage}`);
+  console.log(`\n  Fix: bun infra/scripts/sync-env.mjs ${requestedStage}`);
 }
 
 // 4. Deployed URL allowlist
@@ -148,23 +167,64 @@ if (livePoolId && liveClientId) {
   } else {
     fmt("describe-user-pool-client", `ERR: ${client.error}`);
   }
+
+  const pool = runAws([
+    "cognito-idp", "describe-user-pool",
+    "--user-pool-id", livePoolId,
+    "--query", "UserPool.LambdaConfig",
+    "--output", "json",
+  ]);
+  if (pool.ok) {
+    fmt("PreSignUp trigger", pool.data?.PreSignUp ? "attached" : "MISSING");
+    fmt("PostAuthentication trigger", pool.data?.PostAuthentication ? "attached" : "MISSING");
+  } else {
+    fmt("describe-user-pool", `ERR: ${pool.error}`);
+  }
 }
 
-// 5. Live URL probe
+// 5. Identity provider config
+section("IDENTITY PROVIDERS");
+if (livePoolId) {
+  for (const provider of AUTH_PROVIDERS) {
+    const idp = runAws([
+      "cognito-idp", "describe-identity-provider",
+      "--user-pool-id", livePoolId,
+      "--provider-name", provider,
+      "--query", "IdentityProvider.{ProviderName:ProviderName,ProviderType:ProviderType,ProviderDetails:ProviderDetails,AttributeMapping:AttributeMapping}",
+      "--output", "json",
+    ]);
+    if (idp.ok) {
+      fmt(`${provider} type`, idp.data.ProviderType);
+      fmt(`${provider} provider details`, describeProviderDetails(idp.data.ProviderDetails));
+      fmt(`${provider} mapped attrs`, Object.keys(idp.data.AttributeMapping ?? {}).join(", ") || "(none)");
+    } else {
+      fmt(provider, `ERR: ${idp.error}`);
+    }
+  }
+}
+
+// 6. Live URL probe
 section("COGNITO URL PROBE (exact URLs the desktop app would build)");
 const domain = effective.SOLO_COGNITO_DOMAIN || liveDomain;
 const clientId = effective.SOLO_COGNITO_CLIENT_ID || liveClientId;
 if (domain && clientId) {
-  const authorizeUrl = `https://${domain}/oauth2/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(CALLBACK_URI)}&scope=${encodeURIComponent("openid email profile")}&identity_provider=GitHub&code_challenge=XXXdiagnosticXXX&code_challenge_method=S256`;
-  await probe(authorizeUrl, "authorize");
+  const authorizeUrls = AUTH_PROVIDERS.map((provider) => [
+    provider,
+    authorizeUrlForProvider(domain, clientId, provider),
+  ]);
+  for (const [provider, authorizeUrl] of authorizeUrls) {
+    await probe(authorizeUrl, `authorize ${provider}`);
+  }
   const logoutUrl = `https://${domain}/logout?client_id=${clientId}&logout_uri=${encodeURIComponent(SIGNOUT_URI)}`;
   await probe(logoutUrl, "logout");
   console.log("");
-  console.log(`  sample authorize URL:\n    ${authorizeUrl}`);
+  for (const [provider, authorizeUrl] of authorizeUrls) {
+    console.log(`  sample ${provider} authorize URL:\n    ${authorizeUrl}`);
+  }
   console.log(`  sample logout URL:\n    ${logoutUrl}`);
 }
 
-// 6. Default browser
+// 7. Default browser
 section("MAC DEFAULT BROWSER");
 const duti = spawnSync("duti", ["-x", "html"], { encoding: "utf8" });
 if (duti.status === 0) {

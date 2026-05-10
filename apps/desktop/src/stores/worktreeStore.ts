@@ -15,6 +15,40 @@ import { wtLog, wtTrace, wtSnapshot } from '../lib/worktreeLogger';
 enableMapSet();
 
 const EMPTY_WORKTREES: WorktreeInfo[] = [];
+const WORKTREE_CACHE_LIMIT = 3;
+const worktreeListCache = new Map<string, WorktreeInfo[]>();
+let activeSwitchSeq = 0;
+
+function cloneWorktreeList(list: WorktreeInfo[]): WorktreeInfo[] {
+	return list.map((worktree) => ({ ...worktree }));
+}
+
+function rememberWorktreeList(key: string, list: WorktreeInfo[]): void {
+	worktreeListCache.delete(key);
+	worktreeListCache.set(key, cloneWorktreeList(list));
+	while (worktreeListCache.size > WORKTREE_CACHE_LIMIT) {
+		const oldest = worktreeListCache.keys().next().value as string | undefined;
+		if (!oldest) break;
+		worktreeListCache.delete(oldest);
+	}
+}
+
+function getCachedWorktreeList(key: string): WorktreeInfo[] | null {
+	const cached = worktreeListCache.get(key);
+	if (!cached) return null;
+	worktreeListCache.delete(key);
+	worktreeListCache.set(key, cached);
+	return cloneWorktreeList(cached);
+}
+
+async function getWorktreeCacheKey(): Promise<string | null> {
+	const { useRepoStore } = await import('./repoStore');
+	const activeRepoPath = useRepoStore.getState().activeRepoPath;
+	if (activeRepoPath) return activeRepoPath;
+
+	const { useFileExplorerStore } = await import('./fileExplorerStore');
+	return useFileExplorerStore.getState().rootPath;
+}
 
 async function ensureBackendWorkspaceRoot(): Promise<boolean> {
 	const { useFileExplorerStore } = await import('./fileExplorerStore');
@@ -82,11 +116,15 @@ export const useWorktreeStore = create<WorktreeStore>()(
 		...initialState,
 
 		loadWorktrees: async () => {
-			// Optimistically clear so stale data from a previous repo never lingers
+			const cacheKey = await getWorktreeCacheKey();
+			const cached = cacheKey ? getCachedWorktreeList(cacheKey) : null;
+
 			set((state) => {
-				state.isLoading = true;
+				state.isLoading = !cached;
 				state.error = null;
-				state.worktrees.clear();
+				if (cached) {
+					state.worktrees = new Map(cached.map((wt) => [wt.id, wt]));
+				}
 			});
 
 			try {
@@ -99,6 +137,10 @@ export const useWorktreeStore = create<WorktreeStore>()(
 				}
 
 				const list = await wtTrace('loadWorktrees', {}, () => worktreeApi.listWorktrees());
+				const latestCacheKey = (await getWorktreeCacheKey()) ?? cacheKey;
+				if (latestCacheKey) {
+					rememberWorktreeList(latestCacheKey, list);
+				}
 				set((state) => {
 					state.worktrees = new Map(list.map((wt) => [wt.id, wt]));
 					state.isLoading = false;
@@ -203,15 +245,24 @@ export const useWorktreeStore = create<WorktreeStore>()(
 		},
 
 		setActive: async (id) => {
-			// Capture current root before the backend swaps it
 			const { useFileExplorerStore } = await import('@/stores/fileExplorerStore');
-			const currentRoot = useFileExplorerStore.getState().rootPath;
+			const fileExplorer = useFileExplorerStore.getState();
+			const currentRoot = fileExplorer.rootPath;
+			const current = _get();
+			const targetInfo = id ? current.worktrees.get(id) : null;
+			const optimisticTargetPath = id ? targetInfo?.path : current._originalWorkspaceRoot;
 
-			const targetPath = await wtTrace(
-				'setActiveWorktree',
-				{ worktreeId: id ?? '<main>', currentRoot },
-				() => worktreeApi.setActiveWorktree(id),
-			);
+			if (
+				current.activeWorktreeId === id &&
+				(id === null || (targetInfo?.path != null && currentRoot === targetInfo.path))
+			) {
+				return;
+			}
+
+			const previousActive = current.activeWorktreeId;
+			const previousOriginalRoot = current._originalWorkspaceRoot;
+			const seq = ++activeSwitchSeq;
+			let optimisticRootPromise: Promise<void> | null = null;
 
 			set((state) => {
 				if (id !== null && state._originalWorkspaceRoot === null) {
@@ -223,13 +274,40 @@ export const useWorktreeStore = create<WorktreeStore>()(
 				state.activeWorktreeId = id;
 			});
 
-			// Re-scope file explorer + git to the target path
-			if (targetPath) {
-				const { useGitStore } = await import('@/stores/gitStore');
-				await useFileExplorerStore.getState().setRootPath(targetPath);
-				useGitStore.getState().setCommitMessage('');
-				useGitStore.getState().stopPolling();
-				useGitStore.getState().startPolling();
+			if (optimisticTargetPath && optimisticTargetPath !== currentRoot) {
+				optimisticRootPromise = fileExplorer.setRootPath(optimisticTargetPath).catch((error) => {
+					console.warn('Optimistic worktree root switch failed:', error);
+				});
+			}
+
+			try {
+				const targetPath = await wtTrace(
+					'setActiveWorktree',
+					{ worktreeId: id ?? '<main>', currentRoot },
+					() => worktreeApi.setActiveWorktree(id),
+				);
+				if (seq !== activeSwitchSeq) return;
+
+				if (targetPath) {
+					const { useGitStore } = await import('@/stores/gitStore');
+					if (targetPath === optimisticTargetPath && optimisticRootPromise) {
+						await optimisticRootPromise;
+					} else if (useFileExplorerStore.getState().rootPath !== targetPath) {
+						await useFileExplorerStore.getState().setRootPath(targetPath);
+					}
+					useGitStore.getState().setCommitMessage('');
+					useGitStore.getState().stopPolling();
+					useGitStore.getState().startPolling();
+				}
+			} catch (error) {
+				if (seq === activeSwitchSeq) {
+					set((state) => {
+						state.activeWorktreeId = previousActive;
+						state._originalWorkspaceRoot = previousOriginalRoot;
+						state.error = error instanceof Error ? error.message : String(error);
+					});
+				}
+				throw error;
 			}
 		},
 

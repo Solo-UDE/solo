@@ -5,7 +5,7 @@ import {
   createLogger,
   setCorrelationId,
   shutdownFileLogging
-} from "./chunk-CLAVTT35.js";
+} from "./chunk-PI2SZOW3.js";
 
 // src/index.ts
 import * as readline from "readline";
@@ -38,7 +38,10 @@ function openDb() {
     return null;
   }
   try {
-    return new Database(VAULT_DB, { readonly: true });
+    const db = new Database(VAULT_DB);
+    db.run("PRAGMA busy_timeout = 5000");
+    ensureVaultMetadataColumns(db);
+    return db;
   } catch (err) {
     logger.warn({ err: String(err), path: VAULT_DB }, "vault: open failed");
     return null;
@@ -51,14 +54,34 @@ function openWritableDb() {
   try {
     const db = new Database(VAULT_DB);
     db.run("PRAGMA busy_timeout = 5000");
+    ensureVaultMetadataColumns(db);
     return db;
   } catch (err) {
     logger.warn({ err: String(err), path: VAULT_DB }, "vault: writable open failed");
     return null;
   }
 }
+function ensureVaultMetadataColumns(db) {
+  try {
+    const columns = new Set(
+      db.query("PRAGMA table_info(entries)").all().map((row) => row.name)
+    );
+    if (!columns.has("label_ids")) {
+      db.run("ALTER TABLE entries ADD COLUMN label_ids TEXT NOT NULL DEFAULT '[]'");
+    }
+    if (!columns.has("expires_at")) {
+      db.run("ALTER TABLE entries ADD COLUMN expires_at INTEGER");
+    }
+    db.run("CREATE INDEX IF NOT EXISTS idx_entries_expires ON entries(expires_at)");
+  } catch (err) {
+    logger.warn({ err: String(err) }, "vault: metadata migration failed");
+  }
+}
+function defaultExpiry() {
+  return unixNow() + 7 * 24 * 60 * 60;
+}
 function searchVault(query2, opts = {}) {
-  const { projectId, topK = 6 } = opts;
+  const { projectId, topK = 6, includeExpired = false } = opts;
   const db = openDb();
   if (!db) return [];
   try {
@@ -85,10 +108,13 @@ function searchVault(query2, opts = {}) {
       WHERE chunks_fts MATCH ?
         AND (e.scope_type = 'global'
              OR (e.scope_type = 'project' AND e.scope_project_id = ?))
+        AND (? = 1 OR e.expires_at IS NULL OR e.expires_at > ?)
       ORDER BY rank
       LIMIT ?
     `);
-    const rows = stmt.all(ftsQuery, projectId ?? null, topK);
+    const includeFlag = includeExpired ? 1 : 0;
+    const now = unixNow();
+    const rows = stmt.all(ftsQuery, projectId ?? null, includeFlag, now, topK);
     db.close();
     return rows.map((r) => ({
       chunkId: r.chunk_id,
@@ -133,10 +159,11 @@ function pinnedEntries(opts = {}) {
       WHERE e.pinned = 1
         AND (e.scope_type = 'global'
              OR (e.scope_type = 'project' AND e.scope_project_id = ?))
+        AND (e.expires_at IS NULL OR e.expires_at > ?)
       ORDER BY e.updated_at DESC
       LIMIT ?
     `);
-    const rows = stmt.all(projectId ?? null, limit);
+    const rows = stmt.all(projectId ?? null, unixNow(), limit);
     db.close();
     return rows.map((r) => ({
       chunkId: r.chunk_id,
@@ -242,8 +269,9 @@ async function loadEmbeddingsCache(projectId) {
         WHERE c.embedding IS NOT NULL
           AND (e.scope_type = 'global'
                OR (e.scope_type = 'project' AND e.scope_project_id = ?))
+          AND (e.expires_at IS NULL OR e.expires_at > ?)
       `);
-      const rows = stmt.all(projectId ?? null);
+      const rows = stmt.all(projectId ?? null, unixNow());
       const out = [];
       let totalBytes = 0;
       let skipped = 0;
@@ -536,7 +564,8 @@ async function searchVaultCloud(queryText, opts = {}) {
         limit: topK,
         mode,
         scope_type: projectId ? "project" : "global",
-        scope_project_id: projectId
+        scope_project_id: projectId,
+        include_expired: false
       }),
       signal: controller.signal
     });
@@ -668,6 +697,8 @@ async function syncAddedTextToCloud(entry, vaultAuth) {
       memory_type: entry.memoryType,
       pinned: entry.pinned ? 1 : 0,
       tags: JSON.stringify(entry.tags),
+      label_ids: JSON.stringify(entry.labelIds),
+      expires_at: entry.expiresAt,
       mime: "text/plain",
       size_bytes: entry.sizeBytes,
       index_status: "indexed",
@@ -706,6 +737,8 @@ async function addTextToVault(text, opts = {}) {
   const memoryType = opts.memoryType ?? (scopeType === "project" ? "project" : "user");
   const pinned = opts.pinned ?? false;
   const tags = Array.from(new Set(["agent", ...opts.tags ?? []].map((tag) => tag.trim()).filter(Boolean))).slice(0, 12);
+  const labelIds = Array.from(new Set((opts.labelIds ?? []).map((id2) => id2.trim()).filter(Boolean))).slice(0, 24);
+  const expiresAt = opts.expiresAt ?? defaultExpiry();
   const chunks = chunkTextForVault(content);
   const embeddings = await embedTextChunksForVault(chunks);
   const embeddedCount = embeddings.filter(Boolean).length;
@@ -715,11 +748,11 @@ async function addTextToVault(text, opts = {}) {
     db.run(
       `INSERT INTO entries (
         id, kind, subkind, title, content, source_path, vault_blob_path,
-        scope_type, scope_project_id, memory_type, pinned, tags,
+        scope_type, scope_project_id, memory_type, pinned, tags, label_ids, expires_at,
         mime, size_bytes, index_status, cloud_sync_state,
         classifier_confidence, hit_count, last_retrieved_at,
         created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         "note",
@@ -733,6 +766,8 @@ async function addTextToVault(text, opts = {}) {
         memoryType,
         pinned ? 1 : 0,
         JSON.stringify(tags),
+        JSON.stringify(labelIds),
+        expiresAt,
         "text/plain",
         Buffer.byteLength(content, "utf8"),
         "indexed",
@@ -785,6 +820,8 @@ async function addTextToVault(text, opts = {}) {
           memoryType,
           pinned,
           tags,
+          labelIds,
+          expiresAt,
           sizeBytes: Buffer.byteLength(content, "utf8"),
           createdAt: now,
           updatedAt: now
@@ -913,7 +950,7 @@ ${hits.map((h) => `  ${h.entryTitle} [${h.source}/${h.mode}] -> ${h.score.toFixe
 function createVaultAddTool(getVaultAuth, getProjectId) {
   return tool(
     "vault_add",
-    "Add a durable note to the user's personal vault. Use this when the user asks you to remember something, save a note, add something to the vault, or preserve an instruction/preference for future sessions. Do not use it for incidental facts unless the user explicitly asks you to remember/save them. By default this saves locally. Set sync_to_cloud=true only when the user asks for cloud sync or explicitly wants the memory available through cloud retrieval.",
+    "Add a durable note to the user's personal vault. Use this when the user asks you to remember something, save a note, add something to the vault, or preserve an instruction/preference for future sessions. Do not use it for incidental facts unless the user explicitly asks you to remember/save them. New memories expire into archive-only retrieval after expiry_days. By default this saves locally. Set sync_to_cloud=true only when the user asks for cloud sync or explicitly wants the memory available through cloud retrieval.",
     {
       text: z.string().min(1).max(5e4).describe("The exact memory text to save. Include enough context for future retrieval."),
       title: z.string().min(1).max(500).optional().describe("Short human-readable title. If omitted, a title is inferred from the text."),
@@ -921,6 +958,8 @@ function createVaultAddTool(getVaultAuth, getProjectId) {
       memory_type: z.enum(["project", "user", "pinned_source_of_truth"]).optional().describe('Memory classification. Defaults to "user" for global memories and "project" for project scope.'),
       pinned: z.boolean().default(false).describe("Pin only when the user says this is a source of truth or should always be prioritized."),
       tags: z.array(z.string().min(1).max(40)).max(10).default([]).describe("Optional lightweight tags for the saved memory."),
+      label_ids: z.array(z.string().min(1).max(120)).max(24).default([]).describe("Optional shared Vault/Tasks label ids that group this memory with an idea workspace."),
+      expiry_days: z.number().int().min(1).max(365).default(7).describe("How many days this memory should stay active before moving to archive-only retrieval."),
       sync_to_cloud: z.boolean().default(false).describe("When true, also sync this memory to cloud. Requires sign-in and sends the saved text to cloud.")
     },
     async (args) => {
@@ -933,6 +972,8 @@ function createVaultAddTool(getVaultAuth, getProjectId) {
         memoryType: args.memory_type,
         pinned: args.pinned ?? false,
         tags: args.tags ?? [],
+        labelIds: args.label_ids ?? [],
+        expiresAt: unixNow() + (args.expiry_days ?? 7) * 24 * 60 * 60,
         syncToCloud: args.sync_to_cloud ?? false,
         vaultAuth
       });
@@ -2091,6 +2132,70 @@ function discoverClaudePlugins() {
   }
   return out;
 }
+function discoverCodexPluginCache() {
+  const cacheRoot = join5(homedir4(), ".codex", "plugins", "cache");
+  if (!existsSync3(cacheRoot)) return [];
+  const out = [];
+  for (const marketplace of safeReadDir(cacheRoot)) {
+    const marketplaceDir = join5(cacheRoot, marketplace);
+    if (!isDirectory(marketplaceDir)) continue;
+    for (const pluginName of safeReadDir(marketplaceDir)) {
+      const pluginDir = join5(marketplaceDir, pluginName);
+      if (!isDirectory(pluginDir)) continue;
+      const version = pickActiveVersion(pluginDir);
+      if (!version) continue;
+      const root = join5(pluginDir, version);
+      const skillsDir = resolvePluginSkillsDir(root);
+      if (skillsDir) {
+        out.push(...discoverSkillsFromDir(skillsDir, "codex"));
+      }
+    }
+  }
+  return out;
+}
+function resolvePluginSkillsDir(pluginRoot) {
+  const manifestPath = [
+    join5(pluginRoot, ".solo-plugin", "plugin.json"),
+    join5(pluginRoot, ".codex-plugin", "plugin.json"),
+    join5(pluginRoot, ".claude-plugin", "plugin.json")
+  ].find((candidate) => existsSync3(candidate));
+  if (manifestPath) {
+    try {
+      const parsed = JSON.parse(readFileSync3(manifestPath, "utf-8"));
+      if (typeof parsed.skills === "string" && parsed.skills.trim()) {
+        const resolved = resolve(pluginRoot, parsed.skills);
+        const root = resolve(pluginRoot);
+        if (resolved === root || resolved.startsWith(`${root}/`)) {
+          return existsSync3(resolved) ? resolved : null;
+        }
+      }
+    } catch (err) {
+      logger5.warn({ err, manifestPath }, "codex plugin manifest parse failed");
+    }
+  }
+  const fallback = join5(pluginRoot, "skills");
+  return existsSync3(fallback) ? fallback : null;
+}
+function pickActiveVersion(pluginDir) {
+  const versions = safeReadDir(pluginDir).filter((entry) => isDirectory(join5(pluginDir, entry)));
+  if (versions.includes("local")) return "local";
+  versions.sort();
+  return versions.at(-1) ?? null;
+}
+function safeReadDir(dirPath) {
+  try {
+    return readdirSync(dirPath);
+  } catch {
+    return [];
+  }
+}
+function isDirectory(path5) {
+  try {
+    return statSync(path5).isDirectory();
+  } catch {
+    return false;
+  }
+}
 function discoverClaudeProjectAncestors(cwd) {
   const home = homedir4();
   const out = [];
@@ -2139,6 +2244,7 @@ function loadSkills(cwd) {
   }
   if (config.importCodex) {
     all.push(...discoverSkillsFromDir(join5(homedir4(), ".codex", "skills"), "codex"));
+    all.push(...discoverCodexPluginCache());
   }
   const merged = mergeSkills(all);
   if (merged.length > 0) {
@@ -3504,7 +3610,7 @@ Do NOT overwhelm the user with a full checklist every time \u2014 pick the most 
     const credentials = await ClaudeCredentials.getCredentials();
     if (!credentials.hasCredentials) {
       throw new Error(
-        'No credentials found. Please either:\n1. Run "claude login" to set up OAuth credentials in ~/.claude/.credentials.json, OR\n2. Set ANTHROPIC_API_KEY in .env file'
+        'No credentials found. Please either:\n1. Run "claude /login" to set up OAuth credentials in ~/.claude/.credentials.json, OR\n2. Set ANTHROPIC_API_KEY in .env file'
       );
     }
     if (credentials.type === "oauth") {
@@ -3856,8 +3962,8 @@ var LEDGER_DIR = join7(homedir5(), ".solo", "agent-ledger");
 var PROVIDER_CAPABILITIES = {
   anthropic: { chat: true, agent: true, tools: true, mcp: true, resume: true },
   openai: { chat: true, agent: true, tools: true, mcp: true, resume: true },
-  google: { chat: true, agent: false, tools: false, mcp: false, resume: false },
-  gemini: { chat: true, agent: false, tools: false, mcp: false, resume: false }
+  google: { chat: true, agent: true, tools: true, mcp: true, resume: true },
+  gemini: { chat: true, agent: true, tools: true, mcp: true, resume: true }
 };
 function configHash(config) {
   return createHash("sha256").update(JSON.stringify(config ?? {})).digest("hex").slice(0, 16);
@@ -4022,7 +4128,7 @@ var SessionManager = class extends Disposable {
       if (!config?.model) {
         throw new Error("OpenAI session requires a model");
       }
-      const { createOpenAISession } = await import("./openai-QGAP5HES.js");
+      const { createOpenAISession } = await import("./openai-PM43ACSB.js");
       const openaiSession = await createOpenAISession({
         model: config.model,
         credentials: config.credentials,
@@ -4050,7 +4156,7 @@ var SessionManager = class extends Disposable {
       return;
     }
     if (provider === "google" || provider === "gemini") {
-      if (!config?.credentials) {
+      if (!config?.credentials && sessionMode !== "agent") {
         throw new Error(
           "Gemini session requires credentials \u2014 Rust side must pass them via SessionConfig.credentials"
         );
@@ -4058,20 +4164,31 @@ var SessionManager = class extends Disposable {
       if (!config?.model) {
         throw new Error("Gemini session requires a model");
       }
-      const { createGeminiSession } = await import("./gemini-GBIUEEFR.js");
+      const { createGeminiSession } = await import("./gemini-MBZWSO6P.js");
       const geminiSession = await createGeminiSession({
         model: config.model,
         credentials: config.credentials,
-        maxTokens: config.maxTokens
+        maxTokens: config.maxTokens,
+        agentMode: sessionMode === "agent",
+        cwd: config.cwd,
+        resumeSessionId: config.resumeSessionId,
+        forkSession: config.forkSession,
+        mcpServers: config.mcpServers
       });
       this.openAISessions.set(sessionId, geminiSession);
       this.sessionToolUseMaps.set(sessionId, /* @__PURE__ */ new Map());
-      this.emitSessionInit({
-        sessionId,
-        sdkSessionId: sessionId,
-        isResumed: false,
-        isForked: false
+      this.sessionResumeState.set(sessionId, {
+        isResumed: !!config.resumeSessionId,
+        isForked: !!config.forkSession
       });
+      if (sessionMode !== "agent") {
+        this.emitSessionInit({
+          sessionId,
+          sdkSessionId: sessionId,
+          isResumed: false,
+          isForked: false
+        });
+      }
       return;
     }
     const toolUseMap = /* @__PURE__ */ new Map();
@@ -5275,3 +5392,4 @@ try {
   logger11.error({ error }, "Fatal error");
   process.exit(1);
 }
+//# sourceMappingURL=index.js.map

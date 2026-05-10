@@ -126,6 +126,14 @@ pub async fn set_workspace_root(
     Ok(())
 }
 
+fn maybe_count_entries(path: &std::path::Path, include_total_count: bool) -> Option<u32> {
+    if include_total_count {
+        Some(tree::count_entries(path).unwrap_or(0))
+    } else {
+        None
+    }
+}
+
 /// Read a directory and return its contents
 #[tauri::command]
 pub async fn read_directory(
@@ -149,8 +157,10 @@ pub async fn read_directory(
     let entry = tree::read_directory(&path, request.depth)
         .map_err(|e| to_protocol_error(e, &request.path))?;
 
-    // Count total entries for progress indication
-    let total_count = tree::count_entries(&path).unwrap_or(0);
+    let total_count = maybe_count_entries(
+        &path,
+        request.include_total_count.unwrap_or(false),
+    );
 
     Ok(DirectoryReadResponse { entry, total_count })
 }
@@ -483,4 +493,26 @@ pub async fn stop_watching(state: State<'_, FsState>) -> Result<(), String> {
     *watcher_lock = None;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::maybe_count_entries;
+
+    #[test]
+    fn directory_count_is_skipped_by_default() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("a.txt"), "a").unwrap();
+
+        assert_eq!(maybe_count_entries(tmp.path(), false), None);
+    }
+
+    #[test]
+    fn directory_count_runs_when_requested() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("a.txt"), "a").unwrap();
+
+        let count = maybe_count_entries(tmp.path(), true);
+        assert!(matches!(count, Some(n) if n >= 1));
+    }
 }

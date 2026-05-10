@@ -12,9 +12,10 @@ pub mod provider;
 pub use credentials::{CredentialManager, CredentialSource};
 pub use models::{get_all_models, get_models_for_provider, AIModel};
 pub use oauth::{
-    start_callback_server, AnthropicOAuthConfig, AuthMethodInfo, AuthType, DeviceCodeResponse,
-    DevicePollResult, GitHubOAuthConfig, OAuthFlowResult, OAuthMethod, OAuthState, OAuthToken,
-    OpenAIOAuthConfig,
+    bind_callback_listener_on, start_callback_server, start_callback_server_with_listener,
+    AnthropicOAuthConfig, AuthMethodInfo, AuthType, DeviceCodeResponse, DevicePollResult,
+    GitHubOAuthConfig, OAuthFlowResult, OAuthMethod, OAuthState, OAuthToken, OpenAIOAuthConfig,
+    CALLBACK_PORT,
 };
 pub use provider::{ProviderConfig, ProviderError, ProviderResult, ProviderStatus, ProviderType};
 

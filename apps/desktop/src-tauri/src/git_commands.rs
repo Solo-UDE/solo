@@ -2209,36 +2209,80 @@ pub async fn github_complete_auth(
     Ok(())
 }
 
-/// Get the stored GitHub access token (or null if not connected).
+/// Begin GitHub linking for the current Solo/Cognito user.
 ///
-/// Two-tier lookup:
-///   1. Local vault — populated by the legacy device-flow / local OAuth paths.
-///   2. Cloud fallback — after Cognito federated sign-in the GitHub token is
-///      stored in DynamoDB and served by `GET /v1/github/token`. Fetch it
-///      once using the Cognito access token, cache it locally, return it.
+/// This is the canonical GitHub path for the desktop app. The backend stores
+/// the resulting GitHub token keyed by the Cognito `sub`, which keeps desktop
+/// and web on the same Solo identity.
+#[tauri::command]
+pub async fn github_start_link(
+    auth_state: State<'_, crate::auth_commands::AuthState>,
+    state: State<'_, crate::provider_commands::ProviderAuthState>,
+) -> Result<String, String> {
+    let Some(cognito_access_token) =
+        crate::auth_commands::access_token_snapshot(&auth_state, &state).await
+    else {
+        return Err("Sign in to Solo before linking GitHub.".to_string());
+    };
+
+    let api_endpoint = crate::desktop_config::api_endpoint().trim_end_matches('/');
+    let url = format!("{}/v1/github/link", api_endpoint);
+    info!(url = %url, "github_start_link: requesting cloud link URL");
+
+    let client = reqwest::Client::new();
+    let response = client
+        .post(&url)
+        .bearer_auth(&cognito_access_token)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to call {}: {}", url, e))?;
+
+    let status = response.status();
+    if !status.is_success() {
+        let body = response.text().await.unwrap_or_default();
+        warn!(
+            status = %status,
+            body = %body,
+            "github_start_link: /v1/github/link failed"
+        );
+        return Err(format!("GitHub link start failed ({}): {}", status, body));
+    }
+
+    #[derive(serde::Deserialize)]
+    struct GitHubLinkStartResponse {
+        #[serde(rename = "authorizeUrl")]
+        authorize_url: String,
+    }
+
+    let body: GitHubLinkStartResponse = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse /v1/github/link response: {}", e))?;
+
+    Ok(body.authorize_url)
+}
+
+/// Get the GitHub access token linked to the current Solo/Cognito user.
 ///
-/// The cloud endpoint is authenticated by the Cognito `HttpJwtAuthorizer`,
-/// so we only try it when we actually have a Cognito session. A 404 from the
-/// backend means "no GitHub linked for this user" and collapses to `None`
-/// (the UI will surface "Not connected to GitHub" as before).
+/// The cloud endpoint is the source of truth. It is authenticated by Cognito's
+/// `HttpJwtAuthorizer`, so a cached local GitHub token is never surfaced when
+/// there is no Solo session. That prevents the desktop app from showing or
+/// using a GitHub login that belongs to a different Solo user.
 #[tauri::command]
 pub async fn github_get_token(
     auth_state: State<'_, crate::auth_commands::AuthState>,
     state: State<'_, crate::provider_commands::ProviderAuthState>,
 ) -> Result<Option<String>, String> {
-    if let Some(token) = state
-        .credentials
-        .get_github_access_token()
-        .await
-        .map_err(|e| e.to_string())?
-    {
-        return Ok(Some(token));
-    }
-
     let Some(cognito_access_token) =
         crate::auth_commands::access_token_snapshot(&auth_state, &state).await
     else {
-        info!("github_get_token: no local vault token and no Cognito session");
+        info!("github_get_token: no Cognito session; clearing any legacy local token");
+        if let Err(e) = state.credentials.clear_github_oauth_token().await {
+            warn!(
+                error = %e,
+                "github_get_token: failed to clear legacy local GitHub token"
+            );
+        }
         return Ok(None);
     };
 
@@ -2257,6 +2301,12 @@ pub async fn github_get_token(
     let status = response.status();
     if status == reqwest::StatusCode::NOT_FOUND {
         info!("github_get_token: /v1/github/token 404 — user has no linked GitHub");
+        if let Err(e) = state.credentials.clear_github_oauth_token().await {
+            warn!(
+                error = %e,
+                "github_get_token: failed to clear local GitHub token after cloud 404"
+            );
+        }
         return Ok(None);
     }
     if !status.is_success() {
@@ -2280,10 +2330,8 @@ pub async fn github_get_token(
         .await
         .map_err(|e| format!("Failed to parse /v1/github/token response: {}", e))?;
 
-    // Cache locally so subsequent git ops don't round-trip to the backend.
-    // GitHub tokens don't expire in the traditional OAuth sense; use a long
-    // synthetic expiry (1 year). `clear_github_oauth_token` wipes this on
-    // sign-out / disconnect.
+    // Keep the local vault in sync for sign-out cleanup and any legacy code
+    // paths, while still treating the cloud row as the source of truth here.
     let oauth_token = solo_auth::OAuthToken::new(
         body.access_token.clone(),
         None,
@@ -2303,12 +2351,41 @@ pub async fn github_get_token(
     Ok(Some(body.access_token))
 }
 
-/// Disconnect GitHub — clear stored token
+/// Disconnect GitHub from the current Solo user and clear the local cache.
 #[tauri::command]
 pub async fn github_disconnect(
+    auth_state: State<'_, crate::auth_commands::AuthState>,
     state: State<'_, crate::provider_commands::ProviderAuthState>,
 ) -> Result<(), String> {
-    info!("Disconnecting GitHub OAuth");
+    info!("Disconnecting GitHub from Solo account");
+
+    if let Some(cognito_access_token) =
+        crate::auth_commands::access_token_snapshot(&auth_state, &state).await
+    {
+        let api_endpoint = crate::desktop_config::api_endpoint().trim_end_matches('/');
+        let url = format!("{}/v1/github/link", api_endpoint);
+        let client = reqwest::Client::new();
+        let response = client
+            .delete(&url)
+            .bearer_auth(&cognito_access_token)
+            .send()
+            .await
+            .map_err(|e| format!("Failed to call {}: {}", url, e))?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            warn!(
+                status = %status,
+                body = %body,
+                "github_disconnect: cloud unlink failed"
+            );
+            return Err(format!("GitHub unlink failed ({}): {}", status, body));
+        }
+    } else {
+        info!("github_disconnect: no Solo session; clearing local GitHub cache only");
+    }
+
     state
         .credentials
         .clear_github_oauth_token()

@@ -24,6 +24,8 @@
     "tauri": "bun run --filter @solo/desktop tauri",
     "check": "bun run --filter @solo/agent-bridge build && bun run bridge:ensure:mac && bun run --filter @solo/desktop build:vite && cargo check && bun run --filter '*' typecheck",
     "test": "cargo test && node scripts/run-workspace-tests.mjs",
+    "eval:plugins": "node scripts/eval-plugin-connections.mjs",
+    "eval:plugins:installed": "node scripts/eval-plugin-connections.mjs --installed",
     "test:desktop-auth": "bun run gen:bindings && bun run --filter @solo/desktop build:vite && cargo test -p solo-desktop desktop_config::tests -- --nocapture && cargo test -p solo-desktop auth_commands::tests -- --nocapture",
     "premerge:master": "bash scripts/premerge-master.sh",
     "release:master": "node scripts/release-master.mjs",

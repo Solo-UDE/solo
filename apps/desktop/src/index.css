@@ -71,14 +71,11 @@ html.dark .titlebar-glass {
 }
 
 html[data-vibrancy] {
-  --sidebar: oklch(0.955 0.004 85 / 90%);
-  --popover: oklch(0.995 0.002 85 / 95%);
-  --card: oklch(0.995 0.002 85 / 86%);
-  background-color: oklch(0.975 0.004 85) !important;
+  background-color: color-mix(in srgb, var(--background) 94%, transparent) !important;
 }
 
 html[data-vibrancy] #root > div {
-  background: oklch(0.975 0.004 85);
+  background: color-mix(in srgb, var(--background) 94%, transparent);
 }
 
 html[data-vibrancy] .titlebar-glass {
@@ -90,14 +87,11 @@ html[data-vibrancy] .split-divider {
 }
 
 html.dark[data-vibrancy] {
-  --sidebar: oklch(0.16 0.004 85 / 88%);
-  --popover: oklch(0.23 0.005 85 / 94%);
-  --card: oklch(0.22 0.005 85 / 74%);
-  background-color: oklch(0.18 0.006 85 / 92%) !important;
+  background-color: color-mix(in srgb, var(--background) 88%, transparent) !important;
 }
 
 html.dark[data-vibrancy] #root > div {
-  background: oklch(0.18 0.006 85 / 86%);
+  background: color-mix(in srgb, var(--background) 90%, transparent);
 }
 
 html.dark[data-vibrancy] .titlebar-glass {
@@ -156,20 +150,29 @@ html[data-translucent-sidebar="false"] .liquid-sidebar {
    ============================================================================= */
 .split-divider {
   flex-shrink: 0;
-  width: 1px;
+  width: 16px;
+  margin-left: -8px;
+  margin-right: -8px;
   cursor: col-resize;
   position: relative;
-  background-color: var(--sidebar);
+  z-index: 20;
+  touch-action: none;
 }
 
-/* Invisible hit-area extension so the 1px line stays easy to grab. */
-.split-divider::before {
+.split-divider::after {
   content: '';
   position: absolute;
   top: 0;
   bottom: 0;
-  left: -4px;
-  right: -4px;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+  background-color: var(--sidebar);
+  transition: background-color 150ms ease;
+}
+
+.split-divider:hover::after {
+  background-color: color-mix(in oklch, var(--ring) 55%, var(--sidebar));
 }
 
 .sidebar-reopen-sliver {

@@ -169,7 +169,7 @@ impl VoicePipeline {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::formatter::{CloudFormatter, ChatClient};
+    use crate::formatter::{ChatClient, CloudFormatter};
     use crate::stt::MockStt;
     use async_trait::async_trait;
 

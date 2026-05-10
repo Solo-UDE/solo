@@ -8,6 +8,7 @@ import { immer } from "zustand/middleware/immer";
 import type { AuthCallbackPayload, User } from "../lib/auth";
 import * as auth from "../lib/auth";
 import { useCloudStatsStore } from "./cloudStatsStore";
+import { useGitHubAccountsStore } from "./githubAccountsStore";
 
 // =============================================================================
 // Types
@@ -90,6 +91,7 @@ export const useAuthStore = create<AuthStore>()(
 
         if (session.is_authenticated) {
           void useCloudStatsStore.getState().initialize();
+          void useGitHubAccountsStore.getState().loadToken({ retry: true });
         }
       } catch (error) {
         console.error("Failed to initialize auth:", error);
@@ -184,9 +186,18 @@ export const useAuthStore = create<AuthStore>()(
     handleAuthCallback: async (payload: AuthCallbackPayload) => {
       if (payload.kind === "signout") {
         set((s) => {
+          s.user = null;
+          s.isAuthenticated = false;
           s.isAuthenticating = false;
           s.error = null;
+          s.pendingAuthUrl = null;
         });
+        useCloudStatsStore.getState().reset();
+        useGitHubAccountsStore.getState().reset();
+        return;
+      }
+
+      if (payload.kind === "github_link") {
         return;
       }
 
@@ -222,10 +233,12 @@ export const useAuthStore = create<AuthStore>()(
           s.user = session.user;
           s.isAuthenticated = session.is_authenticated;
           s.isAuthenticating = false;
+          s.pendingAuthUrl = null;
         });
 
         if (session.is_authenticated) {
           void useCloudStatsStore.getState().initialize();
+          void useGitHubAccountsStore.getState().loadToken({ retry: true });
         }
       } catch (error) {
         console.error("Failed to complete authentication:", error);
@@ -250,8 +263,10 @@ export const useAuthStore = create<AuthStore>()(
         state.isAuthenticated = false;
         state.isAuthenticating = false;
         state.error = null;
+        state.pendingAuthUrl = null;
       });
       useCloudStatsStore.getState().reset();
+      useGitHubAccountsStore.getState().reset();
       console.debug("[authStore.signOut] state cleared; invoking Rust");
 
       try {

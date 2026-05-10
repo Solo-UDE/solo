@@ -1,11 +1,9 @@
-/**
- * Gemini provider adapter (v1: chat-only, no tools).
- *
- * Uses Google's Generative Language API. This adapter intentionally exposes no
- * tools, MCP, skills, or resume support; Solo's tool-running agent harness is
- * Anthropic-only for v1.
- */
-
+import { spawn } from 'node:child_process';
+import { constants as FsConstants } from 'node:fs';
+import { access, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { homedir, tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createInterface } from 'node:readline';
 import { createLogger } from '../logger.js';
 
 import type { AttachmentContentBlock } from '../messages.js';
@@ -15,9 +13,21 @@ const logger = createLogger('GeminiAdapter');
 
 export interface GeminiAdapterOptions {
   model: string;
-  credentials: SessionCredentials;
+  credentials?: SessionCredentials;
   maxTokens?: number;
+  agentMode?: boolean;
+  cwd?: string;
+  resumeSessionId?: string;
+  forkSession?: boolean;
+  mcpServers?: Record<string, unknown>;
 }
+
+interface PendingMessage {
+  text: string;
+  attachments?: AttachmentContentBlock[];
+}
+
+type JsonRecord = Record<string, unknown>;
 
 interface GeminiResponse {
   candidates?: Array<{
@@ -36,8 +46,41 @@ interface GeminiResponse {
   };
 }
 
+interface GeminiCliTranslationState {
+  isResumed: boolean;
+  isForked: boolean;
+}
+
+const GEMINI_CLI_COMMON_PATHS = [
+  join(homedir(), '.bun/bin/gemini'),
+  join(homedir(), '.npm-global/bin/gemini'),
+  join(homedir(), '.local/bin/gemini'),
+  '/opt/homebrew/bin/gemini',
+  '/usr/local/bin/gemini',
+];
+
+const BUN_COMMON_PATHS = [
+  process.env.SOLO_BUN_EXECUTABLE,
+  process.env.BUN_EXECUTABLE,
+  join(homedir(), '.bun/bin/bun'),
+  '/opt/homebrew/bin/bun',
+  '/usr/local/bin/bun',
+].filter((candidate): candidate is string => Boolean(candidate && candidate.trim() !== ''));
+
+interface GeminiExecutable {
+  command: string;
+  prefixArgs: string[];
+}
+
+let geminiExecutablePromise: Promise<GeminiExecutable> | null = null;
+
 export async function createGeminiSession(opts: GeminiAdapterOptions): Promise<ProviderSession> {
-  const { model, credentials, maxTokens } = opts;
+  if (opts.agentMode === true) {
+    return createGeminiCliHarnessSession(opts);
+  }
+
+  const { credentials, maxTokens } = opts;
+  const model = normalizeGeminiModelId(opts.model);
   const apiKey = credentialToken(credentials);
 
   let pendingUserText: string | null = null;
@@ -141,9 +184,425 @@ export async function createGeminiSession(opts: GeminiAdapterOptions): Promise<P
   return session;
 }
 
-function credentialToken(credentials: SessionCredentials): string {
+async function createGeminiCliHarnessSession(
+  opts: GeminiAdapterOptions
+): Promise<ProviderSession> {
+  const cwd = opts.cwd ?? process.cwd();
+  let model = normalizeGeminiModelId(opts.model);
+  let geminiSessionId = opts.resumeSessionId ?? null;
+  let pendingMessage: PendingMessage | null = null;
+  let activeChild: ReturnType<typeof spawn> | null = null;
+  let interrupted = false;
+  let closed = false;
+
+  const session: ProviderSession = {
+    provider: 'gemini',
+
+    sendMessage(text: string, attachments?: AttachmentContentBlock[]): void {
+      if (closed) {
+        logger.warn('sendMessage called on closed Gemini CLI session — ignoring');
+        return;
+      }
+      pendingMessage = { text, attachments };
+    },
+
+    async *receiveResponse(): AsyncIterable<ProviderEvent> {
+      if (closed) {
+        yield { type: 'done', stopReason: 'session_closed' };
+        return;
+      }
+      if (pendingMessage === null) {
+        logger.warn('receiveResponse called with no pending Gemini CLI message');
+        yield { type: 'done', stopReason: 'no_input' };
+        return;
+      }
+
+      const message = pendingMessage;
+      pendingMessage = null;
+      interrupted = false;
+
+      const prompt = buildGeminiPrompt(message);
+      const executable = await resolveGeminiExecutable();
+      const useResume = geminiSessionId !== null;
+      const args = [
+        ...executable.prefixArgs,
+        ...buildGeminiCliArgs({
+          model,
+          resumeSessionId: useResume ? geminiSessionId : null,
+        }),
+      ];
+      const { env, cleanup } = await buildGeminiCliEnv(opts.credentials, opts.mcpServers);
+      const startedAt = Date.now();
+      const child = spawn(executable.command, args, {
+        cwd,
+        env,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+      activeChild = child;
+
+      let stderr = '';
+      child.stderr.setEncoding('utf8');
+      child.stderr.on('data', (chunk: string) => {
+        stderr += chunk;
+      });
+      child.stdin.on('error', () => {
+        // The child may exit before reading stdin after an auth/config error.
+      });
+      child.stdin.end(prompt);
+
+      const exitPromise = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(
+        (resolve, reject) => {
+          child.once('error', reject);
+          child.once('close', (code, signal) => resolve({ code, signal }));
+        }
+      );
+
+      const translationState: GeminiCliTranslationState = {
+        isResumed: useResume,
+        isForked: opts.forkSession === true,
+      };
+      let sawDone = false;
+      const lines = createInterface({ input: child.stdout, crlfDelay: Infinity });
+
+      try {
+        for await (const line of lines) {
+          if (line.trim() === '') continue;
+          const event = parseGeminiCliEvent(line);
+          if (event === null) {
+            logger.debug({ line }, 'Ignoring non-JSON Gemini CLI output');
+            continue;
+          }
+
+          for (const providerEvent of translateGeminiCliEvent(event, translationState)) {
+            if (providerEvent.type === 'session_init') {
+              geminiSessionId = providerEvent.sdkSessionId;
+            } else if (providerEvent.type === 'done') {
+              sawDone = true;
+            }
+            yield providerEvent;
+          }
+        }
+
+        const { code, signal } = await exitPromise;
+        if (interrupted) {
+          if (!sawDone) {
+            yield { type: 'done', stopReason: 'interrupted', durationMs: Date.now() - startedAt };
+          }
+          return;
+        }
+        if (code !== 0) {
+          const suffix = signal ? ` (signal ${signal})` : '';
+          const messageText =
+            stderr.trim() || `gemini exited with code ${String(code)}${suffix}`;
+          throw new Error(messageText);
+        }
+        if (!sawDone) {
+          yield { type: 'done', stopReason: 'end_turn', durationMs: Date.now() - startedAt };
+        }
+      } finally {
+        activeChild = null;
+        await cleanup();
+      }
+    },
+
+    async interrupt(): Promise<void> {
+      interrupted = true;
+      if (activeChild && !activeChild.killed) {
+        activeChild.kill('SIGINT');
+      }
+    },
+
+    async close(): Promise<void> {
+      closed = true;
+      interrupted = true;
+      if (activeChild && !activeChild.killed) {
+        activeChild.kill('SIGINT');
+      }
+    },
+
+    async setModel(nextModel: string): Promise<void> {
+      model = normalizeGeminiModelId(nextModel);
+    },
+  };
+
+  return session;
+}
+
+async function resolveGeminiExecutable(): Promise<GeminiExecutable> {
+  geminiExecutablePromise ??= resolveGeminiExecutableInner();
+  return geminiExecutablePromise;
+}
+
+async function resolveGeminiExecutableInner(): Promise<GeminiExecutable> {
+  const candidates = [
+    process.env.SOLO_GEMINI_EXECUTABLE,
+    process.env.GEMINI_EXECUTABLE,
+    process.env.GEMINI_CLI_PATH,
+    ...GEMINI_CLI_COMMON_PATHS,
+  ].filter((candidate): candidate is string => Boolean(candidate && candidate.trim() !== ''));
+
+  for (const candidate of candidates) {
+    if (!candidate.includes('/')) {
+      return { command: candidate, prefixArgs: [] };
+    }
+    try {
+      await access(candidate, FsConstants.X_OK);
+      return { command: candidate, prefixArgs: [] };
+    } catch {
+      logger.debug({ candidate }, 'Gemini executable candidate is not usable');
+    }
+  }
+
+  for (const candidate of BUN_COMMON_PATHS) {
+    if (!candidate.includes('/')) {
+      return { command: candidate, prefixArgs: ['x', '@google/gemini-cli@latest'] };
+    }
+    try {
+      await access(candidate, FsConstants.X_OK);
+      return { command: candidate, prefixArgs: ['x', '@google/gemini-cli@latest'] };
+    } catch {
+      logger.debug({ candidate }, 'Bun executable candidate is not usable for Gemini CLI fallback');
+    }
+  }
+
+  return { command: 'gemini', prefixArgs: [] };
+}
+
+function buildGeminiCliArgs(opts: {
+  model: string;
+  resumeSessionId: string | null;
+}): string[] {
+  const args = [
+    '--model',
+    opts.model,
+    '--output-format',
+    'stream-json',
+    '--approval-mode',
+    process.env.SOLO_GEMINI_APPROVAL_MODE ?? 'yolo',
+  ];
+
+  if (opts.resumeSessionId !== null) {
+    args.push('--resume', opts.resumeSessionId);
+  }
+
+  return args;
+}
+
+async function buildGeminiCliEnv(
+  credentials: SessionCredentials | undefined,
+  mcpServers: Record<string, unknown> | undefined
+): Promise<{ env: NodeJS.ProcessEnv; cleanup: () => Promise<void> }> {
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    GEMINI_CLI_TRUST_WORKSPACE: 'true',
+  };
+
+  if (credentials !== undefined) {
+    const apiKey = credentialToken(credentials);
+    env.GEMINI_API_KEY = apiKey;
+    env.GOOGLE_API_KEY = apiKey;
+  }
+
+  if (!mcpServers || Object.keys(mcpServers).length === 0) {
+    return { env, cleanup: async () => {} };
+  }
+
+  const settingsDir = await mkdtemp(join(tmpdir(), 'solo-gemini-cli-'));
+  const settingsPath = join(settingsDir, 'settings.json');
+  await writeFile(
+    settingsPath,
+    JSON.stringify({ mcpServers }, null, 2),
+    'utf8'
+  );
+  env.GEMINI_CLI_SYSTEM_SETTINGS_PATH = settingsPath;
+
+  return {
+    env,
+    cleanup: async () => {
+      await rm(settingsDir, { recursive: true, force: true });
+    },
+  };
+}
+
+function buildGeminiPrompt(message: PendingMessage): string {
+  const attachmentText = (message.attachments ?? [])
+    .map(formatAttachmentForPrompt)
+    .filter((text): text is string => text !== null);
+
+  if (attachmentText.length === 0) {
+    return message.text;
+  }
+
+  return `${message.text}\n\n<solo_attachments>\n${attachmentText.join('\n\n')}\n</solo_attachments>`;
+}
+
+function formatAttachmentForPrompt(attachment: AttachmentContentBlock): string | null {
+  if (attachment.type === 'text' && attachment.text) {
+    const label = attachment.name ?? attachment.filePath ?? 'text attachment';
+    return `<attachment name="${escapeXmlAttribute(label)}">\n${attachment.text}\n</attachment>`;
+  }
+  if (attachment.filePath) {
+    const range =
+      attachment.lineStart !== undefined
+        ? ` lines ${String(attachment.lineStart)}-${String(attachment.lineEnd ?? attachment.lineStart)}`
+        : '';
+    return `<attachment_path>${attachment.filePath}${range}</attachment_path>`;
+  }
+  if (attachment.name) {
+    return `<attachment name="${escapeXmlAttribute(attachment.name)}" type="${attachment.type}">Attached binary content is available in Solo but cannot be passed to gemini without a file path.</attachment>`;
+  }
+  return null;
+}
+
+function escapeXmlAttribute(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('"', '&quot;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;');
+}
+
+function parseGeminiCliEvent(line: string): JsonRecord | null {
+  try {
+    const parsed = JSON.parse(line) as unknown;
+    return isRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function* translateGeminiCliEvent(
+  event: JsonRecord,
+  state: GeminiCliTranslationState
+): Iterable<ProviderEvent> {
+  const type = asString(event.type);
+
+  switch (type) {
+    case 'init': {
+      const sessionId = asString(event.session_id);
+      if (sessionId !== '') {
+        yield {
+          type: 'session_init',
+          sdkSessionId: sessionId,
+          isResumed: state.isResumed,
+          isForked: state.isForked,
+        };
+      }
+      return;
+    }
+    case 'message': {
+      const role = asString(event.role);
+      if (role === 'assistant' || role === 'agent' || role === 'model') {
+        const text = asString(event.content);
+        if (text !== '') yield { type: 'text_delta', text };
+      }
+      return;
+    }
+    case 'tool_use': {
+      const id = asString(event.tool_id, generateGeminiToolId());
+      const name = asString(event.tool_name, 'unknown');
+      yield {
+        type: 'tool_call',
+        id,
+        name,
+        input: normalizeToolInput(event.parameters),
+      };
+      return;
+    }
+    case 'tool_result': {
+      const error = isRecord(event.error) ? event.error : null;
+      yield {
+        type: 'tool_result',
+        toolCallId: asString(event.tool_id, 'gemini_tool'),
+        output: asString(event.output) || (error ? asString(error.message) : jsonForDisplay(event)),
+        isError: asString(event.status) === 'error' || error !== null,
+      };
+      return;
+    }
+    case 'error': {
+      const severity = asString(event.severity);
+      const message = asString(event.message, 'Gemini CLI error');
+      if (severity === 'error') {
+        throw new Error(message);
+      }
+      if (message !== '') {
+        yield { type: 'thinking_delta', text: `[Gemini CLI] ${message}` };
+      }
+      return;
+    }
+    case 'result': {
+      const status = asString(event.status);
+      if (status === 'error') {
+        const error = isRecord(event.error) ? event.error : {};
+        throw new Error(asString(error.message, 'Gemini CLI turn failed'));
+      }
+
+      const stats = isRecord(event.stats) ? event.stats : {};
+      if (Object.keys(stats).length > 0) {
+        yield {
+          type: 'usage',
+          inputTokens: asNumber(stats.input_tokens, asNumber(stats.input)),
+          outputTokens: asNumber(stats.output_tokens),
+          cacheReadInputTokens: asNumber(stats.cached),
+        };
+      }
+      yield { type: 'done', stopReason: status || 'end_turn' };
+      return;
+    }
+    default:
+      return;
+  }
+}
+
+function normalizeToolInput(value: unknown): Record<string, unknown> {
+  if (isRecord(value)) return value;
+  return { arguments: value };
+}
+
+function generateGeminiToolId(): string {
+  return `gemini_tool_${String(Date.now())}_${Math.random().toString(36).slice(2, 11)}`;
+}
+
+function jsonForDisplay(value: unknown): string {
+  if (typeof value === 'string') return value;
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function isRecord(value: unknown): value is JsonRecord {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function asString(value: unknown, fallback = ''): string {
+  return typeof value === 'string' ? value : fallback;
+}
+
+function asNumber(value: unknown, fallback = 0): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function credentialToken(credentials: SessionCredentials | undefined): string {
+  if (credentials === undefined) {
+    throw new Error(
+      'Gemini chat requires a Gemini API key. For agent mode, sign in with Gemini CLI or save an API key in Solo.'
+    );
+  }
   if (credentials.kind !== 'api_key') {
-    throw new Error('Gemini chat requires an API key credential.');
+    throw new Error('Gemini requires an API key credential from Solo.');
   }
   return credentials.token;
+}
+
+function normalizeGeminiModelId(model: string): string {
+  switch (model) {
+    case 'gemini-3-pro':
+      return 'gemini-3.1-pro-preview';
+    case 'gemini-3-flash':
+      return 'gemini-3-flash-preview';
+    default:
+      return model;
+  }
 }

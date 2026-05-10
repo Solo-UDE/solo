@@ -7,6 +7,7 @@ import { ChatInputContainer, type ChatInputContainerHandle } from './input';
 import { QueuedMessagesStrip } from './input/queued-messages-strip';
 import { StickyTodoOverlay } from './StickyTodoOverlay';
 import SoloDecryptAnimation from './SoloDecryptAnimation';
+import { VaultCapturePanel, type VaultCaptureDraft } from './VaultCapturePanel';
 import { convertToMessageGroups } from './messageAdapter';
 import { useAgentSession } from '../../hooks/useAgentSession';
 import { useProviderStore } from '../../stores/provider-store';
@@ -32,6 +33,7 @@ import {
 } from '../ui/dropdown-menu';
 
 import type { FC } from 'react';
+import type { MemoryType, VaultScope } from '../../lib/tauri/vault';
 import type { Mode } from './input/mode-selector';
 import type { MessageMode, Attachment, FileMention, SessionConnectionState, UserContentPart } from '../../stores/agentStore';
 
@@ -64,6 +66,7 @@ export interface AgentWindowProps {
 	callbacks?: AgentWindowCallbacks;
 	ui?: AgentWindowUIOptions;
 	className?: string;
+	isActive?: boolean;
 }
 
 
@@ -74,8 +77,10 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 	callbacks,
 	ui: _ui = {},
 	className = '',
+	isActive = true,
 }) => {
 	const [worktreeId, setWorktreeId] = useState<string | null>(initialWorktreeId ?? null);
+	const [vaultDraft, setVaultDraft] = useState<VaultCaptureDraft | null>(null);
 
 	// Track thinking mode for bridge sync
 	const [thinkingEnabled, setThinkingEnabled] = useState(true);
@@ -117,6 +122,8 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 
 	// Panel system for opening new tabs
 	const openPanel = usePanelTabsStore((state) => state.openPanel);
+	const activeVaultScope = useVaultStore((state) => state.activeScope);
+	const syncVaultToCloud = useVaultStore((state) => state.syncToCloud);
 
 	useEffect(() => {
 		if (sessionId && !initialSessionId) {
@@ -195,16 +202,21 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 		[sessionId, enqueueMessage]
 	);
 
-	const handleRecallQueue = useCallback((): { text: string; mentions?: FileMention[]; skills?: string[] } | null => {
+	const handleRecallQueue = useCallback((): { text: string; mentions?: FileMention[]; skills?: string[]; parts?: UserContentPart[] } | null => {
 		if (!sessionId) return null;
 		const popped = popQueueForRecall(sessionId);
 		if (popped.length === 0) return null;
 		const text = popped.map((q) => q.content).join('\n\n');
 		const mentionMap = new Map<string, FileMention>();
 		const skillSet = new Set<string>();
+		const parts: UserContentPart[] = [];
 		for (const q of popped) {
 			for (const m of q.mentions ?? []) mentionMap.set(m.path, m);
 			for (const n of q.skills ?? []) skillSet.add(n);
+			if (parts.length > 0 && (q.parts?.length ?? 0) > 0) {
+				parts.push({ type: 'text', text: '\n\n' });
+			}
+			if (q.parts) parts.push(...q.parts);
 		}
 		const mentions = Array.from(mentionMap.values());
 		const skills = Array.from(skillSet);
@@ -212,6 +224,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 			text,
 			mentions: mentions.length ? mentions : undefined,
 			skills: skills.length ? skills : undefined,
+			parts: parts.length ? parts : undefined,
 		};
 	}, [sessionId, popQueueForRecall]);
 
@@ -303,24 +316,47 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 	}, [sendMessage, handleNewSession]);
 
 	const handleAddSelectionToChat = useCallback((text: string) => {
-		chatInputRef.current?.insertText(text);
+		chatInputRef.current?.addSelection(text);
 		chatInputRef.current?.focus();
 	}, []);
 
-	const handleAddSelectionToVault = useCallback(async (text: string) => {
+	const handleAddSelectionToVault = useCallback((text: string) => {
 		const trimmed = text.trim();
 		if (!trimmed) return;
+		setVaultDraft({
+			text: trimmed,
+			title: titleFromSelection(trimmed),
+		});
+	}, []);
+
+	const handleSaveVaultCapture = useCallback(async ({
+		labelIds,
+		expiresAt,
+		scope,
+		memoryType,
+		syncToCloud,
+	}: {
+		labelIds: string[];
+		expiresAt: number;
+		scope: VaultScope;
+		memoryType: MemoryType;
+		syncToCloud: boolean;
+	}) => {
+		if (!vaultDraft) return;
 		const vaultState = useVaultStore.getState();
 		const entry = await vaultAddText(
-			trimmed,
-			titleFromSelection(trimmed),
-			vaultState.activeScope,
-			'user',
-			vaultState.syncToCloud,
+			vaultDraft.text,
+			vaultDraft.title,
+			scope,
+			memoryType,
+			labelIds,
+			expiresAt,
+			syncToCloud,
 		);
 		vaultState.upsertEntry(entry);
 		void vaultState.fetchUnsortedCount();
-	}, []);
+		setVaultDraft(null);
+	}, [vaultDraft]);
 
 	// Panel-scoped keyboard dispatcher.
 	//
@@ -330,6 +366,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 	// listener only fires when this panel actually "owns" the focus; if the
 	// user is typing in the terminal or another panel we stay out of the way.
 	useEffect(() => {
+		if (!isActive) return;
 		const handler = (event: KeyboardEvent) => {
 			// Skip if something downstream (composer's own handleKeyDown, a
 			// button's activation handler, etc.) already handled this press.
@@ -372,7 +409,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 		};
 		document.addEventListener('keydown', handler);
 		return () => document.removeEventListener('keydown', handler);
-	}, [isRunning]);
+	}, [isActive, isRunning]);
 
 	// Keep focus inside the panel on clicks that would otherwise land on
 	// non-focusable elements (e.g. the message feed's whitespace). Without
@@ -443,6 +480,13 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 				style={{ fontFamily: 'var(--font-chat)' }}
 			>
 				{sessionMenu}
+				<VaultCapturePanel
+					draft={vaultDraft}
+					defaultScope={activeVaultScope}
+					defaultSyncToCloud={syncVaultToCloud}
+					onSave={handleSaveVaultCapture}
+					onCancel={() => setVaultDraft(null)}
+				/>
 
 				<div className="flex flex-1 items-center justify-center px-6">
 					<div className="flex w-full max-w-[56rem] flex-col items-center">
@@ -457,6 +501,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 							<QueuedMessagesStrip sessionId={sessionId ?? null} />
 							<ChatInputContainer
 								ref={chatInputRef}
+								sessionId={sessionId ?? null}
 								onSubmit={handleSubmit}
 								onEnqueue={handleEnqueue}
 								onRecallQueue={handleRecallQueue}
@@ -500,6 +545,13 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 			style={{ fontFamily: 'var(--font-chat)' }}
 		>
 			{sessionMenu}
+			<VaultCapturePanel
+				draft={vaultDraft}
+				defaultScope={activeVaultScope}
+				defaultSyncToCloud={syncVaultToCloud}
+				onSave={handleSaveVaultCapture}
+				onCancel={() => setVaultDraft(null)}
+			/>
 
 			{debugModeActive && sessionGoal && (
 				<div
@@ -525,7 +577,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 				onAddSelectionToChat={handleAddSelectionToChat}
 				onAddSelectionToVault={handleAddSelectionToVault}
 				bottomReservePx={overlayHeightPx}
-				className="flex-1 pt-14"
+				className={`flex-1 pt-14 ${vaultDraft ? 'lg:pr-[360px]' : ''}`}
 			/>
 
 			{connectionState === 'resuming' && (
@@ -571,6 +623,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 				<QueuedMessagesStrip sessionId={sessionId ?? null} />
 				<ChatInputContainer
 					ref={chatInputRef}
+					sessionId={sessionId ?? null}
 					onSubmit={handleSubmit}
 					onEnqueue={handleEnqueue}
 					onRecallQueue={handleRecallQueue}

@@ -162,12 +162,14 @@ function MetaRow({ label, value }: { label: string; value: string | null }) {
 export function AccountTab() {
   const user = useAuthStore((s) => s.user);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const signOut = useAuthStore((s) => s.signOut);
 
   const githubUser = useGitHubAccountsStore((s) => s.user);
   const githubToken = useGitHubAccountsStore((s) => s.token);
   const isGitHubLoading = useGitHubAccountsStore((s) => s.isLoading);
   const isGitHubConnecting = useGitHubAccountsStore((s) => s.isConnecting);
   const loadGitHubToken = useGitHubAccountsStore((s) => s.loadToken);
+  const connectGitHub = useGitHubAccountsStore((s) => s.connectGitHub);
   const disconnectGitHub = useGitHubAccountsStore((s) => s.disconnectGitHub);
 
   const [claims, setClaims] = useState<DecodedTokenClaims | null>(null);
@@ -212,8 +214,8 @@ export function AccountTab() {
       <section>
         <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Solo Sign-In</h3>
         <p className="mb-4 text-sm text-muted-foreground">
-          This is the account currently signed in to Solo. It controls access to sync,
-          stats, and the desktop app session.
+          This is the Solo account used by the desktop app and website. It controls
+          sync, stats, and any linked GitHub access.
         </p>
 
         <div className="rounded-[14px] border border-border/70 bg-background/55 p-5">
@@ -233,6 +235,14 @@ export function AccountTab() {
                     <span>{soloIdentity.email ?? 'No email claim returned'}</span>
                   </p>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => void signOut()}
+                  className="inline-flex items-center gap-2 rounded-[9px] border border-border/70 bg-background/70 px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
+                >
+                  <ExitIcon className="h-4 w-4" />
+                  Sign out
+                </button>
               </div>
 
               <div className="space-y-0">
@@ -251,10 +261,10 @@ export function AccountTab() {
       </section>
 
       <section>
-        <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">GitHub Connection</h3>
+        <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">GitHub Access</h3>
         <p className="mb-4 text-sm text-muted-foreground">
-          This token is used for Git operations like clone, push, pull, and repo setup. It
-          can be a different GitHub account from the one used to sign in to Solo.
+          GitHub is linked through the Solo account above. Clone, push, pull, and
+          repo setup use the GitHub token stored for that same Solo user ID.
         </p>
 
         <div className="rounded-[14px] border border-border/70 bg-background/55 p-5">
@@ -270,7 +280,7 @@ export function AccountTab() {
                   <div className="flex flex-wrap items-center gap-2">
                     <h4 className="text-lg font-semibold text-foreground">{githubUser.login}</h4>
                     <span className="rounded-full border border-border/70 bg-muted/40 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
-                      Connected for Git
+                      Linked through Solo
                     </span>
                   </div>
                   <p className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
@@ -284,7 +294,7 @@ export function AccountTab() {
                   className="inline-flex items-center gap-2 rounded-[9px] border border-border/70 bg-background/70 px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
                 >
                   <ExitIcon className="h-4 w-4" />
-                  Disconnect
+                  Unlink
                 </button>
               </div>
 
@@ -292,16 +302,32 @@ export function AccountTab() {
                 <MetaRow label="GitHub login" value={githubUser.login} />
                 <MetaRow label="GitHub account type" value={githubUser.type} />
                 <MetaRow label="GitHub user ID" value={String(githubUser.id)} />
+                <MetaRow label="Solo user ID" value={soloIdentity?.subject ?? null} />
               </div>
             </>
           ) : (
-            <div className="flex items-center gap-3 rounded-[12px] border border-dashed border-border/70 bg-muted/20 px-4 py-4 text-sm text-muted-foreground">
-              <UserRound className="h-4 w-4" />
-              <span>
-                {isGitHubConnecting || isGitHubLoading
-                  ? 'Checking the saved GitHub connection...'
-                  : 'No GitHub account is connected for Git operations.'}
-              </span>
+            <div className="space-y-3">
+              <div className="flex items-center gap-3 rounded-[12px] border border-dashed border-border/70 bg-muted/20 px-4 py-4 text-sm text-muted-foreground">
+                <UserRound className="h-4 w-4" />
+                <span>
+                  {!isAuthenticated
+                    ? 'Sign in to Solo before linking GitHub.'
+                    : isGitHubConnecting || isGitHubLoading
+                      ? 'Checking the GitHub account linked to this Solo user...'
+                      : 'No GitHub account is linked to this Solo account.'}
+                </span>
+              </div>
+              {isAuthenticated && (
+                <button
+                  type="button"
+                  onClick={() => void connectGitHub()}
+                  disabled={isGitHubConnecting || isGitHubLoading}
+                  className="inline-flex items-center gap-2 rounded-[9px] border border-border/70 bg-background/70 px-3 py-2 text-sm text-foreground transition-colors hover:bg-background disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <GitHubLogoIcon className="h-4 w-4" />
+                  {isGitHubConnecting ? 'Finish linking in browser' : 'Link GitHub to Solo'}
+                </button>
+              )}
             </div>
           )}
         </div>

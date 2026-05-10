@@ -14,6 +14,7 @@ import { Loader2, ShieldAlert } from 'lucide-react';
 import { useState, useMemo } from 'react';
 
 import { ExpandRegion } from '../messages/shared/ExpandRegion';
+import { VirtualTextLines } from '@/components/ui/virtual-list';
 
 import type { FC, ReactNode } from 'react';
 
@@ -81,6 +82,7 @@ export const ToolCard: FC<ToolCardProps> = ({
 	// Codex parity: default collapsed. Caller can override with defaultExpanded.
 	const resolvedDefault = defaultExpanded ?? false;
 	const [isExpanded, setIsExpanded] = useState(resolvedDefault);
+	const [showAllOutput, setShowAllOutput] = useState(false);
 
 	const { displayOutput, isTruncated, totalLines } = useMemo(() => {
 		if (!output) return { displayOutput: undefined, isTruncated: false, totalLines: 0 };
@@ -93,8 +95,10 @@ export const ToolCard: FC<ToolCardProps> = ({
 			totalLines: total,
 		};
 	}, [output, maxOutputLines]);
-
-	const [showAllOutput, setShowAllOutput] = useState(false);
+	const outputLines = useMemo(
+		() => (showAllOutput ? output : displayOutput)?.split('\n') ?? [],
+		[displayOutput, output, showAllOutput],
+	);
 
 	const hasContent = !!(output || children);
 	const canExpand = collapsible && hasContent;
@@ -169,10 +173,15 @@ export const ToolCard: FC<ToolCardProps> = ({
 					</div>
 				) : displayOutput ? (
 					<div className="mt-1.5 ml-5 min-w-0">
-						<div className="relative font-mono text-xs tool-widget-output p-2.5 max-h-[320px] overflow-y-auto">
-							<pre className="whitespace-pre-wrap break-words text-[12px] leading-5 text-foreground/84">
-								{showAllOutput ? output : displayOutput}
-							</pre>
+						<div className="min-w-0">
+							<VirtualTextLines
+								lines={outputLines}
+								estimateSize={() => 20}
+								overscan={16}
+								className="tool-widget-output max-h-[320px] p-2.5 font-mono text-xs"
+								lineClassName="whitespace-pre text-[12px] leading-5 text-foreground/84"
+								testId={`tool-output-${toolName.toLowerCase()}`}
+							/>
 							{isTruncated && !showAllOutput ? (
 								<button
 									type="button"

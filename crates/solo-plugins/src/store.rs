@@ -3,7 +3,7 @@
 //! Forked from `codex-rs/core-plugins/src/store.rs` (Apache-2.0). See the
 //! crate-level `README.md` for full attribution.
 
-use crate::id::{PluginId, PluginIdError, validate_plugin_segment};
+use crate::id::{validate_plugin_segment, PluginId, PluginIdError};
 use crate::path::AbsolutePathBuf;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -101,8 +101,7 @@ impl PluginStore {
                 source_path.display()
             )));
         }
-        validate_plugin_segment(version, "version")
-            .map_err(PluginStoreError::Invalid)?;
+        validate_plugin_segment(version, "version").map_err(PluginStoreError::Invalid)?;
 
         let destination = self.plugin_root(&id, version);
         if destination.exists() {
@@ -136,7 +135,11 @@ impl PluginStore {
         fs::remove_dir_all(&base)?;
         // Remove the marketplace dir if it's now empty.
         if let Some(mk_dir) = base.parent() {
-            if mk_dir.exists() && fs::read_dir(mk_dir).map(|mut i| i.next().is_none()).unwrap_or(false) {
+            if mk_dir.exists()
+                && fs::read_dir(mk_dir)
+                    .map(|mut i| i.next().is_none())
+                    .unwrap_or(false)
+            {
                 let _ = fs::remove_dir(mk_dir);
             }
         }
@@ -248,7 +251,11 @@ mod tests {
             .unwrap();
 
         assert_eq!(result.version, "local");
-        assert!(result.installed_path.as_path().join(".solo-plugin/plugin.json").is_file());
+        assert!(result
+            .installed_path
+            .as_path()
+            .join(".solo-plugin/plugin.json")
+            .is_file());
     }
 
     #[test]
@@ -259,7 +266,9 @@ mod tests {
         let src = tmp_src.path().join("plugin-src");
         write_plugin(&src, "sample");
 
-        store.install_local(&src, id("local", "sample"), "local").unwrap();
+        store
+            .install_local(&src, id("local", "sample"), "local")
+            .unwrap();
         let err = store
             .install_local(&src, id("local", "sample"), "local")
             .unwrap_err();
@@ -286,7 +295,9 @@ mod tests {
         let store = PluginStore::new(tmp_cache.path().to_path_buf());
         let src = tmp_src.path().join("plugin-src");
         write_plugin(&src, "sample");
-        store.install_local(&src, id("local", "sample"), "local").unwrap();
+        store
+            .install_local(&src, id("local", "sample"), "local")
+            .unwrap();
 
         assert!(store.is_installed(&id("local", "sample")));
         store.uninstall(&id("local", "sample")).unwrap();

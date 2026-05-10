@@ -180,6 +180,7 @@ const initialFilters: VaultListFilters = {
   kind: null,
   pinned: null,
   unsorted: null,
+  expired: null,
   query: null,
 };
 
@@ -362,7 +363,7 @@ export const useVaultStore = create<VaultState & VaultActions>()(
     },
 
     runSearch: async (mode) => {
-      const { searchQuery, activeScope, searchMode, retrievalSource } = get();
+      const { searchQuery, activeScope, searchMode, retrievalSource, filters } = get();
       if (!searchQuery.trim()) {
         set((s) => {
           s.searchResults = [];
@@ -384,6 +385,7 @@ export const useVaultStore = create<VaultState & VaultActions>()(
           20,
           effectiveMode,
           retrievalSource,
+          filters.expired === true,
         );
         const elapsed = Math.round(performance.now() - started);
         // Dev-console breadcrumb so we can compare modes at a glance.

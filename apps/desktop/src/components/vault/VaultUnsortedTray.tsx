@@ -31,6 +31,7 @@ import type { EntryKind, VaultEntry } from '@/lib/tauri/vault';
 import { vaultMoveBucket } from '@/lib/tauri/vault';
 import { useVaultStore } from '@/stores/vaultStore';
 import { cn } from '@/lib/utils';
+import { VirtualList } from '@/components/ui/virtual-list';
 
 /**
  * Icon + label map for every non-Unsorted kind. `snippet` and `keyvalue`
@@ -98,10 +99,16 @@ export const VaultUnsortedTray: FC = () => {
       </button>
 
       {expanded && (
-        <div className="flex flex-col gap-0.5 px-1 pb-1">
-          {unsorted.map((entry) => (
+        <VirtualList
+          items={unsorted}
+          estimateSize={() => 48}
+          overscan={8}
+          className="max-h-[320px] px-1 pb-1"
+          itemClassName="pb-0.5"
+          getItemKey={(entry) => entry.id}
+          testId="vault-unsorted-tray"
+          renderItem={(entry) => (
             <UnsortedRow
-              key={entry.id}
               entry={entry}
               menuOpen={openMenuFor === entry.id}
               onToggleMenu={() =>
@@ -109,8 +116,8 @@ export const VaultUnsortedTray: FC = () => {
               }
               onMoved={() => setOpenMenuFor(null)}
             />
-          ))}
-        </div>
+          )}
+        />
       )}
     </div>
   );

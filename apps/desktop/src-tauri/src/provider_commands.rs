@@ -101,6 +101,13 @@ fn applescript_quote(value: &str) -> String {
     format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
+fn claude_login_command(cli_path: Option<&PathBuf>) -> String {
+    match cli_path {
+        Some(path) => format!("{} /login", shell_quote(&path.to_string_lossy())),
+        None => "claude /login".to_string(),
+    }
+}
+
 // =============================================================================
 // Helper types
 // =============================================================================
@@ -151,9 +158,26 @@ fn truncate_response_body(body: &str) -> String {
     }
 }
 
+fn is_gemini_auth_error(status_code: u16, body: &str) -> bool {
+    matches!(status_code, 401 | 403)
+        || body.contains("API_KEY_INVALID")
+        || body.contains("API key not valid")
+}
+
 fn resolve_model_for_provider(provider: ProviderType, model: String) -> Result<String, String> {
     let models = get_models_for_provider(provider);
-    if model.trim().is_empty() {
+    let trimmed = model.trim();
+    let normalized_model = if provider == ProviderType::Gemini {
+        match trimmed {
+            "gemini-3-pro" => "gemini-3.1-pro-preview",
+            "gemini-3-flash" => "gemini-3-flash-preview",
+            _ => trimmed,
+        }
+    } else {
+        trimmed
+    };
+
+    if normalized_model.is_empty() {
         return models
             .iter()
             .find(|m| m.is_default)
@@ -162,7 +186,7 @@ fn resolve_model_for_provider(provider: ProviderType, model: String) -> Result<S
             .ok_or_else(|| format!("No models configured for {}", provider.as_str()));
     }
 
-    let needle = model.trim().to_ascii_lowercase();
+    let needle = normalized_model.to_ascii_lowercase();
     models
         .iter()
         .find(|m| m.id.to_ascii_lowercase() == needle || m.alias.to_ascii_lowercase() == needle)
@@ -464,20 +488,6 @@ pub async fn verify_provider_model(
         });
     }
 
-    if provider_type == ProviderType::Gemini {
-        return Ok(ProviderModelDiagnosticResponse {
-            provider: provider_type,
-            model: model_id,
-            ok: false,
-            authenticated: true,
-            credential_source: source_label,
-            status: "warning".to_string(),
-            message: "Gemini model diagnostics are not implemented yet".to_string(),
-            latency_ms: Some(started.elapsed().as_millis() as u64),
-            error: None,
-        });
-    }
-
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(20))
         .build()
@@ -554,7 +564,17 @@ pub async fn verify_provider_model(
 
             req
         }
-        ProviderType::Gemini => unreachable!(),
+        ProviderType::Gemini => client
+            .post(format!(
+                "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent",
+                model_id
+            ))
+            .query(&[("key", &credential_info.api_key)])
+            .header("content-type", "application/json")
+            .json(&serde_json::json!({
+                "contents": [{ "role": "user", "parts": [{ "text": "Reply with ok." }] }],
+                "generationConfig": { "maxOutputTokens": 8 },
+            })),
     };
 
     let resp = request
@@ -570,17 +590,22 @@ pub async fn verify_provider_model(
     } else {
         truncate_response_body(&resp.text().await.unwrap_or_default())
     };
+    let auth_failed = if provider_type == ProviderType::Gemini {
+        is_gemini_auth_error(status_code.as_u16(), &body)
+    } else {
+        matches!(status_code.as_u16(), 401 | 403)
+    };
 
     Ok(ProviderModelDiagnosticResponse {
         provider: provider_type,
         model: model_id.clone(),
         ok,
-        authenticated: ok || !matches!(status_code.as_u16(), 401 | 403),
+        authenticated: ok || !auth_failed,
         credential_source: source_label,
         status: if ok { "ok" } else { "error" }.to_string(),
         message: if ok {
             format!("{} responded successfully", model_id)
-        } else if matches!(status_code.as_u16(), 401 | 403) {
+        } else if auth_failed {
             format!("Authentication failed for {}", provider_type.display_name())
         } else {
             format!("{} returned HTTP {}", model_id, status_code.as_u16())
@@ -822,7 +847,7 @@ pub async fn sign_out_profile(
 pub async fn check_claude_auth_status(state: State<'_, ProviderAuthState>) -> Result<bool, String> {
     debug!("Checking Claude Code auth status");
 
-    // `claude login` happens outside this process. Force a fresh read so the
+    // `claude /login` happens outside this process. Force a fresh read so the
     // Verify button sees credentials written after the modal was opened.
     state.credentials.clear_cache().await;
 
@@ -843,16 +868,13 @@ pub async fn check_claude_cli_installed() -> Result<bool, String> {
     Ok(find_claude_cli().is_some())
 }
 
-/// Open Terminal and run `claude login` to trigger the native login flow
+/// Open Terminal and run `claude /login` to trigger the native login flow
 #[tauri::command]
 pub async fn start_claude_login() -> Result<(), String> {
     info!("Starting Claude Code login");
 
-    let command = if let Some(path) = find_claude_cli() {
-        format!("{} login", shell_quote(&path.to_string_lossy()))
-    } else {
-        "claude login".to_string()
-    };
+    let cli_path = find_claude_cli();
+    let command = claude_login_command(cli_path.as_ref());
 
     std::process::Command::new("osascript")
         .args([
@@ -863,7 +885,7 @@ pub async fn start_claude_login() -> Result<(), String> {
             ),
         ])
         .spawn()
-        .map_err(|e| format!("Failed to open Terminal with claude login: {}", e))?;
+        .map_err(|e| format!("Failed to open Terminal with claude /login: {}", e))?;
 
     Ok(())
 }
@@ -1005,4 +1027,24 @@ pub async fn verify_claude_setup(
     }
 
     Ok(status)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn claude_login_command_uses_slash_login_with_resolved_path() {
+        let path = PathBuf::from("/opt/homebrew/bin/claude");
+
+        assert_eq!(
+            claude_login_command(Some(&path)),
+            "'/opt/homebrew/bin/claude' /login"
+        );
+    }
+
+    #[test]
+    fn claude_login_command_uses_slash_login_fallback() {
+        assert_eq!(claude_login_command(None), "claude /login");
+    }
 }

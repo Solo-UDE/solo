@@ -39,11 +39,7 @@ pub trait FormatterProvider: Send + Sync {
         options: DictationOptions,
     ) -> Result<String>;
 
-    async fn format_dispatch(
-        &self,
-        transcript: &str,
-        context: AppContext,
-    ) -> Result<DispatchTask>;
+    async fn format_dispatch(&self, transcript: &str, context: AppContext) -> Result<DispatchTask>;
 }
 
 pub fn dictation_system_prompt(options: &DictationOptions) -> String {
@@ -76,12 +72,7 @@ pub fn dispatch_system_prompt() -> &'static str {
 /// to solo-auth's Claude client.
 #[async_trait]
 pub trait ChatClient: Send + Sync {
-    async fn simple_completion(
-        &self,
-        model: &str,
-        system: &str,
-        user: &str,
-    ) -> Result<String>;
+    async fn simple_completion(&self, model: &str, system: &str, user: &str) -> Result<String>;
 }
 
 pub struct CloudFormatter<C: ChatClient> {
@@ -154,7 +145,11 @@ mod tests {
             },
         };
         let out = f
-            .format_dictation("hello world", AppContext::default(), DictationOptions::default())
+            .format_dictation(
+                "hello world",
+                AppContext::default(),
+                DictationOptions::default(),
+            )
             .await
             .unwrap();
         assert_eq!(out, "Hello, world.");

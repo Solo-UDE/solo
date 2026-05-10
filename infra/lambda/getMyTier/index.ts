@@ -19,9 +19,12 @@ export const handler = async (
 
   return json(200, {
     tier,
+    tierName: TIER_NAMES[tier],
     tier_name: TIER_NAMES[tier],
+    tierProgress: Math.round(tierProgress * 100),
     tier_progress: Math.round(tierProgress * 100),
     score,
+    names: [],
     totals: { commits, tokens, worktrees },
   });
 };

@@ -4,6 +4,7 @@ import { useState } from 'react';
 
 import type { FC } from 'react';
 
+import { VirtualList } from '@/components/ui/virtual-list';
 import { DiffStat } from './diff-stat';
 
 interface WriteToolWidgetProps {
@@ -61,15 +62,22 @@ export const WriteToolWidget: FC<WriteToolWidgetProps> = ({
         className={`border-t tool-widget-divider overflow-hidden ${isExpanded ? 'max-h-[500px]' : 'max-h-[200px]'}`}
         style={{ transition: 'max-height 250ms cubic-bezier(0.25, 1, 0.5, 1)' }}
       >
-        <div className="overflow-auto">
-          {displayLines.map((line, index) => (
-            <div key={`line-${String(index)}`} className="flex font-mono text-xs leading-5 bg-success/10">
+        <VirtualList
+          items={displayLines}
+          estimateSize={() => 20}
+          overscan={16}
+          measureElement={false}
+          className={isExpanded ? 'max-h-[500px]' : 'max-h-[200px]'}
+          getItemKey={(_line, index) => index}
+          testId="legacy-write-tool-lines"
+          renderItem={(line, index) => (
+            <div className="flex font-mono text-xs leading-5 bg-success/10">
               <div className="w-1 bg-success shrink-0" />
               <div className="w-8 px-1 text-right text-success/50 select-none shrink-0">{index + 1}</div>
               <div className="flex-1 px-3 text-foreground whitespace-pre overflow-x-auto">{line || ' '}</div>
             </div>
-          ))}
-        </div>
+          )}
+        />
 
         {hasMore && !isExpanded ? (
           <button

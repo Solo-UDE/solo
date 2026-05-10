@@ -51,8 +51,7 @@ async fn load_from(path: &Path) -> Result<StatsSnapshot> {
             if bytes.is_empty() {
                 return Ok(StatsSnapshot::default());
             }
-            serde_json::from_slice(&bytes)
-                .with_context(|| format!("parsing {}", path.display()))
+            serde_json::from_slice(&bytes).with_context(|| format!("parsing {}", path.display()))
         }
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(StatsSnapshot::default()),
         Err(err) => Err(err).with_context(|| format!("reading {}", path.display())),
@@ -88,7 +87,9 @@ mod tests {
     #[tokio::test]
     async fn load_returns_default_when_file_missing() {
         let tmp = tempfile::tempdir().unwrap();
-        let store = StatsStore::new(tmp.path().join("stats.json")).await.unwrap();
+        let store = StatsStore::new(tmp.path().join("stats.json"))
+            .await
+            .unwrap();
         let loaded = store.load().await.unwrap();
         assert!(loaded.pending.commits == 0);
     }
@@ -96,7 +97,9 @@ mod tests {
     #[tokio::test]
     async fn roundtrip_preserves_counters() {
         let tmp = tempfile::tempdir().unwrap();
-        let store = StatsStore::new(tmp.path().join("stats.json")).await.unwrap();
+        let store = StatsStore::new(tmp.path().join("stats.json"))
+            .await
+            .unwrap();
         let snap = StatsSnapshot {
             pending: StatsDelta {
                 commits: 7,
@@ -116,7 +119,9 @@ mod tests {
     #[tokio::test]
     async fn save_is_atomic_leaves_no_tmp_file() {
         let tmp = tempfile::tempdir().unwrap();
-        let store = StatsStore::new(tmp.path().join("stats.json")).await.unwrap();
+        let store = StatsStore::new(tmp.path().join("stats.json"))
+            .await
+            .unwrap();
         store.save(&StatsSnapshot::default()).await.unwrap();
         let tmp_path = tmp.path().join("stats.json.tmp");
         assert!(!tmp_path.exists(), "tmp file should be renamed away");

@@ -36,9 +36,10 @@ import { wtLog } from '@/lib/worktreeLogger';
 
 interface DevSidebarProps {
   readonly onFileOpen: (path: string) => void;
+  readonly isActive?: boolean;
 }
 
-export const DevSidebar: FC<DevSidebarProps> = ({ onFileOpen }) => {
+export const DevSidebar: FC<DevSidebarProps> = ({ onFileOpen, isActive = true }) => {
   const devSidebarView = useUIStore((s) => s.devSidebarView);
   const drillOutOfWorktree = useUIStore((s) => s.drillOutOfWorktree);
   const activeRepoPath = useRepoStore((s) => s.activeRepoPath);
@@ -55,15 +56,16 @@ export const DevSidebar: FC<DevSidebarProps> = ({ onFileOpen }) => {
   const [isCreatingWorktree, setIsCreatingWorktree] = useState(false);
 
   useEffect(() => {
-    if (!activeRepoPath) return;
+    if (!isActive || !activeRepoPath) return;
     void refreshRepoWorktrees(activeRepoPath);
     void loadWorktrees();
-  }, [activeRepoPath, refreshRepoWorktrees, loadWorktrees]);
+  }, [activeRepoPath, isActive, refreshRepoWorktrees, loadWorktrees]);
 
   // Reset drill-in view on project switch.
   useEffect(() => {
+    if (!isActive) return;
     drillOutOfWorktree();
-  }, [activeRepoPath, drillOutOfWorktree]);
+  }, [activeRepoPath, drillOutOfWorktree, isActive]);
 
   const syncAfterMutation = useCallback(async () => {
     if (!activeRepoPath) return;
@@ -151,14 +153,14 @@ export const DevSidebar: FC<DevSidebarProps> = ({ onFileOpen }) => {
 
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-      <AnimatePresence mode="wait" initial={false}>
+      <AnimatePresence mode="popLayout" initial={false}>
         {devSidebarView === 'worktree-list' ? (
           <motion.div
             key="session-thread-list"
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+            initial={{ opacity: 0, y: 2 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -2 }}
+            transition={{ duration: 0.09, ease: [0.2, 0, 0, 1] }}
             className="flex-1 flex flex-col min-h-0"
           >
             <div className="flex items-center justify-between px-3.5 pb-2 pt-3.5 shrink-0">
@@ -207,7 +209,7 @@ export const DevSidebar: FC<DevSidebarProps> = ({ onFileOpen }) => {
                   'text-[12px] font-medium text-foreground',
                   'hover:bg-accent',
                   'disabled:opacity-50 disabled:cursor-not-allowed',
-                  'active:scale-[0.98] transition-all duration-150',
+                  'active:scale-[0.98] transition-[background-color,transform] duration-150',
                 )}
                 title="New agent session"
               >
@@ -226,7 +228,7 @@ export const DevSidebar: FC<DevSidebarProps> = ({ onFileOpen }) => {
                   'text-[12px] font-medium text-foreground',
                   'hover:bg-accent',
                   'disabled:opacity-50 disabled:cursor-not-allowed',
-                  'active:scale-[0.98] transition-all duration-150',
+                  'active:scale-[0.98] transition-[background-color,transform] duration-150',
                 )}
                 title="Auto-create a worktree using a name from your current tier"
               >
@@ -253,10 +255,10 @@ export const DevSidebar: FC<DevSidebarProps> = ({ onFileOpen }) => {
         ) : (
           <motion.div
             key="worktree-detail"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 20 }}
-            transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+            initial={{ opacity: 0, y: 2 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -2 }}
+            transition={{ duration: 0.09, ease: [0.2, 0, 0, 1] }}
             className="flex-1 flex flex-col min-h-0"
           >
             <WorktreeDetailView onFileOpen={onFileOpen} />

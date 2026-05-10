@@ -36,9 +36,12 @@ export async function getMyTier(): Promise<TierInfo> {
 	return invoke<TierInfo>('stats_get_tier');
 }
 
-/** Fetch the global leaderboard. Default limit 100, capped server-side at 500. */
-export async function getLeaderboard(limit?: number): Promise<LeaderboardEntry[]> {
-	return invoke<LeaderboardEntry[]>('stats_get_leaderboard', { limit });
+/**
+ * Fetch the leaderboard. Without `tier`, returns the global board; with `tier`,
+ * returns that tier's board. Default limit 100, capped server-side at 500.
+ */
+export async function getLeaderboard(limit?: number, tier?: number): Promise<LeaderboardEntry[]> {
+	return invoke<LeaderboardEntry[]>('stats_get_leaderboard', { limit, tier });
 }
 
 /** Generate a shareable tier card and return a signed S3 URL. */

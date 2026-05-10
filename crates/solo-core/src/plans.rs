@@ -106,9 +106,7 @@ pub fn list_plans(workspace: &Path) -> Result<Vec<String>> {
         .filter_map(|e| {
             let path = e.path();
             if path.extension().is_some_and(|ext| ext == "md") {
-                path.file_stem()
-                    .and_then(|s| s.to_str())
-                    .map(String::from)
+                path.file_stem().and_then(|s| s.to_str()).map(String::from)
             } else {
                 None
             }
@@ -123,9 +121,7 @@ pub fn list_plans(workspace: &Path) -> Result<Vec<String>> {
 /// Scans for the most recent `ExitPlanMode` invocation and returns its
 /// `plan` field. Used when the on-disk file is missing after a resume.
 #[must_use]
-pub fn recover_plan_from_tool_calls(
-    tool_calls: &[(&str, &serde_json::Value)],
-) -> Option<String> {
+pub fn recover_plan_from_tool_calls(tool_calls: &[(&str, &serde_json::Value)]) -> Option<String> {
     for (name, input) in tool_calls.iter().rev() {
         if *name == "ExitPlanMode" {
             if let Some(plan) = input.get("plan").and_then(|v| v.as_str()) {

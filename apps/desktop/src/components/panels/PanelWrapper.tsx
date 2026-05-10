@@ -3,7 +3,7 @@
  * Provides callbacks for panels to update their state
  */
 
-import { useCallback, useMemo, useRef, useState, useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { panelRegistry } from '@/lib/panels/registry';
 import { usePanelTabsStore } from '@/stores/panelTabsStore';
 import type { PanelInstance, PanelProps } from '@/lib/panels/types';
@@ -16,15 +16,15 @@ interface PanelWrapperProps {
 }
 
 export function PanelWrapper({ instance, isActive, className }: PanelWrapperProps) {
-  // Track when panel becomes active to trigger fade-in
   const wasActive = useRef(isActive);
-  const [shouldAnimate, setShouldAnimate] = useState(false);
+  const [isSettling, setIsSettling] = useState(false);
 
   useEffect(() => {
     if (isActive && !wasActive.current) {
-      setShouldAnimate(true);
-      const timer = setTimeout(() => setShouldAnimate(false), 150);
-      return () => clearTimeout(timer);
+      setIsSettling(true);
+      const timer = window.setTimeout(() => setIsSettling(false), 90);
+      wasActive.current = isActive;
+      return () => window.clearTimeout(timer);
     }
     wasActive.current = isActive;
   }, [isActive]);
@@ -111,7 +111,7 @@ export function PanelWrapper({ instance, isActive, className }: PanelWrapperProp
       className={cn(
         'h-full w-full overflow-hidden',
         !isActive && 'hidden',
-        isActive && shouldAnimate && 'animate-in fade-in-0 duration-150',
+        isActive && isSettling && 'animate-in fade-in-0 zoom-in-[0.995] slide-in-from-bottom-[1px] duration-75',
         className
       )}
     >

@@ -6,21 +6,26 @@
 //! - Token management with automatic refresh
 //! - Provider-specific configurations
 
-pub mod types;
-pub mod pkce;
 pub mod callback_server;
+pub mod pkce;
 pub mod profiles;
 pub mod providers;
+pub mod types;
 
 // Re-export commonly used types
-pub use types::{
-    AuthMethodInfo, AuthType, Credential, OAuthFlowResult, OAuthMethod, OAuthState, OAuthToken,
-    TokenResponse, OpenAITokenResponse, OpenAIOAuthToken,
+pub use callback_server::{
+    bind_callback_listener_on, get_callback_url, start_callback_server, start_callback_server_on,
+    start_callback_server_with_listener, CallbackError, CallbackResult, CALLBACK_PORT,
 };
 pub use pkce::{generate_code_challenge, generate_code_verifier, generate_state};
-pub use callback_server::{start_callback_server, start_callback_server_on, get_callback_url, CallbackError, CallbackResult, CALLBACK_PORT};
+pub use profiles::{is_already_migrated, migrate_legacy_blob, OAuthProfile, ProviderOAuthStore};
 pub use providers::AnthropicOAuthConfig;
-pub use providers::{GitHubOAuthConfig, DeviceCodeResponse, DevicePollResult};
 pub use providers::OpenAIOAuthConfig;
-pub use providers::{ClaudeCodeOAuthConfig, ClaudeCodeOAuthFlow, ClaudeAiOAuth, ClaudeCodeCredentials};
-pub use profiles::{OAuthProfile, ProviderOAuthStore, migrate_legacy_blob, is_already_migrated};
+pub use providers::{
+    ClaudeAiOAuth, ClaudeCodeCredentials, ClaudeCodeOAuthConfig, ClaudeCodeOAuthFlow,
+};
+pub use providers::{DeviceCodeResponse, DevicePollResult, GitHubOAuthConfig};
+pub use types::{
+    AuthMethodInfo, AuthType, Credential, OAuthFlowResult, OAuthMethod, OAuthState, OAuthToken,
+    OpenAIOAuthToken, OpenAITokenResponse, TokenResponse,
+};

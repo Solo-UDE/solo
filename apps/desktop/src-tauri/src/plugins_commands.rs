@@ -5,15 +5,18 @@
 
 use solo_core::settings as settings_io;
 use solo_plugins::{
-    get_plugin_detail, list_plugins, load_plugin_manifest, LoaderConfig, PluginId as CoreId,
-    PluginSource as CoreSource, PluginStore, PluginStoreError, PluginToggles,
+    get_plugin_detail, list_plugins, load_plugin_apps, load_plugin_manifest, load_plugin_mcp,
+    LoaderConfig, PluginId as CoreId, PluginSource as CoreSource, PluginStore, PluginStoreError,
+    PluginToggles,
 };
 use solo_protocol::{
-    PluginDetail, PluginId, PluginInstallResult, PluginInterface, PluginListOutcome,
-    PluginLoadError, PluginSource, PluginSummary,
+    PluginAppDeclaration, PluginDetail, PluginId, PluginInstallResult, PluginInterface,
+    PluginListOutcome, PluginLoadError, PluginSource, PluginSummary,
 };
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tauri::State;
+
+use crate::connectors_commands::infer_connector_provider;
 
 pub struct PluginsState {
     home_dir: PathBuf,
@@ -70,6 +73,121 @@ fn wire_source(core: CoreSource) -> PluginSource {
     }
 }
 
+#[derive(Debug, Clone, Default)]
+struct PluginCapabilitySnapshot {
+    skill_count: u32,
+    mcp_servers: Vec<String>,
+    apps: Vec<PluginAppDeclaration>,
+    compatibility_warnings: Vec<String>,
+}
+
+fn count_skill_files(skills_path: Option<&Path>) -> u32 {
+    let Some(skills_path) = skills_path else {
+        return 0;
+    };
+    let Ok(entries) = std::fs::read_dir(skills_path) else {
+        return 0;
+    };
+
+    entries
+        .flatten()
+        .filter(|entry| {
+            let path = entry.path();
+            if path.is_file() {
+                return path.extension().is_some_and(|ext| ext == "md");
+            }
+            if path.is_dir() {
+                return path.join("AGENTS.md").is_file() || path.join("SKILL.md").is_file();
+            }
+            false
+        })
+        .count() as u32
+}
+
+fn snapshot_capabilities(record: &solo_plugins::PluginRecord) -> PluginCapabilitySnapshot {
+    let mut snapshot = PluginCapabilitySnapshot::default();
+    let Some(manifest) = record.manifest.as_ref() else {
+        snapshot
+            .compatibility_warnings
+            .push("Plugin manifest could not be loaded.".to_string());
+        return snapshot;
+    };
+
+    snapshot.skill_count = count_skill_files(manifest.paths.skills.as_ref().map(|p| p.as_path()));
+
+    if let Some(mcp_path) = manifest.paths.mcp_servers.as_ref() {
+        let loaded = load_plugin_mcp(mcp_path.as_path());
+        snapshot.mcp_servers = loaded.server_names;
+        if let Some(error) = loaded.error {
+            snapshot
+                .compatibility_warnings
+                .push(format!("MCP config is not usable: {error}"));
+        }
+    }
+
+    if let Some(apps_path) = manifest.paths.apps.as_ref() {
+        let loaded = load_plugin_apps(apps_path.as_path());
+        snapshot.apps = loaded
+            .apps
+            .into_iter()
+            .map(|app| {
+                let provider = infer_connector_provider(
+                    &app.app_id,
+                    app.provider.as_deref(),
+                    app.connector_id.as_deref(),
+                );
+                let supported = provider.is_some();
+                PluginAppDeclaration {
+                    app_id: app.app_id,
+                    connector_id: app.connector_id,
+                    provider,
+                    scopes: app.scopes,
+                    supported,
+                    status: if supported {
+                        "needs_connection".to_string()
+                    } else {
+                        "unsupported_connector_runtime".to_string()
+                    },
+                }
+            })
+            .collect();
+
+        if let Some(error) = loaded.error {
+            snapshot
+                .compatibility_warnings
+                .push(format!("App connector config is not usable: {error}"));
+        }
+
+        if !snapshot.apps.is_empty() {
+            snapshot.compatibility_warnings.push(
+                "This plugin declares app connectors. Solo can inject Solo-owned connector tokens for supported providers once the account is connected."
+                    .to_string(),
+            );
+        }
+    }
+
+    for (surface, message) in [
+        (
+            record.root.join("agents"),
+            "Plugin agents are present but Solo does not load plugin-defined agents yet.",
+        ),
+        (
+            record.root.join("commands"),
+            "Plugin slash commands are present but Solo does not load plugin-defined commands yet.",
+        ),
+        (
+            record.root.join("hooks.json"),
+            "Plugin hooks are present but Solo does not run plugin lifecycle hooks yet.",
+        ),
+    ] {
+        if surface.exists() {
+            snapshot.compatibility_warnings.push(message.to_string());
+        }
+    }
+
+    snapshot
+}
+
 fn record_to_summary(record: solo_plugins::PluginRecord) -> PluginSummary {
     let interface = record.manifest.as_ref().and_then(|m| m.interface.as_ref());
     let display_name = interface
@@ -82,6 +200,10 @@ fn record_to_summary(record: solo_plugins::PluginRecord) -> PluginSummary {
             .map(|p| p.as_path().to_string_lossy().into_owned())
     });
     let brand_color = interface.and_then(|i| i.brand_color.clone());
+    let snapshot = snapshot_capabilities(&record);
+    let app_count = snapshot.apps.len() as u32;
+    let unsupported_connector_count =
+        snapshot.apps.iter().filter(|app| !app.supported).count() as u32;
 
     PluginSummary {
         id: wire_id(record.id),
@@ -92,6 +214,11 @@ fn record_to_summary(record: solo_plugins::PluginRecord) -> PluginSummary {
         brand_color,
         enabled: record.enabled,
         source: wire_source(record.source),
+        skill_count: snapshot.skill_count,
+        mcp_server_count: snapshot.mcp_servers.len() as u32,
+        app_count,
+        unsupported_connector_count,
+        compatibility_warnings: snapshot.compatibility_warnings,
     }
 }
 
@@ -126,6 +253,19 @@ fn record_to_detail(record: solo_plugins::PluginRecord) -> PluginDetail {
                 .map(|p| p.as_path().to_string_lossy().into_owned())
                 .collect(),
         });
+    let snapshot = snapshot_capabilities(&record);
+    let skills_path = manifest
+        .as_ref()
+        .and_then(|m| m.paths.skills.as_ref())
+        .map(|p| p.as_path().to_string_lossy().into_owned());
+    let mcp_servers_path = manifest
+        .as_ref()
+        .and_then(|m| m.paths.mcp_servers.as_ref())
+        .map(|p| p.as_path().to_string_lossy().into_owned());
+    let apps_path = manifest
+        .as_ref()
+        .and_then(|m| m.paths.apps.as_ref())
+        .map(|p| p.as_path().to_string_lossy().into_owned());
 
     PluginDetail {
         id: wire_id(record.id),
@@ -135,6 +275,13 @@ fn record_to_detail(record: solo_plugins::PluginRecord) -> PluginDetail {
         root_path: record.root.to_string_lossy().into_owned(),
         description: manifest.and_then(|m| m.description),
         interface,
+        skills_path,
+        mcp_servers_path,
+        apps_path,
+        skill_count: snapshot.skill_count,
+        mcp_servers: snapshot.mcp_servers,
+        apps: snapshot.apps,
+        compatibility_warnings: snapshot.compatibility_warnings,
     }
 }
 

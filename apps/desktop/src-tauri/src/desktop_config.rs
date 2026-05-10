@@ -14,7 +14,7 @@ use std::{collections::HashSet, path::Path};
 use tracing::{debug, warn};
 use url::Url;
 
-pub const REDIRECT_URL: &str = "soloide://auth/callback";
+pub const REDIRECT_URL: &str = "http://127.0.0.1:19877/callback";
 pub const SIGNOUT_URL: &str = "soloide://auth/signout";
 
 pub const COGNITO_DOMAIN_ENV_KEYS: &[&str] = &["SOLO_COGNITO_DOMAIN"];
@@ -24,7 +24,7 @@ pub const API_ENDPOINT_ENV_KEYS: &[&str] = &["SOLO_API_ENDPOINT"];
 pub const VAULT_API_ENDPOINT_ENV_KEYS: &[&str] = &["SOLO_VAULT_API_ENDPOINT"];
 
 const DEFAULT_AWS_REGION: &str = "us-east-1";
-const DEFAULT_API_ENDPOINT: &str = "https://vd8wm2yqle.execute-api.us-east-1.amazonaws.com";
+const DEFAULT_API_ENDPOINT: &str = "https://9qpve9xe1b.execute-api.us-east-1.amazonaws.com";
 const DEFAULT_VAULT_API_ENDPOINT: &str =
     "https://tlrskvdxe2.execute-api.us-east-1.amazonaws.com/prod";
 
@@ -369,7 +369,7 @@ mod tests {
         let default = resolve_api_endpoint(None, None);
         assert_eq!(
             default,
-            "https://vd8wm2yqle.execute-api.us-east-1.amazonaws.com"
+            "https://9qpve9xe1b.execute-api.us-east-1.amazonaws.com"
         );
     }
 }

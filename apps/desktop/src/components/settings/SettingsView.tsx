@@ -128,9 +128,9 @@ export function SettingsView() {
     <motion.div
       ref={containerRef}
       className="flex h-full w-full gap-2 p-2"
-      initial={{ opacity: 0 }}
+      initial={false}
       animate={{ opacity: 1 }}
-      transition={{ duration: 0.2 }}
+      transition={{ duration: 0.08 }}
       tabIndex={-1}
     >
       <div className="liquid-sidebar hidden w-[272px] shrink-0 overflow-hidden rounded-[14px] border border-border/70 bg-sidebar/88 backdrop-blur-xl md:block">
@@ -150,13 +150,13 @@ export function SettingsView() {
             </div>
 
             <div className="rounded-[10px] border border-border/60 bg-background/55 p-4 lg:p-5">
-              <AnimatePresence mode="wait">
+              <AnimatePresence mode="popLayout" initial={false}>
                 <motion.div
                   key={settingsTab}
-                  initial={{ opacity: 0, y: 8 }}
+                  initial={{ opacity: 0, y: 2 }}
                   animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -4 }}
-                  transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                  exit={{ opacity: 0, y: -2 }}
+                  transition={{ duration: 0.09, ease: [0.2, 0, 0, 1] }}
                 >
                   {renderTabContent()}
                 </motion.div>

@@ -44,6 +44,8 @@ pub async fn ingest_file(
     blobs_dir: &Path,
     scope: VaultScope,
     memory_type: MemoryType,
+    label_ids: Vec<String>,
+    expires_at: Option<u64>,
     extractor: &dyn TextExtractor,
 ) -> Result<Ingested> {
     // 1. Validate
@@ -125,6 +127,8 @@ pub async fn ingest_file(
         memory_type,
         pinned: false,
         tags: Vec::new(),
+        label_ids,
+        expires_at,
         mime: classification.mime.clone(),
         size_bytes: Some(meta.len()),
         index_status,
@@ -155,11 +159,21 @@ pub async fn ingest_and_store(
     store: &Store,
     scope: VaultScope,
     memory_type: MemoryType,
+    label_ids: Vec<String>,
+    expires_at: Option<u64>,
     embed_provider: Option<Arc<dyn EmbeddingProvider>>,
     extractor: Arc<dyn TextExtractor>,
 ) -> Result<VaultEntry> {
-    let Ingested { entry, chunks } =
-        ingest_file(src, blobs_dir, scope, memory_type, extractor.as_ref()).await?;
+    let Ingested { entry, chunks } = ingest_file(
+        src,
+        blobs_dir,
+        scope,
+        memory_type,
+        label_ids,
+        expires_at,
+        extractor.as_ref(),
+    )
+    .await?;
 
     // Persist entry + chunk rows (FTS index rebuilt transactionally by insert_chunk).
     store.upsert_entry(&entry)?;

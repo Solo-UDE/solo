@@ -19,7 +19,7 @@
 
 import { useCallback, useMemo, useRef, useState } from 'react';
 import type { FC } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
+import { motion } from 'motion/react';
 import { ChevronDown, ChevronUp, Inbox } from 'lucide-react';
 import type { WorktreeInfo } from '@/bindings';
 import {
@@ -36,6 +36,7 @@ import { useFileExplorerStore } from '@/stores/fileExplorerStore';
 import { usePanelTabsStore } from '@/stores/panelTabsStore';
 import { BUILTIN_PANEL_TYPES } from '@/lib/panels/constants';
 import { useInlineRename } from '@/hooks/useInlineRename';
+import { VirtualList } from '@/components/ui/virtual-list';
 import { SessionThreadRow } from './SessionThreadRow';
 import { WorktreeGroupHeader } from './WorktreeGroupHeader';
 
@@ -81,6 +82,32 @@ interface Grouped {
   readonly key: string;
   readonly sessions: AgentSession[];
 }
+
+type ThreadListRow =
+  | {
+      readonly kind: 'group';
+      readonly key: string;
+      readonly groupKey: string;
+      readonly sourceWorktree: WorktreeInfo | null;
+      readonly headerWorktree: WorktreeInfo;
+      readonly sessionCount: number;
+    }
+  | {
+      readonly kind: 'session';
+      readonly key: string;
+      readonly session: AgentSession;
+    }
+  | {
+      readonly kind: 'more';
+      readonly key: string;
+      readonly groupKey: string;
+      readonly expanded: boolean;
+      readonly hiddenCount: number;
+    }
+  | {
+      readonly kind: 'empty';
+      readonly key: string;
+    };
 
 function sessionTitle(
   sessionId: string,
@@ -190,6 +217,75 @@ export const SessionThreadList: FC<SessionThreadListProps> = ({ onSessionSelect 
     [drillIntoWorktree],
   );
 
+  const rows = useMemo<ThreadListRow[]>(() => {
+    if (!activeRepoPath) return [];
+    const next: ThreadListRow[] = [];
+
+    for (const group of grouped) {
+      const isMainGroup = group.key === MAIN_GROUP_KEY;
+      const headerWorktree: WorktreeInfo | null =
+        group.worktree ??
+        (isMainGroup
+          ? ({
+              id: '__main__',
+              path: activeRepoPath,
+              branch: 'main',
+              head_sha: '',
+              is_main: true,
+              is_locked: false,
+              lock_reason: null,
+              is_dirty: false,
+              agent_session_id: null,
+              created_at: 0,
+              exists_on_disk: true,
+            } as unknown as WorktreeInfo)
+          : null);
+
+      if (!headerWorktree) continue;
+
+      next.push({
+        kind: 'group',
+        key: `group:${group.key}`,
+        groupKey: group.key,
+        sourceWorktree: group.worktree,
+        headerWorktree,
+        sessionCount: group.sessions.length,
+      });
+
+      if (!expandedGroups.has(group.key)) continue;
+
+      if (group.sessions.length === 0) {
+        next.push({ kind: 'empty', key: `empty:${group.key}` });
+        continue;
+      }
+
+      const sessionsExpanded = expandedSessionGroups.has(group.key);
+      const visibleSessions = sessionsExpanded
+        ? group.sessions
+        : group.sessions.slice(0, COLLAPSED_SESSION_LIMIT);
+
+      for (const session of visibleSessions) {
+        next.push({
+          kind: 'session',
+          key: `session:${group.key}:${session.id}`,
+          session,
+        });
+      }
+
+      if (group.sessions.length > COLLAPSED_SESSION_LIMIT) {
+        next.push({
+          kind: 'more',
+          key: `more:${group.key}`,
+          groupKey: group.key,
+          expanded: sessionsExpanded,
+          hiddenCount: group.sessions.length - visibleSessions.length,
+        });
+      }
+    }
+
+    return next;
+  }, [activeRepoPath, expandedGroups, expandedSessionGroups, grouped]);
+
   if (!activeRepoPath) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
@@ -202,140 +298,98 @@ export const SessionThreadList: FC<SessionThreadListProps> = ({ onSessionSelect 
   }
 
   return (
-    <div className="flex-1 overflow-y-auto px-2 pb-3">
-      <AnimatePresence initial={false}>
-        {grouped.map((group) => {
-          const worktree = group.worktree;
-          const isMainGroup = group.key === MAIN_GROUP_KEY;
-          const worktreeIsActive = worktree
-            ? worktree.is_main
+    <VirtualList
+      items={rows}
+      estimateSize={() => 38}
+      overscan={12}
+      className="flex-1 px-2 pb-3"
+      itemClassName="pb-1"
+      getItemKey={(row) => row.key}
+      testId="session-thread-list"
+      renderItem={(row) => {
+        if (row.kind === 'group') {
+          const isMainGroup = row.groupKey === MAIN_GROUP_KEY;
+          const worktreeIsActive = row.sourceWorktree
+            ? row.sourceWorktree.is_main
               ? activeWorktreeId === null
-              : activeWorktreeId === worktree.id
+              : activeWorktreeId === row.sourceWorktree.id
             : isMainGroup && activeWorktreeId === null;
-          const expanded = expandedGroups.has(group.key);
-          const sessionsExpanded = expandedSessionGroups.has(group.key);
-          const visibleSessions = sessionsExpanded
-            ? group.sessions
-            : group.sessions.slice(0, COLLAPSED_SESSION_LIMIT);
-          const hiddenSessionCount = group.sessions.length - visibleSessions.length;
-          const headerWorktree: WorktreeInfo | null =
-            worktree ??
-            (isMainGroup
-              ? ({
-                  id: '__main__',
-                  path: activeRepoPath,
-                  branch: 'main',
-                  head_sha: '',
-                  is_main: true,
-                  is_locked: false,
-                  lock_reason: null,
-                  is_dirty: false,
-                  agent_session_id: null,
-                  created_at: 0,
-                  exists_on_disk: true,
-                } as unknown as WorktreeInfo)
-              : null);
-
-          if (!headerWorktree) return null;
 
           return (
             <motion.div
-              key={group.key}
               initial={{ opacity: 0, y: -2 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
               transition={{ duration: 0.12 }}
-              className="mb-1"
             >
               <WorktreeGroupHeader
-                worktree={headerWorktree}
-                sessionCount={group.sessions.length}
-                expanded={expanded}
+                worktree={row.headerWorktree}
+                sessionCount={row.sessionCount}
+                expanded={expandedGroups.has(row.groupKey)}
                 isActive={worktreeIsActive}
-                onToggle={() => toggleGroup(group.key)}
+                onToggle={() => toggleGroup(row.groupKey)}
                 onDrillIn={() => {
-                  if (!worktree) return;
-                  handleDrillIn(worktree.id);
+                  if (!row.sourceWorktree) return;
+                  handleDrillIn(row.sourceWorktree.id);
                 }}
               />
-              <AnimatePresence initial={false}>
-                {expanded && group.sessions.length > 0 && (
-                  <motion.div
-                    key="sessions"
-                    initial={{ opacity: 0, y: -4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -2 }}
-                    transition={{ type: 'spring', duration: 0.22, bounce: 0 }}
-                  >
-                    <div className="mt-0.5 space-y-0.5">
-                      {visibleSessions.map((session) => {
-                        const streaming =
-                          sessionStreaming.get(session.id)?.isStreaming ?? false;
-                        return (
-                          <SessionThreadRow
-                            key={session.id}
-                            session={session}
-                            title={sessionTitle(session.id, session.name, messagesMap)}
-                            isActive={activeSessionId === session.id}
-                            isStreaming={streaming}
-                            hasOpenTab={openSessionIds.has(session.id)}
-                            isRenaming={rename.renamingId === session.id}
-                            renameValue={rename.renameValue}
-                            messagesMap={messagesMap}
-                            onSelect={() => onSessionSelect(session.id)}
-                            onStartRename={() =>
-                              rename.startRename(
-                                session.id,
-                                session.name ??
-                                  sessionTitle(session.id, undefined, messagesMap),
-                              )
-                            }
-                            onCommitRename={rename.commitRename}
-                            onCancelRename={rename.cancelRename}
-                            onRenameChange={rename.setRenameValue}
-                            onRequestDelete={() => deleteSession(session.id)}
-                          />
-                        );
-                      })}
-                      {group.sessions.length > COLLAPSED_SESSION_LIMIT && (
-                        <button
-                          type="button"
-                          onClick={() => toggleSessionLimit(group.key)}
-                          aria-expanded={sessionsExpanded}
-                          className="group/view-more ml-6 flex min-h-8 w-[calc(100%-1.5rem)] items-center gap-1.5 rounded-[8px] px-2 text-[11px] text-muted-foreground/65 transition-[background-color,color] duration-150 hover:bg-background/55 hover:text-foreground active:scale-[0.96]"
-                        >
-                          {sessionsExpanded ? (
-                            <ChevronUp className="size-3 text-muted-foreground/55 transition-colors duration-150 group-hover/view-more:text-foreground/75" />
-                          ) : (
-                            <ChevronDown className="size-3 text-muted-foreground/55 transition-colors duration-150 group-hover/view-more:text-foreground/75" />
-                          )}
-                          <span>
-                            {sessionsExpanded
-                              ? 'Show less'
-                              : `View ${hiddenSessionCount} more`}
-                          </span>
-                        </button>
-                      )}
-                    </div>
-                  </motion.div>
-                )}
-                {expanded && group.sessions.length === 0 && (
-                  <motion.div
-                    key="empty"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.12 }}
-                    className="ml-6 py-1 text-[11px] text-muted-foreground/50"
-                  >
-                    No sessions yet.
-                  </motion.div>
-                )}
-              </AnimatePresence>
             </motion.div>
           );
-        })}
-      </AnimatePresence>
-    </div>
+        }
+
+        if (row.kind === 'session') {
+          const session = row.session;
+          const streaming = sessionStreaming.get(session.id)?.isStreaming ?? false;
+          return (
+            <div className="mt-0.5">
+              <SessionThreadRow
+                session={session}
+                title={sessionTitle(session.id, session.name, messagesMap)}
+                isActive={activeSessionId === session.id}
+                isStreaming={streaming}
+                hasOpenTab={openSessionIds.has(session.id)}
+                isRenaming={rename.renamingId === session.id}
+                renameValue={rename.renameValue}
+                messagesMap={messagesMap}
+                onSelect={() => onSessionSelect(session.id)}
+                onStartRename={() =>
+                  rename.startRename(
+                    session.id,
+                    session.name ?? sessionTitle(session.id, undefined, messagesMap),
+                  )
+                }
+                onCommitRename={rename.commitRename}
+                onCancelRename={rename.cancelRename}
+                onRenameChange={rename.setRenameValue}
+                onRequestDelete={() => deleteSession(session.id)}
+              />
+            </div>
+          );
+        }
+
+        if (row.kind === 'more') {
+          return (
+            <button
+              type="button"
+              onClick={() => toggleSessionLimit(row.groupKey)}
+              aria-expanded={row.expanded}
+              className="group/view-more ml-6 flex min-h-8 w-[calc(100%-1.5rem)] items-center gap-1.5 rounded-[8px] px-2 text-[11px] text-muted-foreground/65 transition-[background-color,color] duration-150 hover:bg-background/55 hover:text-foreground active:scale-[0.96]"
+            >
+              {row.expanded ? (
+                <ChevronUp className="size-3 text-muted-foreground/55 transition-colors duration-150 group-hover/view-more:text-foreground/75" />
+              ) : (
+                <ChevronDown className="size-3 text-muted-foreground/55 transition-colors duration-150 group-hover/view-more:text-foreground/75" />
+              )}
+              <span>{row.expanded ? 'Show less' : `View ${row.hiddenCount} more`}</span>
+            </button>
+          );
+        }
+
+        return (
+          <div className="ml-6 py-1 text-[11px] text-muted-foreground/50">
+            No sessions yet.
+          </div>
+        );
+      }}
+    />
   );
 };

@@ -4,7 +4,7 @@
  */
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
+import { motion } from 'motion/react';
 import { PlusIcon, Pencil2Icon, TrashIcon, MagnifyingGlassIcon } from '@radix-ui/react-icons';
 import { MessageCircle } from 'lucide-react';
 import { useAgentStore, useSessions, useActiveSessionId } from '@/stores/agentStore';
@@ -15,6 +15,7 @@ import { useFileExplorerStore } from '@/stores/fileExplorerStore';
 import { BUILTIN_PANEL_TYPES } from '@/lib/panels/constants';
 import { useInlineRename } from '@/hooks/useInlineRename';
 import { cn } from '@/lib/utils';
+import { VirtualList } from '@/components/ui/virtual-list';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -380,7 +381,7 @@ export const SessionList: FC<SessionListProps> = ({
         </div>
 
         {/* Session List */}
-        <div className="flex-1 overflow-y-auto px-2 pb-2">
+        <div className="flex min-h-0 flex-1 flex-col">
           {filteredSessions.length === 0 ? (
             <motion.div
               className="flex flex-col items-center justify-center py-8 gap-1"
@@ -393,9 +394,15 @@ export const SessionList: FC<SessionListProps> = ({
               <p className="text-xs text-muted-foreground/40">Try a different search</p>
             </motion.div>
           ) : (
-            <div className="space-y-1">
-              <AnimatePresence initial={false}>
-                {filteredSessions.map((session) => (
+            <VirtualList
+              items={filteredSessions}
+              estimateSize={() => 56}
+              overscan={10}
+              className="min-h-0 flex-1 px-2 pb-2"
+              itemClassName="pb-1"
+              getItemKey={(session) => session.id}
+              testId="agent-session-list"
+              renderItem={(session) => (
                   <motion.div
                     key={session.id}
                     layout
@@ -426,9 +433,8 @@ export const SessionList: FC<SessionListProps> = ({
                       onRequestDelete={() => handleDeleteSession(session.id)}
                     />
                   </motion.div>
-                ))}
-              </AnimatePresence>
-            </div>
+              )}
+            />
           )}
         </div>
       </div>

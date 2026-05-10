@@ -6,6 +6,10 @@
 export const TAB_BAR = {
   /** Height of the tab bar in pixels */
   height: 41,
+  /** Fixed visible tab width in pixels. Overflow goes into the tab menu. */
+  fixedTabWidth: 168,
+  /** Approximate repo group label width in pixels. Used for overflow budgeting. */
+  groupLabelWidth: 154,
   /** Minimum tab width in pixels */
   minTabWidth: 80,
   /** Maximum tab width in pixels */

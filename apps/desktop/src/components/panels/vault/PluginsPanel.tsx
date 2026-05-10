@@ -6,6 +6,7 @@ import { VaultPanelShell } from './VaultPanelShell';
 export function PluginsPanel(_props: PanelProps) {
   return (
     <VaultPanelShell
+      wide
       icon={Puzzle}
       title="Plugins"
       description="Extend Solo with plugins from the Solo plugin marketplace. Plugins add commands, panels, and agent tools."

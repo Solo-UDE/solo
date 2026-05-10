@@ -11,7 +11,7 @@ import {
 } from '../../ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '../../ui/tooltip';
 import { useProviderStore } from '../../../stores/provider-store';
-import { MODEL_OPTIONS, type ProviderIconType } from '../../../lib/constants';
+import { MODEL_OPTIONS, normalizeModelId, type ProviderIconType } from '../../../lib/constants';
 import { cn } from '../../../lib/utils';
 import { toolbarButtonBase } from './toolbar-button-class';
 
@@ -80,12 +80,13 @@ export const ModelPicker: FC<ModelPickerProps> = ({
   const selectedModel = useProviderStore((state) => state.selectedModel);
   const setSelectedModel = useProviderStore((state) => state.setSelectedModel);
   const setActiveProvider = useProviderStore((state) => state.setActiveProvider);
+  const normalizedSelectedModel = selectedModel ? normalizeModelId(selectedModel) : null;
 
   const currentModel = useMemo(
     () =>
-      MODEL_OPTIONS.find((option) => option.value === selectedModel) ||
+      MODEL_OPTIONS.find((option) => option.value === normalizedSelectedModel) ||
       MODEL_OPTIONS[0],
-    [selectedModel]
+    [normalizedSelectedModel]
   );
 
   const ChevronIcon = chevronIcon === 'up' ? ChevronUpIcon : ChevronDownIcon;
@@ -148,7 +149,7 @@ export const ModelPicker: FC<ModelPickerProps> = ({
           className="w-56 flex flex-col gap-0.5"
         >
           {MODEL_OPTIONS.map((option) => {
-            const isSelected = option.value === selectedModel;
+            const isSelected = option.value === normalizedSelectedModel;
             return (
               <DropdownMenuItem
                 key={option.value}

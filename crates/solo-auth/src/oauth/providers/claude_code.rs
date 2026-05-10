@@ -124,7 +124,9 @@ impl ClaudeCodeOAuthConfig {
             ])
             .send()
             .await
-            .map_err(|e| ProviderError::AuthError(format!("Token exchange request failed: {}", e)))?;
+            .map_err(|e| {
+                ProviderError::AuthError(format!("Token exchange request failed: {}", e))
+            })?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -135,10 +137,9 @@ impl ClaudeCodeOAuthConfig {
             )));
         }
 
-        let token_response: ClaudeTokenResponse = response
-            .json()
-            .await
-            .map_err(|e| ProviderError::AuthError(format!("Failed to parse token response: {}", e)))?;
+        let token_response: ClaudeTokenResponse = response.json().await.map_err(|e| {
+            ProviderError::AuthError(format!("Failed to parse token response: {}", e))
+        })?;
 
         // Calculate expiry timestamp (milliseconds since epoch)
         let expires_at = std::time::SystemTime::now()
@@ -168,8 +169,9 @@ impl ClaudeCodeOAuthConfig {
             claude_ai_oauth: oauth.clone(),
         };
 
-        let json = serde_json::to_string(&credentials)
-            .map_err(|e| ProviderError::AuthError(format!("Failed to serialize credentials: {}", e)))?;
+        let json = serde_json::to_string(&credentials).map_err(|e| {
+            ProviderError::AuthError(format!("Failed to serialize credentials: {}", e))
+        })?;
 
         // Get current username for the account field
         let username = std::env::var("USER").unwrap_or_else(|_| "user".to_string());
@@ -183,9 +185,12 @@ impl ClaudeCodeOAuthConfig {
         let output = std::process::Command::new("security")
             .args([
                 "add-generic-password",
-                "-s", "Claude Code-credentials",
-                "-a", &username,
-                "-w", &json,
+                "-s",
+                "Claude Code-credentials",
+                "-a",
+                &username,
+                "-w",
+                &json,
                 "-U",
             ])
             .output()

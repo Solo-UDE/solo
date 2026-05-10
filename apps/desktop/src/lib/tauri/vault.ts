@@ -40,16 +40,20 @@ export const vaultDropPaths = (
   paths: string[],
   scope: VaultScope,
   memoryType: MemoryType,
+  labelIds: string[],
+  expiresAt: number | null,
   syncToCloud: boolean,
-) => invoke<string[]>('vault_drop_paths', { paths, scope, memoryType, syncToCloud });
+) => invoke<string[]>('vault_drop_paths', { paths, scope, memoryType, labelIds, expiresAt, syncToCloud });
 
 export const vaultAddText = (
   text: string,
   title: string | null,
   scope: VaultScope,
   memoryType: MemoryType,
+  labelIds: string[],
+  expiresAt: number | null,
   syncToCloud: boolean,
-) => invoke<VaultEntry>('vault_add_text', { text, title, scope, memoryType, syncToCloud });
+) => invoke<VaultEntry>('vault_add_text', { text, title, scope, memoryType, labelIds, expiresAt, syncToCloud });
 
 export const vaultList = (scope: VaultScope, filters: VaultListFilters) =>
   invoke<VaultEntry[]>('vault_list', { scope, filters });
@@ -62,6 +66,13 @@ export const vaultSyncEntry = (entryId: string) =>
 
 export const vaultUpdateTags = (entryId: string, tags: string[]) =>
   invoke<VaultEntry | null>('vault_update_tags', { entryId, tags });
+
+export const vaultUpdateLabelsAndExpiry = (
+  entryId: string,
+  labelIds: string[],
+  expiresAt: number | null,
+) =>
+  invoke<VaultEntry | null>('vault_update_labels_and_expiry', { entryId, labelIds, expiresAt });
 
 export const vaultSetPinned = (entryId: string, pinned: boolean) =>
   invoke<VaultEntry | null>('vault_set_pinned', { entryId, pinned });
@@ -81,7 +92,8 @@ export const vaultSearch = (
   topK: number,
   mode: VaultSearchMode,
   source: VaultRetrievalSource,
-) => invoke<VaultSearchResult[]>('vault_search', { query, scope, topK, mode, source });
+  includeExpired = false,
+) => invoke<VaultSearchResult[]>('vault_search', { query, scope, topK, mode, source, includeExpired });
 
 export const vaultSuggestPlacement = (entryId: string, workspacePath: string) =>
   invoke<PlacementSuggestion | null>('vault_suggest_placement', { entryId, workspacePath });

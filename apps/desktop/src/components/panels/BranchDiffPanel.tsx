@@ -9,6 +9,7 @@ import { gitGetBranchDiff } from '@/lib/tauri/git';
 import type { FileDiff } from '@/lib/tauri/git';
 import type { PanelProps } from '@/lib/panels/types';
 import { FileDiffSection } from './FileDiffSection';
+import { VirtualList } from '@/components/ui/virtual-list';
 
 interface BranchDiffData {
   branch?: string;
@@ -98,11 +99,16 @@ export const BranchDiffPanel = ({ data, onTitleChange }: PanelProps<BranchDiffDa
       </div>
 
       {/* Scrollable diff list */}
-      <div className="flex-1 overflow-y-auto px-3 py-2 space-y-2">
-        {files.map((file) => (
-          <FileDiffSection key={file.path} file={file} />
-        ))}
-      </div>
+      <VirtualList
+        items={files}
+        estimateSize={() => 320}
+        overscan={4}
+        className="flex-1 px-3 py-2"
+        itemClassName="pb-2"
+        getItemKey={(file) => file.path}
+        testId="branch-diff-files"
+        renderItem={(file) => <FileDiffSection file={file} />}
+      />
     </div>
   );
 };

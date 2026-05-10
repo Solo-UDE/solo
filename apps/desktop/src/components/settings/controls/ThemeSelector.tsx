@@ -3,11 +3,14 @@
  */
 
 import { DesktopIcon, SunIcon, MoonIcon } from '@radix-ui/react-icons';
-import type { ColorScheme } from '@/stores/settingsStore';
+import type { ColorScheme, ThemePalette } from '@/stores/settingsStore';
+
+type PreviewPalette = Pick<ThemePalette, 'accent' | 'background' | 'foreground'>;
 
 interface ThemeSelectorProps {
   value: ColorScheme;
   onChange: (scheme: ColorScheme) => void;
+  palettes?: Record<'light' | 'dark', PreviewPalette>;
 }
 
 // Hardcoded preview colors so each card always shows its theme regardless of current mode
@@ -27,6 +30,24 @@ const dark = {
   text: 'oklch(0.65 0.03 60)',
   textFaint: 'oklch(0.35 0.02 60)',
   accent: 'oklch(0.86 0.14 135)',
+};
+
+type PreviewTheme = typeof light;
+
+const mix = (foreground: string, foregroundPercent: number, background: string) =>
+  `color-mix(in srgb, ${foreground} ${foregroundPercent}%, ${background})`;
+
+const previewFromPalette = (palette: PreviewPalette | undefined, fallback: PreviewTheme): PreviewTheme => {
+  if (!palette) return fallback;
+
+  return {
+    bg: palette.background,
+    sidebar: mix(palette.foreground, 8, palette.background),
+    titlebar: mix(palette.foreground, 12, palette.background),
+    text: mix(palette.foreground, 74, palette.background),
+    textFaint: mix(palette.foreground, 38, palette.background),
+    accent: palette.accent,
+  };
 };
 
 const trafficLights = (
@@ -95,7 +116,7 @@ const ThemePreview = ({ theme }: { theme: typeof light }) => (
 );
 
 /** Split preview for "System" — left half light, right half dark */
-const SystemPreview = () => (
+const SystemPreview = ({ lightTheme, darkTheme }: { lightTheme: PreviewTheme; darkTheme: PreviewTheme }) => (
   <div
     style={{
       width: '100%',
@@ -106,11 +127,11 @@ const SystemPreview = () => (
     }}
   >
     {/* Light half */}
-    <div style={{ width: '50%', display: 'flex', flexDirection: 'column', background: light.bg }}>
+    <div style={{ width: '50%', display: 'flex', flexDirection: 'column', background: lightTheme.bg }}>
       <div
         style={{
           height: 14,
-          background: light.titlebar,
+          background: lightTheme.titlebar,
           display: 'flex',
           alignItems: 'center',
           padding: '0 5px',
@@ -119,14 +140,14 @@ const SystemPreview = () => (
         {trafficLights}
       </div>
       <div style={{ flex: 1 }}>
-        <CodeLines color={light.text} faintColor={light.textFaint} />
+        <CodeLines color={lightTheme.text} faintColor={lightTheme.textFaint} />
       </div>
     </div>
     {/* Dark half */}
-    <div style={{ width: '50%', display: 'flex', flexDirection: 'column', background: dark.bg }}>
-      <div style={{ height: 14, background: dark.titlebar }} />
+    <div style={{ width: '50%', display: 'flex', flexDirection: 'column', background: darkTheme.bg }}>
+      <div style={{ height: 14, background: darkTheme.titlebar }} />
       <div style={{ flex: 1 }}>
-        <CodeLines color={dark.text} faintColor={dark.textFaint} />
+        <CodeLines color={darkTheme.text} faintColor={darkTheme.textFaint} />
       </div>
     </div>
   </div>
@@ -138,7 +159,10 @@ const options: { value: ColorScheme; label: string; Icon: typeof DesktopIcon }[]
   { value: 'dark', label: 'Dark', Icon: MoonIcon },
 ];
 
-export function ThemeSelector({ value, onChange }: ThemeSelectorProps) {
+export function ThemeSelector({ value, onChange, palettes }: ThemeSelectorProps) {
+  const lightPreview = previewFromPalette(palettes?.light, light);
+  const darkPreview = previewFromPalette(palettes?.dark, dark);
+
   return (
     <div className="flex gap-2.5">
       {options.map(({ value: scheme, label, Icon }) => {
@@ -172,9 +196,9 @@ export function ThemeSelector({ value, onChange }: ThemeSelectorProps) {
               }}
             >
               {scheme === 'system' ? (
-                <SystemPreview />
+                <SystemPreview lightTheme={lightPreview} darkTheme={darkPreview} />
               ) : (
-                <ThemePreview theme={scheme === 'light' ? light : dark} />
+                <ThemePreview theme={scheme === 'light' ? lightPreview : darkPreview} />
               )}
             </div>
             {/* Label */}

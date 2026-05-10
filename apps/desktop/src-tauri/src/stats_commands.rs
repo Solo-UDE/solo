@@ -4,7 +4,7 @@
 //! setup hook can register this `.manage(...)` without blocking on disk I/O.
 //! The collector is initialized on the first successful auth session (the
 //! frontend calls `stats_initialize` once the user signs in) because we need
-//! the Cognito access token to meaningfully sync anything.
+//! a fresh Cognito token to meaningfully sync anything.
 
 use std::sync::Arc;
 
@@ -13,13 +13,69 @@ use solo_protocol::{
     CumulativeStats, DailyActivityEntry, LeaderboardEntry, StatsSnapshot, TierInfo,
 };
 use solo_stats::{DailyActivity, StatsCollector, StatsEvent, TokenProvider};
-use tauri::State;
+use tauri::{AppHandle, Manager as _, State};
 use tokio::sync::RwLock;
 use tracing::{debug, warn};
 
 use crate::auth_commands::AuthState;
 use crate::desktop_config;
 use crate::provider_commands::ProviderAuthState;
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TierInfoWire {
+    tier: u8,
+    #[serde(alias = "tier_progress")]
+    tier_progress: f64,
+    score: f64,
+    #[serde(alias = "tier_name")]
+    tier_name: String,
+    #[serde(default)]
+    names: Vec<String>,
+}
+
+impl From<TierInfoWire> for TierInfo {
+    fn from(wire: TierInfoWire) -> Self {
+        Self {
+            tier: wire.tier,
+            tier_progress: wire.tier_progress,
+            score: wire.score,
+            tier_name: wire.tier_name,
+            names: wire.names,
+        }
+    }
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LeaderboardEntryWire {
+    #[serde(alias = "user_id")]
+    user_id: String,
+    #[serde(default, alias = "github_username")]
+    github_username: Option<String>,
+    tier: u8,
+    score: f64,
+    #[serde(default)]
+    commits: u64,
+    #[serde(default)]
+    tokens: u64,
+    #[serde(default)]
+    worktrees: u64,
+}
+
+impl From<LeaderboardEntryWire> for LeaderboardEntry {
+    fn from(wire: LeaderboardEntryWire) -> Self {
+        Self {
+            user_id: wire.user_id,
+            github_username: wire.github_username,
+            tier: wire.tier,
+            score: wire.score,
+            commits: wire.commits,
+            tokens: wire.tokens,
+            worktrees: wire.worktrees,
+        }
+    }
+}
 
 pub struct StatsState {
     collector: Arc<RwLock<Option<Arc<StatsCollector>>>>,
@@ -53,15 +109,18 @@ impl Default for StatsState {
     }
 }
 
-/// Token provider that delegates to `AuthState` + vault for the access token.
+/// Token provider that delegates to `AuthState` + vault for a fresh Cognito ID
+/// token on each cloud call.
 struct AuthStateTokenProvider {
-    access_token: Arc<RwLock<Option<String>>>,
+    app: AppHandle,
 }
 
 #[async_trait]
 impl TokenProvider for AuthStateTokenProvider {
     async fn bearer_token(&self) -> Option<String> {
-        self.access_token.read().await.clone()
+        let auth = self.app.state::<AuthState>();
+        let provider_auth = self.app.state::<ProviderAuthState>();
+        crate::auth_commands::fresh_id_token_snapshot(&auth, &provider_auth).await
     }
 }
 
@@ -70,29 +129,43 @@ impl TokenProvider for AuthStateTokenProvider {
 /// returns an authenticated user on startup. Idempotent.
 #[tauri::command]
 pub async fn stats_initialize(
+    app: AppHandle,
     state: State<'_, StatsState>,
     auth: State<'_, AuthState>,
     provider_auth: State<'_, ProviderAuthState>,
 ) -> Result<(), String> {
     let mut slot = state.collector.write().await;
-    if slot.is_some() {
+    if let Some(collector) = slot.as_ref().cloned() {
         debug!("stats collector already initialized");
+        drop(slot);
+        if let Err(err) = collector.refresh_from_cloud().await {
+            warn!(?err, "stats cloud refresh failed");
+        }
+        if let Err(err) = collector.ensure_cloud_row().await {
+            warn!(?err, "stats cloud row ensure failed");
+        }
         return Ok(());
     }
 
-    let token = crate::auth_commands::access_token_snapshot(&auth, &provider_auth).await;
-    let Some(token) = token else {
+    if crate::auth_commands::fresh_id_token_snapshot(&auth, &provider_auth)
+        .await
+        .is_none()
+    {
         return Err("not authenticated".to_string());
-    };
+    }
 
-    let provider = Arc::new(AuthStateTokenProvider {
-        access_token: Arc::new(RwLock::new(Some(token))),
-    });
+    let provider = Arc::new(AuthStateTokenProvider { app });
 
     let collector = StatsCollector::new(desktop_config::api_endpoint().to_string(), provider)
         .await
         .map_err(|e| format!("init stats: {e}"))?;
     let collector = Arc::new(collector);
+    if let Err(err) = collector.refresh_from_cloud().await {
+        warn!(?err, "initial stats cloud refresh failed");
+    }
+    if let Err(err) = collector.ensure_cloud_row().await {
+        warn!(?err, "initial stats cloud row ensure failed");
+    }
     collector.spawn_sync_loop();
     *slot = Some(collector);
     Ok(())
@@ -147,7 +220,7 @@ pub async fn stats_get_tier(
     auth: State<'_, AuthState>,
     provider_auth: State<'_, ProviderAuthState>,
 ) -> Result<TierInfo, String> {
-    let token = crate::auth_commands::access_token_snapshot(&auth, &provider_auth)
+    let token = crate::auth_commands::fresh_id_token_snapshot(&auth, &provider_auth)
         .await
         .ok_or_else(|| "not authenticated".to_string())?;
     let url = format!(
@@ -165,27 +238,31 @@ pub async fn stats_get_tier(
         let body = resp.text().await.unwrap_or_default();
         return Err(format!("tier fetch failed ({status}): {body}"));
     }
-    resp.json::<TierInfo>()
+    let tier = resp
+        .json::<TierInfoWire>()
         .await
-        .map_err(|e| format!("parse tier: {e}"))
+        .map_err(|e| format!("parse tier: {e}"))?;
+    Ok(tier.into())
 }
 
 /// Fetch the global leaderboard (top N by score).
 #[tauri::command]
 pub async fn stats_get_leaderboard(
     limit: Option<u32>,
+    tier: Option<u8>,
     auth: State<'_, AuthState>,
     provider_auth: State<'_, ProviderAuthState>,
 ) -> Result<Vec<LeaderboardEntry>, String> {
-    let token = crate::auth_commands::access_token_snapshot(&auth, &provider_auth)
+    let token = crate::auth_commands::fresh_id_token_snapshot(&auth, &provider_auth)
         .await
         .ok_or_else(|| "not authenticated".to_string())?;
     let cap = limit.unwrap_or(100).min(500);
-    let url = format!(
-        "{}/v1/leaderboard?limit={}",
-        desktop_config::api_endpoint().trim_end_matches('/'),
-        cap
-    );
+    let base = desktop_config::api_endpoint().trim_end_matches('/');
+    let url = match tier {
+        Some(tier @ 1..=7) => format!("{base}/v1/leaderboard/tier/{tier}?limit={cap}"),
+        Some(_) => return Err("tier must be 1-7".to_string()),
+        None => format!("{base}/v1/leaderboard?limit={cap}"),
+    };
     let resp = reqwest::Client::new()
         .get(&url)
         .bearer_auth(token)
@@ -199,13 +276,14 @@ pub async fn stats_get_leaderboard(
     }
     #[derive(serde::Deserialize)]
     struct Wrap {
-        entries: Vec<LeaderboardEntry>,
+        #[serde(default, alias = "leaderboard")]
+        entries: Vec<LeaderboardEntryWire>,
     }
     let wrap: Wrap = resp
         .json()
         .await
         .map_err(|e| format!("parse leaderboard: {e}"))?;
-    Ok(wrap.entries)
+    Ok(wrap.entries.into_iter().map(Into::into).collect())
 }
 
 /// Generate a share card for the current user's tier. Returns a signed S3 URL.
@@ -214,7 +292,7 @@ pub async fn stats_generate_card(
     auth: State<'_, AuthState>,
     provider_auth: State<'_, ProviderAuthState>,
 ) -> Result<String, String> {
-    let token = crate::auth_commands::access_token_snapshot(&auth, &provider_auth)
+    let token = crate::auth_commands::fresh_id_token_snapshot(&auth, &provider_auth)
         .await
         .ok_or_else(|| "not authenticated".to_string())?;
     let url = format!(

@@ -207,15 +207,10 @@ impl GitHubOAuthConfig {
         let response = client
             .post(Self::DEVICE_CODE_URL)
             .header("Accept", "application/json")
-            .form(&[
-                ("client_id", client_id.as_str()),
-                ("scope", scope.as_str()),
-            ])
+            .form(&[("client_id", client_id.as_str()), ("scope", scope.as_str())])
             .send()
             .await
-            .map_err(|e| {
-                ProviderError::AuthError(format!("Device flow request failed: {}", e))
-            })?;
+            .map_err(|e| ProviderError::AuthError(format!("Device flow request failed: {}", e)))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -254,9 +249,7 @@ impl GitHubOAuthConfig {
             .get("verification_uri")
             .and_then(|v| v.as_str())
             .ok_or_else(|| {
-                ProviderError::AuthError(
-                    "No verification_uri in device flow response".to_string(),
-                )
+                ProviderError::AuthError("No verification_uri in device flow response".to_string())
             })?
             .to_string();
 
@@ -273,10 +266,7 @@ impl GitHubOAuthConfig {
             .and_then(|v| v.as_u64())
             .unwrap_or(900) as u32;
 
-        let interval = body
-            .get("interval")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(5) as u32;
+        let interval = body.get("interval").and_then(|v| v.as_u64()).unwrap_or(5) as u32;
 
         Ok(DeviceCodeResponse {
             user_code,
@@ -305,16 +295,11 @@ impl GitHubOAuthConfig {
             .form(&[
                 ("client_id", client_id.as_str()),
                 ("device_code", device_code),
-                (
-                    "grant_type",
-                    "urn:ietf:params:oauth:grant-type:device_code",
-                ),
+                ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
             ])
             .send()
             .await
-            .map_err(|e| {
-                ProviderError::AuthError(format!("Device token poll failed: {}", e))
-            })?;
+            .map_err(|e| ProviderError::AuthError(format!("Device token poll failed: {}", e)))?;
 
         let body: serde_json::Value = response.json().await.map_err(|e| {
             ProviderError::AuthError(format!("Failed to parse device poll response: {}", e))

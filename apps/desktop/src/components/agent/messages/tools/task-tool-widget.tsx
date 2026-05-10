@@ -1,8 +1,8 @@
 import { Bot, Loader2 } from 'lucide-react';
 import { useState } from 'react';
 
-import { StreamdownNarrative } from '../StreamdownNarrative';
 import { ExpandRegion } from '../shared/ExpandRegion';
+import { VirtualTextLines } from '@/components/ui/virtual-list';
 
 import type { FC } from 'react';
 
@@ -23,6 +23,7 @@ export const TaskToolWidget: FC<TaskToolWidgetProps> = ({
   isRunning = false,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
+  const lines = output?.split('\n') ?? [];
 
   return (
     <div className="my-2 tool-widget-frame">
@@ -44,13 +45,14 @@ export const TaskToolWidget: FC<TaskToolWidgetProps> = ({
 
       <ExpandRegion isExpanded={isExpanded}>
         {output ? (
-          <div className="p-3 max-h-[300px] overflow-auto chat-surface">
-            <StreamdownNarrative
-              content={output}
-              isStreaming={isRunning}
-              className="text-foreground/90 text-xs leading-relaxed"
-            />
-          </div>
+          <VirtualTextLines
+            lines={lines}
+            estimateSize={() => 20}
+            overscan={16}
+            className="chat-surface max-h-[300px] p-3 text-xs"
+            lineClassName="whitespace-pre text-foreground/90 leading-5"
+            testId="legacy-task-tool-output"
+          />
         ) : null}
       </ExpandRegion>
     </div>

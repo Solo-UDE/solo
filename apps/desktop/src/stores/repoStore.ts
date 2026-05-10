@@ -13,6 +13,7 @@ import * as worktreeApi from '../lib/tauri/worktree';
 import * as fsApi from '../lib/tauri/fs';
 import { gitGetStatus } from '../lib/tauri/git';
 import { pickRandomIcon, pickRandomColor } from '../lib/repoIdentity';
+import { settleAfterPaint, trace } from '../lib/perf';
 import type { RepoIconName, RepoColorName } from '../lib/repoIdentity';
 
 enableMapSet();
@@ -206,105 +207,114 @@ export const useRepoStore = create<RepoStore>()(
       },
 
       selectWorktree: async (repoPath: string, worktreeId: string | null) => {
-        // Increment switch sequence to detect stale switches
+        const repo = get().repos.get(repoPath);
+        const previousActiveRepoPath = get().activeRepoPath;
+        const perf = trace('repo.worktree.switch', `${repo?.name ?? repoPath}:${worktreeId ?? 'main'}`);
+
+        // Increment switch sequence and expose the target immediately so the
+        // sidebar can repaint from cached repo/worktree metadata.
         set((state) => {
           state._switchSeq += 1;
           state.isSwitching = true;
-        });
-        const seq = get()._switchSeq;
-
-        const { useWorkspaceStore } = await import('./workspaceStore');
-        const { useWorktreeStore } = await import('./worktreeStore');
-        const { useFileExplorerStore } = await import('./fileExplorerStore');
-
-        // 1. If switching repos, do a full workspace switch
-        const currentRepo = get().activeRepoPath;
-
-        if (currentRepo !== repoPath) {
-          const { useGitStore } = await import('./gitStore');
-
-          // Cache git stats for the repo we're leaving
-          if (currentRepo) {
-            try {
-              const gitState = useGitStore.getState();
-              set((state) => {
-                const entry = state.repos.get(currentRepo);
-                if (entry) {
-                  entry.cachedCommitsAhead = gitState.commitsAhead ?? 0;
-                }
-              });
-            } catch {
-              // Non-critical - just skip caching
-            }
-          }
-
-          // Light context switch -- only update file tree + git.
-          // Sessions, panels, and terminals are left untouched.
-          // switchWorkspace() is still used by WorkspaceSwitcher for full teardown.
-          useGitStore.getState().reset();
-
-          // Stop old file watcher, then switch to new root.
-          // setRootPath handles: setWorkspaceRoot() + startWatching() + readDirectory()
-          // rootPath goes from old -> new directly (never null, no flash)
-          await fsApi.stopWatching().catch(console.error);
-          if (get()._switchSeq !== seq) return;
-
-          await useFileExplorerStore.getState().setRootPath(repoPath);
-          if (get()._switchSeq !== seq) return;
-
-          // Track in recents
-          useWorkspaceStore.getState().addRecent(repoPath);
-
-          // Re-detect git
-          useGitStore.getState().startPolling();
-        } else {
-          // Same repo — ensure rootPath is set (may be null after app restart)
-          const currentRoot = useFileExplorerStore.getState().rootPath;
-          if (!currentRoot) {
-            await useFileExplorerStore.getState().setRootPath(repoPath);
-          }
-        }
-
-        // Abort if a newer switch happened while we were awaiting
-        if (get()._switchSeq !== seq) return;
-
-        // 2. Activate the worktree (null = main workspace)
-        let effectiveWorktreeId = worktreeId;
-        try {
-          if (worktreeId) {
-            await useWorktreeStore.getState().setActive(worktreeId);
-          } else if (useWorktreeStore.getState().activeWorktreeId !== null) {
-            await useWorktreeStore.getState().setActive(null);
-          }
-        } catch (err) {
-          console.error('Failed to set active worktree:', err);
-          // Use the worktreeStore's actual state to stay in sync
-          effectiveWorktreeId = useWorktreeStore.getState().activeWorktreeId;
-        }
-
-        if (get()._switchSeq !== seq) return;
-
-        // 3. Update our state + expand the active repo
-        set((state) => {
-          // Collapse the previously active repo when switching
           if (state.activeRepoPath && state.activeRepoPath !== repoPath) {
             const prevEntry = state.repos.get(state.activeRepoPath);
             if (prevEntry) prevEntry.isExpanded = false;
           }
           state.activeRepoPath = repoPath;
-          state.activeWorktreeId = effectiveWorktreeId;
-          // Auto-expand the active repo in the accordion
+          state.activeWorktreeId = worktreeId;
           const entry = state.repos.get(repoPath);
           if (entry) entry.isExpanded = true;
         });
+        perf.endHandler();
+        const seq = get()._switchSeq;
 
-        // 4. Refresh the worktree list for the repo we just activated
-        try {
-          await get().refreshWorktrees(repoPath);
-        } finally {
+        const settle = () => {
           if (get()._switchSeq === seq) {
             set((state) => { state.isSwitching = false; });
           }
+          settleAfterPaint(perf);
+        };
+        const isStale = () => {
+          if (get()._switchSeq === seq) return false;
+          settleAfterPaint(perf);
+          return true;
+        };
+
+        try {
+          const { useWorkspaceStore } = await import('./workspaceStore');
+          const { useWorktreeStore } = await import('./worktreeStore');
+          const { useFileExplorerStore } = await import('./fileExplorerStore');
+
+          // 1. If switching repos, do a light workspace switch.
+          const previousRepo = previousActiveRepoPath === repoPath ? null : previousActiveRepoPath;
+          const currentRoot = useFileExplorerStore.getState().rootPath;
+
+          if (previousActiveRepoPath !== repoPath) {
+            const { useGitStore } = await import('./gitStore');
+
+            // Cache git stats for the repo we're leaving
+            if (previousRepo) {
+              try {
+                const gitState = useGitStore.getState();
+                set((state) => {
+                  const entry = state.repos.get(previousRepo);
+                  if (entry) {
+                    entry.cachedCommitsAhead = gitState.commitsAhead ?? 0;
+                  }
+                });
+              } catch {
+                // Non-critical - just skip caching
+              }
+            }
+
+            useGitStore.getState().reset();
+            await fsApi.stopWatching().catch(console.error);
+            if (isStale()) return;
+
+            await useFileExplorerStore.getState().setRootPath(repoPath);
+            if (isStale()) return;
+
+            useWorkspaceStore.getState().addRecent(repoPath);
+            useGitStore.getState().startPolling();
+          } else if (!currentRoot) {
+            await useFileExplorerStore.getState().setRootPath(repoPath);
+          }
+
+          if (isStale()) return;
+
+          // 2. Activate the worktree (null = main workspace). The worktree
+          // store updates active state synchronously and refreshes roots from
+          // cache before backend confirmation.
+          let effectiveWorktreeId = worktreeId;
+          try {
+            if (worktreeId) {
+              await useWorktreeStore.getState().setActive(worktreeId);
+            } else if (useWorktreeStore.getState().activeWorktreeId !== null) {
+              await useWorktreeStore.getState().setActive(null);
+            }
+          } catch (err) {
+            console.error('Failed to set active worktree:', err);
+            effectiveWorktreeId = useWorktreeStore.getState().activeWorktreeId;
+          }
+
+          if (isStale()) return;
+
+          set((state) => {
+            state.activeRepoPath = repoPath;
+            state.activeWorktreeId = effectiveWorktreeId;
+            const entry = state.repos.get(repoPath);
+            if (entry) entry.isExpanded = true;
+          });
+
+          // 3. Worktree metadata refresh is no longer on the interaction hot path.
+          settle();
+          void get().refreshWorktrees(repoPath).finally(() => {
+            if (get()._switchSeq === seq) settleAfterPaint(perf);
+          });
+        } catch (error) {
+          console.error('Failed to switch worktree:', error);
+          settle();
+          throw error;
         }
       },
 

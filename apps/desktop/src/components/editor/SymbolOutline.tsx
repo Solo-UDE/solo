@@ -3,11 +3,12 @@
  * Click to navigate to symbol location
  */
 
-import { useState, useCallback } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { ChevronRightIcon, ChevronDownIcon } from '@radix-ui/react-icons';
 import { Network } from 'lucide-react';
 import { motion } from 'motion/react';
 import { ListSkeleton } from '@/components/ui/skeletons';
+import { VirtualList } from '@/components/ui/virtual-list';
 import type { Symbol, SymbolKind } from '../../lib/tauri/parse';
 import { getSymbolIcon, getSymbolKindName } from '../../lib/tauri/parse';
 
@@ -17,12 +18,6 @@ interface SymbolOutlineProps {
   error?: string | null;
   onSymbolClick?: (symbol: Symbol) => void;
   className?: string;
-}
-
-interface SymbolNodeProps {
-  symbol: Symbol;
-  depth: number;
-  onSymbolClick?: (symbol: Symbol) => void;
 }
 
 /**
@@ -57,81 +52,27 @@ function getSymbolColor(kind: SymbolKind): string {
   }
 }
 
-function SymbolNode({ symbol, depth, onSymbolClick }: SymbolNodeProps) {
-  const [expanded, setExpanded] = useState(true);
-  const hasChildren = symbol.children.length > 0;
+interface FlattenedSymbol {
+  readonly key: string;
+  readonly symbol: Symbol;
+  readonly depth: number;
+}
 
-  const handleClick = useCallback(() => {
-    onSymbolClick?.(symbol);
-  }, [symbol, onSymbolClick]);
-
-  const handleToggle = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation();
-      setExpanded(!expanded);
-    },
-    [expanded]
-  );
-
-  return (
-    <div>
-      <div
-        className={`
-          flex items-center gap-1 py-0.5 px-2 cursor-pointer
-          hover:bg-muted/60 rounded-md
-          text-[13px] transition-colors duration-150
-        `}
-        style={{ paddingLeft: `${depth * 12 + 8}px` }}
-        onClick={handleClick}
-        title={`${getSymbolKindName(symbol.kind)}: ${symbol.name}${symbol.detail ? ` ${symbol.detail}` : ''}`}
-      >
-        {/* Expand/collapse toggle */}
-        <div className="w-4 h-4 flex items-center justify-center shrink-0">
-          {hasChildren ? (
-            <button
-              onClick={handleToggle}
-              className="p-0.5 hover:bg-muted rounded-md transition-colors duration-150"
-            >
-              {expanded ? (
-                <ChevronDownIcon className="w-3 h-3 text-muted-foreground" />
-              ) : (
-                <ChevronRightIcon className="w-3 h-3 text-muted-foreground" />
-              )}
-            </button>
-          ) : null}
-        </div>
-
-        {/* Symbol icon */}
-        <span className={`shrink-0 font-mono text-xs ${getSymbolColor(symbol.kind)}`}>
-          {getSymbolIcon(symbol.kind)}
-        </span>
-
-        {/* Symbol name */}
-        <span className={`truncate ${getSymbolColor(symbol.kind)}`}>
-          {symbol.name}
-        </span>
-
-        {/* Detail (e.g., function parameters) */}
-        {symbol.detail && (
-          <span className="text-muted-foreground truncate text-xs">{symbol.detail}</span>
-        )}
-      </div>
-
-      {/* Children */}
-      {hasChildren && expanded && (
-        <div>
-          {symbol.children.map((child, i) => (
-            <SymbolNode
-              key={`${child.name}-${i}`}
-              symbol={child}
-              depth={depth + 1}
-              onSymbolClick={onSymbolClick}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
+function flattenSymbols(
+  symbols: readonly Symbol[],
+  collapsed: ReadonlySet<string>,
+  depth = 0,
+  prefix = '',
+): FlattenedSymbol[] {
+  const rows: FlattenedSymbol[] = [];
+  symbols.forEach((symbol, index) => {
+    const key = `${prefix}/${symbol.name}:${symbol.kind}:${index}`;
+    rows.push({ key, symbol, depth });
+    if (symbol.children.length > 0 && !collapsed.has(key)) {
+      rows.push(...flattenSymbols(symbol.children, collapsed, depth + 1, key));
+    }
+  });
+  return rows;
 }
 
 export function SymbolOutline({
@@ -141,6 +82,22 @@ export function SymbolOutline({
   onSymbolClick,
   className = '',
 }: SymbolOutlineProps) {
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+
+  const rows = useMemo(
+    () => flattenSymbols(symbols, collapsed),
+    [symbols, collapsed],
+  );
+
+  const toggle = useCallback((key: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
   if (isLoading) {
     return (
       <div className={`h-full bg-background ${className}`}>
@@ -176,17 +133,59 @@ export function SymbolOutline({
   }
 
   return (
-    <div className={`bg-background overflow-auto ${className}`}>
-      <div className="py-1">
-        {symbols.map((symbol, i) => (
-          <SymbolNode
-            key={`${symbol.name}-${i}`}
-            symbol={symbol}
-            depth={0}
-            onSymbolClick={onSymbolClick}
-          />
-        ))}
-      </div>
-    </div>
+    <VirtualList
+      items={rows}
+      estimateSize={() => 28}
+      overscan={12}
+      measureElement={false}
+      className={`bg-background ${className}`}
+      contentClassName="py-1"
+      getItemKey={(row) => row.key}
+      testId="symbol-outline"
+      renderItem={(row) => {
+        const { symbol, depth } = row;
+        const hasChildren = symbol.children.length > 0;
+        const isCollapsed = collapsed.has(row.key);
+        return (
+          <div
+            className="
+              flex items-center gap-1 py-0.5 px-2 cursor-pointer
+              hover:bg-muted/60 rounded-md
+              text-[13px] transition-colors duration-150
+            "
+            style={{ paddingLeft: `${depth * 12 + 8}px` }}
+            onClick={() => onSymbolClick?.(symbol)}
+            title={`${getSymbolKindName(symbol.kind)}: ${symbol.name}${symbol.detail ? ` ${symbol.detail}` : ''}`}
+          >
+            <div className="w-4 h-4 flex items-center justify-center shrink-0">
+              {hasChildren ? (
+                <button
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    toggle(row.key);
+                  }}
+                  className="p-0.5 hover:bg-muted rounded-md transition-colors duration-150"
+                >
+                  {isCollapsed ? (
+                    <ChevronRightIcon className="w-3 h-3 text-muted-foreground" />
+                  ) : (
+                    <ChevronDownIcon className="w-3 h-3 text-muted-foreground" />
+                  )}
+                </button>
+              ) : null}
+            </div>
+            <span className={`shrink-0 font-mono text-xs ${getSymbolColor(symbol.kind)}`}>
+              {getSymbolIcon(symbol.kind)}
+            </span>
+            <span className={`truncate ${getSymbolColor(symbol.kind)}`}>
+              {symbol.name}
+            </span>
+            {symbol.detail && (
+              <span className="text-muted-foreground truncate text-xs">{symbol.detail}</span>
+            )}
+          </div>
+        );
+      }}
+    />
   );
 }

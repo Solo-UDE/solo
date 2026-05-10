@@ -6,7 +6,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
-import { open } from "@tauri-apps/plugin-shell";
 
 // =============================================================================
 // Types
@@ -43,6 +42,12 @@ export type AuthCallbackPayload =
       url: string;
     }
   | {
+      kind: "github_link";
+      url: string;
+      success: boolean;
+      error: string | null;
+    }
+  | {
       kind: "invalid";
       url: string;
       message: string;
@@ -62,6 +67,10 @@ export interface OAuthLaunchResult {
   authUrl: string;
   opened: boolean;
   error?: string;
+}
+
+export async function openExternalAuthUrl(authUrl: string): Promise<void> {
+  await invoke("auth_open_external_url", { url: authUrl });
 }
 
 /**
@@ -84,22 +93,12 @@ export async function signInWithOAuth(
     return { authUrl, opened: false, error: msg };
   }
   try {
-    await open(authUrl);
-    console.debug("[auth.signInWithOAuth] shell.open resolved");
+    await openExternalAuthUrl(authUrl);
+    console.debug("[auth.signInWithOAuth] external browser open resolved");
     return { authUrl, opened: true };
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
-    console.error("[auth.signInWithOAuth] shell.open failed:", msg);
-    try {
-      const w = window.open(authUrl, "_blank");
-      if (w) {
-        console.debug("[auth.signInWithOAuth] window.open fallback opened a window");
-        return { authUrl, opened: true };
-      }
-      console.warn("[auth.signInWithOAuth] window.open returned null");
-    } catch (windowErr) {
-      console.error("[auth.signInWithOAuth] window.open fallback threw:", windowErr);
-    }
+    console.error("[auth.signInWithOAuth] external browser open failed:", msg);
     return { authUrl, opened: false, error: msg };
   }
 }
@@ -112,7 +111,7 @@ export async function signInWithOAuth(
 export async function signInWithEmail(email: string): Promise<void> {
   const authUrl = await invoke<string>("auth_start_magic_link", { email });
   try {
-    await open(authUrl);
+    await openExternalAuthUrl(authUrl);
   } catch (error) {
     console.error("Failed to open browser:", error);
     window.open(authUrl, "_blank");
@@ -169,7 +168,7 @@ export async function signOut(): Promise<string> {
     return logoutUrl;
   }
   try {
-    await open(logoutUrl);
+    await openExternalAuthUrl(logoutUrl);
     console.debug("[auth.signOut] opened logout URL in browser");
   } catch (error) {
     console.error("[auth.signOut] failed to open browser for logout:", error);
@@ -264,6 +263,17 @@ export function parseAuthCallbackPayload(rawUrl: string): AuthCallbackPayload {
     };
   }
 
+  if (url.hostname === "github" && pathname === "/linked") {
+    const params = callbackParams(url);
+    const error = params.get("error");
+    return {
+      kind: "github_link",
+      url: rawUrl,
+      success: params.get("success") === "1" && !error,
+      error,
+    };
+  }
+
   const params = callbackParams(url);
   const code = params.get("code");
   if (code) {
@@ -328,6 +338,13 @@ export async function onAuthCallback(
           break;
         case "signout":
           console.info("Received sign-out callback");
+          break;
+        case "github_link":
+          if (payload.success) {
+            console.info("Received GitHub link callback");
+          } else {
+            console.error("GitHub link callback returned an error", payload);
+          }
           break;
         case "invalid":
           console.error(payload.message, { url: payload.url });

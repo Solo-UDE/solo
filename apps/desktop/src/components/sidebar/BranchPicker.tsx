@@ -19,6 +19,7 @@ import { ArrowDown, ArrowUp, GitBranch, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useGitStore } from '@/stores/gitStore';
 import { cn } from '@/lib/utils';
+import { VirtualList } from '@/components/ui/virtual-list';
 
 export interface BranchPickerProps {
   readonly onClose: () => void;
@@ -182,59 +183,67 @@ export const BranchPicker: FC<BranchPickerProps> = ({
         </div>
       )}
 
-      <div className="max-h-[240px] overflow-y-auto px-0.5">
+      <div className="flex max-h-[240px] min-h-[40px] flex-col px-0.5">
         {branches.length === 0 ? (
           <div className="px-2.5 py-2 text-xs text-muted-foreground/60">
             No branches loaded.
           </div>
         ) : (
-          branches.map((branch) => {
-            const isCurrent = branch.is_head;
-            return (
-              <button
-                key={branch.name}
-                type="button"
-                onClick={() => {
-                  if (isCurrent || isCheckingOut) return;
-                  void handlePick(branch.name);
-                }}
-                disabled={isCheckingOut}
-                className={cn(
-                  'group w-full flex items-center gap-2 rounded-[8px] px-2.5 py-1.5 text-xs',
-                  isCurrent
-                    ? 'bg-primary/10 text-foreground'
-                    : 'text-muted-foreground hover:bg-background/65 hover:text-foreground',
-                  isCheckingOut && 'disabled:opacity-50 disabled:pointer-events-none',
-                  'transition-colors duration-150',
-                )}
-              >
-                <GitBranch
+          <VirtualList
+            items={branches}
+            estimateSize={() => 32}
+            overscan={10}
+            measureElement={false}
+            className="min-h-0 flex-1"
+            getItemKey={(branch) => branch.name}
+            testId="branch-picker-branches"
+            renderItem={(branch) => {
+              const isCurrent = branch.is_head;
+              return (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isCurrent || isCheckingOut) return;
+                    void handlePick(branch.name);
+                  }}
+                  disabled={isCheckingOut}
                   className={cn(
-                    'h-3.5 w-3.5 shrink-0',
-                    isCurrent ? 'text-primary' : '',
+                    'group w-full flex items-center gap-2 rounded-[8px] px-2.5 py-1.5 text-xs',
+                    isCurrent
+                      ? 'bg-primary/10 text-foreground'
+                      : 'text-muted-foreground hover:bg-background/65 hover:text-foreground',
+                    isCheckingOut && 'disabled:opacity-50 disabled:pointer-events-none',
+                    'transition-colors duration-150',
                   )}
-                />
-                <span className="flex-1 truncate text-left">{branch.name}</span>
+                >
+                  <GitBranch
+                    className={cn(
+                      'h-3.5 w-3.5 shrink-0',
+                      isCurrent ? 'text-primary' : '',
+                    )}
+                  />
+                  <span className="flex-1 truncate text-left">{branch.name}</span>
 
-                {(branch.ahead > 0 || branch.behind > 0) && (
-                  <span className="flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground/60">
-                    {branch.ahead > 0 && (
-                      <span className="flex items-center gap-0.5">
-                        <ArrowUp className="h-2.5 w-2.5" />
-                        {branch.ahead}
-                      </span>
-                    )}
-                    {branch.behind > 0 && (
-                      <span className="flex items-center gap-0.5">
-                        <ArrowDown className="h-2.5 w-2.5" />
-                        {branch.behind}
-                      </span>
-                    )}
-                  </span>
-                )}
-              </button>
-            );
-          })
+                  {(branch.ahead > 0 || branch.behind > 0) && (
+                    <span className="flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground/60">
+                      {branch.ahead > 0 && (
+                        <span className="flex items-center gap-0.5">
+                          <ArrowUp className="h-2.5 w-2.5" />
+                          {branch.ahead}
+                        </span>
+                      )}
+                      {branch.behind > 0 && (
+                        <span className="flex items-center gap-0.5">
+                          <ArrowDown className="h-2.5 w-2.5" />
+                          {branch.behind}
+                        </span>
+                      )}
+                    </span>
+                  )}
+                </button>
+              );
+            }}
+          />
         )}
       </div>
     </div>

@@ -281,7 +281,7 @@ export function BugReportDialog({ onClose }: BugReportDialogProps) {
             <div className="space-y-2">
               <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-muted/40 text-muted-foreground text-xs">
                 <GitHubLogoIcon className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                <span>Connect your GitHub account to submit bug reports.</span>
+                <span>Link GitHub to your Solo account to submit bug reports.</span>
               </div>
               <Button
                 variant="secondary"
@@ -295,7 +295,7 @@ export function BugReportDialog({ onClose }: BugReportDialogProps) {
                 ) : (
                   <GitHubLogoIcon className="w-3.5 h-3.5" />
                 )}
-                {isConnecting ? 'Waiting for authorization...' : 'Connect GitHub'}
+                {isConnecting ? 'Finish linking in browser...' : 'Link GitHub'}
               </Button>
             </div>
           )}

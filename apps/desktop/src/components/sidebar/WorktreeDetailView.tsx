@@ -147,7 +147,7 @@ export const WorktreeDetailView: FC<WorktreeDetailViewProps> = ({ onFileOpen }) 
               onClick={() => handleSectionChange(key)}
               className={cn(
                 'relative w-8 h-8 flex items-center justify-center rounded-lg',
-                'transition-[transform,background-color,color] duration-200',
+                'transition-[transform,background-color,color] duration-150',
                 'active:scale-95',
                 activeSection === key
                   ? 'text-foreground'
@@ -184,7 +184,7 @@ export const WorktreeDetailView: FC<WorktreeDetailViewProps> = ({ onFileOpen }) 
             className={cn(
               'ml-auto w-6 h-6 flex items-center justify-center rounded-md',
               'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
-              'active:scale-95 transition-all duration-200',
+              'active:scale-95 transition-[background-color,color,transform] duration-150',
             )}
             title="New Session"
           >
@@ -194,28 +194,30 @@ export const WorktreeDetailView: FC<WorktreeDetailViewProps> = ({ onFileOpen }) 
       </div>
 
       {/* Content area with scroll preservation */}
-      <div ref={contentRef} className="flex-1 min-h-0 overflow-y-auto">
-        <AnimatePresence mode="wait">
+      <div className="relative flex-1 min-h-0 overflow-hidden">
+        <AnimatePresence mode="popLayout" initial={false}>
           {activeSection === 'explorer' && (
             <motion.div
+              ref={contentRef}
               key="explorer"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.1 }}
-              className="h-full"
+              initial={{ opacity: 0, y: 2 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -2 }}
+              transition={{ duration: 0.09, ease: [0.2, 0, 0, 1] }}
+              className="absolute inset-0 overflow-y-auto"
             >
               <FileExplorer onFileOpen={onFileOpen} className="h-full" />
             </motion.div>
           )}
           {activeSection === 'sessions' && (
             <motion.div
+              ref={contentRef}
               key="sessions"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.1 }}
-              className="h-full"
+              initial={{ opacity: 0, y: 2 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -2 }}
+              transition={{ duration: 0.09, ease: [0.2, 0, 0, 1] }}
+              className="absolute inset-0 overflow-y-auto"
             >
               <SessionList
                 onSessionSelect={handleSessionSelect}
@@ -226,12 +228,13 @@ export const WorktreeDetailView: FC<WorktreeDetailViewProps> = ({ onFileOpen }) 
           )}
           {activeSection === 'changes' && (
             <motion.div
+              ref={contentRef}
               key="changes"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.1 }}
-              className="h-full"
+              initial={{ opacity: 0, y: 2 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -2 }}
+              transition={{ duration: 0.09, ease: [0.2, 0, 0, 1] }}
+              className="absolute inset-0 overflow-y-auto"
             >
               <WorktreeChangesView />
             </motion.div>

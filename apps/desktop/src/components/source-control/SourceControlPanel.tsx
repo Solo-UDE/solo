@@ -28,9 +28,8 @@ import { useGitHubAccountsStore } from '@/stores/githubAccountsStore';
 import { usePanelTabsStore } from '@/stores/panelTabsStore';
 import { BUILTIN_PANEL_TYPES } from '@/lib/panels';
 import { motion } from 'motion/react';
-import { FileChangeItem } from './FileChangeItem';
 import { GitHubSetup } from './GitHubSetup';
-import { AnimatedList } from '../ui/animated-list';
+import { VirtualFileChangeList } from './VirtualFileChangeList';
 import { ConfirmDialog } from '../ui/confirm-dialog';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -427,7 +426,7 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
                 )}
               >
                 <GitHubLogoIcon className="w-3.5 h-3.5" />
-                Sign in to push &amp; pull
+                Link GitHub to push &amp; pull
               </button>
             </div>
           )}
@@ -474,18 +473,15 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
 
                 {/* Staged file list */}
                 {stagedOpen && (
-                  <AnimatedList className="overflow-y-auto px-1">
-                    {stagedFiles.map((file) => (
-                      <FileChangeItem
-                        key={`staged-${file.path}`}
-                        file={file}
-                        onDiscard={handleDiscardFile}
-                        onViewDiff={handleViewDiff}
-                        onStage={handleStageFile}
-                        onUnstage={handleUnstageFile}
-                      />
-                    ))}
-                  </AnimatedList>
+                  <VirtualFileChangeList
+                    files={stagedFiles}
+                    className="max-h-40 px-1"
+                    testId="source-control-staged-files"
+                    onDiscard={handleDiscardFile}
+                    onViewDiff={handleViewDiff}
+                    onStage={handleStageFile}
+                    onUnstage={handleUnstageFile}
+                  />
                 )}
               </>
             )}
@@ -575,18 +571,15 @@ export const SourceControlPanel: FC<SourceControlPanelProps> = ({ className }) =
                     <p className="text-[11px] text-muted-foreground/50">No changes detected</p>
                   </motion.div>
                 ) : (
-                  <AnimatedList>
-                    {unstagedFiles.map((file) => (
-                      <FileChangeItem
-                        key={file.path}
-                        file={file}
-                        onDiscard={handleDiscardFile}
-                        onViewDiff={handleViewDiff}
-                        onStage={handleStageFile}
-                        onUnstage={handleUnstageFile}
-                      />
-                    ))}
-                  </AnimatedList>
+                  <VirtualFileChangeList
+                    files={unstagedFiles}
+                    className="h-full"
+                    testId="source-control-unstaged-files"
+                    onDiscard={handleDiscardFile}
+                    onViewDiff={handleViewDiff}
+                    onStage={handleStageFile}
+                    onUnstage={handleUnstageFile}
+                  />
                 )}
               </div>
             )}

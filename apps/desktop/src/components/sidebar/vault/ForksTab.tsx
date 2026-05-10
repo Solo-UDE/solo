@@ -9,6 +9,7 @@
 import type { FC } from 'react';
 import { useMemo } from 'react';
 import { useSkillStore } from '@/stores/skillStore';
+import { VirtualList } from '@/components/ui/virtual-list';
 
 export const ForksTab: FC = () => {
   const skills = useSkillStore((s) => s.available);
@@ -36,18 +37,23 @@ export const ForksTab: FC = () => {
   }
 
   return (
-    <ul
+    <VirtualList
+      items={forked}
+      estimateSize={() => 66}
+      overscan={8}
       role="list"
-      className="m-5 divide-y divide-border/50 overflow-hidden rounded-[12px] border border-border/60 bg-background/35"
-    >
-      {forked.map((skill) => (
-        <li key={skill.name} className="px-3.5 py-3">
+      className="m-5 max-h-[520px] rounded-[12px] border border-border/60 bg-background/35"
+      itemClassName="border-b border-border/50 last:border-b-0"
+      getItemKey={(skill) => skill.name}
+      testId="forked-skills"
+      renderItem={(skill) => (
+        <div className="px-3.5 py-3" role="listitem">
           <p className="text-[13px] font-medium text-foreground">{skill.name}</p>
           <p className="mt-1 text-xs leading-5 text-muted-foreground text-pretty">
             Locally tweaked from upstream.
           </p>
-        </li>
-      ))}
-    </ul>
+        </div>
+      )}
+    />
   );
 };

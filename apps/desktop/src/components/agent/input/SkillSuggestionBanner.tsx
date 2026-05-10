@@ -17,6 +17,7 @@ import { useMarketplaceStore } from '@/stores/marketplaceStore';
 import { useSkillStore } from '@/stores/skillStore';
 import { useFileExplorerStore } from '@/stores/fileExplorerStore';
 import { fetchSkillDetail } from '@/lib/tauri/marketplace';
+import { VirtualList } from '@/components/ui/virtual-list';
 import type { RegistryEntry, SkillDetail } from '@/lib/tauri/marketplace';
 
 export const SkillSuggestionBanner: FC = () => {
@@ -184,17 +185,24 @@ const SkillPreviewModal: FC<PreviewProps> = ({ entry, detail, error, loading, on
         {detail?.description || entry.description || 'No description available.'}
       </p>
       {detail && detail.files.length > 0 && (
-        <div className="mb-4 max-h-40 overflow-y-auto rounded-md border border-border/60 bg-background/40">
-          {detail.files.map((file) => (
+        <VirtualList
+          items={detail.files}
+          estimateSize={() => 30}
+          overscan={8}
+          measureElement={false}
+          className="mb-4 max-h-40 rounded-md border border-border/60 bg-background/40"
+          itemClassName="border-b border-border/50 last:border-b-0"
+          getItemKey={(file) => file.path}
+          testId="skill-suggestion-files"
+          renderItem={(file) => (
             <div
-              key={file.path}
-              className="flex items-center justify-between gap-3 border-b border-border/50 px-3 py-2 text-[10px] last:border-b-0"
+              className="flex items-center justify-between gap-3 px-3 py-2 text-[10px]"
             >
               <span className="min-w-0 truncate text-foreground">{file.path}</span>
               <span className="shrink-0 tabular-nums text-muted-foreground">{file.bytes.toLocaleString()} B</span>
             </div>
-          ))}
-        </div>
+          )}
+        />
       )}
       {detail && !detail.installable && (
         <div className="rounded-md border border-border/60 bg-background/40 p-2 text-[10px] leading-4 text-muted-foreground">

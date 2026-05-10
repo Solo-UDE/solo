@@ -39,7 +39,7 @@ bun run dev:auth
 What this does:
 
 - loads the local desktop auth env
-- sets `VITE_AUTH_ENABLED=1`
+- sets `VITE_AUTH_ENABLED=1` and `VITE_AUTH_BYPASS=0`
 - launches `tauri dev` with the real login screen mounted
 
 ### Expected behavior
@@ -47,7 +47,7 @@ What this does:
 1. Login screen appears with **GitHub**, **Google**, and **Email**.
 2. Clicking GitHub or Google opens the Cognito Hosted UI in your browser.
 3. After successful auth, the browser redirects to:
-   - `soloide://auth/callback?code=...`
+   - `http://127.0.0.1:19877/callback?code=...`
 4. Solo exchanges the code for Cognito tokens and stores them in the macOS keychain.
 5. Relaunching the app restores the session until you explicitly sign out.
 
@@ -64,9 +64,11 @@ What this does:
 3. Relaunch Solo
 4. You should land in the authenticated app without signing in again
 
-## Deep links
+## Callback handling
 
-Solo registers the `soloide://` URL scheme.
+Solo starts a one-shot local callback server at `127.0.0.1:19877` for desktop
+sign-in. The `soloide://` URL scheme remains registered as a fallback and for
+sign-out callbacks.
 
 Quick check:
 
@@ -180,7 +182,8 @@ the callback. Start sign-in again without restarting the app mid-flow.
 Check:
 
 - the app is running
-- the browser redirected to `soloide://auth/callback?...`
+- the browser redirected to `http://127.0.0.1:19877/callback?...`
+- `bun run auth:diagnose dev` shows `http://127.0.0.1:19877/callback` in Cognito callback URLs
 - the `soloide://` scheme is registered on macOS
 - `bun run auth:doctor` shows a valid Cognito domain and client ID
 

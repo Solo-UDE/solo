@@ -314,7 +314,7 @@ export const LexicalEditor = forwardRef<LexicalEditorHandle, LexicalEditorProps>
     editable: !disabled,
   }), [disabled]);
 
-  const editorTextMetricsClass = 'px-4 py-2.5 text-[14px] leading-7';
+  const editorTextMetricsClass = 'px-4 py-2.5 text-[13.5px] leading-6';
 
   return (
     <div className={`relative ${className}`}>
@@ -325,6 +325,7 @@ export const LexicalEditor = forwardRef<LexicalEditorHandle, LexicalEditorProps>
               <ContentEditable
                 className={cn(
                   'min-h-[56px] max-h-[148px] overflow-y-auto bg-transparent focus:outline-none',
+                  'caret-primary',
                   editorTextMetricsClass,
                   disabled && 'cursor-not-allowed opacity-50',
                 )}

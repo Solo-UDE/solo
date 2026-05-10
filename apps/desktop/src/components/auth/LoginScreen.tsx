@@ -13,8 +13,7 @@ import {
   useAuthError,
   usePendingAuthUrl,
 } from "../../stores/authStore";
-import { diagnoseAuth, type AuthDiagnostic } from "../../lib/auth";
-import { open as shellOpen } from "@tauri-apps/plugin-shell";
+import { diagnoseAuth, openExternalAuthUrl, type AuthDiagnostic } from "../../lib/auth";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 
 export function LoginScreen() {
@@ -61,9 +60,9 @@ export function LoginScreen() {
   const handleOpenManually = useCallback(async () => {
     if (!pendingAuthUrl) return;
     try {
-      await shellOpen(pendingAuthUrl);
+      await openExternalAuthUrl(pendingAuthUrl);
     } catch (e) {
-      console.error("Manual shell.open also failed:", e);
+      console.error("Manual external browser open also failed:", e);
     }
   }, [pendingAuthUrl]);
 

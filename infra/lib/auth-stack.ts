@@ -74,6 +74,57 @@ export class SoloAuthStack extends cdk.Stack {
       mfaSecondFactor: { sms: false, otp: true },
       removalPolicy: config.removalPolicy,
     });
+    // Keep the synthesized UserPool schema byte-for-byte compatible with the
+    // schema shape Cognito already accepted. CDK v2 can omit AttributeDataType
+    // on standard attributes in update templates, which Cognito rejects.
+    const userPoolResource = this.userPool.node.defaultChild as cognito.CfnUserPool;
+    userPoolResource.addPropertyOverride("Schema", [
+      {
+        AttributeDataType: "String",
+        Mutable: true,
+        Name: "email",
+        Required: true,
+      },
+      {
+        AttributeDataType: "String",
+        Mutable: true,
+        Name: "given_name",
+        Required: false,
+      },
+      {
+        AttributeDataType: "String",
+        Mutable: true,
+        Name: "family_name",
+        Required: false,
+      },
+      {
+        AttributeDataType: "Number",
+        Mutable: true,
+        Name: "tier",
+        NumberAttributeConstraints: {
+          MaxValue: "7",
+          MinValue: "1",
+        },
+      },
+      {
+        AttributeDataType: "Number",
+        Mutable: true,
+        Name: "tier_progress",
+        NumberAttributeConstraints: {
+          MaxValue: "100",
+          MinValue: "0",
+        },
+      },
+      {
+        AttributeDataType: "String",
+        Mutable: true,
+        Name: "github_username",
+        StringAttributeConstraints: {
+          MaxLength: "256",
+          MinLength: "0",
+        },
+      },
+    ]);
 
     this.userPoolDomain = this.userPool.addDomain("HostedDomain", {
       cognitoDomain: { domainPrefix: config.cognitoDomainPrefix },
@@ -149,6 +200,7 @@ export class SoloAuthStack extends cdk.Stack {
         : "https://solo-web-sachin1801-sachins-projects-a130ba69.vercel.app";
 
     const callbackUrls = [
+      "http://127.0.0.1:19877/callback",
       "soloide://auth/callback",
       "http://localhost:3000/auth/callback",
       "https://solo.dev/auth/callback",

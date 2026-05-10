@@ -159,11 +159,15 @@ export const githubStartAuth = () =>
 export const githubCompleteAuth = (code: string, oauthState: string) =>
   invoke<void>('github_complete_auth', { code, oauthState });
 
+/** Start the cloud GitHub link flow for the current Solo account */
+export const githubStartLink = () =>
+  invoke<string>('github_start_link');
+
 /** Get stored GitHub access token (null if not connected) */
 export const githubGetToken = () =>
   invoke<string | null>('github_get_token');
 
-/** Disconnect GitHub — clear stored token */
+/** Unlink GitHub from the current Solo account and clear the local token cache */
 export const githubDisconnect = () =>
   invoke<void>('github_disconnect');
 

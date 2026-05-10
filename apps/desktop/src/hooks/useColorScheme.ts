@@ -2,7 +2,8 @@
  * useColorScheme - Manages theme based on settings and system preference
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
+import { setTheme as setAppTheme } from '@tauri-apps/api/app';
 import { useSettingsStore, type ColorScheme } from '../stores/settingsStore';
 
 /**
@@ -13,6 +14,13 @@ function getResolvedTheme(scheme: ColorScheme, prefersDark: boolean): 'light' | 
     return prefersDark ? 'dark' : 'light';
   }
   return scheme;
+}
+
+function hasTauriRuntime(): boolean {
+  return typeof window !== 'undefined' && (
+    '__TAURI_INTERNALS__' in window ||
+    '__TAURI__' in window
+  );
 }
 
 /**
@@ -45,13 +53,23 @@ export function useColorScheme(): 'light' | 'dark' {
   const resolvedTheme = getResolvedTheme(colorScheme, prefersDark);
 
   // Apply to <html>
-  useEffect(() => {
+  useLayoutEffect(() => {
     const html = document.documentElement;
     if (resolvedTheme === 'dark') {
       html.classList.add('dark');
     } else {
       html.classList.remove('dark');
     }
+    html.style.colorScheme = resolvedTheme;
+    html.dataset.colorScheme = resolvedTheme;
+  }, [resolvedTheme]);
+
+  useEffect(() => {
+    if (!hasTauriRuntime()) return;
+
+    setAppTheme(resolvedTheme).catch((error) => {
+      console.warn('Failed to sync native app theme:', error);
+    });
   }, [resolvedTheme]);
 
   return resolvedTheme;

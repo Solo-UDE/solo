@@ -16,6 +16,7 @@ import { useSoloSettingsStore } from '../../../stores/soloSettingsStore';
 import { useFileExplorerStore } from '../../../stores/fileExplorerStore';
 import { skillsSetImports, skillsOnboardingReset } from '../../../lib/tauri/skills';
 import { revealInFinder } from '../../../lib/tauri/fs';
+import { VirtualList } from '../../ui/virtual-list';
 
 import type { FC } from 'react';
 import type { SkillSource } from '../../../bindings/SkillSource';
@@ -255,10 +256,16 @@ export const SkillsTab: FC = () => {
                   {skills.length} skill{skills.length === 1 ? '' : 's'}
                 </span>
               </div>
-              <div className="rounded-lg border border-border/50 divide-y divide-border/40">
-                {skills.map((s) => (
+              <VirtualList
+                items={skills}
+                estimateSize={() => 52}
+                overscan={8}
+                className="max-h-[360px] rounded-lg border border-border/50"
+                itemClassName="border-b border-border/40 last:border-b-0"
+                getItemKey={(s) => `${s.source}:${s.name}`}
+                testId={`settings-skills-${source}`}
+                renderItem={(s) => (
                   <div
-                    key={`${s.source}:${s.name}`}
                     className="flex items-start gap-3 px-3 py-2 hover:bg-muted/30 transition-colors"
                   >
                     <Zap className="w-3.5 h-3.5 shrink-0 mt-0.5 text-muted-foreground" />
@@ -279,8 +286,8 @@ export const SkillsTab: FC = () => {
                       <FolderOpen className="w-3.5 h-3.5" />
                     </button>
                   </div>
-                ))}
-              </div>
+                )}
+              />
             </div>
           );
         })}

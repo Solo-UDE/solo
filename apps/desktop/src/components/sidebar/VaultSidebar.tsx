@@ -1,7 +1,7 @@
 /**
  * VaultSidebar — launcher for Vault panels.
  *
- * Six entries: Skills, Memory, Tasks, Current Vault, Plugins, Connectors.
+ * Five entries: Skills, Tasks, Current Vault, Plugins, Connectors.
  * Clicking an entry opens or focuses the corresponding panel in the main
  * editor area (`openPanel` with `allowMultiple: false` gives find-or-focus
  * behavior). The sidebar itself holds no content body — each section is
@@ -13,7 +13,6 @@ import { useEffect } from 'react';
 import { motion } from 'motion/react';
 import {
   Sparkles,
-  Brain,
   ListChecks,
   Vault as VaultIcon,
   Puzzle,
@@ -23,6 +22,7 @@ import { useUIStore } from '@/stores/uiStore';
 import { usePanelTabsStore } from '@/stores/panelTabsStore';
 import type { VaultNav } from '@/stores/uiStore';
 import { cn } from '@/lib/utils';
+import { settleAfterPaint, trace } from '@/lib/perf';
 
 interface NavItem {
   key: VaultNav;
@@ -33,7 +33,6 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { key: 'skills', label: 'Skills', icon: Sparkles, panelType: 'vault-skills' },
-  { key: 'memory', label: 'Memory', icon: Brain, panelType: 'vault-memory' },
   { key: 'tasks', label: 'Tasks', icon: ListChecks, panelType: 'vault-tasks' },
   { key: 'current-vault', label: 'Current Vault', icon: VaultIcon, panelType: 'vault-current' },
   { key: 'plugins', label: 'Plugins', icon: Puzzle, panelType: 'vault-plugins' },
@@ -44,7 +43,11 @@ const PANEL_TYPE_TO_NAV: Record<string, VaultNav> = Object.fromEntries(
   NAV_ITEMS.map((i) => [i.panelType, i.key]),
 );
 
-export const VaultSidebar: FC = () => {
+interface VaultSidebarProps {
+  readonly isActive?: boolean;
+}
+
+export const VaultSidebar: FC<VaultSidebarProps> = ({ isActive = true }) => {
   const vaultActiveNav = useUIStore((s) => s.vaultActiveNav);
   const setVaultNav = useUIStore((s) => s.setVaultNav);
   const openPanel = usePanelTabsStore((s) => s.openPanel);
@@ -53,6 +56,7 @@ export const VaultSidebar: FC = () => {
   // focused. If the user clicks a tab header in the center (instead of a
   // sidebar nav item), the sidebar still reflects the active section.
   useEffect(() => {
+    if (!isActive) return;
     const unsubscribe = usePanelTabsStore.subscribe((state) => {
       for (const tileState of state.tileTabs.values()) {
         const activeId = tileState.activeTabId;
@@ -67,13 +71,16 @@ export const VaultSidebar: FC = () => {
       }
     });
     return unsubscribe;
-  }, []);
+  }, [isActive]);
 
   const handleClick = (item: NavItem): void => {
+    const perf = trace('vault.panel.open', item.panelType);
     setVaultNav(item.key);
     // Singleton panel (allowMultiple: false) — openPanel focuses the
     // existing tab if one is already open, otherwise creates it.
     openPanel(item.panelType);
+    perf.endHandler();
+    settleAfterPaint(perf);
   };
 
   return (

@@ -15,6 +15,7 @@ import { useUIStore, useIsLeftSidebarCollapsed } from '@/stores/uiStore';
 import { useRepoStore, useRepoList } from '@/stores/repoStore';
 import { openFolderDialog } from '@/lib/tauri/fs';
 import { HEIGHTS } from '@/lib/constants';
+import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 interface PrimarySidebarProps {
@@ -96,12 +97,29 @@ export const PrimarySidebar = forwardRef<HTMLElement, PrimarySidebarProps>(({ wi
           ) : (
             <>
               <ModeToggle />
-              <div className="min-h-0 flex-1 flex flex-col overflow-hidden">
-                {sidebarMode === 'dev' ? (
-                  <DevSidebar onFileOpen={onFileOpen} />
-                ) : (
-                  <VaultSidebar />
-                )}
+              <div className="relative min-h-0 flex-1 overflow-hidden">
+                <div
+                  aria-hidden={sidebarMode !== 'dev'}
+                  className={cn(
+                    'absolute inset-0 flex min-h-0 flex-col transition-[opacity,transform] duration-100 ease-[cubic-bezier(0.2,0,0,1)]',
+                    sidebarMode === 'dev'
+                      ? 'translate-y-0 opacity-100'
+                      : 'invisible pointer-events-none translate-y-0.5 opacity-0',
+                  )}
+                >
+                  <DevSidebar onFileOpen={onFileOpen} isActive={sidebarMode === 'dev'} />
+                </div>
+                <div
+                  aria-hidden={sidebarMode !== 'vault'}
+                  className={cn(
+                    'absolute inset-0 flex min-h-0 flex-col transition-[opacity,transform] duration-100 ease-[cubic-bezier(0.2,0,0,1)]',
+                    sidebarMode === 'vault'
+                      ? 'translate-y-0 opacity-100'
+                      : 'invisible pointer-events-none translate-y-0.5 opacity-0',
+                  )}
+                >
+                  <VaultSidebar isActive={sidebarMode === 'vault'} />
+                </div>
               </div>
             </>
           )}

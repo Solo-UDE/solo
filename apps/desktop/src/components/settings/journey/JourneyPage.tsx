@@ -27,7 +27,7 @@ export function JourneyPage() {
 
 	useEffect(() => {
 		void stats.initialize();
-	}, [stats]);
+	}, [stats.initialize]);
 
 	useEffect(() => {
 		if (leaderboard.length === 0) {

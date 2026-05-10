@@ -26,8 +26,8 @@ type ProviderId = 'anthropic' | 'openai' | 'google' | 'gemini';
 const PROVIDER_CAPABILITIES: Record<ProviderId, ProviderCapabilities> = {
   anthropic: { chat: true, agent: true, tools: true, mcp: true, resume: true },
   openai: { chat: true, agent: true, tools: true, mcp: true, resume: true },
-  google: { chat: true, agent: false, tools: false, mcp: false, resume: false },
-  gemini: { chat: true, agent: false, tools: false, mcp: false, resume: false },
+  google: { chat: true, agent: true, tools: true, mcp: true, resume: true },
+  gemini: { chat: true, agent: true, tools: true, mcp: true, resume: true },
 };
 
 function configHash(config: unknown): string {
@@ -536,7 +536,7 @@ export class SessionManager extends Disposable {
     }
 
     if (provider === 'google' || provider === 'gemini') {
-      if (!config?.credentials) {
+      if (!config?.credentials && sessionMode !== 'agent') {
         throw new Error(
           'Gemini session requires credentials — Rust side must pass them via SessionConfig.credentials'
         );
@@ -550,16 +550,27 @@ export class SessionManager extends Disposable {
         model: config.model,
         credentials: config.credentials,
         maxTokens: config.maxTokens,
+        agentMode: sessionMode === 'agent',
+        cwd: config.cwd,
+        resumeSessionId: config.resumeSessionId,
+        forkSession: config.forkSession,
+        mcpServers: config.mcpServers,
       });
       this.openAISessions.set(sessionId, geminiSession);
       this.sessionToolUseMaps.set(sessionId, new Map());
-
-      this.emitSessionInit({
-        sessionId,
-        sdkSessionId: sessionId,
-        isResumed: false,
-        isForked: false,
+      this.sessionResumeState.set(sessionId, {
+        isResumed: !!config.resumeSessionId,
+        isForked: !!config.forkSession,
       });
+
+      if (sessionMode !== 'agent') {
+        this.emitSessionInit({
+          sessionId,
+          sdkSessionId: sessionId,
+          isResumed: false,
+          isForked: false,
+        });
+      }
       return;
     }
 

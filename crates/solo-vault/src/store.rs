@@ -11,7 +11,7 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use std::time::Instant;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use rusqlite::{params, Connection, OptionalExtension};
 use serde_json;
@@ -48,6 +48,8 @@ CREATE TABLE IF NOT EXISTS entries (
     memory_type             TEXT NOT NULL,
     pinned                  INTEGER NOT NULL DEFAULT 0,
     tags                    TEXT NOT NULL DEFAULT '[]',
+    label_ids               TEXT NOT NULL DEFAULT '[]',
+    expires_at              INTEGER,
     mime                    TEXT,
     size_bytes              INTEGER,
     index_status            TEXT NOT NULL,
@@ -132,6 +134,34 @@ pub struct Store {
     db_path: PathBuf,
 }
 
+fn migrate_entries_metadata(conn: &Connection) -> Result<()> {
+    if !entry_column_exists(conn, "label_ids")? {
+        conn.execute(
+            "ALTER TABLE entries ADD COLUMN label_ids TEXT NOT NULL DEFAULT '[]'",
+            [],
+        )
+        .map_err(to_vault)?;
+    }
+    if !entry_column_exists(conn, "expires_at")? {
+        conn.execute("ALTER TABLE entries ADD COLUMN expires_at INTEGER", [])
+            .map_err(to_vault)?;
+    }
+    Ok(())
+}
+
+fn entry_column_exists(conn: &Connection, name: &str) -> Result<bool> {
+    let exists = conn
+        .query_row(
+            "SELECT 1 FROM pragma_table_info('entries') WHERE name = ?1",
+            params![name],
+            |_| Ok(()),
+        )
+        .optional()
+        .map_err(to_vault)?
+        .is_some();
+    Ok(exists)
+}
+
 impl Store {
     pub fn open(db_path: impl AsRef<Path>) -> Result<Self> {
         let db_path = db_path.as_ref().to_path_buf();
@@ -140,6 +170,11 @@ impl Store {
         }
         let conn = Connection::open(&db_path).map_err(to_vault)?;
         conn.execute_batch(SCHEMA).map_err(to_vault)?;
+        migrate_entries_metadata(&conn)?;
+        conn.execute_batch(
+            "CREATE INDEX IF NOT EXISTS idx_entries_expires ON entries(expires_at);",
+        )
+        .map_err(to_vault)?;
         conn.pragma_update(None, "journal_mode", "WAL")
             .map_err(to_vault)?;
         conn.pragma_update(None, "foreign_keys", "ON")
@@ -162,10 +197,10 @@ impl Store {
             "INSERT INTO entries (
                 id, kind, subkind, title, content, source_path, vault_blob_path,
                 scope_type, scope_project_id, memory_type, pinned, tags,
-                mime, size_bytes, index_status, cloud_sync_state,
+                label_ids, expires_at, mime, size_bytes, index_status, cloud_sync_state,
                 classifier_confidence, hit_count, last_retrieved_at,
                 created_at, updated_at
-             ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+             ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
              ON CONFLICT(id) DO UPDATE SET
                 kind = excluded.kind,
                 subkind = excluded.subkind,
@@ -178,6 +213,8 @@ impl Store {
                 memory_type = excluded.memory_type,
                 pinned = excluded.pinned,
                 tags = excluded.tags,
+                label_ids = excluded.label_ids,
+                expires_at = excluded.expires_at,
                 mime = excluded.mime,
                 size_bytes = excluded.size_bytes,
                 index_status = excluded.index_status,
@@ -200,6 +237,8 @@ impl Store {
                 memory_to_str(entry.memory_type),
                 i64::from(entry.pinned),
                 serde_json::to_string(&entry.tags).unwrap_or_else(|_| "[]".into()),
+                serde_json::to_string(&entry.label_ids).unwrap_or_else(|_| "[]".into()),
+                entry.expires_at.map(|n| n as i64),
                 entry.mime,
                 entry.size_bytes.map(|n| n as i64),
                 status_to_str(entry.index_status),
@@ -268,6 +307,11 @@ impl Store {
         if let Some(true) = filters.unsorted {
             entries.retain(|e| e.kind == EntryKind::Unsorted);
         }
+        let now = unix_now();
+        match filters.expired {
+            Some(true) => entries.retain(|e| is_expired(e, now)),
+            _ => entries.retain(|e| !is_expired(e, now)),
+        }
         if let Some(q) = filters.query.as_deref() {
             let q = q.to_ascii_lowercase();
             entries.retain(|e| {
@@ -300,6 +344,64 @@ impl Store {
         .map_err(to_vault)?;
         drop(conn);
         self.get_entry(id)
+    }
+
+    pub fn update_labels_and_expiry(
+        &self,
+        id: &str,
+        label_ids: &[String],
+        expires_at: Option<u64>,
+        now: u64,
+    ) -> Result<Option<VaultEntry>> {
+        let conn = self.conn.lock().expect("vault store mutex poisoned");
+        conn.execute(
+            "UPDATE entries SET label_ids = ?1, expires_at = ?2, updated_at = ?3 WHERE id = ?4",
+            params![
+                serde_json::to_string(label_ids).unwrap_or_else(|_| "[]".into()),
+                expires_at.map(|n| n as i64),
+                now as i64,
+                id
+            ],
+        )
+        .map_err(to_vault)?;
+        drop(conn);
+        self.get_entry(id)
+    }
+
+    pub fn prune_label_id(&self, label_id: &str, now: u64) -> Result<Vec<String>> {
+        let conn = self.conn.lock().expect("vault store mutex poisoned");
+        let mut stmt = conn
+            .prepare("SELECT id, label_ids FROM entries WHERE label_ids LIKE ?1")
+            .map_err(to_vault)?;
+        let candidates: Vec<(String, String)> = stmt
+            .query_map(params![format!("%\"{label_id}\"%")], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(to_vault)?
+            .collect::<rusqlite::Result<_>>()
+            .map_err(to_vault)?;
+        drop(stmt);
+
+        let mut changed = Vec::new();
+        for (entry_id, json) in candidates {
+            let mut ids: Vec<String> = serde_json::from_str(&json).unwrap_or_default();
+            let before = ids.len();
+            ids.retain(|id| id != label_id);
+            if ids.len() == before {
+                continue;
+            }
+            conn.execute(
+                "UPDATE entries SET label_ids = ?1, updated_at = ?2 WHERE id = ?3",
+                params![
+                    serde_json::to_string(&ids).unwrap_or_else(|_| "[]".into()),
+                    now as i64,
+                    entry_id
+                ],
+            )
+            .map_err(to_vault)?;
+            changed.push(entry_id);
+        }
+        Ok(changed)
     }
 
     pub fn set_pinned(&self, id: &str, pinned: bool, now: u64) -> Result<Option<VaultEntry>> {
@@ -348,10 +450,13 @@ impl Store {
 
     pub fn unsorted_count(&self) -> Result<u32> {
         let conn = self.conn.lock().expect("vault store mutex poisoned");
+        let now = unix_now();
         let n: i64 = conn
             .query_row(
-                "SELECT COUNT(*) FROM entries WHERE kind = 'unsorted'",
-                [],
+                "SELECT COUNT(*) FROM entries
+                 WHERE kind = 'unsorted'
+                   AND (expires_at IS NULL OR expires_at > ?1)",
+                params![now as i64],
                 |r| r.get(0),
             )
             .map_err(to_vault)?;
@@ -465,8 +570,10 @@ impl Store {
         query: &str,
         scope: &VaultScope,
         top_k: usize,
+        include_expired: bool,
     ) -> Result<Vec<(VaultChunk, VaultEntry, f32)>> {
         let conn = self.conn.lock().expect("vault store mutex poisoned");
+        let now = unix_now();
 
         let sql = r"
             SELECT c.id, c.entry_id, c.chunk_index, c.content, c.token_count,
@@ -477,25 +584,35 @@ impl Store {
             WHERE chunks_fts MATCH ?1
               AND (e.scope_type = 'global'
                    OR (e.scope_type = 'project' AND e.scope_project_id = ?2))
+              AND (?3 = 1 OR e.expires_at IS NULL OR e.expires_at > ?4)
             ORDER BY rank
-            LIMIT ?3
+            LIMIT ?5
         ";
 
         let safe_query = fts5_escape(query);
         let (_scope_type, scope_project_id) = split_scope(scope);
         let mut stmt = conn.prepare(sql).map_err(to_vault)?;
         let raw: rusqlite::Result<Vec<(VaultChunk, String, f64)>> = stmt
-            .query_map(params![safe_query, scope_project_id, top_k as i64], |row| {
-                let chunk = VaultChunk {
-                    id: row.get::<_, String>(0)?,
-                    entry_id: row.get::<_, String>(1)?,
-                    chunk_index: row.get::<_, i64>(2)? as u32,
-                    content: row.get::<_, String>(3)?,
-                    token_count: row.get::<_, Option<i64>>(4)?.map(|n| n as u32),
-                };
-                let rank: f64 = row.get(5)?;
-                Ok((chunk, row.get::<_, String>(1)?, rank))
-            })
+            .query_map(
+                params![
+                    safe_query,
+                    scope_project_id,
+                    if include_expired { 1_i64 } else { 0_i64 },
+                    now as i64,
+                    top_k as i64
+                ],
+                |row| {
+                    let chunk = VaultChunk {
+                        id: row.get::<_, String>(0)?,
+                        entry_id: row.get::<_, String>(1)?,
+                        chunk_index: row.get::<_, i64>(2)? as u32,
+                        content: row.get::<_, String>(3)?,
+                        token_count: row.get::<_, Option<i64>>(4)?.map(|n| n as u32),
+                    };
+                    let rank: f64 = row.get(5)?;
+                    Ok((chunk, row.get::<_, String>(1)?, rank))
+                },
+            )
             .map_err(to_vault)?
             .collect();
         let raw = raw.map_err(to_vault)?;
@@ -632,6 +749,7 @@ impl Store {
         query_vec: &[f32],
         scope: &VaultScope,
         top_k: usize,
+        include_expired: bool,
     ) -> Result<Vec<(VaultChunk, VaultEntry, f32)>> {
         let start = Instant::now();
         if query_vec.len() != EMBEDDING_DIM {
@@ -645,6 +763,7 @@ impl Store {
 
         let (_scope_type, scope_project_id) = split_scope(scope);
         let conn = self.conn.lock().expect("vault store mutex poisoned");
+        let now = unix_now();
 
         // Phase 1: Pull every in-scope chunk with its embedding blob.
         let mut stmt = conn
@@ -656,23 +775,31 @@ impl Store {
                 WHERE c.embedding IS NOT NULL
                   AND (e.scope_type = 'global'
                        OR (e.scope_type = 'project' AND e.scope_project_id = ?1))
+                  AND (?2 = 1 OR e.expires_at IS NULL OR e.expires_at > ?3)
                 ",
             )
             .map_err(to_vault)?;
 
         let raw: rusqlite::Result<Vec<(VaultChunk, Vec<u8>)>> = stmt
-            .query_map(params![scope_project_id], |row| {
-                Ok((
-                    VaultChunk {
-                        id: row.get::<_, String>(0)?,
-                        entry_id: row.get::<_, String>(1)?,
-                        chunk_index: row.get::<_, i64>(2)? as u32,
-                        content: row.get::<_, String>(3)?,
-                        token_count: row.get::<_, Option<i64>>(4)?.map(|n| n as u32),
-                    },
-                    row.get::<_, Vec<u8>>(5)?,
-                ))
-            })
+            .query_map(
+                params![
+                    scope_project_id,
+                    if include_expired { 1_i64 } else { 0_i64 },
+                    now as i64
+                ],
+                |row| {
+                    Ok((
+                        VaultChunk {
+                            id: row.get::<_, String>(0)?,
+                            entry_id: row.get::<_, String>(1)?,
+                            chunk_index: row.get::<_, i64>(2)? as u32,
+                            content: row.get::<_, String>(3)?,
+                            token_count: row.get::<_, Option<i64>>(4)?.map(|n| n as u32),
+                        },
+                        row.get::<_, Vec<u8>>(5)?,
+                    ))
+                },
+            )
             .map_err(to_vault)?
             .collect();
         let raw = raw.map_err(to_vault)?;
@@ -809,6 +936,8 @@ pub(crate) fn blob_to_f32_vec(
 fn row_to_entry(row: &rusqlite::Row<'_>) -> rusqlite::Result<VaultEntry> {
     let tags_json: String = row.get("tags")?;
     let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
+    let label_ids_json: String = row.get("label_ids")?;
+    let label_ids: Vec<String> = serde_json::from_str(&label_ids_json).unwrap_or_default();
 
     let scope_type: String = row.get("scope_type")?;
     let scope_project_id: Option<String> = row.get("scope_project_id")?;
@@ -821,6 +950,7 @@ fn row_to_entry(row: &rusqlite::Row<'_>) -> rusqlite::Result<VaultEntry> {
 
     let size_bytes: Option<i64> = row.get("size_bytes")?;
     let last_retrieved_at: Option<i64> = row.get("last_retrieved_at")?;
+    let expires_at: Option<i64> = row.get("expires_at")?;
     let hit_count: i64 = row.get("hit_count")?;
 
     Ok(VaultEntry {
@@ -835,6 +965,8 @@ fn row_to_entry(row: &rusqlite::Row<'_>) -> rusqlite::Result<VaultEntry> {
         memory_type: str_to_memory(&row.get::<_, String>("memory_type")?),
         pinned: row.get::<_, i64>("pinned")? != 0,
         tags,
+        label_ids,
+        expires_at: expires_at.map(|n| n as u64),
         mime: row.get("mime")?,
         size_bytes: size_bytes.map(|n| n as u64),
         index_status: str_to_status(&row.get::<_, String>("index_status")?),
@@ -847,6 +979,17 @@ fn row_to_entry(row: &rusqlite::Row<'_>) -> rusqlite::Result<VaultEntry> {
         created_at: row.get::<_, i64>("created_at")? as u64,
         updated_at: row.get::<_, i64>("updated_at")? as u64,
     })
+}
+
+fn unix_now() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+fn is_expired(entry: &VaultEntry, now: u64) -> bool {
+    entry.expires_at.is_some_and(|expires_at| expires_at <= now)
 }
 
 fn split_scope(scope: &VaultScope) -> (&'static str, Option<String>) {
@@ -974,6 +1117,43 @@ fn to_vault(err: rusqlite::Error) -> VaultError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::tempdir;
+
+    fn sample_entry(id: &str, kind: EntryKind, label_ids: Vec<String>, expires_at: Option<u64>) -> VaultEntry {
+        VaultEntry {
+            id: id.to_string(),
+            kind,
+            subkind: None,
+            title: format!("Entry {id}"),
+            content: Some(format!("content for {id}")),
+            source_path: None,
+            vault_blob_path: None,
+            scope: VaultScope::Global,
+            memory_type: MemoryType::User,
+            pinned: false,
+            tags: vec![],
+            label_ids,
+            expires_at,
+            mime: Some("text/plain".to_string()),
+            size_bytes: Some(16),
+            index_status: IndexStatus::Indexed,
+            cloud_sync_state: CloudSyncState::Offline,
+            classifier_confidence: 1.0,
+            retrieval_stats: RetrievalStats::default(),
+            created_at: 100,
+            updated_at: 100,
+        }
+    }
+
+    fn sample_chunk(entry_id: &str, content: &str) -> VaultChunk {
+        VaultChunk {
+            id: format!("{entry_id}:0"),
+            entry_id: entry_id.to_string(),
+            chunk_index: 0,
+            content: content.to_string(),
+            token_count: Some(content.split_whitespace().count() as u32),
+        }
+    }
 
     #[test]
     fn blob_roundtrips_exact_bits() {
@@ -1015,5 +1195,216 @@ mod tests {
         // 1.0f32 = 0x3F800000; in LE bytes: 00 00 80 3F.
         let blob = f32_slice_to_blob(&[1.0]);
         assert_eq!(blob, vec![0x00, 0x00, 0x80, 0x3F]);
+    }
+
+    #[test]
+    fn list_entries_defaults_to_active_and_can_show_expired_archive() {
+        let dir = tempdir().expect("tempdir");
+        let store = Store::open(dir.path().join("index.sqlite")).expect("store");
+        let now = unix_now();
+
+        store
+            .upsert_entry(&sample_entry("legacy", EntryKind::Note, vec![], None))
+            .expect("legacy");
+        store
+            .upsert_entry(&sample_entry("future", EntryKind::Note, vec![], Some(now + 3600)))
+            .expect("future");
+        store
+            .upsert_entry(&sample_entry("past", EntryKind::Note, vec![], Some(now - 1)))
+            .expect("past");
+
+        let active = store
+            .list_entries(&VaultScope::Global, &VaultListFilters::default())
+            .expect("active list");
+        let active_ids: Vec<_> = active.iter().map(|entry| entry.id.as_str()).collect();
+        assert!(active_ids.contains(&"legacy"));
+        assert!(active_ids.contains(&"future"));
+        assert!(!active_ids.contains(&"past"));
+
+        let expired = store
+            .list_entries(
+                &VaultScope::Global,
+                &VaultListFilters {
+                    expired: Some(true),
+                    ..VaultListFilters::default()
+                },
+            )
+            .expect("expired list");
+        assert_eq!(expired.len(), 1);
+        assert_eq!(expired[0].id, "past");
+    }
+
+    #[test]
+    fn label_ids_persist_update_and_prune() {
+        let dir = tempdir().expect("tempdir");
+        let store = Store::open(dir.path().join("index.sqlite")).expect("store");
+        let now = unix_now();
+
+        store
+            .upsert_entry(&sample_entry(
+                "labeled",
+                EntryKind::Note,
+                vec!["idea".to_string(), "stale".to_string()],
+                Some(now + 3600),
+            ))
+            .expect("insert");
+        let stored = store.get_entry("labeled").expect("get").expect("entry");
+        assert_eq!(stored.label_ids, vec!["idea".to_string(), "stale".to_string()]);
+        assert_eq!(stored.expires_at, Some(now + 3600));
+
+        let updated = store
+            .update_labels_and_expiry(
+                "labeled",
+                &["renewed".to_string()],
+                Some(now + 7200),
+                now,
+            )
+            .expect("update")
+            .expect("updated");
+        assert_eq!(updated.label_ids, vec!["renewed".to_string()]);
+        assert_eq!(updated.expires_at, Some(now + 7200));
+
+        store
+            .upsert_entry(&sample_entry(
+                "second",
+                EntryKind::Note,
+                vec!["renewed".to_string(), "other".to_string()],
+                Some(now + 7200),
+            ))
+            .expect("second");
+        let pruned = store.prune_label_id("renewed", now).expect("prune");
+        assert_eq!(pruned.len(), 2);
+        assert!(store
+            .get_entry("labeled")
+            .expect("get labeled")
+            .expect("labeled")
+            .label_ids
+            .is_empty());
+        assert_eq!(
+            store
+                .get_entry("second")
+                .expect("get second")
+                .expect("second")
+                .label_ids,
+            vec!["other".to_string()]
+        );
+    }
+
+    #[test]
+    fn open_migrates_legacy_entries_table_metadata_columns() {
+        let dir = tempdir().expect("tempdir");
+        let db_path = dir.path().join("index.sqlite");
+        {
+            let conn = Connection::open(&db_path).expect("legacy db");
+            conn.execute_batch(
+                r"
+                CREATE TABLE entries (
+                    id                      TEXT PRIMARY KEY,
+                    kind                    TEXT NOT NULL,
+                    subkind                 TEXT,
+                    title                   TEXT NOT NULL,
+                    content                 TEXT,
+                    source_path             TEXT,
+                    vault_blob_path         TEXT,
+                    scope_type              TEXT NOT NULL,
+                    scope_project_id        TEXT,
+                    memory_type             TEXT NOT NULL,
+                    pinned                  INTEGER NOT NULL DEFAULT 0,
+                    tags                    TEXT NOT NULL DEFAULT '[]',
+                    mime                    TEXT,
+                    size_bytes              INTEGER,
+                    index_status            TEXT NOT NULL,
+                    cloud_sync_state        TEXT NOT NULL,
+                    classifier_confidence   REAL NOT NULL,
+                    hit_count               INTEGER NOT NULL DEFAULT 0,
+                    last_retrieved_at       INTEGER,
+                    created_at              INTEGER NOT NULL,
+                    updated_at              INTEGER NOT NULL
+                );
+                INSERT INTO entries (
+                    id, kind, subkind, title, content, source_path, vault_blob_path,
+                    scope_type, scope_project_id, memory_type, pinned, tags,
+                    mime, size_bytes, index_status, cloud_sync_state,
+                    classifier_confidence, hit_count, last_retrieved_at,
+                    created_at, updated_at
+                ) VALUES (
+                    'legacy', 'note', NULL, 'Legacy', 'old row', NULL, NULL,
+                    'global', NULL, 'user', 0, '[]',
+                    'text/plain', 7, 'indexed', 'offline',
+                    1.0, 0, NULL,
+                    100, 100
+                );
+                ",
+            )
+            .expect("legacy schema");
+        }
+
+        let store = Store::open(&db_path).expect("migrated store");
+        let entry = store.get_entry("legacy").expect("get").expect("entry");
+        assert!(entry.label_ids.is_empty());
+        assert_eq!(entry.expires_at, None);
+
+        let updated = store
+            .update_labels_and_expiry(
+                "legacy",
+                &["idea".to_string()],
+                Some(unix_now() + 3600),
+                unix_now(),
+            )
+            .expect("update")
+            .expect("updated");
+        assert_eq!(updated.label_ids, vec!["idea".to_string()]);
+        assert!(updated.expires_at.is_some());
+    }
+
+    #[test]
+    fn fts_semantic_and_unsorted_exclude_expired_by_default() {
+        let dir = tempdir().expect("tempdir");
+        let store = Store::open(dir.path().join("index.sqlite")).expect("store");
+        let now = unix_now();
+
+        store
+            .upsert_entry(&sample_entry("active", EntryKind::Unsorted, vec![], Some(now + 3600)))
+            .expect("active");
+        store
+            .upsert_entry(&sample_entry("expired", EntryKind::Unsorted, vec![], Some(now - 1)))
+            .expect("expired");
+        store
+            .insert_chunk(&sample_chunk("active", "espresso strategy memo"))
+            .expect("active chunk");
+        store
+            .insert_chunk(&sample_chunk("expired", "espresso stale memo"))
+            .expect("expired chunk");
+
+        assert_eq!(store.unsorted_count().expect("unsorted"), 1);
+
+        let fts_active = store
+            .fts_search("espresso", &VaultScope::Global, 10, false)
+            .expect("fts active");
+        assert_eq!(fts_active.len(), 1);
+        assert_eq!(fts_active[0].1.id, "active");
+
+        let fts_all = store
+            .fts_search("espresso", &VaultScope::Global, 10, true)
+            .expect("fts all");
+        assert_eq!(fts_all.len(), 2);
+
+        let vector = vec![0.25_f32; EMBEDDING_DIM];
+        store
+            .update_chunk_embedding("active:0", &vector)
+            .expect("active embedding");
+        store
+            .update_chunk_embedding("expired:0", &vector)
+            .expect("expired embedding");
+        let semantic_active = store
+            .semantic_search(&vector, &VaultScope::Global, 10, false)
+            .expect("semantic active");
+        assert_eq!(semantic_active.len(), 1);
+        assert_eq!(semantic_active[0].1.id, "active");
+
+        let semantic_all = store
+            .semantic_search(&vector, &VaultScope::Global, 10, true)
+            .expect("semantic all");
+        assert_eq!(semantic_all.len(), 2);
     }
 }

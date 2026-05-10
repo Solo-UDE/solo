@@ -12,12 +12,10 @@ import { getAuthenticatedUser, listInstallations } from '@/lib/github-api';
 import {
   githubGetToken,
   githubDisconnect,
-  githubStartDeviceAuth,
-  githubPollDeviceAuth,
+  githubStartLink,
 } from '@/lib/tauri/git';
-import { open } from '@tauri-apps/plugin-shell';
+import { openExternalAuthUrl } from '@/lib/auth';
 import { toast } from 'sonner';
-import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 
 interface GitHubAccountsState {
   user: GitHubAccount | null;
@@ -40,9 +38,11 @@ interface GitHubAccountsActions {
   fetchInstallations: (token: string) => Promise<void>;
   setSelectedAccount: (account: GitHubAccount | null) => void;
   /** Load persisted token from keychain on app startup */
-  loadToken: () => Promise<void>;
-  /** Start the GitHub Device Flow (show code, poll for completion) */
+  loadToken: (options?: { retry?: boolean }) => Promise<void>;
+  /** Start the cloud link flow for the signed-in Solo account */
   connectGitHub: () => Promise<void>;
+  /** Complete the cloud link flow after the soloide://github/linked callback */
+  completeLinkCallback: (success: boolean, error?: string | null) => Promise<void>;
   /** Disconnect GitHub and clear token */
   disconnectGitHub: () => Promise<void>;
   reset: () => void;
@@ -97,18 +97,51 @@ export const useGitHubAccountsStore = create<GitHubAccountsState & GitHubAccount
       });
     },
 
-    loadToken: async () => {
+    loadToken: async (options?: { retry?: boolean }) => {
+      set((state) => {
+        state.isLoading = true;
+        state.error = null;
+      });
+
       try {
-        const token = await githubGetToken();
-        if (token) {
-          set((state) => {
-            state.token = token;
-          });
-          // Fetch user info with the stored token
-          await get().fetchUser(token);
+        const maxAttempts = options?.retry ? 5 : 1;
+        let token: string | null = null;
+
+        for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+          token = await githubGetToken();
+          if (token || attempt === maxAttempts - 1) break;
+
+          // Cognito's post-auth trigger writes the GitHub token server-side.
+          // On a fresh GitHub Solo sign-in, give that row a moment to appear.
+          await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
         }
+
+        if (!token) {
+          set((state) => {
+            state.user = null;
+            state.installations = [];
+            state.selectedAccount = null;
+            state.token = null;
+            state.isLoading = false;
+          });
+          return;
+        }
+
+        set((state) => {
+          state.token = token;
+        });
+        // Fetch user info with the token linked to the current Solo account.
+        await get().fetchUser(token);
       } catch (err) {
         console.error('Failed to load GitHub token:', err);
+        set((state) => {
+          state.error = String(err);
+          state.user = null;
+          state.installations = [];
+          state.selectedAccount = null;
+          state.token = null;
+          state.isLoading = false;
+        });
       }
     },
 
@@ -120,91 +153,62 @@ export const useGitHubAccountsStore = create<GitHubAccountsState & GitHubAccount
         state.verificationUri = null;
       });
 
-      let toastId: string | number | undefined;
-
       try {
-        // 1. Start the Device Flow (get user_code + device_code)
-        const { user_code, verification_uri, device_code, expires_in, interval } =
-          await githubStartDeviceAuth();
+        const authorizeUrl = await githubStartLink();
 
-        // 2. Store in state + show toast with the code
         set((state) => {
-          state.userCode = user_code;
-          state.verificationUri = verification_uri;
+          state.verificationUri = authorizeUrl;
         });
 
-        // Auto-copy code to clipboard
         try {
-          await writeText(user_code);
+          await openExternalAuthUrl(authorizeUrl);
         } catch {
-          navigator.clipboard.writeText(user_code).catch(() => {});
+          window.open(authorizeUrl, '_blank');
         }
 
-        // Show persistent toast with the device code
-        toastId = toast(`Enter code at github.com/login/device`, {
-          description: `Your code: ${user_code} (copied to clipboard)`,
-          duration: Infinity,
+        toast('Finish linking GitHub in your browser', {
+          description: 'GitHub will return to Solo when the account is linked.',
         });
-
-        // 3. Open verification URL in browser
-        try {
-          await open(verification_uri);
-        } catch {
-          window.open(verification_uri, '_blank');
-        }
-
-        // 4. Poll until authorized, expired, or error
-        const deadline = Date.now() + expires_in * 1000;
-        const pollInterval = interval * 1000;
-
-        while (Date.now() < deadline) {
-          await new Promise((r) => setTimeout(r, pollInterval));
-
-          // Check if we've been cancelled (disconnected while connecting)
-          if (!get().isConnecting) {
-            if (toastId) toast.dismiss(toastId);
-            return;
-          }
-
-          const result = await githubPollDeviceAuth(device_code);
-
-          if (result.status === 'complete') {
-            if (toastId) toast.dismiss(toastId);
-            // Token stored by backend — fetch it for frontend use
-            const token = await githubGetToken();
-            set((state) => {
-              state.token = token;
-              state.isConnecting = false;
-              state.userCode = null;
-              state.verificationUri = null;
-            });
-            if (token) {
-              await get().fetchUser(token);
-            }
-            toast.success('Connected to GitHub');
-            return;
-          }
-
-          if (result.status === 'expired') {
-            throw new Error('Device code expired. Please try again.');
-          }
-
-          if (result.status === 'error') {
-            throw new Error(result.message);
-          }
-
-          // status === 'pending' → continue polling
-        }
-
-        throw new Error('Timed out waiting for authorization.');
       } catch (err) {
-        if (toastId) toast.dismiss(toastId);
-        toast.error('GitHub sign in failed', { description: String(err) });
+        toast.error('GitHub link failed', { description: String(err) });
         set((state) => {
           state.error = String(err);
           state.isConnecting = false;
           state.userCode = null;
           state.verificationUri = null;
+        });
+      }
+    },
+
+    completeLinkCallback: async (success: boolean, error?: string | null) => {
+      if (!success) {
+        const message = error ?? 'GitHub did not finish linking.';
+        toast.error('GitHub link failed', { description: message });
+        set((state) => {
+          state.error = message;
+          state.isConnecting = false;
+          state.userCode = null;
+          state.verificationUri = null;
+        });
+        return;
+      }
+
+      await get().loadToken();
+      const token = get().token;
+
+      set((state) => {
+        state.isConnecting = false;
+        state.userCode = null;
+        state.verificationUri = null;
+      });
+
+      if (token) {
+        toast.success('GitHub linked to Solo');
+      } else {
+        const message = 'GitHub linked, but Solo could not load the linked token yet.';
+        toast.error('GitHub link incomplete', { description: message });
+        set((state) => {
+          state.error = message;
         });
       }
     },
@@ -221,8 +225,10 @@ export const useGitHubAccountsStore = create<GitHubAccountsState & GitHubAccount
           state.userCode = null;
           state.verificationUri = null;
         });
+        toast.success('GitHub disconnected from Solo');
       } catch (err) {
         console.error('Failed to disconnect GitHub:', err);
+        toast.error('Failed to disconnect GitHub', { description: String(err) });
       }
     },
 

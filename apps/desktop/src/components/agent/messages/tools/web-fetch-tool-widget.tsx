@@ -3,6 +3,7 @@ import { Loader2 } from 'lucide-react';
 import { useState } from 'react';
 
 import { ExpandRegion } from '../shared/ExpandRegion';
+import { VirtualTextLines } from '@/components/ui/virtual-list';
 
 import type { FC } from 'react';
 
@@ -20,6 +21,7 @@ export const WebFetchToolWidget: FC<WebFetchToolWidgetProps> = ({
   isRunning = false,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
+  const lines = output?.split('\n') ?? [];
 
   return (
     <div className="my-2 tool-widget-frame">
@@ -36,14 +38,21 @@ export const WebFetchToolWidget: FC<WebFetchToolWidgetProps> = ({
       </button>
 
       <ExpandRegion isExpanded={isExpanded}>
-        <div className="p-3 space-y-2 max-h-[300px] overflow-auto">
+        <div className="p-3 space-y-2">
           {prompt ? (
             <div className="text-xs text-muted-foreground">
               <span className="font-medium">Prompt:</span> {prompt}
             </div>
           ) : null}
           {output ? (
-            <pre className="text-xs font-mono text-foreground whitespace-pre-wrap break-words">{output}</pre>
+            <VirtualTextLines
+              lines={lines}
+              estimateSize={() => 20}
+              overscan={16}
+              className="max-h-[300px] font-mono text-xs"
+              lineClassName="whitespace-pre text-foreground"
+              testId="legacy-web-fetch-output"
+            />
           ) : null}
         </div>
       </ExpandRegion>

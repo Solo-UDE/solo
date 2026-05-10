@@ -72,7 +72,7 @@ export function CloneDialog({ onClose }: CloneDialogProps) {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
-      // Detect authentication failure — offer to connect GitHub
+      // Detect authentication failure — offer to link GitHub through Solo.
       if (
         !ghToken &&
         (msg.includes('Authentication') || msg.includes('authentication') ||
@@ -191,7 +191,7 @@ export function CloneDialog({ onClose }: CloneDialogProps) {
                   ) : (
                     <GitHubLogoIcon className="w-3.5 h-3.5" />
                   )}
-                  {isConnecting ? 'Waiting for authorization...' : 'Sign in with GitHub to clone private repos'}
+                  {isConnecting ? 'Finish linking in browser...' : 'Link GitHub to clone private repos'}
                 </Button>
               )}
             </div>

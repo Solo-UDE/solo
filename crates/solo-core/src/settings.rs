@@ -101,8 +101,10 @@ fn merge_into(dst: &mut SoloSettings, src: SoloSettings) {
 
     // plugins — higher scope fully overrides when any value differs from default
     let defaults = PluginsConfig::default();
-    if (src.plugins.adapter_claude_plugins, src.plugins.adapter_codex_user)
-        != (defaults.adapter_claude_plugins, defaults.adapter_codex_user)
+    if (
+        src.plugins.adapter_claude_plugins,
+        src.plugins.adapter_codex_user,
+    ) != (defaults.adapter_claude_plugins, defaults.adapter_codex_user)
     {
         dst.plugins = src.plugins;
     }
@@ -296,11 +298,7 @@ mod tests {
         merge_into(&mut dst, src);
         assert_eq!(
             dst.permissions.allow,
-            vec![
-                "Read".to_string(),
-                "Glob".to_string(),
-                "Grep".to_string()
-            ]
+            vec!["Read".to_string(), "Glob".to_string(), "Grep".to_string()]
         );
     }
 

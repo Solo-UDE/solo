@@ -331,7 +331,7 @@ export const gitCreateBranch = (branchName: string) =>
 - [ ] **Copy command**: Click copy button → `npm install -g @anthropic-ai/claude-code` copied to clipboard
 - [ ] **Install CLI**: Click "Install Claude Code" → shows installing spinner → installs → moves to "ready"
 - [ ] **Skip install**: Click "I already installed it — continue" → skips to "ready" step
-- [ ] **Login flow**: Click "Open Terminal" → terminal opens with `claude login` → follow prompts
+- [ ] **Login flow**: Click "Open Terminal" → terminal opens with `claude /login` → follow prompts
 - [ ] **Verify auth**: After authenticating, click "Verify" → detects credentials → success
 - [ ] **Already authenticated**: Open modal when already logged in → auto-detects → shows success
 

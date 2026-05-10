@@ -1,5 +1,6 @@
 import type { FC } from 'react';
 import { cn } from '@/lib/utils';
+import { VirtualList } from '@/components/ui/virtual-list';
 import type { Task, TaskRun } from '@/lib/tauri/tasks';
 
 interface Props {
@@ -22,9 +23,16 @@ export const TaskRunsTab: FC<Props> = ({ task }) => {
     );
   }
   return (
-    <ul className="flex flex-col gap-2 p-3">
-      {task.runs.map((r) => (
-        <li key={r.id} className="rounded-md border border-border/50 bg-card p-3">
+    <VirtualList
+      items={task.runs}
+      estimateSize={() => 94}
+      overscan={8}
+      className="h-full p-3"
+      itemClassName="pb-2"
+      getItemKey={(run) => run.id}
+      testId="task-runs-tab"
+      renderItem={(r) => (
+        <div className="rounded-md border border-border/50 bg-card p-3">
           <div className="flex items-center justify-between text-[11px] text-muted-foreground">
             <span className={cn(
               'rounded-full border px-2 py-0.5 font-medium uppercase tracking-wider',
@@ -47,9 +55,9 @@ export const TaskRunsTab: FC<Props> = ({ task }) => {
               Session: <code className="rounded bg-muted/40 px-1">{r.session_id}</code>
             </div>
           )}
-        </li>
-      ))}
-    </ul>
+        </div>
+      )}
+    />
   );
 };
 

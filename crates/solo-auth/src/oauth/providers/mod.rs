@@ -9,6 +9,8 @@ pub mod github;
 pub mod openai;
 
 pub use anthropic::AnthropicOAuthConfig;
-pub use claude_code::{ClaudeCodeOAuthConfig, ClaudeCodeOAuthFlow, ClaudeAiOAuth, ClaudeCodeCredentials};
-pub use github::{GitHubOAuthConfig, DeviceCodeResponse, DevicePollResult};
+pub use claude_code::{
+    ClaudeAiOAuth, ClaudeCodeCredentials, ClaudeCodeOAuthConfig, ClaudeCodeOAuthFlow,
+};
+pub use github::{DeviceCodeResponse, DevicePollResult, GitHubOAuthConfig};
 pub use openai::OpenAIOAuthConfig;

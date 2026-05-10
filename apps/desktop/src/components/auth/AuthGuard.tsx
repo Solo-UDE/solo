@@ -10,6 +10,7 @@ import {
   useIsAuthenticated,
   useIsAuthInitializing,
 } from "../../stores/authStore";
+import { useGitHubAccountsStore } from "../../stores/githubAccountsStore";
 import { onAuthCallback } from "../../lib/auth";
 import { LoginScreen } from "./LoginScreen";
 
@@ -18,17 +19,16 @@ interface AuthGuardProps {
 }
 
 /**
- * By default in dev mode we bypass auth so unrelated feature work doesn't
- * require a full sign-in. `bun run dev:auth` sets `VITE_AUTH_ENABLED=1`
- * and loads the local Cognito env for auth testing; setting the var manually
- * still works too. This is the ONLY way to see `LoginScreen`, sign-in, and
- * sign-out in dev.
- *
- * Production always enforces the guard.
+ * Production always enforces auth. Dev keeps the historical bypass unless
+ * `VITE_AUTH_ENABLED=1` or `VITE_AUTH_BYPASS=0` is set; `bun run dev:auth`
+ * sets both for auth testing.
  */
 export function AuthGuard({ children }: AuthGuardProps) {
-  const authEnabled = import.meta.env.VITE_AUTH_ENABLED === '1';
-  if (import.meta.env.DEV && !authEnabled) {
+  const authEnabled =
+    !import.meta.env.DEV ||
+    import.meta.env.VITE_AUTH_ENABLED === '1' ||
+    import.meta.env.VITE_AUTH_BYPASS === '0';
+  if (!authEnabled) {
     return <>{children}</>;
   }
 
@@ -38,6 +38,7 @@ export function AuthGuard({ children }: AuthGuardProps) {
 function AuthGuardInner({ children }: AuthGuardProps) {
   const initialize = useAuthStore((state) => state.initialize);
   const handleAuthCallback = useAuthStore((state) => state.handleAuthCallback);
+  const completeGitHubLink = useGitHubAccountsStore((state) => state.completeLinkCallback);
   const isAuthenticated = useIsAuthenticated();
   const isInitializing = useIsAuthInitializing();
 
@@ -51,8 +52,12 @@ function AuthGuardInner({ children }: AuthGuardProps) {
     let unlisten: (() => void) | undefined;
 
     const setupListener = async () => {
-      unlisten = await onAuthCallback((code) => {
-        handleAuthCallback(code);
+      unlisten = await onAuthCallback((payload) => {
+        if (payload.kind === "github_link") {
+          void completeGitHubLink(payload.success, payload.error);
+          return;
+        }
+        handleAuthCallback(payload);
       });
     };
 
@@ -61,7 +66,7 @@ function AuthGuardInner({ children }: AuthGuardProps) {
     return () => {
       unlisten?.();
     };
-  }, [handleAuthCallback]);
+  }, [completeGitHubLink, handleAuthCallback]);
 
   // Show branded skeleton during initialization
   if (isInitializing) {

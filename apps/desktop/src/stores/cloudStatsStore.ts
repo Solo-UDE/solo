@@ -19,12 +19,14 @@ import type {
 	TierInfo,
 	LeaderboardEntry,
 } from '../bindings';
+import type { TierIndex } from '@solo/tier-names';
 import * as statsApi from '../lib/tauri/stats';
 
 interface CloudStatsState {
 	snapshot: StatsSnapshot | null;
 	tier: TierInfo | null;
 	leaderboard: LeaderboardEntry[];
+	leaderboardByTier: Partial<Record<TierIndex, LeaderboardEntry[]>>;
 	initializedAt: number | null;
 
 	isInitializing: boolean;
@@ -42,8 +44,8 @@ interface CloudStatsActions {
 	syncNow: () => Promise<void>;
 	/** Fetch current tier + unlocked name pool. */
 	loadTier: () => Promise<void>;
-	/** Fetch leaderboard; `limit` defaults to 100. */
-	loadLeaderboard: (limit?: number) => Promise<void>;
+	/** Fetch leaderboard; `limit` defaults to 100. Pass `tier` for a tier board. */
+	loadLeaderboard: (limit?: number, tier?: TierIndex) => Promise<void>;
 	/** Generate a share card and return the signed URL. */
 	generateCard: () => Promise<string>;
 	clearError: () => void;
@@ -56,6 +58,7 @@ const initialState: CloudStatsState = {
 	snapshot: null,
 	tier: null,
 	leaderboard: [],
+	leaderboardByTier: {},
 	initializedAt: null,
 	isInitializing: false,
 	isSyncing: false,
@@ -135,6 +138,8 @@ export const useCloudStatsStore = create<CloudStatsStore>()(
 						};
 					}
 				});
+				void get().loadTier();
+				void get().loadLeaderboard(100);
 			} catch (err) {
 				set((s) => {
 					s.error = errorMessage(err);
@@ -159,14 +164,19 @@ export const useCloudStatsStore = create<CloudStatsStore>()(
 			}
 		},
 
-		loadLeaderboard: async (limit?: number) => {
+		loadLeaderboard: async (limit?: number, tier?: TierIndex) => {
 			set((s) => {
 				s.isLoadingLeaderboard = true;
+				s.error = null;
 			});
 			try {
-				const entries = await statsApi.getLeaderboard(limit);
+				const entries = await statsApi.getLeaderboard(limit, tier);
 				set((s) => {
-					s.leaderboard = entries;
+					if (tier) {
+						s.leaderboardByTier[tier] = entries;
+					} else {
+						s.leaderboard = entries;
+					}
 				});
 			} catch (err) {
 				set((s) => {

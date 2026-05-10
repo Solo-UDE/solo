@@ -9,8 +9,9 @@
  * blurred, translucent surface matching other overlay popovers.
  */
 
-import { useEffect, useRef } from 'react';
+import { useMemo } from 'react';
 import { Zap } from 'lucide-react';
+import { VirtualList } from '@/components/ui/virtual-list';
 
 import type { FC, ComponentType } from 'react';
 import type { SkillSource } from '../../../../bindings/SkillSource';
@@ -41,6 +42,10 @@ export interface SlashCommandDropdownProps {
 	position: { bottom: number; left: number };
 }
 
+type SlashDropdownRow =
+	| { kind: 'header'; key: string }
+	| { kind: 'command'; key: string; command: SlashCommand; commandIndex: number };
+
 // Concentric radii per Inspirations UI skill (border-radius.md):
 // outer rounded-2xl (1.25rem) minus the container's p-1.5 (0.375rem) ≈ 0.875rem,
 // which matches rounded-xl on the inner item.
@@ -56,19 +61,39 @@ export const SlashCommandDropdown: FC<SlashCommandDropdownProps> = ({
 	onSelect,
 	position,
 }) => {
-	const selectedRef = useRef<HTMLButtonElement>(null);
-
-	useEffect(() => {
-		selectedRef.current?.scrollIntoView({ block: 'nearest' });
-	}, [selectedIndex]);
-
 	const regularCommands = commands.filter((c) => c.category !== 'skill');
 	const skills = commands.filter((c) => c.category === 'skill');
+	const rows = useMemo((): SlashDropdownRow[] => {
+		const next: SlashDropdownRow[] = [];
+		for (const cmd of regularCommands) {
+			next.push({
+				kind: 'command',
+				key: `command:${cmd.id}`,
+				command: cmd,
+				commandIndex: commands.indexOf(cmd),
+			});
+		}
+		if (skills.length > 0) {
+			next.push({ kind: 'header', key: 'skills-header' });
+		}
+		for (const cmd of skills) {
+			next.push({
+				kind: 'command',
+				key: `skill:${cmd.id}`,
+				command: cmd,
+				commandIndex: commands.indexOf(cmd),
+			});
+		}
+		return next;
+	}, [commands, regularCommands, skills]);
+	const selectedRowIndex = rows.findIndex(
+		(row) => row.kind === 'command' && row.commandIndex === selectedIndex,
+	);
 
 	return (
 		<div
 			className={
-				'fixed z-50 max-h-80 w-[32rem] overflow-y-auto rounded-2xl p-1.5 ' +
+				'fixed z-50 w-[32rem] rounded-2xl p-1.5 ' +
 				'bg-popover/90 backdrop-blur-md text-popover-foreground ' +
 				'ring-1 ring-black/10 dark:ring-white/10 shadow-xl ' +
 				'animate-[fade-in-scale_150ms_cubic-bezier(0.16,1,0.3,1)]'
@@ -80,42 +105,46 @@ export const SlashCommandDropdown: FC<SlashCommandDropdownProps> = ({
 					No commands found
 				</div>
 			) : (
-				<>
-					{regularCommands.map((cmd) => {
-						const globalIdx = commands.indexOf(cmd);
-						const isActive = globalIdx === selectedIndex;
-						const Icon = cmd.icon;
-						return (
-							<button
-								key={cmd.id}
-								ref={isActive ? selectedRef : undefined}
-								onClick={() => onSelect(cmd)}
-								className={`${itemBase} ${isActive ? itemActive : itemIdle}`}
-								type="button"
-							>
-								<Icon className="size-4 shrink-0 text-muted-foreground/90 group-hover:text-accent-foreground" />
-								<span className="shrink-0 font-medium">{cmd.label || `/${cmd.id}`}</span>
-								<span className="min-w-0 flex-1 truncate text-muted-foreground/90 group-hover:text-accent-foreground/80">
-									{cmd.description}
-								</span>
-							</button>
-						);
-					})}
+				<VirtualList
+					items={rows}
+					estimateSize={() => 28}
+					overscan={10}
+					measureElement={false}
+					className="max-h-80"
+					getItemKey={(row) => row.key}
+					testId="slash-command-dropdown"
+					scrollToIndex={selectedRowIndex >= 0 ? selectedRowIndex : null}
+					renderItem={(row) => {
+						if (row.kind === 'header') {
+							return (
+								<div className="mt-1 px-2 pb-0.5 pt-1.5 text-[11px] font-medium text-muted-foreground/80">
+									Skills
+								</div>
+							);
+						}
 
-					{skills.length > 0 && (
-						<div className="mt-1 px-2 pb-0.5 pt-1.5 text-[11px] font-medium text-muted-foreground/80">
-							Skills
-						</div>
-					)}
+						const cmd = row.command;
+						const isActive = row.commandIndex === selectedIndex;
+						if (cmd.category !== 'skill') {
+							const Icon = cmd.icon;
+							return (
+								<button
+									onClick={() => onSelect(cmd)}
+									className={`${itemBase} ${isActive ? itemActive : itemIdle}`}
+									type="button"
+								>
+									<Icon className="size-4 shrink-0 text-muted-foreground/90 group-hover:text-accent-foreground" />
+									<span className="shrink-0 font-medium">{cmd.label || `/${cmd.id}`}</span>
+									<span className="min-w-0 flex-1 truncate text-muted-foreground/90 group-hover:text-accent-foreground/80">
+										{cmd.description}
+									</span>
+								</button>
+							);
+						}
 
-					{skills.map((cmd) => {
-						const globalIdx = commands.indexOf(cmd);
-						const isActive = globalIdx === selectedIndex;
 						const tint = cmd.source ? SOURCE_ICON_TINT[cmd.source] : 'text-muted-foreground/90';
 						return (
 							<button
-								key={cmd.id}
-								ref={isActive ? selectedRef : undefined}
 								onClick={() => onSelect(cmd)}
 								className={`${itemBase} ${isActive ? itemActive : itemIdle}`}
 								type="button"
@@ -136,8 +165,8 @@ export const SlashCommandDropdown: FC<SlashCommandDropdownProps> = ({
 								)}
 							</button>
 						);
-					})}
-				</>
+					}}
+				/>
 			)}
 		</div>
 	);

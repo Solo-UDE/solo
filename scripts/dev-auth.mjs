@@ -48,6 +48,7 @@ const child = spawn(bunExecutable, ["run", "--filter", "@solo/desktop", "dev"], 
   env: {
     ...env,
     VITE_AUTH_ENABLED: "1",
+    VITE_AUTH_BYPASS: "0",
   },
   stdio: "inherit",
 });

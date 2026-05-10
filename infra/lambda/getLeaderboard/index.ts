@@ -17,10 +17,12 @@ export const handler = async (
       Limit: limit,
     }),
   );
-  return json(200, { leaderboard: Items.map(projectRow), count: Items.length });
+  const entries = Items.map(projectRow);
+  return json(200, { entries, leaderboard: entries, count: entries.length });
 };
 
 function projectRow(item: Record<string, unknown>) {
+  const githubUsername = item.githubUsername ?? item.github_username ?? null;
   return {
     userId: item.userId,
     tier: item.tier,
@@ -28,6 +30,7 @@ function projectRow(item: Record<string, unknown>) {
     commits: item.commits ?? 0,
     tokens: item.tokens ?? 0,
     worktrees: item.worktrees ?? 0,
-    github_username: item.github_username ?? null,
+    githubUsername,
+    github_username: githubUsername,
   };
 }

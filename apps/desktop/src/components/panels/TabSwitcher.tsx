@@ -8,6 +8,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MagnifyingGlassIcon } from '@radix-ui/react-icons';
 import { cn } from '@/lib/utils';
+import { VirtualList } from '@/components/ui/virtual-list';
 import { usePanelTabsStore } from '@/stores/panelTabsStore';
 import { useRepoStore } from '@/stores/repoStore';
 import { getRepoColorVar, getRepoIcon } from '@/lib/repoIdentity';
@@ -23,6 +24,10 @@ interface TabSearchResult {
   instance: PanelInstance;
   tileId: TileId;
 }
+
+type TabSwitcherRow =
+  | { kind: 'group'; key: string; repoPath: string | null }
+  | { kind: 'tab'; key: string; result: TabSearchResult; resultIndex: number };
 
 /** Simple fuzzy match - checks if all query chars appear in order in the target. */
 function fuzzyMatch(query: string, target: string): boolean {
@@ -65,7 +70,6 @@ export function TabSwitcher({ open, onClose }: TabSwitcherProps) {
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
-  const listRef = useRef<HTMLDivElement>(null);
 
   const setActiveTab = usePanelTabsStore((s) => s.setActiveTab);
 
@@ -118,6 +122,31 @@ export function TabSwitcher({ open, onClose }: TabSwitcherProps) {
 
   // Flatten for keyboard navigation
   const flatResults = useMemo(() => filteredResults, [filteredResults]);
+  const rows = useMemo((): TabSwitcherRow[] => {
+    const next: TabSwitcherRow[] = [];
+    let resultIndex = 0;
+    for (const group of groupedResults) {
+      next.push({
+        kind: 'group',
+        key: `group:${group.repoPath ?? 'ungrouped'}`,
+        repoPath: group.repoPath,
+      });
+      for (const result of group.tabs) {
+        next.push({
+          kind: 'tab',
+          key: `tab:${result.instance.id}`,
+          result,
+          resultIndex,
+        });
+        resultIndex += 1;
+      }
+    }
+    return next;
+  }, [groupedResults]);
+  const selectedRowIndex = useMemo(
+    () => rows.findIndex((row) => row.kind === 'tab' && row.resultIndex === selectedIndex),
+    [rows, selectedIndex],
+  );
 
   // Reset state when opening
   useEffect(() => {
@@ -134,16 +163,6 @@ export function TabSwitcher({ open, onClose }: TabSwitcherProps) {
     setSelectedIndex((prev) => Math.min(prev, Math.max(0, flatResults.length - 1)));
   }, [flatResults.length]);
 
-  // Scroll selected item into view
-  useEffect(() => {
-    const list = listRef.current;
-    if (!list) return;
-    const selected = list.querySelector('[data-selected="true"]');
-    if (selected) {
-      selected.scrollIntoView({ block: 'nearest' });
-    }
-  }, [selectedIndex]);
-
   const handleSelect = useCallback(
     (result: TabSearchResult) => {
       setActiveTab(result.tileId, result.instance.id);
@@ -157,7 +176,7 @@ export function TabSwitcher({ open, onClose }: TabSwitcherProps) {
       switch (e.key) {
         case 'ArrowDown':
           e.preventDefault();
-          setSelectedIndex((prev) => Math.min(prev + 1, flatResults.length - 1));
+          setSelectedIndex((prev) => Math.min(prev + 1, Math.max(0, flatResults.length - 1)));
           break;
         case 'ArrowUp':
           e.preventDefault();
@@ -177,9 +196,6 @@ export function TabSwitcher({ open, onClose }: TabSwitcherProps) {
     },
     [flatResults, selectedIndex, handleSelect, onClose],
   );
-
-  // Build a flat index counter for rendering grouped results
-  let flatIndex = 0;
 
   return (
     <AnimatePresence>
@@ -230,32 +246,32 @@ export function TabSwitcher({ open, onClose }: TabSwitcherProps) {
             </div>
 
             {/* Results */}
-            <div ref={listRef} className="overflow-y-auto py-1">
-              {flatResults.length === 0 ? (
+            <VirtualList
+              items={rows}
+              estimateSize={() => 34}
+              overscan={10}
+              className="min-h-0 flex-1 py-1"
+              getItemKey={(row) => row.key}
+              testId="tab-switcher-results"
+              scrollToIndex={selectedRowIndex >= 0 ? selectedRowIndex : null}
+              emptyState={
                 <div className="px-4 py-6 text-center text-sm text-muted-foreground">
                   {query ? 'No matching tabs' : 'No open tabs'}
                 </div>
-              ) : (
-                groupedResults.map((group) => (
-                  <div key={group.repoPath ?? 'ungrouped'}>
-                    <RepoGroupHeader repoPath={group.repoPath} />
-                    {group.tabs.map((result) => {
-                      const currentFlatIndex = flatIndex++;
-                      const isSelected = currentFlatIndex === selectedIndex;
-                      return (
-                        <TabResultItem
-                          key={result.instance.id}
-                          result={result}
-                          isSelected={isSelected}
-                          onClick={() => handleSelect(result)}
-                          onMouseEnter={() => setSelectedIndex(currentFlatIndex)}
-                        />
-                      );
-                    })}
-                  </div>
-                ))
-              )}
-            </div>
+              }
+              renderItem={(row) =>
+                row.kind === 'group' ? (
+                  <RepoGroupHeader repoPath={row.repoPath} />
+                ) : (
+                  <TabResultItem
+                    result={row.result}
+                    isSelected={row.resultIndex === selectedIndex}
+                    onClick={() => handleSelect(row.result)}
+                    onMouseEnter={() => setSelectedIndex(row.resultIndex)}
+                  />
+                )
+              }
+            />
 
             {/* Footer hint */}
             <div className="flex items-center gap-3 px-4 py-2 border-t border-border/30 text-[10px] text-muted-foreground/50">

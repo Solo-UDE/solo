@@ -24,6 +24,7 @@ export const handler = async (
 ): Promise<APIGatewayProxyStructuredResultV2> => {
   const user = extractUser(event);
   const body = parseBody(event.body);
+  const githubUsername = displayNameForStats(event, body, user.email);
   const statsTable = env("STATS_TABLE");
   const dailyTable = env("DAILY_ACTIVITY_TABLE");
 
@@ -31,9 +32,9 @@ export const handler = async (
     new UpdateCommand({
       TableName: statsTable,
       Key: { userId: user.userId },
-      UpdateExpression: buildUpdateExpression(body),
+      UpdateExpression: buildUpdateExpression(body, githubUsername),
       ExpressionAttributeNames: buildExpressionAttributeNames(body),
-      ExpressionAttributeValues: buildExpressionAttributeValues(body, user.email),
+      ExpressionAttributeValues: buildExpressionAttributeValues(body, user.email, githubUsername),
       ReturnValues: "ALL_NEW",
     }),
   );
@@ -73,15 +74,15 @@ function parseBody(raw: string | undefined): SyncBody {
   }
 }
 
-function buildUpdateExpression(body: SyncBody): string {
+function buildUpdateExpression(body: SyncBody, githubUsername: string | undefined): string {
   const addParts: string[] = [];
-  if (body.delta.commits) addParts.push("commits :c");
-  if (body.delta.tokens) addParts.push("tokens :tk");
-  if (body.delta.worktrees) addParts.push("worktrees :w");
-  if (body.delta.sessions) addParts.push("sessions :ss");
-  if (body.delta.messages) addParts.push("messages :m");
+  if (body.delta?.commits) addParts.push("commits :c");
+  if (body.delta?.tokens) addParts.push("tokens :tk");
+  if (body.delta?.worktrees) addParts.push("worktrees :w");
+  if (body.delta?.sessions) addParts.push("sessions :ss");
+  if (body.delta?.messages) addParts.push("messages :m");
   const setParts: string[] = [];
-  if (body.githubUsername) setParts.push("github_username = :gu");
+  if (githubUsername) setParts.push("github_username = :gu");
   if (body.lastActive) setParts.push("last_active = :la");
   setParts.push("#e = if_not_exists(#e, :e)");
   let expr = "";
@@ -97,16 +98,43 @@ function buildExpressionAttributeNames(_body: SyncBody): Record<string, string> 
 function buildExpressionAttributeValues(
   body: SyncBody,
   email: string | undefined,
+  githubUsername: string | undefined,
 ): Record<string, unknown> {
   const v: Record<string, unknown> = { ":e": email ?? "" };
-  if (body.delta.commits) v[":c"] = body.delta.commits;
-  if (body.delta.tokens) v[":tk"] = body.delta.tokens;
-  if (body.delta.worktrees) v[":w"] = body.delta.worktrees;
-  if (body.delta.sessions) v[":ss"] = body.delta.sessions;
-  if (body.delta.messages) v[":m"] = body.delta.messages;
-  if (body.githubUsername) v[":gu"] = body.githubUsername;
+  if (body.delta?.commits) v[":c"] = body.delta.commits;
+  if (body.delta?.tokens) v[":tk"] = body.delta.tokens;
+  if (body.delta?.worktrees) v[":w"] = body.delta.worktrees;
+  if (body.delta?.sessions) v[":ss"] = body.delta.sessions;
+  if (body.delta?.messages) v[":m"] = body.delta.messages;
+  if (githubUsername) v[":gu"] = githubUsername;
   if (body.lastActive) v[":la"] = body.lastActive;
   return v;
+}
+
+function displayNameForStats(
+  event: APIGatewayProxyEventV2WithJWTAuthorizer,
+  body: SyncBody,
+  email: string | undefined,
+): string | undefined {
+  const claims = event.requestContext.authorizer.jwt.claims;
+  const raw =
+    body.githubUsername ??
+    stringClaim(claims["custom:github_username"]) ??
+    stringClaim(claims.preferred_username) ??
+    email?.split("@")[0] ??
+    stringClaim(claims["cognito:username"]);
+  return normalizeDisplayName(raw);
+}
+
+function stringClaim(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function normalizeDisplayName(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+  const withoutAt = trimmed.startsWith("@") ? trimmed.slice(1) : trimmed;
+  return withoutAt.slice(0, 256);
 }
 
 async function writeDailyActivity(

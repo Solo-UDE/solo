@@ -206,6 +206,82 @@ function discoverClaudePlugins(): LoadedSkill[] {
   return out;
 }
 
+function discoverCodexPluginCache(): LoadedSkill[] {
+  const cacheRoot = join(homedir(), '.codex', 'plugins', 'cache');
+  if (!existsSync(cacheRoot)) return [];
+
+  const out: LoadedSkill[] = [];
+  for (const marketplace of safeReadDir(cacheRoot)) {
+    const marketplaceDir = join(cacheRoot, marketplace);
+    if (!isDirectory(marketplaceDir)) continue;
+
+    for (const pluginName of safeReadDir(marketplaceDir)) {
+      const pluginDir = join(marketplaceDir, pluginName);
+      if (!isDirectory(pluginDir)) continue;
+
+      const version = pickActiveVersion(pluginDir);
+      if (!version) continue;
+
+      const root = join(pluginDir, version);
+      const skillsDir = resolvePluginSkillsDir(root);
+      if (skillsDir) {
+        out.push(...discoverSkillsFromDir(skillsDir, 'codex'));
+      }
+    }
+  }
+
+  return out;
+}
+
+function resolvePluginSkillsDir(pluginRoot: string): string | null {
+  const manifestPath = [
+    join(pluginRoot, '.solo-plugin', 'plugin.json'),
+    join(pluginRoot, '.codex-plugin', 'plugin.json'),
+    join(pluginRoot, '.claude-plugin', 'plugin.json'),
+  ].find((candidate) => existsSync(candidate));
+
+  if (manifestPath) {
+    try {
+      const parsed = JSON.parse(readFileSync(manifestPath, 'utf-8')) as { skills?: unknown };
+      if (typeof parsed.skills === 'string' && parsed.skills.trim()) {
+        const resolved = resolve(pluginRoot, parsed.skills);
+        const root = resolve(pluginRoot);
+        if (resolved === root || resolved.startsWith(`${root}/`)) {
+          return existsSync(resolved) ? resolved : null;
+        }
+      }
+    } catch (err) {
+      logger.warn({ err, manifestPath }, 'codex plugin manifest parse failed');
+    }
+  }
+
+  const fallback = join(pluginRoot, 'skills');
+  return existsSync(fallback) ? fallback : null;
+}
+
+function pickActiveVersion(pluginDir: string): string | null {
+  const versions = safeReadDir(pluginDir).filter((entry) => isDirectory(join(pluginDir, entry)));
+  if (versions.includes('local')) return 'local';
+  versions.sort();
+  return versions.at(-1) ?? null;
+}
+
+function safeReadDir(dirPath: string): string[] {
+  try {
+    return readdirSync(dirPath);
+  } catch {
+    return [];
+  }
+}
+
+function isDirectory(path: string): boolean {
+  try {
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Walk from `cwd` up to `$HOME`, at most 12 hops, collecting any
  * `.claude/skills/` directories encountered. Lets users who keep skills
@@ -287,6 +363,7 @@ export function loadSkills(cwd: string): LoadedSkill[] {
   }
   if (config.importCodex) {
     all.push(...discoverSkillsFromDir(join(homedir(), '.codex', 'skills'), 'codex'));
+    all.push(...discoverCodexPluginCache());
   }
 
   const merged = mergeSkills(all);

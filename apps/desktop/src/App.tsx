@@ -49,9 +49,8 @@ import { TabSwitcher } from "./components/panels/TabSwitcher";
 import { SkillsOnboardingDialog } from "./components/agent/SkillsOnboardingDialog";
 import { GlobalTitleTooltip } from "./components/shared/GlobalTitleTooltip";
 import { getEffectiveKeybinding, matchesKeybinding } from "./lib/keybindings";
-
-// Shared easing curve matching --ease-smooth
-const EASE_SMOOTH: [number, number, number, number] = [0.16, 1, 0.3, 1];
+import { scheduleInteractionPrewarm } from "./lib/prewarm";
+import { settleAfterPaint, trace } from "./lib/perf";
 
 // Register built-in panels on module load
 registerBuiltinPanels();
@@ -188,13 +187,17 @@ function AppContent() {
   useVaultStream();
 
   useEffect(() => {
+    scheduleInteractionPrewarm();
+  }, []);
+
+  useEffect(() => {
     if (!splashComplete && (rootPath !== null || hasRepos)) {
       stopStartupSound();
       setSplashComplete(true);
     }
   }, [hasRepos, rootPath, splashComplete]);
 
-  // Load GitHub token from keychain so the header shows auth status
+  // Load GitHub token linked to the current Solo account so the header shows auth status
   useEffect(() => {
     useGitHubAccountsStore.getState().loadToken();
   }, []);
@@ -269,6 +272,17 @@ function AppContent() {
     }
     uiState.toggleTerminalPanel();
   }, []);
+
+  const handleSettingsToggle = useCallback((detail: string, tab?: Parameters<typeof openSettings>[0]) => {
+    const perf = trace(settingsOpen ? 'settings.close' : 'settings.open', detail);
+    if (settingsOpen) {
+      closeSettings();
+    } else {
+      openSettings(tab);
+    }
+    perf.endHandler();
+    settleAfterPaint(perf);
+  }, [closeSettings, openSettings, settingsOpen]);
 
   const handleCreateTerminal = useCallback(() => {
     const cwd = useFileExplorerStore.getState().rootPath ?? undefined;
@@ -421,11 +435,7 @@ function AppContent() {
 
       if (matchAction('settings.open', e)) {
         e.preventDefault();
-        if (settingsOpen) {
-          closeSettings();
-        } else {
-          openSettings();
-        }
+        handleSettingsToggle('keyboard');
         return;
       }
 
@@ -519,26 +529,31 @@ function AppContent() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [
-    closeSettings,
     handleCreateTerminal,
     handleCycleWorkspace,
+    handleSettingsToggle,
     handleSwitchWorktreeSlot,
     handleToggleTerminal,
     matchAction,
-    openSettings,
     settingsOpen,
   ]);
 
   // Open a file in the panel system
   const handleFileOpen = useCallback((path: string) => {
     const fileName = path.split('/').pop() ?? 'Untitled';
+    const perf = trace('file.open', fileName);
     openPanel(BUILTIN_PANEL_TYPES.FILE_VIEWER, { filePath: path, fileName });
+    perf.endHandler();
+    settleAfterPaint(perf);
   }, [openPanel]);
 
   // Open Settings > Shortcuts from the overlay
   const handleOpenShortcutsSettings = useCallback(() => {
+    const perf = trace('settings.open', 'shortcuts-overlay');
     setShortcutsOverlayOpen(false);
     openSettings('shortcuts');
+    perf.endHandler();
+    settleAfterPaint(perf);
   }, [openSettings]);
 
   // Sidebar resize handlers — direct DOM manipulation for zero-lag dragging.
@@ -661,7 +676,7 @@ function AppContent() {
               title="Report a Bug"
             />
             <TitlebarButton
-              onClick={() => openSettings()}
+              onClick={() => handleSettingsToggle('titlebar')}
               icon={<GearIcon className="w-4 h-4 text-muted-foreground" />}
               label="Settings"
               title="Settings (⌘,)"
@@ -676,97 +691,96 @@ function AppContent() {
       </header>
 
       <div className="flex h-full min-h-0 flex-col">
-        <AnimatePresence mode="popLayout">
-          {settingsOpen ? (
-            <motion.div
-              key="settings"
-              initial={{ opacity: 0, x: 24 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 24 }}
-              transition={{ duration: 0.25, ease: EASE_SMOOTH }}
-              className="flex min-h-0 flex-1"
+        <div
+          className={cn(
+            'flex min-h-0 flex-1',
+            settingsOpen && 'pointer-events-none select-none',
+          )}
+          aria-hidden={settingsOpen}
+        >
+          <DndProvider backend={HTML5Backend}>
+            {splashComplete && hasRepos ? <RepoRail /> : null}
+
+            {splashComplete && (
+              <>
+                <PrimarySidebar
+                  ref={sidebarRef}
+                  width={leftSidebarWidth}
+                  isResizing={isDraggingSidebar}
+                  onFileOpen={handleFileOpen}
+                />
+
+                {!isCollapsed ? (
+                  <div
+                    className="split-divider"
+                    onPointerDown={handlePointerDown}
+                    onPointerMove={handlePointerMove}
+                    onPointerUp={handlePointerUp}
+                    onDoubleClick={handleDoubleClick}
+                  />
+                ) : null}
+              </>
+            )}
+
+            <div
+              className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background rounded-tl-xl rounded-bl-xl"
               style={{ paddingTop: HEIGHTS.titlebar }}
             >
-              <SettingsView />
-            </motion.div>
-          ) : (
-            <motion.div
-              key="workspace"
-              initial={{ opacity: 0, x: -24 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -24 }}
-              transition={{ duration: 0.25, ease: EASE_SMOOTH }}
-              className="flex min-h-0 flex-1"
-            >
-              <DndProvider backend={HTML5Backend}>
-                {splashComplete && hasRepos ? <RepoRail /> : null}
+              {splashComplete && (rootPath !== null || sidebarMode === 'vault') ? (
+                <>
+                  <div className="min-h-0 flex-1 overflow-hidden">
+                    <MosaicLayout />
+                  </div>
 
-                {splashComplete && (
-                  <>
-                    <PrimarySidebar
-                      ref={sidebarRef}
-                      width={leftSidebarWidth}
-                      isResizing={isDraggingSidebar}
-                      onFileOpen={handleFileOpen}
-                    />
-
-                    {!isCollapsed ? (
+                  <div className={cn(
+                    'grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]',
+                    terminalPanelOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]',
+                  )}>
+                    <div className="min-h-0 overflow-hidden">
                       <div
-                        className="split-divider"
-                        onPointerDown={handlePointerDown}
-                        onPointerMove={handlePointerMove}
-                        onPointerUp={handlePointerUp}
-                        onDoubleClick={handleDoubleClick}
-                      />
-                    ) : null}
-                  </>
-                )}
-
-                <div
-                  className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background rounded-tl-xl rounded-bl-xl"
-                  style={{ paddingTop: HEIGHTS.titlebar }}
-                >
-                  {splashComplete && (rootPath !== null || sidebarMode === 'vault') ? (
-                    <>
-                      <div className="min-h-0 flex-1 overflow-hidden">
-                        <MosaicLayout />
+                        className={cn(
+                          'h-1.5 shrink-0 cursor-row-resize flex items-center justify-center hover:bg-foreground/[0.06] transition-[background-color] duration-150',
+                          isDraggingTerminal && 'bg-foreground/[0.08]',
+                        )}
+                        onPointerDown={handleTerminalPointerDown}
+                        onPointerMove={handleTerminalPointerMove}
+                        onPointerUp={handleTerminalPointerUp}
+                      >
+                        <div className="h-[2px] w-10 rounded-full bg-border/70" />
                       </div>
 
-                      <div className={cn(
-                        'grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]',
-                        terminalPanelOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]',
-                      )}>
-                        <div className="min-h-0 overflow-hidden">
-                          <div
-                            className={cn(
-                              'h-1.5 shrink-0 cursor-row-resize flex items-center justify-center hover:bg-foreground/[0.06] transition-colors',
-                              isDraggingTerminal && 'bg-foreground/[0.08]',
-                            )}
-                            onPointerDown={handleTerminalPointerDown}
-                            onPointerMove={handleTerminalPointerMove}
-                            onPointerUp={handleTerminalPointerUp}
-                          >
-                            <div className="h-[2px] w-10 rounded-full bg-border/70" />
-                          </div>
-
-                          <div
-                            className="overflow-hidden"
-                            style={{ height: terminalPanelHeight }}
-                          >
-                            <SidebarTerminal />
-                          </div>
-                        </div>
+                      <div
+                        className="overflow-hidden"
+                        style={{ height: terminalPanelHeight }}
+                      >
+                        <SidebarTerminal />
                       </div>
-                    </>
-                  ) : (
-                    <WelcomeScreen onProjectOpen={() => setSplashComplete(true)} />
-                  )}
-                </div>
-              </DndProvider>
-            </motion.div>
-          )}
-        </AnimatePresence>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <WelcomeScreen onProjectOpen={() => setSplashComplete(true)} />
+              )}
+            </div>
+          </DndProvider>
+        </div>
       </div>
+
+      <AnimatePresence initial={false}>
+        {settingsOpen && (
+          <motion.div
+            key="settings-overlay"
+            initial={{ opacity: 0, y: 3 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -2 }}
+            transition={{ duration: 0.1, ease: [0.2, 0, 0, 1] }}
+            className="absolute inset-0 z-40 flex min-h-0 bg-background"
+            style={{ paddingTop: HEIGHTS.titlebar }}
+          >
+            <SettingsView />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <KeyboardShortcutsOverlay
         open={shortcutsOverlayOpen}

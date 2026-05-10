@@ -32,7 +32,6 @@ export type SidebarMode = 'dev' | 'vault';
 export type DevSidebarView = 'worktree-list' | 'worktree-detail';
 export type VaultNav =
   | 'skills'
-  | 'memory'
   | 'tasks'
   | 'current-vault'
   | 'plugins'
@@ -124,7 +123,7 @@ export const useUIStore = create<UIStore>()(
     sidebarMode: 'dev' as SidebarMode,
     devSidebarView: 'worktree-list' as DevSidebarView,
     devDetailWorktreeId: null,
-    vaultActiveNav: 'memory' as VaultNav,
+    vaultActiveNav: 'current-vault' as VaultNav,
     zoomLevel: loadPersistedZoom(),
 
     toggleLeftSidebar: (): void => {

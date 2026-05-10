@@ -14,13 +14,12 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { SelectDropdown, ThemeSelector } from '../controls';
 
 const SURFACES: Array<{ value: ThemeSurface; label: string; icon: typeof Sun }> = [
-  { value: 'light', label: 'Light', icon: Sun },
-  { value: 'dark', label: 'Dark', icon: Moon },
+  { value: 'light', label: 'Light palette', icon: Sun },
+  { value: 'dark', label: 'Dark palette', icon: Moon },
 ];
 
 const PRESET_OPTIONS = [
   { value: 'solo', label: APPEARANCE_PRESETS.solo.label },
-  { value: 'codex', label: APPEARANCE_PRESETS.codex.label },
   { value: 'watermelon', label: APPEARANCE_PRESETS.watermelon.label },
 ] as const;
 
@@ -63,6 +62,17 @@ function parseCssColor(raw: string): string | null {
     return `#${toHex(Number(rgb[1]))}${toHex(Number(rgb[2]))}${toHex(Number(rgb[3]))}`;
   }
 
+  if (typeof document !== 'undefined' && typeof CSS !== 'undefined' && CSS.supports('color', value)) {
+    const probe = document.createElement('span');
+    probe.style.color = value;
+    document.body.appendChild(probe);
+    const computed = getComputedStyle(probe).color;
+    probe.remove();
+    if (computed && computed !== value) {
+      return parseCssColor(computed);
+    }
+  }
+
   return null;
 }
 
@@ -74,9 +84,9 @@ function parseThemeCss(css: string): Partial<ThemePalette> {
     const name = match[1];
     const color = parseCssColor(match[2] ?? '');
     if (!color) continue;
-    if (name === 'background') patch.background = color;
-    if (name === 'foreground') patch.foreground = color;
-    if (name === 'primary' || name === 'accent') patch.accent = color;
+    if (name === 'background' || name === 'solo-theme-background') patch.background = color;
+    if (name === 'foreground' || name === 'solo-theme-foreground') patch.foreground = color;
+    if (name === 'primary' || name === 'accent' || name === 'solo-theme-accent') patch.accent = color;
   }
   return patch;
 }
@@ -131,26 +141,35 @@ export function AppearanceTab() {
             {selectedPresetLabel}
           </div>
         </div>
-        <ThemeSelector value={colorScheme} onChange={setColorScheme} />
+        <ThemeSelector
+          value={colorScheme}
+          onChange={setColorScheme}
+          palettes={{
+            light: appearance.light,
+            dark: appearance.dark,
+          }}
+        />
       </section>
 
       <section className="overflow-hidden rounded-[10px] border border-border/70 bg-card/75">
         <div className="grid grid-cols-2 border-b border-border/60 bg-background/45 text-xs">
-          <CodePreview surface="light" />
-          <CodePreview surface="dark" />
+          <CodePreview surface="light" palette={appearance.light} />
+          <CodePreview surface="dark" palette={appearance.dark} />
         </div>
 
         <div className="flex flex-col gap-0 divide-y divide-border/65">
           <div className="flex items-center justify-between gap-3 px-4 py-3">
-            <span className="text-sm font-medium text-foreground">Editing</span>
+            <span className="text-sm font-medium text-foreground">Edit palette</span>
             <div className="inline-flex rounded-full bg-background/70 p-1">
               {SURFACES.map(({ value, label, icon: Icon }) => (
                 <button
                   key={value}
                   type="button"
                   onClick={() => setEditingSurface(value)}
+                  aria-pressed={editingSurface === value}
+                  title={label}
                   className={cn(
-                    'inline-flex h-7 items-center gap-1.5 rounded-full px-3 text-xs transition-colors',
+                    'inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded-full px-3 text-xs transition-colors',
                     editingSurface === value
                       ? 'bg-primary text-primary-foreground'
                       : 'text-muted-foreground hover:text-foreground',
@@ -280,17 +299,16 @@ export function AppearanceTab() {
   );
 }
 
-function CodePreview({ surface }: { surface: ThemeSurface }) {
-  const preset = APPEARANCE_PRESETS.codex[surface];
+function CodePreview({ surface, palette }: { surface: ThemeSurface; palette: ThemePalette }) {
   return (
     <div
       className="min-w-0 border-r border-border/60 px-4 py-3 font-mono text-[11px] leading-5 last:border-r-0"
-      style={{ background: preset.background, color: preset.foreground }}
+      style={{ background: palette.background, color: palette.foreground }}
     >
-      <div><span style={{ color: preset.accent }}>const</span> themePreview = &#123;</div>
+      <div><span style={{ color: palette.accent }}>const</span> themePreview = &#123;</div>
       <div className="pl-4">surface: "{surface}-glass",</div>
-      <div className="pl-4">accent: "{preset.accent}",</div>
-      <div className="pl-4">contrast: {preset.contrast},</div>
+      <div className="pl-4">accent: "{palette.accent}",</div>
+      <div className="pl-4">contrast: {palette.contrast},</div>
       <div>&#125;;</div>
     </div>
   );
@@ -304,6 +322,7 @@ function ColorRow({ label, value, onChange }: { label: string; value: string; on
         <input
           type="color"
           value={colorValue(value)}
+          aria-label={label}
           onChange={(event) => onChange(event.target.value)}
           className="h-5 w-5 rounded-full border-0 bg-transparent p-0"
         />
@@ -346,6 +365,7 @@ function ToggleRow({ label, checked, onChange }: { label: string; checked: boole
         type="button"
         role="switch"
         aria-checked={checked}
+        aria-label={label}
         onClick={() => onChange(!checked)}
         className={cn(
           'relative h-5 w-9 rounded-full transition-colors',
@@ -373,6 +393,7 @@ function SliderRow({ label, value, onChange }: { label: string; value: number; o
           min={0}
           max={100}
           value={value}
+          aria-label={label}
           onChange={(event) => onChange(Number(event.target.value))}
           className="w-36 accent-primary"
         />

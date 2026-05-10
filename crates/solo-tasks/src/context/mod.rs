@@ -29,15 +29,19 @@ pub fn render_prompt(goal: &str, fragments: &[ContextFragment]) -> String {
         writeln!(&mut out, "\n--- {} ---\n{}\n", f.source, f.content).ok();
     }
     out.push_str("\n\nINSTRUCTIONS:\n");
-    out.push_str("Decompose the goal into 3-7 concrete tasks. Return ONLY a JSON array with this shape:\n");
-    out.push_str(r#"[
+    out.push_str(
+        "Decompose the goal into 3-7 concrete tasks. Return ONLY a JSON array with this shape:\n",
+    );
+    out.push_str(
+        r#"[
   {
     "title": "short imperative title",
     "description": "2-3 sentence context — what + why",
     "executor": "manual" | "agent",
     "priority": "low" | "medium" | "high" | "urgent"
   }
-]"#);
+]"#,
+    );
     out.push_str("\n\nOutput ONLY the JSON array, no prose, no markdown fences.\n");
     out
 }

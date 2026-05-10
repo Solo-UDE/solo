@@ -15,6 +15,7 @@ import { promote as promoteWorktree } from '@/lib/tauri/worktree';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import type { WorktreeInfo } from '../../bindings';
+import { VirtualList, VirtualTextLines } from '@/components/ui/virtual-list';
 
 interface WorktreePanelProps {
   className?: string;
@@ -250,10 +251,15 @@ export const WorktreePanel: FC<WorktreePanelProps> = ({ className, embedded, sho
             </p>
           </motion.div>
         ) : (
-          <div className="py-1">
-            {worktrees.map((wt) => (
+          <VirtualList
+            items={worktrees}
+            estimateSize={() => 62}
+            overscan={8}
+            className="h-full py-1"
+            getItemKey={(wt) => wt.id}
+            testId="worktree-panel-list"
+            renderItem={(wt) => (
               <WorktreeCard
-                key={wt.id}
                 worktree={wt}
                 isActive={wt.is_main ? activeWorktreeId === null : activeWorktreeId === wt.id}
                 setupLines={setupProgress.get(wt.id)}
@@ -265,8 +271,8 @@ export const WorktreePanel: FC<WorktreePanelProps> = ({ className, embedded, sho
                 onPromoteToggle={() => setPromoteId(promoteId === wt.id ? null : wt.id)}
                 onPromote={(name) => handlePromote(wt.id, name)}
               />
-            ))}
-          </div>
+            )}
+          />
         )}
       </div>
     </div>
@@ -404,11 +410,13 @@ const WorktreeCard: FC<WorktreeCardProps> = ({
             {showSetup ? 'Hide setup output' : `Setup (${setupLines.length} lines)`}
           </button>
           {showSetup && (
-            <div className="mt-1 max-h-24 overflow-y-auto bg-black/20 rounded p-1.5 font-mono text-[10px] text-muted-foreground leading-tight">
-              {setupLines.map((line, i) => (
-                <div key={i} className="whitespace-pre-wrap break-all">{line}</div>
-              ))}
-            </div>
+            <VirtualTextLines
+              lines={setupLines}
+              estimateSize={() => 16}
+              className="mt-1 max-h-24 rounded bg-black/20 p-1.5 font-mono text-[10px] leading-tight text-muted-foreground"
+              lineClassName="whitespace-pre-wrap break-all"
+              testId="worktree-setup-output"
+            />
           )}
         </div>
       )}

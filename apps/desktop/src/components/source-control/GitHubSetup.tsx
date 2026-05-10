@@ -1,7 +1,8 @@
 /**
  * GitHubSetup — UI for connecting GitHub, creating repos, and initial setup.
  *
- * Uses GitHub Device Flow for authentication.
+ * Uses Solo's cloud GitHub link flow so git access is scoped to the signed-in
+ * Solo account.
  */
 
 import { useState, useCallback, useEffect } from 'react';
@@ -92,9 +93,9 @@ export const GitHubSetup: FC<GitHubSetupProps> = ({ className }) => {
         >
           <GitHubLogoIcon className="w-7 h-7 text-muted-foreground" />
         </div>
-        <h3 className="text-sm font-semibold text-foreground mb-1">Connect to GitHub</h3>
+        <h3 className="text-sm font-semibold text-foreground mb-1">Link GitHub to Solo</h3>
         <p className="text-xs text-muted-foreground/60 text-center mb-5 leading-relaxed max-w-[200px]">
-          Push and pull your code to a GitHub repository.
+          Push and pull using the GitHub account linked to your Solo sign-in.
         </p>
 
         {error && (
@@ -113,7 +114,7 @@ export const GitHubSetup: FC<GitHubSetupProps> = ({ className }) => {
           ) : (
             <GitHubLogoIcon className="w-4 h-4" />
           )}
-          {isConnecting ? 'Starting...' : 'Sign in with GitHub'}
+          {isConnecting ? 'Opening browser...' : 'Link GitHub'}
         </Button>
       </div>
     );
@@ -130,13 +131,13 @@ export const GitHubSetup: FC<GitHubSetupProps> = ({ className }) => {
         />
         <div className="flex-1 min-w-0">
           <p className="text-xs font-medium text-foreground">{ghUser.login}</p>
-          <p className="text-[10px] text-muted-foreground/50">Connected</p>
+          <p className="text-[10px] text-muted-foreground/50">Linked to Solo</p>
         </div>
         <IconButton
           variant="ghost"
           size="sm"
           onClick={handleDisconnect}
-          title="Disconnect GitHub"
+          title="Unlink GitHub from Solo"
         >
           <ExitIcon className="w-3.5 h-3.5 text-muted-foreground" />
         </IconButton>

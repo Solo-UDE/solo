@@ -31,11 +31,26 @@ function detectPlatform(): Platform {
 // Cached platform (doesn't change during runtime)
 const cachedPlatform: Platform = detectPlatform();
 
+function hasTauriRuntime(): boolean {
+  return typeof window !== 'undefined' && (
+    '__TAURI_INTERNALS__' in window ||
+    '__TAURI__' in window
+  );
+}
+
 export function usePlatform(): PlatformInfo {
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   useEffect(() => {
-    const appWindow = getCurrentWindow();
+    if (!hasTauriRuntime()) return;
+
+    let appWindow: ReturnType<typeof getCurrentWindow>;
+    try {
+      appWindow = getCurrentWindow();
+    } catch {
+      return;
+    }
+
     let unlisten: (() => void) | null = null;
 
     async function init() {

@@ -173,7 +173,7 @@ bun run dev:auth
 
 ### Why `bun run dev:auth`
 
-`apps/desktop/src/components/auth/AuthGuard.tsx` bypasses auth in dev by default (so unrelated feature work doesn't need sign-in). Set `VITE_AUTH_ENABLED=1` to mount the real guard and see `LoginScreen`.
+`apps/desktop/src/components/auth/AuthGuard.tsx` bypasses auth in plain dev mode so unrelated UI work doesn't need sign-in. Set `VITE_AUTH_ENABLED=1` or `VITE_AUTH_BYPASS=0` to mount the real guard and see `LoginScreen`.
 
 `bun run dev:auth` does that for you and also loads the local Cognito env contract.
 
@@ -192,7 +192,7 @@ installed app as `/Applications/Solo (Production Backup).app`.
 1. **Continue with GitHub** / **Continue with Google** → opens browser → Cognito Hosted UI.
 2. **Email** → opens browser with Cognito Hosted UI, email pre-filled via `login_hint`.
 
-Tauri deep-link callback: `soloide://auth/callback?code=...` → `auth_exchange_code` Rust command → tokens stored in OS keychain → UI unlocks.
+Desktop callback: `http://127.0.0.1:19877/callback?code=...` → local callback server emits an app auth event → `auth_exchange_code` Rust command → tokens stored in OS keychain → UI unlocks. `soloide://auth/callback` remains a fallback deep link.
 
 ---
 
@@ -204,7 +204,7 @@ Tauri deep-link callback: `soloide://auth/callback?code=...` → `auth_exchange_
 [Solo-web or Desktop] —signIn('cognito')→ Cognito Hosted UI
 Cognito —federated OIDC→ Google
 Google —id_token→ Cognito
-Cognito —app session code→ [Solo-web callback / soloide://auth/callback]
+Cognito —app session code→ [Solo-web callback / desktop loopback callback]
 [Client] —token exchange→ Cognito —access/id_token→ [Client]
 ```
 
@@ -380,7 +380,7 @@ Role flags (`isAllowed`, `isAdmin`) are computed at sign-in and stashed in the N
 - **Secrets Manager + IAM**: `fromSecretNameV2(...).secretArn` emits the suffix-less ARN. If you pass that to `GetSecretValue(SecretId=<that ARN>)`, IAM evaluates literally and the `-??????` wildcard grant won't match. Pass the secret *name* instead.
 - **`newer pg` + `sslmode=require`**: recent `pg@9.x` treats `require` as `verify-full`. Append `&uselibpqcompat=true` to `DATABASE_URL` to restore old semantics, or the Drizzle client errors at query time.
 - **NextAuth edge runtime**: `middleware.ts` runs under Next's edge runtime, which cannot import `pg`/`crypto`. Put DB-touching callbacks in `lib/auth.ts` and re-export an edge-safe config from `lib/auth.config.ts` (providers only). `middleware.ts` imports only the edge-safe version.
-- **Desktop dev mode bypass**: `AuthGuard` short-circuits if `VITE_AUTH_ENABLED !== '1'`. Forgotten by new devs → "sign-in doesn't seem to do anything". See §6.
+- **Desktop dev mode bypass**: `AuthGuard` short-circuits in plain dev mode unless `VITE_AUTH_ENABLED=1` or `VITE_AUTH_BYPASS=0` is set. Forgotten by new devs → "sign-in doesn't seem to do anything". See §6.
 - **Cognito `LogoutURL` list** is independent of the callback URL list. Adding a new origin requires both. Current list: `http://localhost:3000`, `https://solo.dev`, `soloide://auth/signout`.
 - **Cognito User Pool user is created on first federation.** If you change the attribute mapping *after* the first sign-in, Cognito does NOT re-sync; you must delete the user in the pool for the new mapping to take effect on their next sign-in.
 

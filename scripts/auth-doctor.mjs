@@ -1,6 +1,7 @@
 import {
   CALLBACK_URI,
   DESKTOP_AUTH_ENV_KEYS,
+  DESKTOP_AUTH_OPTIONAL_ENV_KEYS,
   SIGNOUT_URI,
   inferDesktopAuthStage,
   resolveDesktopAuthEnv,
@@ -14,7 +15,8 @@ console.log("");
 console.log(`Inferred stage: ${stage}`);
 console.log(`Callback URI: ${CALLBACK_URI}`);
 console.log(`Sign-out URI: ${SIGNOUT_URI}`);
-console.log(`AuthGuard in dev: ${process.env.VITE_AUTH_ENABLED === "1" ? "enabled" : "disabled"}`);
+const authEnabled = process.env.VITE_AUTH_ENABLED === "1" || process.env.VITE_AUTH_BYPASS === "0";
+console.log(`AuthGuard in dev: ${authEnabled ? "enabled" : "bypassed"}`);
 console.log("");
 
 if (loadedFiles.length > 0) {
@@ -28,6 +30,15 @@ if (loadedFiles.length > 0) {
 console.log("Effective desktop auth env:");
 for (const key of DESKTOP_AUTH_ENV_KEYS) {
   const value = effective[key] || "<missing>";
+  const source = sources[key] === "process" ? "process env" : sources[key] ?? "unset";
+  console.log(`- ${key}=${value}`);
+  console.log(`  source: ${source}`);
+}
+
+console.log("");
+console.log("Optional deployed auth env:");
+for (const key of DESKTOP_AUTH_OPTIONAL_ENV_KEYS) {
+  const value = effective[key] || "<unset>";
   const source = sources[key] === "process" ? "process env" : sources[key] ?? "unset";
   console.log(`- ${key}=${value}`);
   console.log(`  source: ${source}`);

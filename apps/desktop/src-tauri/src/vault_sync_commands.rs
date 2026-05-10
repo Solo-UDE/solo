@@ -20,6 +20,8 @@ struct CreateEntryBody<'a> {
     memory_type: MemoryType,
     pinned: u8,
     tags: String,
+    label_ids: String,
+    expires_at: Option<u64>,
     mime: Option<&'a str>,
     size_bytes: Option<u64>,
     index_status: IndexStatus,
@@ -57,6 +59,8 @@ fn create_entry_body(entry: &VaultEntry) -> CreateEntryBody<'_> {
         memory_type: entry.memory_type,
         pinned: u8::from(entry.pinned),
         tags: serde_json::to_string(&entry.tags).unwrap_or_else(|_| "[]".to_string()),
+        label_ids: serde_json::to_string(&entry.label_ids).unwrap_or_else(|_| "[]".to_string()),
+        expires_at: entry.expires_at,
         mime: entry.mime.as_deref(),
         size_bytes: entry.size_bytes,
         index_status: entry.index_status,
@@ -404,6 +408,8 @@ mod tests {
             memory_type: MemoryType::User,
             pinned: true,
             tags: vec!["alpha".to_string(), "beta".to_string()],
+            label_ids: vec!["label-1".to_string()],
+            expires_at: Some(200),
             mime: Some("text/plain".to_string()),
             size_bytes: Some(42),
             index_status: IndexStatus::Indexed,
@@ -431,6 +437,8 @@ mod tests {
         assert_eq!(json["memory_type"], "user");
         assert_eq!(json["pinned"], 1);
         assert_eq!(json["tags"], "[\"alpha\",\"beta\"]");
+        assert_eq!(json["label_ids"], "[\"label-1\"]");
+        assert_eq!(json["expires_at"], 200);
         assert_eq!(json["index_status"], "indexed");
         assert_eq!(json["cloud_sync_state"], "pending");
         assert!(json["source_path"].is_null());

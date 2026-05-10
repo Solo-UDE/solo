@@ -32,10 +32,12 @@
   },
   "dependencies": {
     "@aws-sdk/client-cognito-identity-provider": "^3.699.0",
+    "@aws-sdk/client-cloudformation": "^3.699.0",
     "@aws-sdk/client-dynamodb": "^3.699.0",
     "@aws-sdk/client-kms": "^3.699.0",
     "@aws-sdk/client-s3": "^3.699.0",
     "@aws-sdk/client-secrets-manager": "^3.699.0",
+    "@aws-sdk/credential-providers": "^3.699.0",
     "@aws-sdk/lib-dynamodb": "^3.699.0",
     "@aws-sdk/s3-request-presigner": "^3.699.0",
     "@resvg/resvg-wasm": "^2.6.0",

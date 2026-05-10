@@ -52,6 +52,7 @@ export function SelectDropdown<T extends string | number>({
   return (
     <Select value={normalizedValue} onValueChange={handleChange} disabled={disabled}>
       <SelectTrigger
+        aria-label={label}
         className={cn(
           'min-w-[160px] rounded-lg border border-border/70 bg-background/70 shadow-sm',
           'hover:bg-card focus:outline-1 focus:outline-primary/50',
