@@ -682,6 +682,13 @@ pub struct VaultEntry {
     /// When true, always eligible for RAG regardless of similarity
     pub pinned: bool,
     pub tags: Vec<String>,
+    /// Shared colored label ids. Labels are stored in the task label catalog.
+    #[serde(default)]
+    pub label_ids: Vec<String>,
+    /// Unix epoch seconds. None means legacy/no-expiry and is treated as active.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub expires_at: Option<u64>,
     pub mime: Option<String>,
     pub size_bytes: Option<u64>,
     pub index_status: IndexStatus,
@@ -716,6 +723,8 @@ pub struct VaultListFilters {
     pub pinned: Option<bool>,
     /// Only entries in the Unsorted review tray
     pub unsorted: Option<bool>,
+    /// Only expired entries when true. None/false returns active entries only.
+    pub expired: Option<bool>,
     /// Free-text filter (title/tags)
     pub query: Option<String>,
 }
@@ -2253,6 +2262,11 @@ pub struct PluginSummary {
     pub brand_color: Option<String>,
     pub enabled: bool,
     pub source: PluginSource,
+    pub skill_count: u32,
+    pub mcp_server_count: u32,
+    pub app_count: u32,
+    pub unsupported_connector_count: u32,
+    pub compatibility_warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -2265,6 +2279,13 @@ pub struct PluginDetail {
     pub root_path: String,
     pub description: Option<String>,
     pub interface: Option<PluginInterface>,
+    pub skills_path: Option<String>,
+    pub mcp_servers_path: Option<String>,
+    pub apps_path: Option<String>,
+    pub skill_count: u32,
+    pub mcp_servers: Vec<String>,
+    pub apps: Vec<PluginAppDeclaration>,
+    pub compatibility_warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -2284,6 +2305,63 @@ pub struct PluginInterface {
     pub composer_icon: Option<String>,
     pub logo: Option<String>,
     pub screenshots: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct PluginAppDeclaration {
+    pub app_id: String,
+    pub connector_id: Option<String>,
+    pub provider: Option<String>,
+    pub scopes: Vec<String>,
+    pub supported: bool,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct ConnectorAccountSummary {
+    pub provider: String,
+    pub account_id: String,
+    pub display_name: Option<String>,
+    pub scopes: Vec<String>,
+    pub expires_at: Option<String>,
+    pub updated_at: String,
+    pub has_access_token: bool,
+    pub has_refresh_token: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct ConnectorStoreTokenRequest {
+    pub provider: String,
+    pub account_id: String,
+    pub display_name: Option<String>,
+    pub access_token: Option<String>,
+    pub refresh_token: Option<String>,
+    pub scopes: Vec<String>,
+    pub expires_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct ConnectorOAuthCallbackResult {
+    pub code: String,
+    pub state: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../apps/desktop/src/bindings/")]
+pub struct ConnectorPluginRequirement {
+    pub plugin_id: PluginId,
+    pub plugin_display_name: String,
+    pub app_id: String,
+    pub connector_id: Option<String>,
+    pub provider: Option<String>,
+    pub scopes: Vec<String>,
+    pub supported: bool,
+    pub connected: bool,
+    pub status: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
