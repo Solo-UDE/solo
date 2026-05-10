@@ -8,6 +8,7 @@ import { motion } from 'motion/react';
 import { useUIStore } from '@/stores/uiStore';
 import type { SidebarMode } from '@/stores/uiStore';
 import { cn } from '@/lib/utils';
+import { traceSync } from '@/lib/perf';
 
 const MODES: { key: SidebarMode; label: string }[] = [
   { key: 'dev', label: 'Dev' },
@@ -25,7 +26,9 @@ export const ModeToggle: FC = () => {
         return (
           <button
             key={key}
-            onClick={() => setSidebarMode(key)}
+            onClick={() => {
+              traceSync('sidebar.mode.switch', key, () => setSidebarMode(key));
+            }}
             className={cn(
               'relative h-7 text-[12px] font-medium transition-colors duration-150',
               isActive
