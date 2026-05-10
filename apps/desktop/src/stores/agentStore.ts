@@ -26,6 +26,7 @@ import {
 import {
 	capabilitiesForModel,
 	DEFAULT_MODEL_ID,
+	normalizeModelId,
 	providerForModel,
 	type ModelProvider,
 } from '../lib/constants';
@@ -637,7 +638,7 @@ export const useAgentStore = create<AgentStore>()(
 					});
 				}
 
-				const agentModel = session.model || DEFAULT_MODEL_ID;
+				const agentModel = normalizeModelId(session.model || DEFAULT_MODEL_ID);
 				const maxTokens = useSettingsStore.getState().ai.maxTokens;
 				const provider = providerForModel(agentModel);
 				const providerCapabilities = capabilitiesForModel(agentModel);
@@ -774,7 +775,7 @@ export const useAgentStore = create<AgentStore>()(
 			},
 		) => {
 			const sessionId = generateSessionId();
-			const agentModel = model || DEFAULT_MODEL_ID;
+			const agentModel = normalizeModelId(model || DEFAULT_MODEL_ID);
 			const maxTokens = useSettingsStore.getState().ai.maxTokens;
 			const provider = providerForModel(agentModel);
 			const providerCapabilities = capabilitiesForModel(agentModel);
@@ -864,7 +865,9 @@ export const useAgentStore = create<AgentStore>()(
 				sourceMessages,
 				get().sessionGoals.get(sourceSessionId),
 			);
-			const sessionId = await get().createSession(model || sourceSession.model || DEFAULT_MODEL_ID);
+			const sessionId = await get().createSession(
+				normalizeModelId(model || sourceSession.model || DEFAULT_MODEL_ID),
+			);
 
 			set((state) => {
 				const session = state.sessions.get(sessionId);
@@ -886,7 +889,7 @@ export const useAgentStore = create<AgentStore>()(
 			if (!sourceSession.sdkSessionId) throw new Error('Source session has no SDK session ID to fork from');
 
 			const sessionId = generateSessionId();
-			const agentModel = model || sourceSession.model || DEFAULT_MODEL_ID;
+			const agentModel = normalizeModelId(model || sourceSession.model || DEFAULT_MODEL_ID);
 			const maxTokens = useSettingsStore.getState().ai.maxTokens;
 			const provider = providerForModel(agentModel);
 			const providerCapabilities = capabilitiesForModel(agentModel);
@@ -960,8 +963,9 @@ export const useAgentStore = create<AgentStore>()(
 				const session = get().sessions.get(sessionId);
 				if (!session) return;
 
-				const nextProvider = providerForModel(model);
-				const nextCapabilities = capabilitiesForModel(model);
+				const normalizedModel = normalizeModelId(model);
+				const nextProvider = providerForModel(normalizedModel);
+				const nextCapabilities = capabilitiesForModel(normalizedModel);
 				const nextSessionMode = nextCapabilities.agent ? 'agent' : 'chat';
 				const currentProvider = session.provider ?? providerForModel(session.model || DEFAULT_MODEL_ID);
 				const mustRecreateBackendSession =
@@ -984,7 +988,7 @@ export const useAgentStore = create<AgentStore>()(
 
 					await backend.agentDeleteSession(sessionId).catch(() => {});
 					await backend.agentCreateSession(sessionId, {
-						model,
+						model: normalizedModel,
 						maxTokens: useSettingsStore.getState().ai.maxTokens,
 						cwd: session.workspacePath,
 						provider: nextProvider,
@@ -992,13 +996,13 @@ export const useAgentStore = create<AgentStore>()(
 						sessionMode: nextSessionMode,
 					});
 				} else {
-					await backend.agentSetModel(sessionId, model);
+					await backend.agentSetModel(sessionId, normalizedModel);
 				}
 
 				set((state) => {
 					const existing = state.sessions.get(sessionId);
 					if (existing) {
-						existing.model = model;
+						existing.model = normalizedModel;
 						existing.provider = nextProvider;
 						existing.sessionMode = nextSessionMode;
 						existing.resumable = nextCapabilities.resume ? existing.resumable : false;
