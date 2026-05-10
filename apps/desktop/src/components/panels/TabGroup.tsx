@@ -21,6 +21,7 @@ interface TabGroupProps {
   tileId: TileId;
   allTabs: PanelInstance[];
   activeTabId: PanelInstanceId | null;
+  visibleTabIds?: Set<PanelInstanceId>;
   selectedWorktreeId: string | null;
   onToggleCollapse: (repoPath: string) => void;
   onSelectWorktree: (repoPath: string, worktreeId: string | null) => void;
@@ -36,6 +37,7 @@ export const TabGroupComponent: FC<TabGroupProps> = ({
   tileId,
   allTabs,
   activeTabId,
+  visibleTabIds,
   selectedWorktreeId,
   onToggleCollapse,
   onSelectWorktree,
@@ -51,13 +53,15 @@ export const TabGroupComponent: FC<TabGroupProps> = ({
 
   // Filter tabs by selected worktree
   const visibleTabs = useMemo(() => {
-    if (selectedWorktreeId === null && group.worktreeIds.size <= 1) {
-      return group.tabs;
-    }
-    return group.tabs.filter(
+    const worktreeTabs = selectedWorktreeId === null && group.worktreeIds.size <= 1
+      ? group.tabs
+      : group.tabs.filter(
       (tab) => (tab.worktreeId ?? null) === selectedWorktreeId,
     );
-  }, [group.tabs, selectedWorktreeId, group.worktreeIds.size]);
+    return visibleTabIds ? worktreeTabs.filter((tab) => visibleTabIds.has(tab.id)) : worktreeTabs;
+  }, [group.tabs, selectedWorktreeId, group.worktreeIds.size, visibleTabIds]);
+
+  const hasVisibleTabs = visibleTabs.length > 0;
 
   const handleToggle = useCallback(() => {
     onToggleCollapse(group.repoPath);
@@ -106,6 +110,8 @@ export const TabGroupComponent: FC<TabGroupProps> = ({
   }, [selectedWorktreeId, repo.worktrees, repo.currentBranch]);
 
   const hasMultipleWorktrees = group.worktreeIds.size > 1;
+
+  if (!hasVisibleTabs && !group.collapsed) return null;
 
   return (
     <div className="flex items-center gap-0.5 shrink-0" ref={dropdownRef}>
