@@ -66,6 +66,7 @@ export interface AgentWindowProps {
 	callbacks?: AgentWindowCallbacks;
 	ui?: AgentWindowUIOptions;
 	className?: string;
+	isActive?: boolean;
 }
 
 
@@ -76,6 +77,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 	callbacks,
 	ui: _ui = {},
 	className = '',
+	isActive = true,
 }) => {
 	const [worktreeId, setWorktreeId] = useState<string | null>(initialWorktreeId ?? null);
 	const [vaultDraft, setVaultDraft] = useState<VaultCaptureDraft | null>(null);
@@ -364,6 +366,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 	// listener only fires when this panel actually "owns" the focus; if the
 	// user is typing in the terminal or another panel we stay out of the way.
 	useEffect(() => {
+		if (!isActive) return;
 		const handler = (event: KeyboardEvent) => {
 			// Skip if something downstream (composer's own handleKeyDown, a
 			// button's activation handler, etc.) already handled this press.
@@ -406,7 +409,7 @@ export const AgentWindow: FC<AgentWindowProps> = ({
 		};
 		document.addEventListener('keydown', handler);
 		return () => document.removeEventListener('keydown', handler);
-	}, [isRunning]);
+	}, [isActive, isRunning]);
 
 	// Keep focus inside the panel on clicks that would otherwise land on
 	// non-focusable elements (e.g. the message feed's whitespace). Without
