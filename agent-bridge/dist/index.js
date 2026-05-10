@@ -3504,7 +3504,7 @@ Do NOT overwhelm the user with a full checklist every time \u2014 pick the most 
     const credentials = await ClaudeCredentials.getCredentials();
     if (!credentials.hasCredentials) {
       throw new Error(
-        'No credentials found. Please either:\n1. Run "claude login" to set up OAuth credentials in ~/.claude/.credentials.json, OR\n2. Set ANTHROPIC_API_KEY in .env file'
+        'No credentials found. Please either:\n1. Run "claude /login" to set up OAuth credentials in ~/.claude/.credentials.json, OR\n2. Set ANTHROPIC_API_KEY in .env file'
       );
     }
     if (credentials.type === "oauth") {

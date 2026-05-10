@@ -1168,7 +1168,7 @@ Do NOT overwhelm the user with a full checklist every time — pick the most imp
     if (!credentials.hasCredentials) {
       throw new Error(
         'No credentials found. Please either:\n' +
-          '1. Run "claude login" to set up OAuth credentials in ~/.claude/.credentials.json, OR\n' +
+          '1. Run "claude /login" to set up OAuth credentials in ~/.claude/.credentials.json, OR\n' +
           '2. Set ANTHROPIC_API_KEY in .env file'
       );
     }
