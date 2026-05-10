@@ -13,7 +13,14 @@ export const DESKTOP_AUTH_ENV_KEYS = [
   "SOLO_VAULT_API_ENDPOINT",
 ];
 
-export const CALLBACK_URI = "soloide://auth/callback";
+export const DESKTOP_AUTH_OPTIONAL_ENV_KEYS = [
+  "SOLO_COGNITO_USER_POOL_ID",
+  "SOLO_COGNITO_IDENTITY_POOL_ID",
+  "SOLO_GITHUB_OIDC_ISSUER",
+  "SOLO_GITHUB_CALLBACK",
+];
+
+export const CALLBACK_URI = "http://127.0.0.1:19877/callback";
 export const SIGNOUT_URI = "soloide://auth/signout";
 
 export function resolveAuthStage(baseEnv = process.env) {
@@ -123,7 +130,10 @@ export function resolveDesktopAuthEnv(baseEnv = process.env) {
   }
 
   const effective = Object.fromEntries(
-    DESKTOP_AUTH_ENV_KEYS.map((key) => [key, env[key] ?? ""])
+    [...DESKTOP_AUTH_ENV_KEYS, ...DESKTOP_AUTH_OPTIONAL_ENV_KEYS].map((key) => [
+      key,
+      env[key] ?? "",
+    ])
   );
   const missing = DESKTOP_AUTH_ENV_KEYS.filter((key) => {
     const value = env[key];
