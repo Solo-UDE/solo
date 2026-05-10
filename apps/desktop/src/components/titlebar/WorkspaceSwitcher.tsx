@@ -12,6 +12,7 @@ import { useWorkspaceStore } from '@/stores/workspaceStore';
 import { useActiveRepo } from '@/stores/repoStore';
 import { openFolderDialog } from '@/lib/tauri/fs';
 import { cn } from '@/lib/utils';
+import { VirtualList } from '@/components/ui/virtual-list';
 
 /** Extract the last segment of a path */
 const dirName = (p: string) => {
@@ -194,14 +195,21 @@ export function WorkspaceSwitcher() {
 
           {/* Recent directories */}
           {filteredRecents.length > 0 && (
-            <div className="px-1.5 py-1.5 max-h-[200px] overflow-y-auto">
+            <div className="px-1.5 py-1.5">
               <div className="flex items-center gap-1.5 px-2 py-1 mb-0.5">
                 <Clock className="w-3 h-3 text-muted-foreground/50" />
                 <span className="text-[10px] font-medium text-muted-foreground/50">Recent</span>
               </div>
-              {filteredRecents.map((path) => (
+              <VirtualList
+                items={filteredRecents}
+                estimateSize={() => 42}
+                overscan={8}
+                measureElement={false}
+                className="max-h-[200px]"
+                getItemKey={(path) => path}
+                testId="workspace-switcher-recents"
+                renderItem={(path) => (
                 <button
-                  key={path}
                   onClick={() => handleSwitchTo(path)}
                   className="group w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs hover:bg-muted/60 transition-colors duration-150"
                 >
@@ -220,7 +228,8 @@ export function WorkspaceSwitcher() {
                     <Cross2Icon className="w-3 h-3 text-muted-foreground" />
                   </button>
                 </button>
-              ))}
+                )}
+              />
             </div>
           )}
         </div>
