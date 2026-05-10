@@ -1,5 +1,5 @@
 import { FileIcon, ImageIcon } from '@radix-ui/react-icons';
-import { AtSign, Zap } from 'lucide-react';
+import { AtSign, MessageSquare, Zap } from 'lucide-react';
 import { convertFileSrc } from '@tauri-apps/api/core';
 
 import type { FC, ReactNode } from 'react';
@@ -29,6 +29,35 @@ const InlineSkillChip: FC<{ name: string }> = ({ name }) => (
   </span>
 );
 
+function selectionPreview(text: string): string {
+  const compact = text.trim().replace(/\s+/g, ' ');
+  if (compact.length <= 64) return compact;
+  return `${compact.slice(0, 63).trimEnd()}…`;
+}
+
+const InlineSelectionChip: FC<{ text: string; title?: string; preview?: string }> = ({
+  text,
+  title,
+  preview,
+}) => (
+  <span
+    className="my-1 inline-flex max-w-full items-center gap-2 rounded-[10px] border border-border/70 bg-background/58 py-2 pl-2 pr-3 align-middle shadow-[0_10px_24px_-22px_rgba(0,0,0,0.5)]"
+    title={text}
+  >
+    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] bg-foreground text-background">
+      <MessageSquare className="h-4 w-4" aria-hidden="true" />
+    </span>
+    <span className="min-w-0">
+      <span className="block truncate text-sm font-medium leading-4 text-foreground">
+        {title ?? '1 selection'}
+      </span>
+      <span className="mt-0.5 block truncate text-xs leading-4 text-muted-foreground">
+        {preview ?? selectionPreview(text)}
+      </span>
+    </span>
+  </span>
+);
+
 /**
  * Render the interleaved `parts` array preserving chip-in-the-middle order.
  * Text parts that are just whitespace-between-chips are kept verbatim so the
@@ -37,6 +66,16 @@ const InlineSkillChip: FC<{ name: string }> = ({ name }) => (
 function renderParts(parts: UserContentPart[]): ReactNode {
   return parts.map((p, i) => {
     if (p.type === 'skill') return <InlineSkillChip key={`skill-${i}`} name={p.name} />;
+    if (p.type === 'selection') {
+      return (
+        <InlineSelectionChip
+          key={`selection-${i}`}
+          text={p.text}
+          title={p.title}
+          preview={p.preview}
+        />
+      );
+    }
     return <span key={`text-${i}`}>{p.text}</span>;
   });
 }
