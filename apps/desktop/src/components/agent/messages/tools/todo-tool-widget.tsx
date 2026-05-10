@@ -1,5 +1,6 @@
 import { CheckIcon, CircleIcon } from '@radix-ui/react-icons';
 import { ListChecks, Loader2 } from 'lucide-react';
+import { VirtualList } from '@/components/ui/virtual-list';
 
 import type { FC } from 'react';
 
@@ -38,11 +39,17 @@ export const TodoToolWidget: FC<TodoToolWidgetProps> = ({
       </div>
 
       {items.length > 0 ? (
-        <div className="p-2 space-y-1">
-          {items.map((item, i) => {
+        <VirtualList
+          items={items}
+          estimateSize={() => 32}
+          overscan={8}
+          className="max-h-[260px] p-2"
+          getItemKey={(item, i) => item.id ?? `todo-${String(i)}`}
+          testId="legacy-todo-tool-items"
+          renderItem={(item) => {
             const isDone = item.status === 'completed' || item.status === 'done';
             return (
-              <div key={item.id ?? `todo-${String(i)}`} className="flex items-start gap-2 px-2 py-1">
+              <div className="flex items-start gap-2 px-2 py-1">
                 {isDone ? (
                   <CheckIcon width={14} height={14} className="text-success shrink-0 mt-0.5" />
                 ) : (
@@ -53,8 +60,8 @@ export const TodoToolWidget: FC<TodoToolWidgetProps> = ({
                 </span>
               </div>
             );
-          })}
-        </div>
+          }}
+        />
       ) : null}
     </div>
   );
