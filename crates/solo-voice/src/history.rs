@@ -9,7 +9,7 @@ pub struct History {
 #[derive(Debug, Clone)]
 pub struct HistoryRow {
     pub id: String,
-    pub mode: String,              // "Dictation" | "Dispatch"
+    pub mode: String, // "Dictation" | "Dispatch"
     pub raw_transcript: String,
     pub formatted: String,
     pub target_app_bundle_id: Option<String>,
