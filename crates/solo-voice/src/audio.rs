@@ -143,7 +143,9 @@ pub fn start_capture(ring: AudioRing) -> Result<AudioStream> {
                 }
             }
             .map_err(|e| VoiceError::Audio(e.to_string()))?;
-            stream.play().map_err(|e| VoiceError::Audio(e.to_string()))?;
+            stream
+                .play()
+                .map_err(|e| VoiceError::Audio(e.to_string()))?;
             Ok(stream)
         })();
 
