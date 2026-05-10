@@ -6,7 +6,7 @@
  */
 
 import { MagnifyingGlassIcon } from '@radix-ui/react-icons';
-import { AnimatedList } from '@/components/ui/animated-list';
+import { VirtualList } from '@/components/ui/virtual-list';
 
 import { ToolCard } from './ToolCard';
 
@@ -83,22 +83,22 @@ export const SearchToolCard: FC<SearchToolCardProps> = ({
 					</div>
 				) : null}
 
-				{/* Results preview (first 8 files) */}
+				{/* Results preview */}
 				{resultCount > 0 ? (
-					<div className="max-h-[160px] overflow-y-auto rounded-lg bg-muted/20 p-2">
-						<AnimatedList stagger={0.02} slideY={3}>
-							{results.slice(0, 8).map((result, i) => (
-								<div key={`r-${String(i)}`} className="truncate px-1 py-0.5 font-mono text-xs text-foreground/80">
-									{result}
-								</div>
-							))}
-						</AnimatedList>
-						{resultCount > 8 ? (
-							<div className="text-xs text-muted-foreground pt-1 px-1">
-								...and {resultCount - 8} more
+					<VirtualList
+						items={results}
+						estimateSize={() => 22}
+						overscan={10}
+						measureElement={false}
+						className="max-h-[160px] rounded-lg bg-muted/20 p-2"
+						getItemKey={(result, i) => `${i}:${result}`}
+						testId={`search-tool-results-${toolName.toLowerCase()}`}
+						renderItem={(result) => (
+							<div className="truncate px-1 py-0.5 font-mono text-xs text-foreground/80">
+								{result}
 							</div>
-						) : null}
-					</div>
+						)}
+					/>
 				) : null}
 			</div>
 		</ToolCard>
