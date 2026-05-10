@@ -48,8 +48,8 @@ export const GPT_5_3_CODEX_SPARK = 'gpt-5.3-codex-spark';
 export const GPT_5_4_MINI = 'gpt-5.4-mini';
 
 // Google
-export const GEMINI_3_PRO = 'gemini-3-pro';
-export const GEMINI_3_FLASH = 'gemini-3-flash';
+export const GEMINI_3_PRO = 'gemini-3.1-pro-preview';
+export const GEMINI_3_FLASH = 'gemini-3-flash-preview';
 
 // Default model used across the application
 export const DEFAULT_MODEL_ID = CLAUDE_OPUS_4_7;
@@ -96,13 +96,23 @@ export interface ModelOptionConfig {
 export const PROVIDER_CAPABILITIES = {
   anthropic: { chat: true, agent: true, tools: true, mcp: true, resume: true },
   openai: { chat: true, agent: true, tools: true, mcp: true, resume: true },
-  gemini: { chat: true, agent: false, tools: false, mcp: false, resume: false },
+  gemini: { chat: true, agent: true, tools: true, mcp: true, resume: true },
 } as const;
 
 export type ModelProvider = keyof typeof PROVIDER_CAPABILITIES;
 
+export const LEGACY_MODEL_ALIASES: Record<string, string> = {
+  'gemini-3-pro': GEMINI_3_PRO,
+  'gemini-3-flash': GEMINI_3_FLASH,
+};
+
+export function normalizeModelId(modelId: string): string {
+  return LEGACY_MODEL_ALIASES[modelId] ?? modelId;
+}
+
 export function providerForModel(modelId: string): ModelProvider {
-  return MODEL_OPTIONS.find((option) => option.value === modelId)?.provider ?? 'anthropic';
+  const normalizedModelId = normalizeModelId(modelId);
+  return MODEL_OPTIONS.find((option) => option.value === normalizedModelId)?.provider ?? 'anthropic';
 }
 
 export function capabilitiesForModel(modelId: string) {
@@ -164,18 +174,16 @@ export const MODEL_OPTIONS: ModelOptionConfig[] = [
   // Google Gemini models
   {
     value: GEMINI_3_PRO,
-    label: '3 Pro',
+    label: '3.1 Pro',
     description: 'Advanced reasoning',
     provider: 'gemini',
     iconType: 'gemini',
-    textOnly: true,
   },
   {
     value: GEMINI_3_FLASH,
     label: '3 Flash',
-    description: 'Fast multimodal model',
+    description: 'Fast multimodal preview',
     provider: 'gemini',
     iconType: 'gemini',
-    textOnly: true,
   },
 ];
