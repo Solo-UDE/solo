@@ -24,6 +24,7 @@ export function useAppearanceTheme(surface: ThemeSurface): void {
     const accentWash = surface === 'dark' ? 16 : 10;
     const panelWash = surface === 'dark' ? 12 : 5;
     const toolWash = surface === 'dark' ? 14 : 7;
+    const userMessageWash = surface === 'dark' ? 18 : 8;
 
     root.style.setProperty('--solo-theme-accent', theme.accent);
     root.style.setProperty('--solo-theme-background', theme.background);
@@ -53,7 +54,7 @@ export function useAppearanceTheme(surface: ThemeSurface): void {
     root.style.setProperty('--chat-area', mix(theme.background, surface === 'dark' ? 98 : 96, theme.foreground));
     root.style.setProperty('--tool-output-bg', mix(theme.foreground, toolWash, theme.background));
     root.style.setProperty('--border-tool', mix(theme.foreground, borderOpacity + 2, 'transparent'));
-    root.style.setProperty('--agent-user-bg', mix(theme.foreground, toolWash, theme.background));
+    root.style.setProperty('--agent-user-bg', mix(theme.accent, userMessageWash, theme.background));
     root.style.setProperty('--agent-assistant-bg', 'transparent');
     root.style.setProperty('--agent-tool-bg', mix(theme.foreground, toolWash, theme.background));
     root.style.setProperty('--agent-streaming', mix(theme.foreground, mutedText + 8, theme.background));
