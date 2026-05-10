@@ -4,22 +4,25 @@
 //! ~80ms of audio. The sampling interval is 20ms (50 Hz), so we expect
 //! approximately 4 ticks in an 80ms window.
 
+use async_trait::async_trait;
 use solo_voice::{
     audio::AudioRing,
-    formatter::{ChatClient, CloudFormatter, DictationOptions, AppContext, FormatterProvider},
+    formatter::{AppContext, ChatClient, CloudFormatter, DictationOptions, FormatterProvider},
     mode::{PipelineTarget, VoiceMode},
     pipeline::{PipelineState, VoicePipeline},
     stt::{MockStt, SttProvider},
 };
 use std::sync::{Arc, Mutex};
-use async_trait::async_trait;
 
 struct CannedChat(&'static str);
 #[async_trait]
 impl ChatClient for CannedChat {
-    async fn simple_completion(&self, _m: &str, _s: &str, _u: &str)
-        -> solo_voice::error::Result<String>
-    {
+    async fn simple_completion(
+        &self,
+        _m: &str,
+        _s: &str,
+        _u: &str,
+    ) -> solo_voice::error::Result<String> {
         Ok(self.0.to_string())
     }
 }
@@ -45,9 +48,13 @@ async fn rms_level_emits_during_recording() {
     tokio::time::sleep(std::time::Duration::from_millis(80)).await;
 
     p.end(
-        VoiceMode::Dictation, PipelineTarget::ChatInput,
-        AppContext::default(), DictationOptions::default(),
-    ).await.unwrap();
+        VoiceMode::Dictation,
+        PipelineTarget::ChatInput,
+        AppContext::default(),
+        DictationOptions::default(),
+    )
+    .await
+    .unwrap();
 
     let count = levels.lock().unwrap().len();
     assert!(count >= 2, "expected >=2 level emissions, got {count}");
