@@ -140,7 +140,10 @@ pub fn migrate_legacy_blob(json: &str, provider: &str) -> Result<ProviderOAuthSt
     }
 
     let obj = v.as_object().ok_or_else(|| {
-        format!("legacy OAuth blob is not a JSON object (provider={})", provider)
+        format!(
+            "legacy OAuth blob is not a JSON object (provider={})",
+            provider
+        )
     })?;
 
     let access_token = obj
@@ -150,7 +153,10 @@ pub fn migrate_legacy_blob(json: &str, provider: &str) -> Result<ProviderOAuthSt
         .to_string();
 
     if access_token.is_empty() {
-        return Err(format!("legacy blob has empty access_token (provider={})", provider));
+        return Err(format!(
+            "legacy blob has empty access_token (provider={})",
+            provider
+        ));
     }
 
     // Legacy `OAuthToken` may or may not have refresh_token.
@@ -351,8 +357,7 @@ mod tests {
             "scope": null
         }"#;
 
-        let store = migrate_legacy_blob(legacy, "anthropic")
-            .expect("should migrate legacy blob");
+        let store = migrate_legacy_blob(legacy, "anthropic").expect("should migrate legacy blob");
 
         assert_eq!(store.active_profile.as_deref(), Some("default"));
         assert_eq!(store.profiles.len(), 1);
@@ -378,8 +383,7 @@ mod tests {
             "account_id": "acct-123"
         }"#;
 
-        let store = migrate_legacy_blob(legacy, "openai")
-            .expect("should migrate legacy blob");
+        let store = migrate_legacy_blob(legacy, "openai").expect("should migrate legacy blob");
         let p = store.profiles.get("default").unwrap();
         assert_eq!(p.account_id.as_deref(), Some("acct-123"));
         assert_eq!(p.id_token.as_deref(), Some("eyJheyJ.payload.sig"));
@@ -405,14 +409,19 @@ mod tests {
         assert!(migrate_legacy_blob(
             r#"{"access_token":"","refresh_token":"r","expires_at":1}"#,
             "anthropic"
-        ).is_err());
+        )
+        .is_err());
     }
 
     #[test]
     fn is_already_migrated_detects_profiles_key() {
-        assert!(is_already_migrated(r#"{"profiles":{},"active_profile":null}"#));
+        assert!(is_already_migrated(
+            r#"{"profiles":{},"active_profile":null}"#
+        ));
         assert!(is_already_migrated(r#"{"profiles":{}}"#));
-        assert!(!is_already_migrated(r#"{"access_token":"x","expires_at":1}"#));
+        assert!(!is_already_migrated(
+            r#"{"access_token":"x","expires_at":1}"#
+        ));
         assert!(!is_already_migrated("not even json"));
     }
 }
