@@ -30,11 +30,20 @@ import {
   CloudOff,
   CloudUpload,
   AlertCircle,
+  CalendarClock,
 } from 'lucide-react';
 import type { VaultEntry, VaultScope } from '@/lib/tauri/vault';
-import { vaultDelete, vaultSetPinned, vaultUpdateTags, vaultMoveScope } from '@/lib/tauri/vault';
+import {
+  vaultDelete,
+  vaultSetPinned,
+  vaultUpdateLabelsAndExpiry,
+  vaultUpdateTags,
+  vaultMoveScope,
+} from '@/lib/tauri/vault';
 import { useVaultStore } from '@/stores/vaultStore';
+import { useLabelStore } from '@/stores/labelStore';
 import { cn } from '@/lib/utils';
+import { LabelSelector } from './tasks/LabelSelector';
 
 interface Props {
   entry: VaultEntry;
@@ -46,6 +55,8 @@ export const VaultEntryDrawer: FC<Props> = ({ entry, onClose }) => {
   const removeEntry = useVaultStore((s) => s.removeEntry);
   const syncEntry = useVaultStore((s) => s.syncEntry);
   const fetchUnsortedCount = useVaultStore((s) => s.fetchUnsortedCount);
+  const labels = useLabelStore((s) => s.labels);
+  const loadLabels = useLabelStore((s) => s.load);
 
   const [tagInput, setTagInput] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -54,6 +65,8 @@ export const VaultEntryDrawer: FC<Props> = ({ entry, onClose }) => {
   const tagInputRef = useRef<HTMLInputElement>(null);
   const deleteRemote = entry.cloud_sync_state !== 'offline';
   const canSyncCloud = entry.cloud_sync_state !== 'synced';
+  const expiresAt = toOptionalNumber(entry.expires_at);
+  const expired = expiresAt !== null && expiresAt <= Math.floor(Date.now() / 1000);
 
   // Close on Esc. Local keydown is cheaper than a global listener.
   useEffect(() => {
@@ -65,6 +78,38 @@ export const VaultEntryDrawer: FC<Props> = ({ entry, onClose }) => {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose, confirmDelete, tagInput]);
+
+  useEffect(() => {
+    void loadLabels();
+  }, [loadLabels]);
+
+  const updateLabelsAndExpiry = async (nextLabelIds: string[], nextExpiresAt: number | null) => {
+    setBusy(true);
+    try {
+      const updated = await vaultUpdateLabelsAndExpiry(entry.id, nextLabelIds, nextExpiresAt);
+      if (updated) upsertEntry(updated);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[vault] update labels/expiry failed:', err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const addLabel = async (labelId: string) => {
+    const current = entry.label_ids ?? [];
+    if (current.includes(labelId)) return;
+    await updateLabelsAndExpiry([...current, labelId], expiresAt);
+  };
+
+  const removeLabel = async (labelId: string) => {
+    await updateLabelsAndExpiry((entry.label_ids ?? []).filter((id) => id !== labelId), expiresAt);
+  };
+
+  const renew = async (days: number) => {
+    const next = Math.floor(Date.now() / 1000) + days * 24 * 60 * 60;
+    await updateLabelsAndExpiry(entry.label_ids ?? [], next);
+  };
 
   const addTag = async (raw: string) => {
     const tag = raw.trim().replace(/,$/, '').replace(/\s+/g, '-').toLowerCase();
@@ -212,7 +257,7 @@ export const VaultEntryDrawer: FC<Props> = ({ entry, onClose }) => {
           onClick={() => void togglePin()}
           disabled={busy}
           className={cn(
-            'h-6 px-2 rounded-md flex items-center gap-1 text-[10px] font-medium transition-all duration-150 active:scale-[0.97]',
+            'h-6 px-2 rounded-md flex items-center gap-1 text-[10px] font-medium transition-[background-color,color,box-shadow,opacity,transform] duration-150 active:scale-[0.97]',
             entry.pinned
               ? 'bg-primary/10 text-primary'
               : 'text-muted-foreground hover:bg-muted/60',
@@ -262,9 +307,91 @@ export const VaultEntryDrawer: FC<Props> = ({ entry, onClose }) => {
               type="button"
               onClick={() => void toggleScope()}
               disabled={busy}
-              className="ml-auto h-6 px-2 rounded-md text-[10px] font-medium bg-muted/40 hover:bg-muted/60 transition-all duration-150 active:scale-[0.97] disabled:opacity-50"
+              className="ml-auto h-6 px-2 rounded-md text-[10px] font-medium bg-muted/40 hover:bg-muted/60 transition-[background-color,color,box-shadow,opacity,transform] duration-150 active:scale-[0.97] disabled:opacity-50"
             >
               Swap
+            </button>
+          </div>
+        </section>
+
+        {/* Shared labels */}
+        <section className="flex flex-col gap-1.5">
+          <div className="text-[10px] text-muted-foreground/80 font-medium flex items-center justify-between">
+            <span className="flex items-center gap-1">
+              <Tag className="w-3 h-3" /> Labels
+            </span>
+            <LabelSelector
+              selected={entry.label_ids ?? []}
+              onAdd={addLabel}
+              onRemove={removeLabel}
+              compact
+            />
+          </div>
+          {(entry.label_ids ?? []).length > 0 ? (
+            <div className="flex flex-wrap gap-1">
+              {(entry.label_ids ?? []).map((labelId) => {
+                const label = labels.get(labelId);
+                return (
+                  <button
+                    key={labelId}
+                    type="button"
+                    onClick={() => void removeLabel(labelId)}
+                    disabled={busy}
+                    className="inline-flex h-6 max-w-full items-center gap-1.5 rounded-md bg-muted/35 px-2 text-[10px] font-medium transition-[background-color,color] duration-150 hover:bg-muted/60 disabled:opacity-50"
+                    title="Remove label"
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="h-2.5 w-2.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: label?.color ?? '#64748b' }}
+                    />
+                    <span className="truncate">{label?.name ?? labelId}</span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="rounded-lg bg-muted/25 px-2 py-1.5 text-[10px] text-muted-foreground">
+              No labels yet
+            </div>
+          )}
+        </section>
+
+        {/* Expiry */}
+        <section className="flex flex-col gap-1.5">
+          <div className="text-[10px] text-muted-foreground/80 font-medium flex items-center gap-1">
+            <CalendarClock className="w-3 h-3" /> Expiry
+          </div>
+          <div
+            className={cn(
+              'rounded-lg px-2 py-1.5 text-[10px] font-medium',
+              expired
+                ? 'bg-amber-500/10 text-amber-600 dark:text-amber-300'
+                : 'bg-muted/30 text-foreground/85',
+            )}
+          >
+            {expiresAt === null
+              ? 'Legacy active entry'
+              : expired
+                ? `Expired ${formatExpiryDate(expiresAt)}`
+                : `Active until ${formatExpiryDate(expiresAt)}`}
+          </div>
+          <div className="grid grid-cols-2 gap-1">
+            <button
+              type="button"
+              onClick={() => void renew(7)}
+              disabled={busy}
+              className="h-7 rounded-md bg-muted/35 text-[10px] font-medium text-muted-foreground transition-[background-color,color,transform] duration-150 hover:bg-muted/60 hover:text-foreground active:scale-[0.97] disabled:opacity-50"
+            >
+              Renew 1 week
+            </button>
+            <button
+              type="button"
+              onClick={() => void renew(30)}
+              disabled={busy}
+              className="h-7 rounded-md bg-muted/35 text-[10px] font-medium text-muted-foreground transition-[background-color,color,transform] duration-150 hover:bg-muted/60 hover:text-foreground active:scale-[0.97] disabled:opacity-50"
+            >
+              Renew 1 month
             </button>
           </div>
         </section>
@@ -275,7 +402,7 @@ export const VaultEntryDrawer: FC<Props> = ({ entry, onClose }) => {
             <Tag className="w-3 h-3" /> Tags
           </div>
           <div
-            className="flex flex-wrap gap-1 min-h-[28px] p-1.5 rounded-lg bg-muted/30 cursor-text ring-1 ring-transparent focus-within:ring-ring/40 transition-all duration-150"
+            className="flex flex-wrap gap-1 min-h-[28px] p-1.5 rounded-lg bg-muted/30 cursor-text ring-1 ring-transparent focus-within:ring-ring/40 transition-[background-color,color,box-shadow,opacity,transform] duration-150"
             onClick={() => tagInputRef.current?.focus()}
           >
             {entry.tags.map((t) => (
@@ -348,7 +475,7 @@ export const VaultEntryDrawer: FC<Props> = ({ entry, onClose }) => {
                 type="button"
                 onClick={() => void onSyncCloud()}
                 disabled={isSyncingCloud}
-                className="ml-auto h-6 px-2 rounded-md flex items-center gap-1 text-[10px] font-medium bg-primary/10 text-primary hover:bg-primary/15 transition-all duration-150 active:scale-[0.97] disabled:opacity-60"
+                className="ml-auto h-6 px-2 rounded-md flex items-center gap-1 text-[10px] font-medium bg-primary/10 text-primary hover:bg-primary/15 transition-[background-color,color,box-shadow,opacity,transform] duration-150 active:scale-[0.97] disabled:opacity-60"
               >
                 <CloudUpload className="w-3 h-3" />
                 {entry.cloud_sync_state === 'failed'
@@ -369,7 +496,7 @@ export const VaultEntryDrawer: FC<Props> = ({ entry, onClose }) => {
           onClick={() => void onDelete()}
           disabled={busy}
           className={cn(
-            'w-full h-8 rounded-lg flex items-center justify-center gap-1.5 text-[11px] font-medium transition-all duration-150 active:scale-[0.98]',
+            'w-full h-8 rounded-lg flex items-center justify-center gap-1.5 text-[11px] font-medium transition-[background-color,color,box-shadow,opacity,transform] duration-150 active:scale-[0.98]',
             confirmDelete
               ? 'bg-destructive text-destructive-foreground hover:brightness-110'
               : 'text-muted-foreground hover:bg-destructive/10 hover:text-destructive',
@@ -509,4 +636,19 @@ function formatRelative(unixSeconds: number | bigint): string {
   if (diff < 604800) return `${Math.round(diff / 86400)}d ago`;
   const d = new Date(secs * 1000);
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+function toOptionalNumber(value: number | bigint | null | undefined): number | null {
+  if (value == null) return null;
+  const n = typeof value === 'bigint' ? Number(value) : value;
+  return Number.isFinite(n) ? n : null;
+}
+
+function formatExpiryDate(unixSeconds: number): string {
+  return new Date(unixSeconds * 1000).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
 }
