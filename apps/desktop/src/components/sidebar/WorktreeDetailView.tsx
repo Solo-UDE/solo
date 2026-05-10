@@ -194,28 +194,30 @@ export const WorktreeDetailView: FC<WorktreeDetailViewProps> = ({ onFileOpen }) 
       </div>
 
       {/* Content area with scroll preservation */}
-      <div ref={contentRef} className="flex-1 min-h-0 overflow-y-auto">
-        <AnimatePresence initial={false}>
+      <div className="relative flex-1 min-h-0 overflow-hidden">
+        <AnimatePresence mode="popLayout" initial={false}>
           {activeSection === 'explorer' && (
             <motion.div
+              ref={contentRef}
               key="explorer"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.08 }}
-              className="h-full"
+              initial={{ opacity: 0, y: 2 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -2 }}
+              transition={{ duration: 0.09, ease: [0.2, 0, 0, 1] }}
+              className="absolute inset-0 overflow-y-auto"
             >
               <FileExplorer onFileOpen={onFileOpen} className="h-full" />
             </motion.div>
           )}
           {activeSection === 'sessions' && (
             <motion.div
+              ref={contentRef}
               key="sessions"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.08 }}
-              className="h-full"
+              initial={{ opacity: 0, y: 2 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -2 }}
+              transition={{ duration: 0.09, ease: [0.2, 0, 0, 1] }}
+              className="absolute inset-0 overflow-y-auto"
             >
               <SessionList
                 onSessionSelect={handleSessionSelect}
@@ -226,12 +228,13 @@ export const WorktreeDetailView: FC<WorktreeDetailViewProps> = ({ onFileOpen }) 
           )}
           {activeSection === 'changes' && (
             <motion.div
+              ref={contentRef}
               key="changes"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.08 }}
-              className="h-full"
+              initial={{ opacity: 0, y: 2 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -2 }}
+              transition={{ duration: 0.09, ease: [0.2, 0, 0, 1] }}
+              className="absolute inset-0 overflow-y-auto"
             >
               <WorktreeChangesView />
             </motion.div>
