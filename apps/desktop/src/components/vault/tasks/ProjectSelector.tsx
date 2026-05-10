@@ -4,6 +4,7 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover
 import { cn } from '@/lib/utils';
 import { useProjectStore } from '@/stores/projectStore';
 import { NewProjectDialog } from './NewProjectDialog';
+import { VirtualList } from '@/components/ui/virtual-list';
 
 interface Props {
   value: string | null;
@@ -65,7 +66,7 @@ export const ProjectSelector: FC<Props> = ({ value, onChange, compact = false })
             className="w-full bg-transparent text-[12px] outline-none placeholder:text-muted-foreground"
           />
         </div>
-        <div className="flex max-h-[260px] flex-col overflow-y-auto">
+        <div className="flex max-h-[260px] flex-col">
           <button
             type="button"
             onClick={() => { void onChange(null); setOpen(false); }}
@@ -75,22 +76,30 @@ export const ProjectSelector: FC<Props> = ({ value, onChange, compact = false })
             <span className="flex-1">No project</span>
             {value === null && <Check className="h-3.5 w-3.5" />}
           </button>
-          {filtered.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => { void onChange(p.id); setOpen(false); }}
-              className="flex items-center gap-2 rounded-[6px] px-1.5 py-1 text-left text-[12px] hover:bg-muted/70"
-            >
-              <span
-                aria-hidden="true"
-                className="h-2.5 w-2.5 shrink-0 rounded-full"
-                style={{ backgroundColor: p.color }}
-              />
-              <span className="flex-1 truncate">{p.name}</span>
-              {p.id === value && <Check className="h-3.5 w-3.5 text-muted-foreground" />}
-            </button>
-          ))}
+          <VirtualList
+            items={filtered}
+            estimateSize={() => 28}
+            overscan={8}
+            measureElement={false}
+            className="max-h-[210px]"
+            getItemKey={(p) => p.id}
+            testId="project-selector-options"
+            renderItem={(p) => (
+              <button
+                type="button"
+                onClick={() => { void onChange(p.id); setOpen(false); }}
+                className="flex w-full items-center gap-2 rounded-[6px] px-1.5 py-1 text-left text-[12px] hover:bg-muted/70"
+              >
+                <span
+                  aria-hidden="true"
+                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: p.color }}
+                />
+                <span className="flex-1 truncate">{p.name}</span>
+                {p.id === value && <Check className="h-3.5 w-3.5 text-muted-foreground" />}
+              </button>
+            )}
+          />
           {filtered.length === 0 && (
             <div className="px-1.5 py-2 text-center text-[11px] text-muted-foreground">
               No projects yet
