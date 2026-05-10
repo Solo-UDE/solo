@@ -14,7 +14,7 @@ use std::{collections::HashSet, path::Path};
 use tracing::{debug, warn};
 use url::Url;
 
-pub const REDIRECT_URL: &str = "soloide://auth/callback";
+pub const REDIRECT_URL: &str = "http://127.0.0.1:19877/callback";
 pub const SIGNOUT_URL: &str = "soloide://auth/signout";
 
 pub const COGNITO_DOMAIN_ENV_KEYS: &[&str] = &["SOLO_COGNITO_DOMAIN"];
