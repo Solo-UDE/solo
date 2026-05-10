@@ -3,7 +3,7 @@
 //! Uses a tempdir as `solo_home` so it never touches the real ~/.solo/.
 
 use solo_plugins::{
-    LoaderConfig, PluginId, PluginStore, PluginToggles, get_plugin_detail, list_plugins,
+    get_plugin_detail, list_plugins, LoaderConfig, PluginId, PluginStore, PluginToggles,
 };
 use std::fs;
 use std::path::Path;
@@ -57,7 +57,11 @@ fn install_list_toggle_detail_uninstall() {
     let detail = get_plugin_detail(make_cfg(), &id).unwrap();
     assert_eq!(detail.id, id);
     assert_eq!(
-        detail.manifest.as_ref().and_then(|m| m.interface.as_ref()).and_then(|i| i.display_name.clone()),
+        detail
+            .manifest
+            .as_ref()
+            .and_then(|m| m.interface.as_ref())
+            .and_then(|i| i.display_name.clone()),
         Some("Fixture Plugin".to_string())
     );
 
