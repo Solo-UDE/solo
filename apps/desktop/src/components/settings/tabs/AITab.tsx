@@ -1,509 +1,519 @@
 /**
- * AITab - AI provider and behavior settings
- * Shows both Anthropic and OpenAI providers as separate cards
+ * AITab - provider, model, and agent behavior settings.
  */
 
-import { useCallback, useState, useEffect, useMemo } from 'react';
-import { CheckCircledIcon, ExclamationTriangleIcon, CrossCircledIcon, ReloadIcon, StarFilledIcon } from '@radix-ui/react-icons';
-import { Loader2, Clock, Terminal, ShieldCheck, Network } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ChevronDown,
+  CircleDot,
+  Clock,
+  KeyRound,
+  Loader2,
+  LogIn,
+  Network,
+  RefreshCw,
+  Search,
+  Settings2,
+  ShieldCheck,
+  Trash2,
+  XCircle,
+  Zap,
+} from 'lucide-react';
+import {
+  Badge,
+  Button,
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+  IconButton,
+  Input,
+  Switch,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@solo/ui';
 import { ListSkeleton } from '../../ui/skeletons';
 import { useSettingsStore } from '../../../stores/settingsStore';
 import { useProviderStore, useOAuthPending } from '../../../stores/provider-store';
 import { useShallow } from 'zustand/react/shallow';
-import { SettingRow, SelectDropdown, ToggleSwitch, NumberInput, PasswordInput } from '../controls';
+import { NumberInput, PasswordInput, SelectDropdown } from '../controls';
 import { ClaudeLoginModal } from '../ClaudeLoginModal';
 import { verifyProviderModel } from '../../../lib/backend';
 import { getSetupCommands, setSetupCommands } from '../../../lib/tauri/worktree';
 import { toast } from 'sonner';
 import { ProfileRow } from '../ProfileRow';
-import type { ProviderType, AuthMethodInfo, ModelInfo, ProfileSummary, ProviderModelDiagnostic } from '../../../lib/backend';
+import { AnthropicLogo, GeminiLogo, OpenAILogo } from '../../icons';
+import { cn } from '../../../lib/utils';
+import type {
+  AuthMethodInfo,
+  ModelInfo,
+  ProfileSummary,
+  ProviderModelDiagnostic,
+  ProviderType,
+} from '../../../lib/backend';
 
-/**
- * Format seconds into a human-readable string
- */
+type AiProviderId = 'anthropic' | 'openai' | 'gemini';
+type ModelCheckState = {
+  checking: boolean;
+  result: ProviderModelDiagnostic | null;
+};
+
+const PROVIDER_IDS: AiProviderId[] = ['anthropic', 'openai', 'gemini'];
+
+const PROVIDER_META = {
+  anthropic: {
+    label: 'Claude',
+    vendor: 'Anthropic',
+    authLabel: 'Claude Code',
+    logo: AnthropicLogo,
+    accentClass: 'text-amber-500',
+  },
+  openai: {
+    label: 'OpenAI',
+    vendor: 'OpenAI',
+    authLabel: 'ChatGPT',
+    logo: OpenAILogo,
+    accentClass: 'text-emerald-500',
+  },
+  gemini: {
+    label: 'Gemini',
+    vendor: 'Google',
+    authLabel: 'API key',
+    logo: GeminiLogo,
+    accentClass: 'text-sky-500',
+  },
+} as const;
+
 function formatExpiryTime(seconds: number): string {
   if (seconds <= 0) return 'Expired';
-  if (seconds < 60) return `${seconds} seconds`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)} minutes`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)} hours`;
-  return `${Math.floor(seconds / 86400)} days`;
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`;
+  return `${Math.floor(seconds / 86400)}d`;
 }
 
-/**
- * Connection status badge for provider cards
- */
-function ConnectionStatusBadge({
-  authInfo,
+function formatTokenCount(value: number): string {
+  if (value >= 1_000_000) return `${Number(value / 1_000_000).toFixed(value % 1_000_000 === 0 ? 0 : 1)}M`;
+  if (value >= 1_000) return `${Math.round(value / 1_000)}K`;
+  return value.toLocaleString();
+}
+
+function providerName(provider: string): string {
+  return PROVIDER_META[provider as AiProviderId]?.label ?? provider;
+}
+
+function isOAuthAuth(authInfo?: AuthMethodInfo): boolean {
+  return authInfo?.authType === 'o-auth' || authInfo?.authType === 'claude-o-auth';
+}
+
+function isConnected(authInfo: AuthMethodInfo | undefined, hasCredentials: boolean): boolean {
+  return Boolean(authInfo?.isAuthenticated || authInfo?.authType === 'api-key' || hasCredentials);
+}
+
+function authSourceLabel(provider: AiProviderId, authInfo?: AuthMethodInfo, hasCredentials = false): string {
+  if (!authInfo && !hasCredentials) return 'Not connected';
+  if (authInfo?.authType === 'claude-o-auth') return 'Claude Code';
+  if (authInfo?.authType === 'o-auth') {
+    if (authInfo.credentialSource === 'codex-o-auth-file' || authInfo.credentialSource === 'codex-oauth-file') {
+      return 'Codex CLI';
+    }
+    return provider === 'openai' ? 'ChatGPT' : 'OAuth';
+  }
+  if (authInfo?.authType === 'api-key' || hasCredentials) return 'API key';
+  return 'Not connected';
+}
+
+function ModelCheckAction({
+  modelName,
+  check,
+  disabled,
+  onCheck,
 }: {
-  authInfo: AuthMethodInfo | undefined;
+  modelName: string;
+  check?: ModelCheckState;
+  disabled: boolean;
+  onCheck: () => void;
 }) {
-  if (!authInfo || authInfo.authType === 'none') {
+  const result = check?.result;
+  const checking = check?.checking ?? false;
+  const label = checking
+    ? `Checking ${modelName}`
+    : result?.ok
+      ? `${modelName} is ready`
+      : result
+        ? `${modelName} check failed`
+        : `Check ${modelName}`;
+  const detail = result?.error ?? result?.message ?? 'Run a live credential and model check.';
+
+  const icon = checking ? (
+    <Loader2 className="animate-spin" />
+  ) : result?.ok ? (
+    <CheckCircle2 />
+  ) : result ? (
+    <XCircle />
+  ) : (
+    <ShieldCheck />
+  );
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <IconButton
+          variant={result ? 'muted' : 'ghost'}
+          size="md"
+          label={label}
+          disabled={disabled || checking}
+          onClick={onCheck}
+          className={cn(
+            "relative text-muted-foreground transition-[background-color,color,border-color,transform] before:absolute before:-inset-1.5 before:content-[''] active:scale-[0.96]",
+            !result && 'opacity-65 hover:opacity-100',
+            result?.ok && 'text-success hover:text-success',
+            result && !result.ok && 'text-destructive hover:text-destructive',
+          )}
+        >
+          {icon}
+        </IconButton>
+      </TooltipTrigger>
+      <TooltipContent side="top">
+        <div className="max-w-[240px] space-y-1">
+          <div className="font-medium">{label}</div>
+          <div className="text-muted-foreground">{detail}</div>
+          {result?.latencyMs != null ? (
+            <div className="tabular-nums text-muted-foreground">{result.latencyMs} ms</div>
+          ) : null}
+        </div>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+function ProviderStatusBadge({
+  provider,
+  authInfo,
+  hasCredentials,
+}: {
+  provider: AiProviderId;
+  authInfo?: AuthMethodInfo;
+  hasCredentials: boolean;
+}) {
+  const connected = isConnected(authInfo, hasCredentials);
+  const source = authSourceLabel(provider, authInfo, hasCredentials);
+
+  if (!connected) {
     return (
-      <div className="flex items-center gap-1.5 text-xs text-warning">
-        <ExclamationTriangleIcon className="w-3.5 h-3.5" />
-        Not configured
-      </div>
+      <Badge variant="warning" size="sm" className="gap-1">
+        <AlertTriangle className="size-3" />
+        Needs key
+      </Badge>
     );
   }
 
-  const isOAuth = authInfo.authType === 'o-auth' || authInfo.authType === 'claude-o-auth';
-
   return (
-    <div className="flex items-center gap-2">
-      <div className="flex items-center gap-1.5 text-xs text-success">
-        <CheckCircledIcon className="w-3.5 h-3.5" />
-        Connected
+    <Badge variant="success" size="sm" className="gap-1">
+      <CheckCircle2 className="size-3" />
+      {source}
+    </Badge>
+  );
+}
+
+function SectionDisclosure({
+  title,
+  icon,
+  summary,
+  open,
+  onOpenChange,
+  children,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  summary?: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <Collapsible open={open} onOpenChange={onOpenChange}>
+      <div className="rounded-[10px] border border-border/60 bg-background/45 shadow-[0_1px_0_rgba(255,255,255,0.04)]">
+        <CollapsibleTrigger asChild>
+          <button
+            type="button"
+            className="flex w-full items-center gap-3 rounded-[10px] px-3 py-2.5 text-left transition-[background-color] hover:bg-muted/35"
+          >
+            <span className="flex size-7 items-center justify-center rounded-md bg-muted/50 text-muted-foreground">
+              {icon}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-medium text-foreground">{title}</span>
+              {summary ? (
+                <span className="block truncate text-[11px] text-muted-foreground">{summary}</span>
+              ) : null}
+            </span>
+            <ChevronDown
+              className={cn(
+                'size-4 text-muted-foreground transition-transform duration-150',
+                open && 'rotate-180',
+              )}
+            />
+          </button>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <div className="border-t border-border/55 px-3 py-3">{children}</div>
+        </CollapsibleContent>
       </div>
-      {isOAuth && authInfo.expiresInSeconds !== null && (
-        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-          <Clock className="w-3 h-3" />
-          {formatExpiryTime(Number(authInfo.expiresInSeconds))}
-        </div>
-      )}
+    </Collapsible>
+  );
+}
+
+function CompactSettingRow({
+  label,
+  description,
+  children,
+}: {
+  label: string;
+  description?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="grid gap-2 py-3 first:pt-0 last:pb-0 sm:grid-cols-[minmax(0,1fr)_minmax(180px,auto)] sm:items-center">
+      <div className="min-w-0">
+        <div className="truncate text-sm font-medium text-foreground">{label}</div>
+        {description ? <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">{description}</div> : null}
+      </div>
+      <div className="min-w-0 sm:justify-self-end">{children}</div>
     </div>
   );
 }
 
-/**
- * Provider card component for displaying individual provider configuration
- */
-interface ProviderCardProps {
-  provider: 'anthropic' | 'openai';
-  isActive: boolean;
-  onSetActive: () => void;
-  authInfo: AuthMethodInfo | undefined;
-  onOAuthLogin: () => void;
-  onDisconnect?: () => void;
-  isOAuthPending: boolean;
-  apiKeyInput: string;
-  onApiKeyChange: (value: string) => void;
-  onApiKeySave: () => void;
-  isSaving: boolean;
-  hasCredentials: boolean;
-  profiles?: ProfileSummary[];
-  onSetActiveProfile?: (name: string) => Promise<void>;
-  onRemoveProfile?: (name: string) => Promise<void>;
-  onAddAnotherAccount?: () => Promise<void>;
-}
-
-function ProviderCard({
-  provider,
-  isActive,
-  onSetActive,
-  authInfo,
-  onOAuthLogin,
-  onDisconnect,
-  isOAuthPending,
-  apiKeyInput,
-  onApiKeyChange,
-  onApiKeySave,
-  isSaving,
-  hasCredentials,
-  profiles,
-  onSetActiveProfile,
-  onRemoveProfile,
-  onAddAnotherAccount,
-}: ProviderCardProps) {
-  const isAnthropic = provider === 'anthropic';
-  const isClaudeCodeAuth = authInfo?.authType === 'claude-o-auth';
-  const isCodexCliAuth =
-    provider === 'openai' &&
-    (authInfo?.credentialSource === 'codex-oauth-file' ||
-      authInfo?.credentialSource === 'codex-o-auth-file');
-  const isOpenAIOAuth = provider === 'openai' && authInfo?.authType === 'o-auth';
-  const isSoloOAuth = authInfo?.credentialSource === 'solo-oauth';
-  const isConnectedViaOAuth = isClaudeCodeAuth || isOpenAIOAuth || isSoloOAuth || isCodexCliAuth;
-
-  const providerConfig = isAnthropic
-    ? {
-        name: 'Anthropic (Claude)',
-        icon: Terminal,
-        iconColor: 'text-[#d97706]',
-        buttonColor: 'bg-[#d97706] hover:bg-[#b45309]',
-        buttonText: 'Sign in with Claude Code',
-        buttonSubtext: 'Use your Claude Code membership',
-      }
-    : {
-        name: 'OpenAI',
-        icon: StarFilledIcon,
-        iconColor: 'text-[#10a37f]',
-        buttonColor: 'bg-[#10a37f] hover:bg-[#0d8c6d]',
-        buttonText: 'Sign in with ChatGPT',
-        buttonSubtext: 'Use your ChatGPT membership',
-      };
-
-  const Icon = providerConfig.icon;
+function ModelRow({
+  model,
+  selected,
+  check,
+  disabled,
+  onSelect,
+  onCheck,
+}: {
+  model: ModelInfo;
+  selected: boolean;
+  check?: ModelCheckState;
+  disabled: boolean;
+  onSelect: (model: ModelInfo) => void;
+  onCheck: (model: ModelInfo) => void;
+}) {
+  const provider = model.provider as AiProviderId;
+  const meta = PROVIDER_META[provider];
+  const Logo = meta.logo;
 
   return (
     <div
-      className={`p-3 rounded-none border bg-card/60 space-y-3 transition-colors duration-150 ${
-        isActive
-          ? 'border-primary/50 shadow-[0_0_0_1px_rgba(16,163,127,0.14)]'
-          : 'border-border hover:border-border/80'
-      }`}
+      className={cn(
+        'group grid grid-cols-[minmax(0,1fr)_36px_36px] items-center gap-2 px-3 py-2 transition-[background-color,box-shadow] duration-150',
+        selected ? 'bg-primary/5 shadow-[inset_2px_0_0_var(--primary)]' : 'hover:bg-muted/30',
+      )}
     >
-      {/* Card Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          {/* Radio button for active selection */}
-          <button
-            type="button"
-            onClick={onSetActive}
-            className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
-              isActive
-                ? 'border-primary bg-primary'
-                : 'border-muted-foreground/40 hover:border-muted-foreground'
-            }`}
-          >
-            {isActive && <div className="w-2 h-2 rounded-full bg-primary-foreground" />}
-          </button>
-
-          {/* Provider icon and name */}
-          <Icon className={`w-5 h-5 ${providerConfig.iconColor}`} />
-          <span className="text-sm font-medium text-foreground">{providerConfig.name}</span>
+      <div className="flex min-w-0 items-center gap-2.5">
+        <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted/45 ring-1 ring-border/35">
+          <Logo size={14} className={meta.accentClass} />
+        </span>
+        <div className="min-w-0">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="truncate text-sm font-medium text-foreground">{model.display_name}</span>
+            {selected ? (
+              <span className="size-1.5 shrink-0 rounded-full bg-primary ring-4 ring-primary/10" />
+            ) : null}
+          </div>
+          <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
+            <span>{providerName(model.provider)}</span>
+            <span className="text-border">/</span>
+            <span>{meta.vendor}</span>
+            <span className="text-border">/</span>
+            <span className="tabular-nums">{formatTokenCount(model.context_window)} context</span>
+            <span className="text-border">/</span>
+            <span className="tabular-nums">{formatTokenCount(model.max_output_tokens)} output</span>
+          </div>
         </div>
-
-        {/* Connection status */}
-        <ConnectionStatusBadge authInfo={authInfo} />
       </div>
 
-      {/* Divider */}
-      <div className="h-px bg-border/60" />
+      <div className="flex justify-self-end">
+        <ModelCheckAction
+          modelName={model.display_name}
+          check={check}
+          disabled={disabled}
+          onCheck={() => onCheck(model)}
+        />
+      </div>
 
-      {/* OAuth Button - show when not connected via OAuth */}
-      {!isConnectedViaOAuth && (
-        <div>
-          <button
-            type="button"
-            onClick={onOAuthLogin}
-            disabled={isOAuthPending}
-            className={`w-full h-9 px-3 ${providerConfig.buttonColor} text-white rounded-none text-sm font-medium active:scale-[0.96] transition-colors duration-150 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed`}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="flex justify-self-end">
+            <Switch
+              size="md"
+              checked={selected}
+              disabled={disabled}
+              aria-label={`Use ${model.display_name}`}
+              onCheckedChange={(checked) => {
+                if (checked) onSelect(model);
+              }}
+            />
+          </div>
+        </TooltipTrigger>
+        <TooltipContent side="top">Use this model</TooltipContent>
+      </Tooltip>
+    </div>
+  );
+}
+
+function CredentialRow({
+  provider,
+  authInfo,
+  hasCredentials,
+  profiles,
+  apiKeyInput,
+  isSaving,
+  isOAuthPending,
+  onApiKeyChange,
+  onApiKeySave,
+  onOAuthLogin,
+  onDisconnect,
+  onSetActiveProfile,
+  onRemoveProfile,
+  onAddAnotherAccount,
+}: {
+  provider: AiProviderId;
+  authInfo?: AuthMethodInfo;
+  hasCredentials: boolean;
+  profiles: ProfileSummary[];
+  apiKeyInput: string;
+  isSaving: boolean;
+  isOAuthPending: boolean;
+  onApiKeyChange: (value: string) => void;
+  onApiKeySave: () => void;
+  onOAuthLogin?: () => void;
+  onDisconnect: () => void;
+  onSetActiveProfile?: (name: string) => Promise<void>;
+  onRemoveProfile?: (name: string) => Promise<void>;
+  onAddAnotherAccount?: () => Promise<void>;
+}) {
+  const meta = PROVIDER_META[provider];
+  const Logo = meta.logo;
+  const hasOAuthLogin = provider !== 'gemini';
+  const connected = isConnected(authInfo, hasCredentials);
+  const oauth = isOAuthAuth(authInfo);
+  const source = authSourceLabel(provider, authInfo, hasCredentials);
+  const expiresIn = oauth && authInfo?.expiresInSeconds != null ? Number(authInfo.expiresInSeconds) : null;
+
+  return (
+    <div className="grid gap-3 border-t border-border/50 py-3 first:border-t-0 first:pt-0 last:pb-0 lg:grid-cols-[150px_minmax(0,1fr)]">
+      <div className="flex min-w-0 items-start gap-2.5">
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted/45 ring-1 ring-border/35">
+          <Logo size={15} className={meta.accentClass} />
+        </span>
+        <div className="min-w-0">
+          <div className="truncate text-sm font-medium text-foreground">{meta.label}</div>
+          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+            <ProviderStatusBadge provider={provider} authInfo={authInfo} hasCredentials={hasCredentials} />
+            {expiresIn != null ? (
+              <Badge variant="secondary" size="sm" className="gap-1">
+                <Clock className="size-3" />
+                {formatExpiryTime(expiresIn)}
+              </Badge>
+            ) : null}
+          </div>
+        </div>
+      </div>
+
+      <div className="min-w-0 space-y-2">
+        <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center">
+          <PasswordInput
+            value={apiKeyInput}
+            onChange={onApiKeyChange}
+            placeholder={hasCredentials && authInfo?.authType === 'api-key' ? 'Saved API key' : `${meta.vendor} API key`}
+            disabled={isSaving}
+          />
+          <Button
+            variant="primary"
+            size="lg"
+            loading={isSaving}
+            disabled={!apiKeyInput.trim() || isSaving}
+            onClick={onApiKeySave}
           >
-            {isOAuthPending ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Waiting for sign in...
-              </>
-            ) : (
-              <>
-                <Icon className="w-4 h-4" />
-                {providerConfig.buttonText}
-              </>
-            )}
-          </button>
-          <div className="text-[11px] text-muted-foreground mt-1.5 text-center">
-            {providerConfig.buttonSubtext}
-          </div>
-
-          {/* Divider with "or" */}
-          <div className="mt-2.5 flex items-center gap-2">
-            <div className="flex-1 h-px bg-border" />
-            <span className="text-xs text-muted-foreground">or</span>
-            <div className="flex-1 h-px bg-border" />
-          </div>
+            Save
+          </Button>
+          {connected ? (
+            <IconButton
+              variant="ghost"
+              size="lg"
+              label={`Disconnect ${meta.label}`}
+              onClick={onDisconnect}
+              className="text-muted-foreground hover:text-destructive"
+            >
+              <Trash2 />
+            </IconButton>
+          ) : null}
         </div>
-      )}
 
-      {/* Connected notice — shown for OAuth and API key connections */}
-      {isConnectedViaOAuth && (
-        <div className="p-2.5 bg-muted/40 rounded-none text-xs text-muted-foreground">
-          <p className="mb-1.5">
-            {isClaudeCodeAuth
-              ? 'Using credentials from Claude Code.'
-              : isCodexCliAuth
-                ? 'Using credentials from Codex CLI.'
-                : 'Connected via ChatGPT account.'}
-          </p>
-          {isClaudeCodeAuth || isCodexCliAuth ? (
-            <>
-              <button
-                type="button"
-                onClick={onOAuthLogin}
-                className="text-primary hover:underline"
-              >
-                Sign in again
-              </button>
-              <span className="mx-1">·</span>
-              <button
-                type="button"
-                onClick={onDisconnect}
-                className="text-destructive hover:underline"
-              >
-                Disconnect
-              </button>
-              <span className="mx-1">or</span>
-              <span>add an API key below to override.</span>
-            </>
-          ) : (
-            <>
-              <button
-                type="button"
-                onClick={onDisconnect}
-                className="text-destructive hover:underline"
-              >
-                Disconnect
-              </button>
-              <span className="mx-1">or</span>
-              <span>add an API key below to override.</span>
-            </>
-          )}
+        <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+          <span className="inline-flex items-center gap-1">
+            <CircleDot className="size-3" />
+            {source}
+          </span>
+          {hasOAuthLogin && onOAuthLogin ? (
+            <Button
+              variant="outline"
+              size="sm"
+              loading={isOAuthPending}
+              onClick={onOAuthLogin}
+              leadingIcon={!isOAuthPending ? <LogIn /> : undefined}
+            >
+              {oauth ? 'Sign in again' : meta.authLabel}
+            </Button>
+          ) : null}
+          {onAddAnotherAccount && profiles.length > 0 ? (
+            <Button variant="ghost" size="sm" onClick={() => void onAddAnotherAccount()}>
+              Add account
+            </Button>
+          ) : null}
         </div>
-      )}
 
-      {/* Multi-account profile sub-list */}
-      {profiles && profiles.length > 0 && (
-        <div className="space-y-1.5">
-          <div className="text-xs text-muted-foreground">Accounts</div>
-          <div className="space-y-1.5">
-            {profiles.map((p) => (
+        {profiles.length > 0 ? (
+          <div className="grid gap-1.5 pt-1">
+            {profiles.map((profile) => (
               <ProfileRow
-                key={p.name}
-                profile={p}
+                key={profile.name}
+                profile={profile}
                 onSetActive={() => {
-                  void onSetActiveProfile?.(p.name);
+                  void onSetActiveProfile?.(profile.name);
                 }}
                 onRemove={() => {
-                  void onRemoveProfile?.(p.name);
+                  void onRemoveProfile?.(profile.name);
                 }}
               />
             ))}
           </div>
-          {onAddAnotherAccount && (
-            <button
-              type="button"
-              onClick={() => void onAddAnotherAccount()}
-              className="w-full text-xs text-primary hover:text-primary/80 py-1.5 border border-dashed border-border hover:border-primary/40 rounded-none transition-colors"
-            >
-              + Add another account
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* API key connected notice — only when connected via API key (not OAuth) */}
-      {!isConnectedViaOAuth && hasCredentials && authInfo?.authType === 'api-key' && (
-        <div className="p-2.5 bg-muted/40 rounded-none text-xs text-muted-foreground">
-          <p className="mb-1.5">Connected via API key.</p>
-          <button
-            type="button"
-            onClick={onDisconnect}
-            className="text-destructive hover:underline"
-          >
-            Remove API key
-          </button>
-        </div>
-      )}
-
-      {/* API Key Input */}
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <div className="text-xs text-muted-foreground">API Key</div>
-          {hasCredentials && authInfo?.authType === 'api-key' && (
-            <div className="flex items-center gap-1.5 text-xs text-success">
-              <CheckCircledIcon className="w-3.5 h-3.5" />
-              Saved
-            </div>
-          )}
-        </div>
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
-          <PasswordInput
-            value={apiKeyInput}
-            onChange={onApiKeyChange}
-            placeholder={hasCredentials && authInfo?.authType === 'api-key' ? '••••••••••••••••' : 'Enter API key...'}
-            disabled={isSaving}
-          />
-          <button
-            type="button"
-            onClick={onApiKeySave}
-            disabled={!apiKeyInput.trim() || isSaving}
-            className="h-9 px-3 bg-primary text-primary-foreground rounded-none text-sm font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.96] transition-colors"
-          >
-            {isSaving ? 'Saving...' : 'Save'}
-          </button>
-        </div>
-      </div>
-
-    </div>
-  );
-}
-
-function ProviderDiagnostics({
-  activeProvider,
-  selectedModel,
-  models,
-}: {
-  activeProvider: string | null;
-  selectedModel: string | null;
-  models: ModelInfo[];
-}) {
-  const providerOptions = useMemo(
-    () => [
-      { label: 'Anthropic', value: 'anthropic' },
-      { label: 'OpenAI', value: 'openai' },
-    ],
-    []
-  );
-  const [provider, setProvider] = useState<string>(activeProvider ?? 'anthropic');
-  const [model, setModel] = useState<string>(selectedModel ?? '');
-  const [checking, setChecking] = useState(false);
-  const [result, setResult] = useState<ProviderModelDiagnostic | null>(null);
-
-  const providerModels = useMemo(
-    () => models.filter((m) => m.provider.toLowerCase() === provider.toLowerCase()),
-    [models, provider]
-  );
-
-  const modelOptions = useMemo(
-    () => providerModels.map((m) => ({ label: m.display_name, value: m.id })),
-    [providerModels]
-  );
-
-  useEffect(() => {
-    if (activeProvider) {
-      setProvider(activeProvider);
-    }
-  }, [activeProvider]);
-
-  useEffect(() => {
-    const currentModelIsValid = providerModels.some((m) => m.id === model);
-    const selectedModelIsValid = providerModels.some((m) => m.id === selectedModel);
-    const nextModel = selectedModelIsValid
-      ? selectedModel
-      : providerModels.find((m) => m.is_default)?.id ?? providerModels[0]?.id ?? '';
-
-    if (!currentModelIsValid && nextModel && nextModel !== model) {
-      setModel(nextModel);
-      setResult(null);
-    }
-  }, [model, providerModels, selectedModel]);
-
-  const runCheck = useCallback(async () => {
-    if (!model) return;
-
-    setChecking(true);
-    setResult(null);
-    try {
-      const diagnostic = await verifyProviderModel(provider, model);
-      setResult(diagnostic);
-    } catch (err) {
-      setResult({
-        provider: provider as ProviderType,
-        model,
-        ok: false,
-        authenticated: false,
-        credentialSource: null,
-        status: 'error',
-        message: 'Diagnostic failed',
-        latencyMs: null,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    } finally {
-      setChecking(false);
-    }
-  }, [model, provider]);
-
-  const resultTone = result?.ok
-    ? 'text-success'
-    : result
-      ? 'text-destructive'
-      : 'text-muted-foreground';
-
-  return (
-    <div className="rounded-none border border-border bg-card/60 p-3 space-y-3">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 min-w-0">
-          <ShieldCheck className="w-4 h-4 text-muted-foreground shrink-0" />
-          <div className="min-w-0">
-            <div className="text-sm font-medium text-foreground">Provider Check</div>
-            <div className="text-[11px] text-muted-foreground truncate">
-              Validate credentials against a selected model.
-            </div>
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={runCheck}
-          disabled={checking || !model}
-          className="h-9 px-3 rounded-none bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.96] transition-colors flex items-center gap-1.5"
-        >
-          <ReloadIcon className={`w-3.5 h-3.5 ${checking ? 'animate-spin' : ''}`} />
-          {checking ? 'Checking' : 'Check'}
-        </button>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-[180px_minmax(0,1fr)] gap-2">
-        <SelectDropdown
-          value={provider}
-          options={providerOptions}
-          onChange={(nextProvider) => {
-            setProvider(nextProvider);
-            setResult(null);
-          }}
-          disabled={checking}
-          className="w-full min-w-0 h-9"
-        />
-        <SelectDropdown
-          value={model}
-          options={modelOptions}
-          onChange={(nextModel) => {
-            setModel(nextModel);
-            setResult(null);
-          }}
-          disabled={checking || modelOptions.length === 0}
-          className="w-full min-w-0 h-9"
-        />
-      </div>
-
-      <div className="min-h-9 rounded-none bg-muted/35 px-3 py-2 text-xs">
-        {checking ? (
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            Running a live model check...
-          </div>
-        ) : result ? (
-          <div className="space-y-1.5">
-            <div className={`flex items-center gap-2 ${resultTone}`}>
-              {result.ok ? (
-                <CheckCircledIcon className="w-3.5 h-3.5 shrink-0" />
-              ) : (
-                <CrossCircledIcon className="w-3.5 h-3.5 shrink-0" />
-              )}
-              <span className="font-medium text-foreground">{result.message}</span>
-              {result.latencyMs != null && (
-                <span className="ml-auto text-[11px] text-muted-foreground tabular-nums">
-                  {result.latencyMs} ms
-                </span>
-              )}
-            </div>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
-              <span>Source: {result.credentialSource ?? 'none'}</span>
-              <span>Model: {result.model}</span>
-            </div>
-            {result.error && (
-              <div className="text-[11px] text-destructive/80 break-words">{result.error}</div>
-            )}
-          </div>
-        ) : (
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <ShieldCheck className="w-3.5 h-3.5" />
-            Pick a provider and model, then run a check.
-          </div>
-        )}
+        ) : null}
       </div>
     </div>
   );
 }
 
 export function AITab() {
-  // Per-provider API key input state
-  const [apiKeyInputs, setApiKeyInputs] = useState<Record<string, string>>({
+  const [apiKeyInputs, setApiKeyInputs] = useState<Record<AiProviderId, string>>({
     anthropic: '',
     openai: '',
+    gemini: '',
   });
-  const [savingProvider, setSavingProvider] = useState<string | null>(null);
+  const [savingProvider, setSavingProvider] = useState<AiProviderId | null>(null);
   const [isClaudeLoginOpen, setIsClaudeLoginOpen] = useState(false);
+  const [modelSearch, setModelSearch] = useState('');
+  const [showAllModels, setShowAllModels] = useState(false);
+  const [checks, setChecks] = useState<Record<string, ModelCheckState>>({});
+  const [apiKeysOpen, setApiKeysOpen] = useState(false);
+  const [behaviorOpen, setBehaviorOpen] = useState(true);
+  const [setupOpen, setSetupOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
-  // Provider store - use useShallow for stable references
   const {
     activeProvider,
     isLoading,
@@ -521,16 +531,7 @@ export function AITab() {
       selectedModel: s.selectedModel,
       providerStatus: s.providerStatus,
       authMethodInfo: s.authMethodInfo,
-    }))
-  );
-
-  // Derive filtered models with useMemo to avoid new array references
-  const models = useMemo(
-    () =>
-      activeProvider
-        ? allModels.filter((m) => m.provider.toLowerCase() === activeProvider.toLowerCase())
-        : [],
-    [allModels, activeProvider]
+    })),
   );
 
   const initialize = useProviderStore((s) => s.initialize);
@@ -547,11 +548,9 @@ export function AITab() {
   const setActiveProfileAction = useProviderStore((s) => s.setActiveProfile);
   const removeProfileAction = useProviderStore((s) => s.removeProfile);
 
-  // Check if OAuth is pending for each provider
   const isAnthropicOAuthPending = useOAuthPending('anthropic');
   const isOpenAIOAuthPending = useOAuthPending('openai');
 
-  // Settings store (AI behavior)
   const streaming = useSettingsStore((s) => s.ai.streaming);
   const autoApproveTools = useSettingsStore((s) => s.ai.autoApproveTools);
   const toolPermissionPolicy = useSettingsStore((s) => s.ai.toolPermissionPolicy);
@@ -564,10 +563,51 @@ export function AITab() {
   const setMaxTokens = useSettingsStore((s) => s.setMaxTokens);
   const setCustomApiUrl = useSettingsStore((s) => s.setCustomApiUrl);
 
-  // Worktree setup commands state
   const [setupCommandsText, setSetupCommandsText] = useState('');
   const [isLoadingSetup, setIsLoadingSetup] = useState(false);
   const [isSavingSetup, setIsSavingSetup] = useState(false);
+
+  const activeModel = useMemo(
+    () => allModels.find((model) => model.id === selectedModel) ?? null,
+    [allModels, selectedModel],
+  );
+
+  const visibleProviders = useMemo(
+    () =>
+      PROVIDER_IDS.filter((provider) => allProviderStatus[provider] || authMethodInfo[provider] || allModels.some((model) => model.provider === provider)),
+    [allModels, allProviderStatus, authMethodInfo],
+  );
+
+  const connectedCount = useMemo(
+    () =>
+      PROVIDER_IDS.filter((provider) =>
+        isConnected(authMethodInfo[provider], allProviderStatus[provider]?.has_credentials ?? false),
+      ).length,
+    [allProviderStatus, authMethodInfo],
+  );
+
+  const filteredModels = useMemo(() => {
+    const query = modelSearch.trim().toLowerCase();
+    if (!query) return allModels;
+
+    return allModels.filter((model) => {
+      const provider = providerName(model.provider);
+      return [
+        model.display_name,
+        model.id,
+        model.alias,
+        model.description,
+        provider,
+      ]
+        .filter(Boolean)
+        .some((value) => value.toLowerCase().includes(query));
+    });
+  }, [allModels, modelSearch]);
+
+  const visibleModels = useMemo(
+    () => (showAllModels || modelSearch.trim() ? filteredModels : filteredModels.slice(0, 8)),
+    [filteredModels, modelSearch, showAllModels],
+  );
 
   useEffect(() => {
     setIsLoadingSetup(true);
@@ -576,10 +616,42 @@ export function AITab() {
         setSetupCommandsText(config.commands.join('\n'));
       })
       .catch(() => {
-        // No commands configured yet
+        // Empty setup commands are valid.
       })
       .finally(() => setIsLoadingSetup(false));
   }, []);
+
+  useEffect(() => {
+    if (!isInitialized) {
+      initialize();
+    }
+  }, [initialize, isInitialized]);
+
+  useEffect(() => {
+    if (isInitialized) {
+      PROVIDER_IDS.forEach((provider) => {
+        void refreshProviderStatus(provider);
+        void refreshAuthMethod(provider);
+      });
+    }
+  }, [isInitialized, refreshAuthMethod, refreshProviderStatus]);
+
+  useEffect(() => {
+    PROVIDER_IDS.forEach((provider) => {
+      void refreshProfiles(provider);
+    });
+  }, [refreshProfiles]);
+
+  const handleRefreshProviders = useCallback(async () => {
+    await Promise.all(
+      PROVIDER_IDS.flatMap((provider) => [
+        refreshProviderStatus(provider),
+        refreshAuthMethod(provider),
+        refreshProfiles(provider),
+      ]),
+    );
+    toast.success('Providers refreshed');
+  }, [refreshAuthMethod, refreshProfiles, refreshProviderStatus]);
 
   const handleSaveSetupCommands = useCallback(async () => {
     setIsSavingSetup(true);
@@ -594,91 +666,118 @@ export function AITab() {
     }
   }, [setupCommandsText]);
 
-  // Initialize provider store on mount
-  useEffect(() => {
-    if (!isInitialized) {
-      initialize();
-    }
-  }, [isInitialized, initialize]);
-
-  // Refresh auth method info for both providers on init
-  useEffect(() => {
-    if (isInitialized) {
-      refreshProviderStatus('anthropic');
-      refreshProviderStatus('openai');
-      refreshAuthMethod('anthropic');
-      refreshAuthMethod('openai');
-    }
-  }, [isInitialized, refreshAuthMethod, refreshProviderStatus]);
-
-  // Preload profiles for both providers on mount
-  useEffect(() => {
-    refreshProfiles('anthropic');
-    refreshProfiles('openai');
-  }, [refreshProfiles]);
-
-  // Model options - memoized to prevent new references
-  const modelOptions = useMemo(
-    () =>
-      models.map((m) => ({
-        label: m.display_name,
-        value: m.id,
-      })),
-    [models]
-  );
-
-  // Handle API key submission for a specific provider
-  const handleApiKeySubmit = useCallback(async (provider: 'anthropic' | 'openai') => {
+  const handleApiKeySubmit = useCallback(async (provider: AiProviderId) => {
     const apiKey = apiKeyInputs[provider];
     if (!apiKey?.trim()) return;
 
     setSavingProvider(provider);
     try {
-      const providerType: ProviderType = provider === 'anthropic' ? 'anthropic' : 'openai';
-      await setCredentials(providerType, apiKey.trim());
+      await setCredentials(provider, apiKey.trim());
+      await refreshProviderStatus(provider);
       await refreshAuthMethod(provider);
       setApiKeyInputs((prev) => ({ ...prev, [provider]: '' }));
+      toast.success(`${PROVIDER_META[provider].label} API key saved`);
     } catch (err) {
-      console.error(`Failed to save ${provider} API key:`, err);
+      toast.error(`Failed to save ${PROVIDER_META[provider].label} key`, {
+        description: err instanceof Error ? err.message : String(err),
+      });
     } finally {
       setSavingProvider(null);
     }
-  }, [apiKeyInputs, setCredentials, refreshAuthMethod]);
+  }, [apiKeyInputs, refreshAuthMethod, refreshProviderStatus, setCredentials]);
 
-  // Handle API key input change for a specific provider
-  const handleApiKeyChange = useCallback((provider: string, value: string) => {
+  const handleApiKeyChange = useCallback((provider: AiProviderId, value: string) => {
     setApiKeyInputs((prev) => ({ ...prev, [provider]: value }));
   }, []);
 
   const handleClaudeLoginSuccess = useCallback(() => {
-    // Refresh auth method to pick up new Claude Code credentials
-    refreshProviderStatus('anthropic');
-    refreshAuthMethod('anthropic');
-  }, [refreshAuthMethod, refreshProviderStatus]);
+    void refreshProviderStatus('anthropic');
+    void refreshAuthMethod('anthropic');
+    void refreshProfiles('anthropic');
+  }, [refreshAuthMethod, refreshProfiles, refreshProviderStatus]);
 
   const handleOpenAIOAuthLogin = useCallback(async () => {
     try {
       await startOAuthFlow('openai', 'browser');
-      // The OAuth flow will complete via callback and update state automatically
     } catch (err) {
-      console.error('Failed to start OpenAI OAuth flow:', err);
+      toast.error('Failed to start OpenAI login', {
+        description: err instanceof Error ? err.message : String(err),
+      });
     }
   }, [startOAuthFlow]);
 
-  const handleDisconnect = useCallback(async (provider: 'anthropic' | 'openai') => {
+  const handleDisconnect = useCallback(async (provider: AiProviderId) => {
     try {
       const authType = authMethodInfo[provider]?.authType;
-      if (authType === 'api-key') {
-        await clearCredentials(provider);
-      } else if (authType === 'o-auth' || authType === 'claude-o-auth') {
+      if (authType === 'o-auth' || authType === 'claude-o-auth') {
         await disconnectOAuth(provider);
+      } else if (authType === 'api-key' || allProviderStatus[provider]?.has_credentials) {
+        await clearCredentials(provider);
       }
       await refreshProviderStatus(provider);
       await refreshAuthMethod(provider);
+      await refreshProfiles(provider);
     } catch (err) {
-      console.error(`Failed to disconnect ${provider}:`, err);
+      toast.error(`Failed to disconnect ${PROVIDER_META[provider].label}`, {
+        description: err instanceof Error ? err.message : String(err),
+      });
     }
-  }, [authMethodInfo, clearCredentials, disconnectOAuth, refreshAuthMethod, refreshProviderStatus]);
+  }, [
+    allProviderStatus,
+    authMethodInfo,
+    clearCredentials,
+    disconnectOAuth,
+    refreshAuthMethod,
+    refreshProfiles,
+    refreshProviderStatus,
+  ]);
+
+  const handleSelectModel = useCallback(async (model: ModelInfo) => {
+    const provider = model.provider as AiProviderId;
+    try {
+      if (activeProvider !== provider) {
+        await setActiveProvider(provider);
+      }
+      setSelectedModel(model.id);
+    } catch (err) {
+      toast.error(`Failed to switch to ${model.display_name}`, {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }, [activeProvider, setActiveProvider, setSelectedModel]);
+
+  const handleCheckModel = useCallback(async (model: ModelInfo) => {
+    setChecks((prev) => ({
+      ...prev,
+      [model.id]: { checking: true, result: null },
+    }));
+
+    try {
+      const result = await verifyProviderModel(model.provider, model.id);
+      setChecks((prev) => ({
+        ...prev,
+        [model.id]: { checking: false, result },
+      }));
+    } catch (err) {
+      setChecks((prev) => ({
+        ...prev,
+        [model.id]: {
+          checking: false,
+          result: {
+            provider: model.provider as ProviderType,
+            model: model.id,
+            ok: false,
+            authenticated: false,
+            credentialSource: null,
+            status: 'error',
+            message: 'Diagnostic failed',
+            latencyMs: null,
+            error: err instanceof Error ? err.message : String(err),
+          },
+        },
+      }));
+    }
+  }, []);
 
   if (!isInitialized && isLoading) {
     return (
@@ -688,217 +787,252 @@ export function AITab() {
     );
   }
 
+  const modelMax = activeModel?.max_output_tokens ?? 32_768;
+  const clampedMaxTokens = Math.min(maxTokens, modelMax);
+  const hiddenModelCount = Math.max(filteredModels.length - visibleModels.length, 0);
+
   return (
-    <div className="space-y-5">
-      {/* Providers Section */}
-      <div>
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-          Providers
-        </h3>
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-          {/* Anthropic Card */}
-          <ProviderCard
-            provider="anthropic"
-            isActive={activeProvider === 'anthropic'}
-            onSetActive={() => setActiveProvider('anthropic')}
-            authInfo={authMethodInfo['anthropic']}
-            onOAuthLogin={() => setIsClaudeLoginOpen(true)}
-            onDisconnect={() => handleDisconnect('anthropic')}
-            isOAuthPending={isAnthropicOAuthPending}
-            apiKeyInput={apiKeyInputs.anthropic}
-            onApiKeyChange={(value) => handleApiKeyChange('anthropic', value)}
-            onApiKeySave={() => handleApiKeySubmit('anthropic')}
-            isSaving={savingProvider === 'anthropic'}
-            hasCredentials={allProviderStatus['anthropic']?.has_credentials ?? false}
-            profiles={providerProfiles.anthropic ?? []}
-            onSetActiveProfile={async (name) => {
-              await setActiveProfileAction('anthropic', name);
-            }}
-            onRemoveProfile={async (name) => {
-              await removeProfileAction('anthropic', name);
-            }}
-            onAddAnotherAccount={() => {
-              setIsClaudeLoginOpen(true);
-              return Promise.resolve();
-            }}
-          />
-
-          {/* OpenAI Card */}
-          <ProviderCard
-            provider="openai"
-            isActive={activeProvider === 'openai'}
-            onSetActive={() => setActiveProvider('openai')}
-            authInfo={authMethodInfo['openai']}
-            onOAuthLogin={handleOpenAIOAuthLogin}
-            onDisconnect={() => handleDisconnect('openai')}
-            isOAuthPending={isOpenAIOAuthPending}
-            apiKeyInput={apiKeyInputs.openai}
-            onApiKeyChange={(value) => handleApiKeyChange('openai', value)}
-            onApiKeySave={() => handleApiKeySubmit('openai')}
-            isSaving={savingProvider === 'openai'}
-            hasCredentials={allProviderStatus['openai']?.has_credentials ?? false}
-            profiles={providerProfiles.openai ?? []}
-            onSetActiveProfile={async (name) => {
-              await setActiveProfileAction('openai', name);
-            }}
-            onRemoveProfile={async (name) => {
-              await removeProfileAction('openai', name);
-            }}
-            onAddAnotherAccount={handleOpenAIOAuthLogin}
-          />
+    <TooltipProvider delayDuration={150}>
+      <div className="space-y-3">
+        <div className="rounded-[10px] border border-border/60 bg-card/70 px-3 py-2.5 shadow-[0_1px_0_rgba(255,255,255,0.05)]">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary ring-1 ring-primary/15">
+                <Zap className="size-4" />
+              </span>
+              <div className="min-w-0">
+                <div className="truncate text-sm font-semibold text-foreground">Model providers</div>
+                <div className="truncate text-[11px] text-muted-foreground">
+                  {activeModel ? `${activeModel.display_name} active` : 'No active model selected'}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary" size="sm">
+                {connectedCount}/{PROVIDER_IDS.length} connected
+              </Badge>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <IconButton
+                    variant="outline"
+                    size="md"
+                    label="Refresh providers"
+                    onClick={() => void handleRefreshProviders()}
+                  >
+                    <RefreshCw />
+                  </IconButton>
+                </TooltipTrigger>
+                <TooltipContent side="top">Refresh providers</TooltipContent>
+              </Tooltip>
+            </div>
+          </div>
         </div>
-      </div>
 
-      {/* Provider Diagnostics */}
-      <div>
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-          Diagnostics
-        </h3>
-        <ProviderDiagnostics
-          activeProvider={activeProvider}
-          selectedModel={selectedModel}
-          models={allModels}
+        <div className="rounded-[10px] border border-border/60 bg-background/45 shadow-[0_1px_0_rgba(255,255,255,0.04)]">
+          <div className="flex flex-col gap-2 border-b border-border/55 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">Models</h3>
+                <p className="text-[11px] text-muted-foreground">{filteredModels.length} available across providers</p>
+              </div>
+              {activeModel ? (
+                <Badge variant="outline" size="sm" className="max-w-[220px] truncate">
+                  {activeModel.display_name}
+                </Badge>
+              ) : null}
+            </div>
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                name="provider-model-search"
+                size="sm"
+                value={modelSearch}
+                onChange={(event) => setModelSearch(event.target.value)}
+                placeholder="Search models"
+                className="pl-8"
+              />
+            </div>
+          </div>
+
+          <div className="divide-y divide-border/50">
+            {visibleModels.length > 0 ? (
+              visibleModels.map((model) => (
+                <ModelRow
+                  key={`${model.provider}:${model.id}`}
+                  model={model}
+                  selected={selectedModel === model.id}
+                  check={checks[model.id]}
+                  disabled={isLoading}
+                  onSelect={(nextModel) => void handleSelectModel(nextModel)}
+                  onCheck={(nextModel) => void handleCheckModel(nextModel)}
+                />
+              ))
+            ) : (
+              <div className="px-3 py-6 text-center text-sm text-muted-foreground">No models match the search.</div>
+            )}
+          </div>
+
+          {hiddenModelCount > 0 || showAllModels ? (
+            <div className="border-t border-border/55 px-3 py-2">
+              <Button
+                variant="link"
+                size="sm"
+                onClick={() => setShowAllModels((value) => !value)}
+                className="px-0"
+              >
+                {showAllModels ? 'View fewer models' : `View all models (${hiddenModelCount} more)`}
+              </Button>
+            </div>
+          ) : null}
+        </div>
+
+        <SectionDisclosure
+          title="API Keys"
+          icon={<KeyRound className="size-4" />}
+          summary={`${connectedCount}/${PROVIDER_IDS.length} providers connected`}
+          open={apiKeysOpen}
+          onOpenChange={setApiKeysOpen}
+        >
+          {visibleProviders.map((provider) => (
+            <CredentialRow
+              key={provider}
+              provider={provider}
+              authInfo={authMethodInfo[provider]}
+              hasCredentials={allProviderStatus[provider]?.has_credentials ?? false}
+              profiles={providerProfiles[provider] ?? []}
+              apiKeyInput={apiKeyInputs[provider]}
+              isSaving={savingProvider === provider}
+              isOAuthPending={
+                provider === 'anthropic'
+                  ? isAnthropicOAuthPending
+                  : provider === 'openai'
+                    ? isOpenAIOAuthPending
+                    : false
+              }
+              onApiKeyChange={(value) => handleApiKeyChange(provider, value)}
+              onApiKeySave={() => void handleApiKeySubmit(provider)}
+              onOAuthLogin={
+                provider === 'anthropic'
+                  ? () => setIsClaudeLoginOpen(true)
+                  : provider === 'openai'
+                    ? handleOpenAIOAuthLogin
+                    : undefined
+              }
+              onDisconnect={() => void handleDisconnect(provider)}
+              onSetActiveProfile={async (name) => {
+                await setActiveProfileAction(provider, name);
+              }}
+              onRemoveProfile={async (name) => {
+                await removeProfileAction(provider, name);
+              }}
+              onAddAnotherAccount={
+                provider === 'anthropic'
+                  ? () => {
+                      setIsClaudeLoginOpen(true);
+                      return Promise.resolve();
+                    }
+                  : provider === 'openai'
+                    ? handleOpenAIOAuthLogin
+                    : undefined
+              }
+            />
+          ))}
+        </SectionDisclosure>
+
+        <SectionDisclosure
+          title="Agent Behavior"
+          icon={<Settings2 className="size-4" />}
+          summary={`${streaming ? 'Streaming' : 'Buffered'} / ${toolPermissionPolicy}`}
+          open={behaviorOpen}
+          onOpenChange={setBehaviorOpen}
+        >
+          <div className="divide-y divide-border/50">
+            <CompactSettingRow
+              label="Max Output Tokens"
+              description={`1024-${modelMax.toLocaleString()}${activeModel ? ` for ${activeModel.display_name}` : ''}`}
+            >
+              <NumberInput
+                value={clampedMaxTokens}
+                min={1024}
+                max={modelMax}
+                step={256}
+                onChange={setMaxTokens}
+              />
+            </CompactSettingRow>
+            <CompactSettingRow label="Stream Responses">
+              <Switch checked={streaming} onCheckedChange={setStreaming} />
+            </CompactSettingRow>
+            <CompactSettingRow label="Tool Permissions">
+              <SelectDropdown
+                value={toolPermissionPolicy}
+                options={[
+                  { label: 'Ask for all tools', value: 'ask-all' },
+                  { label: 'Smart', value: 'smart' },
+                  { label: 'Auto-approve all', value: 'approve-all' },
+                ]}
+                onChange={setToolPermissionPolicy}
+                className="h-7 min-w-[190px] rounded-md bg-input text-[12px]"
+              />
+            </CompactSettingRow>
+            {toolPermissionPolicy !== 'approve-all' ? (
+              <CompactSettingRow label="Auto-approve Tools">
+                <Switch checked={autoApproveTools} onCheckedChange={setAutoApproveTools} />
+              </CompactSettingRow>
+            ) : null}
+          </div>
+        </SectionDisclosure>
+
+        <SectionDisclosure
+          title="Worktree Setup"
+          icon={<Network className="size-4" />}
+          summary={setupCommandsText.trim() ? `${setupCommandsText.split('\n').filter(Boolean).length} commands` : 'No commands'}
+          open={setupOpen}
+          onOpenChange={setSetupOpen}
+        >
+          <div className="space-y-2">
+            <textarea
+              value={setupCommandsText}
+              onChange={(event) => setSetupCommandsText(event.target.value)}
+              disabled={isLoadingSetup}
+              placeholder={'bun install\nbun run build'}
+              className="h-24 w-full resize-y rounded-md bg-input px-3 py-2 font-mono text-xs text-foreground ring-1 ring-black/5 transition-[box-shadow,outline-color] placeholder:text-muted-foreground/45 focus:outline-2 focus:-outline-offset-1 focus:outline-ring/60 disabled:cursor-not-allowed disabled:opacity-50 dark:ring-white/5"
+            />
+            <Button
+              variant="primary"
+              size="md"
+              loading={isSavingSetup}
+              onClick={handleSaveSetupCommands}
+            >
+              Save
+            </Button>
+          </div>
+        </SectionDisclosure>
+
+        <SectionDisclosure
+          title="Advanced"
+          icon={<ShieldCheck className="size-4" />}
+          summary={customApiUrl.trim() ? 'Custom API URL set' : 'Default API URLs'}
+          open={advancedOpen}
+          onOpenChange={setAdvancedOpen}
+        >
+          <CompactSettingRow label="Custom API URL" description="Leave empty for provider defaults.">
+            <Input
+              name="custom-api-url"
+              size="md"
+              value={customApiUrl}
+              onChange={(event) => setCustomApiUrl(event.target.value)}
+              placeholder="https://api.example.com/v1"
+              className="font-mono"
+            />
+          </CompactSettingRow>
+        </SectionDisclosure>
+
+        <ClaudeLoginModal
+          isOpen={isClaudeLoginOpen}
+          onClose={() => setIsClaudeLoginOpen(false)}
+          onSuccess={handleClaudeLoginSuccess}
         />
       </div>
-
-      {/* Model Selection - show when there are models for the active provider */}
-      {models.length > 0 && (
-        <div>
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-            Model
-          </h3>
-          <div className="divide-y divide-border">
-            <SettingRow
-              label="Default Model"
-              description="Model to use for AI features"
-            >
-              <SelectDropdown
-                value={selectedModel ?? ''}
-                options={modelOptions}
-                onChange={setSelectedModel}
-                disabled={isLoading}
-              />
-            </SettingRow>
-          </div>
-        </div>
-      )}
-
-      {/* Behavior Section */}
-      <div>
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-          Behavior
-        </h3>
-        <div className="divide-y divide-border">
-          {(() => {
-            // Slider ceiling = active model's declared output-token capacity.
-            // Server-side clamp in Claude Code still enforces the model's true upperLimit.
-            const activeModel = allModels.find((m) => m.id === selectedModel);
-            const modelMax = activeModel?.max_output_tokens ?? 32_768;
-            const clampedValue = Math.min(maxTokens, modelMax);
-            return (
-              <SettingRow
-                label="Max Output Tokens"
-                description={`Cap per response (1024–${modelMax.toLocaleString()}${activeModel ? ` for ${activeModel.display_name}` : ''})`}
-              >
-                <NumberInput
-                  value={clampedValue}
-                  min={1024}
-                  max={modelMax}
-                  step={256}
-                  onChange={setMaxTokens}
-                />
-              </SettingRow>
-            );
-          })()}
-
-          <SettingRow
-            label="Stream Responses"
-            description="Show AI responses as they generate"
-          >
-            <ToggleSwitch checked={streaming} onChange={setStreaming} />
-          </SettingRow>
-
-          <SettingRow
-            label="Tool Permissions"
-            description="Control when tools need manual approval"
-          >
-            <SelectDropdown
-              value={toolPermissionPolicy}
-              options={[
-                { label: 'Ask for all tools', value: 'ask-all' },
-                { label: 'Smart (tier-based)', value: 'smart' },
-                { label: 'Auto-approve all', value: 'approve-all' },
-              ]}
-              onChange={setToolPermissionPolicy}
-            />
-          </SettingRow>
-
-          {toolPermissionPolicy !== 'approve-all' && (
-            <SettingRow
-              label="Auto-approve Tools"
-              description="Let AI execute tools without confirmation"
-            >
-              <ToggleSwitch checked={autoApproveTools} onChange={setAutoApproveTools} />
-            </SettingRow>
-          )}
-        </div>
-      </div>
-
-      {/* Worktree Setup Section */}
-      <div>
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
-          <Network className="w-3.5 h-3.5" />
-          Worktree Setup
-        </h3>
-        <div className="space-y-3">
-          <div className="text-xs text-muted-foreground">
-            Shell commands to run after creating a new worktree (one per line)
-          </div>
-          <textarea
-            value={setupCommandsText}
-            onChange={(e) => setSetupCommandsText(e.target.value)}
-            disabled={isLoadingSetup}
-            placeholder={'bun install\nbun run build'}
-            className="w-full h-24 px-3 py-2 bg-background border border-border rounded-none text-xs text-foreground font-mono placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/50 resize-y disabled:opacity-50 scrollbar-none"
-          />
-          <button
-            onClick={handleSaveSetupCommands}
-            disabled={isSavingSetup}
-            className="h-8 px-4 text-xs bg-primary text-primary-foreground rounded-none hover:bg-primary/90 disabled:opacity-50 transition-colors"
-          >
-            {isSavingSetup ? 'Saving...' : 'Save'}
-          </button>
-        </div>
-      </div>
-
-      {/* Advanced Section */}
-      <div>
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-          Advanced
-        </h3>
-        <div className="divide-y divide-border">
-          <div className="py-4">
-            <div className="text-sm font-medium text-foreground mb-1">Custom API URL</div>
-            <div className="text-xs text-muted-foreground mb-3">
-              Override the default API endpoint (leave empty for default)
-            </div>
-            <input
-              type="text"
-              value={customApiUrl}
-              onChange={(e) => setCustomApiUrl(e.target.value)}
-              placeholder="https://api.example.com/v1"
-              className="w-full px-3 py-2 bg-background border border-border rounded-none text-sm text-foreground font-mono placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Claude Login Modal */}
-      <ClaudeLoginModal
-        isOpen={isClaudeLoginOpen}
-        onClose={() => setIsClaudeLoginOpen(false)}
-        onSuccess={handleClaudeLoginSuccess}
-      />
-    </div>
+    </TooltipProvider>
   );
 }
