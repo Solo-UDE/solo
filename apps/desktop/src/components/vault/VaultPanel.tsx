@@ -19,6 +19,7 @@ import {
   Cloud,
   HardDrive,
   Layers,
+  Archive,
 } from 'lucide-react';
 import { useVaultStore } from '@/stores/vaultStore';
 import { useVaultDragDrop } from '@/hooks/useVaultDragDrop';
@@ -35,10 +36,12 @@ export const VaultPanel: FC = () => {
   const entries = useVaultStore((s) => s.entries);
   const unsortedCount = useVaultStore((s) => s.unsortedCount);
   const searchQuery = useVaultStore((s) => s.searchQuery);
+  const filters = useVaultStore((s) => s.filters);
   const searchMode = useVaultStore((s) => s.searchMode);
   const retrievalSource = useVaultStore((s) => s.retrievalSource);
   const searchResults = useVaultStore((s) => s.searchResults);
   const setSearchQuery = useVaultStore((s) => s.setSearchQuery);
+  const setFilter = useVaultStore((s) => s.setFilter);
   const setSearchMode = useVaultStore((s) => s.setSearchMode);
   const setRetrievalSource = useVaultStore((s) => s.setRetrievalSource);
   const fetchEntries = useVaultStore((s) => s.fetchEntries);
@@ -73,6 +76,7 @@ export const VaultPanel: FC = () => {
     void fetchPendingReextract();
   }, [
     activeScope,
+    filters,
     fetchEntries,
     fetchUnsortedCount,
     fetchPendingEmbeddings,
@@ -98,6 +102,7 @@ export const VaultPanel: FC = () => {
 
   const hasEntries = entries.size > 0;
   const isSearching = searchQuery.trim().length > 0 && searchResults.length >= 0;
+  const showingArchive = filters.expired === true;
 
   const pct =
     backfill.total > 0
@@ -142,13 +147,28 @@ export const VaultPanel: FC = () => {
             </span>
           )}
 
+          <button
+            type="button"
+            onClick={() => setFilter({ expired: showingArchive ? null : true })}
+            title={showingArchive ? 'Show active Vault entries' : 'Show expired archive'}
+            className={cn(
+              'h-6 px-2 rounded-md flex items-center gap-1 text-[10px] font-medium transition-[background-color,color,box-shadow,transform] duration-150 active:scale-[0.97]',
+              showingArchive
+                ? 'bg-primary/10 text-primary'
+                : 'bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground',
+            )}
+          >
+            <Archive className="w-3 h-3" />
+            <span>{showingArchive ? 'Active' : 'Archive'}</span>
+          </button>
+
           {/* Rebuild embeddings button — only when there's work to do */}
           {pendingReextract > 0 && !reextract.running && (
             <button
               type="button"
               onClick={() => void runReextract()}
               title={`Recover ${pendingReextract} legacy entr${pendingReextract === 1 ? 'y' : 'ies'}`}
-              className="h-6 px-2 rounded-md bg-muted/40 hover:bg-muted/60 flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-all duration-150 active:scale-[0.97]"
+              className="h-6 px-2 rounded-md bg-muted/40 hover:bg-muted/60 flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-[background-color,color,box-shadow,opacity,transform] duration-150 active:scale-[0.97]"
             >
               <FileSearch className="w-3 h-3" />
               <span>{pendingReextract}</span>
@@ -160,7 +180,7 @@ export const VaultPanel: FC = () => {
               type="button"
               onClick={() => void runBackfill()}
               title={`Rebuild ${pendingEmbeddings} missing embedding${pendingEmbeddings === 1 ? '' : 's'}`}
-              className="h-6 px-2 rounded-md bg-muted/40 hover:bg-muted/60 flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-all duration-150 active:scale-[0.97]"
+              className="h-6 px-2 rounded-md bg-muted/40 hover:bg-muted/60 flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-[background-color,color,box-shadow,opacity,transform] duration-150 active:scale-[0.97]"
             >
               <RefreshCw className="w-3 h-3" />
               <span>{pendingEmbeddings}</span>
@@ -213,7 +233,7 @@ export const VaultPanel: FC = () => {
             type="button"
             onClick={() => setSearchMode('fts')}
             title="Lexical (BM25) — matches exact keywords"
-            className={`h-7 w-7 rounded-md flex items-center justify-center transition-all duration-150 active:scale-[0.94] ${
+            className={`h-7 w-7 rounded-md flex items-center justify-center transition-[background-color,color,box-shadow,opacity,transform] duration-150 active:scale-[0.94] ${
               searchMode === 'fts'
                 ? 'bg-background shadow-sm text-foreground'
                 : 'text-muted-foreground/70 hover:text-foreground'
@@ -226,7 +246,7 @@ export const VaultPanel: FC = () => {
             type="button"
             onClick={() => setSearchMode('semantic')}
             title="Semantic — cosine similarity over local MiniLM embeddings (runs on-device, no API key)"
-            className={`h-7 w-7 rounded-md flex items-center justify-center transition-all duration-150 active:scale-[0.94] ${
+            className={`h-7 w-7 rounded-md flex items-center justify-center transition-[background-color,color,box-shadow,opacity,transform] duration-150 active:scale-[0.94] ${
               searchMode === 'semantic'
                 ? 'bg-background shadow-sm text-foreground'
                 : 'text-muted-foreground/70 hover:text-foreground'
@@ -241,7 +261,7 @@ export const VaultPanel: FC = () => {
             type="button"
             onClick={() => setSearchMode('hybrid')}
             title="Hybrid — fuses keyword and semantic ranks"
-            className={`h-7 w-7 rounded-md flex items-center justify-center transition-all duration-150 active:scale-[0.94] ${
+            className={`h-7 w-7 rounded-md flex items-center justify-center transition-[background-color,color,box-shadow,opacity,transform] duration-150 active:scale-[0.94] ${
               searchMode === 'hybrid'
                 ? 'bg-background shadow-sm text-foreground'
                 : 'text-muted-foreground/70 hover:text-foreground'
@@ -259,7 +279,7 @@ export const VaultPanel: FC = () => {
             type="button"
             onClick={() => setRetrievalSource('local')}
             title="Local retrieval only"
-            className={`h-6 px-2 rounded-md flex items-center gap-1 text-[10px] transition-all duration-150 active:scale-[0.97] ${
+            className={`h-6 px-2 rounded-md flex items-center gap-1 text-[10px] transition-[background-color,color,box-shadow,opacity,transform] duration-150 active:scale-[0.97] ${
               retrievalSource === 'local'
                 ? 'bg-background shadow-sm text-foreground'
                 : 'text-muted-foreground/70 hover:text-foreground'
@@ -273,7 +293,7 @@ export const VaultPanel: FC = () => {
             type="button"
             onClick={() => setRetrievalSource('hybrid')}
             title="Hybrid retrieval uses local results first and sends the query to cloud when signed in"
-            className={`h-6 px-2 rounded-md flex items-center gap-1 text-[10px] transition-all duration-150 active:scale-[0.97] ${
+            className={`h-6 px-2 rounded-md flex items-center gap-1 text-[10px] transition-[background-color,color,box-shadow,opacity,transform] duration-150 active:scale-[0.97] ${
               retrievalSource === 'hybrid'
                 ? 'bg-background shadow-sm text-foreground'
                 : 'text-muted-foreground/70 hover:text-foreground'
@@ -287,7 +307,7 @@ export const VaultPanel: FC = () => {
             type="button"
             onClick={() => setRetrievalSource('cloud')}
             title="Cloud retrieval sends the search query to the cloud"
-            className={`h-6 px-2 rounded-md flex items-center gap-1 text-[10px] transition-all duration-150 active:scale-[0.97] ${
+            className={`h-6 px-2 rounded-md flex items-center gap-1 text-[10px] transition-[background-color,color,box-shadow,opacity,transform] duration-150 active:scale-[0.97] ${
               retrievalSource === 'cloud'
                 ? 'bg-background shadow-sm text-foreground'
                 : 'text-muted-foreground/70 hover:text-foreground'
