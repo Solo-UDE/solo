@@ -18,8 +18,12 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 
-import { fuzzySearchFiles } from '../../../../lib/fuzzySearch';
-import { useWorkspaceFiles } from '../../../../hooks/useWorkspaceFiles';
+import { useFileExplorerStore } from '../../../../stores/fileExplorerStore';
+import {
+	ensureWorkspaceFileIndex,
+	searchWorkspaceFileIndex,
+	useWorkspaceFileIndex,
+} from '../../../../stores/workspaceFileIndexStore';
 import { $createMentionNode } from './MentionNode';
 import { MentionDropdown } from './MentionDropdown';
 
@@ -79,7 +83,8 @@ function getCursorPosition(): { bottom: number; left: number } | null {
 
 export const MentionPlugin: FC = () => {
 	const [editor] = useLexicalComposerContext();
-	const { files } = useWorkspaceFiles();
+	const rootPath = useFileExplorerStore((s) => s.rootPath);
+	const index = useWorkspaceFileIndex(rootPath);
 
 	const [isOpen, setIsOpen] = useState(false);
 	const [query, setQuery] = useState('');
@@ -87,7 +92,10 @@ export const MentionPlugin: FC = () => {
 	const [position, setPosition] = useState({ bottom: 0, left: 0 });
 	const [selectedIndex, setSelectedIndex] = useState(0);
 
-	const results = useMemo(() => fuzzySearchFiles(query, files), [query, files]);
+	const results = useMemo(
+		() => searchWorkspaceFileIndex(rootPath, query),
+		[rootPath, query, index.files]
+	);
 
 	// Listen for editor updates to detect @ trigger
 	useEffect(() => {
@@ -130,10 +138,15 @@ export const MentionPlugin: FC = () => {
 					setQuery((mentionMatch as MentionMatch).query);
 					setSelectedIndex(0);
 					setIsOpen(true);
+					if (rootPath) {
+						void ensureWorkspaceFileIndex(rootPath).catch((error) => {
+							console.warn('Failed to index workspace files:', error);
+						});
+					}
 				});
 			}
 		});
-	}, [editor]);
+	}, [editor, rootPath]);
 
 	// Handle selection of a file from the dropdown
 	const handleSelect = useCallback(
@@ -262,6 +275,7 @@ export const MentionPlugin: FC = () => {
 			selectedIndex={selectedIndex}
 			onSelect={handleSelect}
 			position={position}
+			isLoading={index.loading && !index.loaded}
 		/>,
 		document.body
 	);
