@@ -4,6 +4,7 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover
 import { cn } from '@/lib/utils';
 import { useCycleStore } from '@/stores/cycleStore';
 import { NewCycleDialog } from './NewCycleDialog';
+import { VirtualList } from '@/components/ui/virtual-list';
 
 interface Props {
   value: string | null;
@@ -59,7 +60,7 @@ export const CycleSelector: FC<Props> = ({ value, onChange, compact = false }) =
             className="w-full bg-transparent text-[12px] outline-none placeholder:text-muted-foreground"
           />
         </div>
-        <div className="flex max-h-[260px] flex-col overflow-y-auto">
+        <div className="flex max-h-[260px] flex-col">
           <button
             type="button"
             onClick={() => { void onChange(null); setOpen(false); }}
@@ -69,23 +70,30 @@ export const CycleSelector: FC<Props> = ({ value, onChange, compact = false }) =
             <span className="flex-1">No cycle</span>
             {value === null && <Check className="h-3.5 w-3.5" />}
           </button>
-          {filtered.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              onClick={() => { void onChange(c.id); setOpen(false); }}
-              className="flex items-start gap-2 rounded-[6px] px-1.5 py-1 text-left text-[12px] hover:bg-muted/70"
-            >
-              <CalendarClock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-              <span className="flex-1 min-w-0">
-                <span className="block truncate">{c.name}</span>
-                <span className="block text-[10px] tabular-nums text-muted-foreground">
-                  {fmt(c.start_at)} – {fmt(c.end_at)}
+          <VirtualList
+            items={filtered}
+            estimateSize={() => 38}
+            overscan={8}
+            className="max-h-[210px]"
+            getItemKey={(c) => c.id}
+            testId="cycle-selector-options"
+            renderItem={(c) => (
+              <button
+                type="button"
+                onClick={() => { void onChange(c.id); setOpen(false); }}
+                className="flex w-full items-start gap-2 rounded-[6px] px-1.5 py-1 text-left text-[12px] hover:bg-muted/70"
+              >
+                <CalendarClock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                <span className="flex-1 min-w-0">
+                  <span className="block truncate">{c.name}</span>
+                  <span className="block text-[10px] tabular-nums text-muted-foreground">
+                    {fmt(c.start_at)} – {fmt(c.end_at)}
+                  </span>
                 </span>
-              </span>
-              {c.id === value && <Check className="h-3.5 w-3.5 text-muted-foreground" />}
-            </button>
-          ))}
+                {c.id === value && <Check className="h-3.5 w-3.5 text-muted-foreground" />}
+              </button>
+            )}
+          />
           {filtered.length === 0 && (
             <div className="px-1.5 py-2 text-center text-[11px] text-muted-foreground">
               No cycles yet
