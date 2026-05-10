@@ -60,7 +60,8 @@ impl PluginToggles {
     }
 
     pub fn set_enabled(&mut self, id: &PluginId, enabled: bool) {
-        self.entries.insert(id.as_key(), PluginToggleEntry { enabled });
+        self.entries
+            .insert(id.as_key(), PluginToggleEntry { enabled });
     }
 }
 
