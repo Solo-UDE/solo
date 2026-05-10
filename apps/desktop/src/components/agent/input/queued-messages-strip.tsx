@@ -5,6 +5,7 @@ import { AnimatedList } from '@/components/ui/animated-list';
 import { useSessionQueue, useAgentStore } from '../../../stores/agentStore';
 
 import type { FC } from 'react';
+import type { UserContentPart } from '../../../stores/agentStore';
 
 export interface QueuedMessagesStripProps {
   sessionId: string | null;
@@ -13,7 +14,19 @@ export interface QueuedMessagesStripProps {
 
 const PREVIEW_CHAR_LIMIT = 160;
 
-function previewOf(text: string): string {
+function previewOf(text: string, parts?: UserContentPart[]): string {
+  if (parts?.some((part) => part.type === 'selection')) {
+    const selectionCount = parts.filter((part) => part.type === 'selection').length;
+    const textPreview = parts
+      .filter((part): part is Extract<UserContentPart, { type: 'text' }> => part.type === 'text')
+      .map((part) => part.text)
+      .join(' ')
+      .trim()
+      .replace(/\s+/g, ' ');
+    const label = `${selectionCount} selection${selectionCount === 1 ? '' : 's'}`;
+    return textPreview ? `${label} · ${textPreview}` : label;
+  }
+
   const trimmed = text.trim().replace(/\s+/g, ' ');
   if (trimmed.length <= PREVIEW_CHAR_LIMIT) return trimmed;
   return trimmed.slice(0, PREVIEW_CHAR_LIMIT - 1) + '…';
@@ -42,7 +55,7 @@ export const QueuedMessagesStrip: FC<QueuedMessagesStripProps> = ({ sessionId, c
               />
               <div className="flex-1 min-w-0">
                 <p className="text-xs leading-snug text-foreground/90 line-clamp-2 break-words whitespace-pre-wrap">
-                  {previewOf(item.content)}
+                  {previewOf(item.content, item.parts)}
                 </p>
                 {attachmentCount > 0 && (
                   <span className="mt-1 inline-flex items-center gap-1 text-[10px] text-muted-foreground">
