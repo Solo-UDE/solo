@@ -18,7 +18,8 @@ export type RenderWhitespace = 'none' | 'boundary' | 'all';
 export type LineEnding = 'lf' | 'crlf' | 'auto';
 export type ToolPermissionPolicy = 'ask-all' | 'smart' | 'approve-all';
 export type ThemeSurface = 'light' | 'dark';
-export type ThemePresetId = 'solo' | 'codex' | 'watermelon' | 'custom';
+export type ThemePresetId = 'solo' | 'watermelon' | 'custom';
+type ThemePresetOptionId = Exclude<ThemePresetId, 'custom'>;
 
 export interface ThemePalette {
   accent: string;
@@ -39,6 +40,7 @@ export interface AppearanceSettings {
 
 const DEFAULT_UI_FONT = '"Inter Variable", Inter, ui-sans-serif, system-ui, sans-serif';
 const DEFAULT_CODE_FONT = '"SF Mono", SFMono-Regular, ui-monospace, monospace';
+const GEIST_CODE_FONT = '"Geist Mono Variable", "SF Mono", ui-monospace, monospace';
 
 export const UI_FONT_FAMILIES = [
   { label: 'Inter', value: DEFAULT_UI_FONT },
@@ -49,12 +51,12 @@ export const UI_FONT_FAMILIES = [
 
 export const FONT_FAMILIES = [
   { label: 'SF Mono', value: DEFAULT_CODE_FONT },
-  { label: 'Geist Mono', value: '"Geist Mono Variable", "SF Mono", ui-monospace, monospace' },
+  { label: 'Geist Mono', value: GEIST_CODE_FONT },
   { label: 'Menlo', value: 'Menlo, Monaco, ui-monospace, monospace' },
   { label: 'System Default', value: 'ui-monospace, system-ui, monospace' },
 ] as const;
 
-export const APPEARANCE_PRESETS: Record<Exclude<ThemePresetId, 'custom'>, {
+export const APPEARANCE_PRESETS: Record<ThemePresetOptionId, {
   label: string;
   light: ThemePalette;
   dark: ThemePalette;
@@ -62,46 +64,23 @@ export const APPEARANCE_PRESETS: Record<Exclude<ThemePresetId, 'custom'>, {
   solo: {
     label: 'Solo',
     light: {
-      accent: '#2563eb',
-      background: '#f8f7f4',
-      foreground: '#171615',
+      accent: '#2f8f68',
+      background: '#f6f4ef',
+      foreground: '#22201d',
       uiFontFamily: DEFAULT_UI_FONT,
       codeFontFamily: DEFAULT_CODE_FONT,
       translucentSidebar: true,
-      contrast: 56,
+      contrast: 58,
       fontSmoothing: true,
     },
     dark: {
-      accent: '#60a5fa',
-      background: '#181818',
-      foreground: '#f7f7f5',
+      accent: '#7ccfa8',
+      background: '#171915',
+      foreground: '#f2f0e8',
       uiFontFamily: DEFAULT_UI_FONT,
       codeFontFamily: DEFAULT_CODE_FONT,
       translucentSidebar: true,
-      contrast: 62,
-      fontSmoothing: true,
-    },
-  },
-  codex: {
-    label: 'Codex',
-    light: {
-      accent: '#339cff',
-      background: '#f4f4f2',
-      foreground: '#1f1f1f',
-      uiFontFamily: DEFAULT_UI_FONT,
-      codeFontFamily: DEFAULT_CODE_FONT,
-      translucentSidebar: true,
-      contrast: 52,
-      fontSmoothing: true,
-    },
-    dark: {
-      accent: '#339cff',
-      background: '#181818',
-      foreground: '#ffffff',
-      uiFontFamily: DEFAULT_UI_FONT,
-      codeFontFamily: DEFAULT_CODE_FONT,
-      translucentSidebar: true,
-      contrast: 60,
+      contrast: 64,
       fontSmoothing: true,
     },
   },
@@ -112,7 +91,7 @@ export const APPEARANCE_PRESETS: Record<Exclude<ThemePresetId, 'custom'>, {
       background: '#fff7f3',
       foreground: '#241714',
       uiFontFamily: DEFAULT_UI_FONT,
-      codeFontFamily: '"Geist Mono Variable", ' + DEFAULT_CODE_FONT,
+      codeFontFamily: GEIST_CODE_FONT,
       translucentSidebar: true,
       contrast: 54,
       fontSmoothing: true,
@@ -122,7 +101,7 @@ export const APPEARANCE_PRESETS: Record<Exclude<ThemePresetId, 'custom'>, {
       background: '#161311',
       foreground: '#fff8f3',
       uiFontFamily: DEFAULT_UI_FONT,
-      codeFontFamily: '"Geist Mono Variable", ' + DEFAULT_CODE_FONT,
+      codeFontFamily: GEIST_CODE_FONT,
       translucentSidebar: true,
       contrast: 64,
       fontSmoothing: true,
@@ -130,7 +109,7 @@ export const APPEARANCE_PRESETS: Record<Exclude<ThemePresetId, 'custom'>, {
   },
 };
 
-const clonePreset = (preset: Exclude<ThemePresetId, 'custom'>): AppearanceSettings => ({
+const clonePreset = (preset: ThemePresetOptionId): AppearanceSettings => ({
   activePreset: preset,
   light: { ...APPEARANCE_PRESETS[preset].light },
   dark: { ...APPEARANCE_PRESETS[preset].dark },
@@ -368,21 +347,37 @@ function mergeAppearance(
   current: AppearanceSettings,
   persisted?: Partial<AppearanceSettings>,
 ): AppearanceSettings {
+  if ((persisted?.activePreset as string | undefined) === 'codex') {
+    return clonePreset('solo');
+  }
+
   return normalizeAppearanceFonts({
-    activePreset: persisted?.activePreset ?? current.activePreset,
+    activePreset: normalizeActivePreset(persisted?.activePreset ?? current.activePreset),
     light: { ...current.light, ...persisted?.light },
     dark: { ...current.dark, ...persisted?.dark },
   });
 }
 
+function normalizeActivePreset(preset: unknown): ThemePresetId {
+  if (preset === 'custom') return 'custom';
+  if (typeof preset === 'string' && preset in APPEARANCE_PRESETS) {
+    return preset as ThemePresetOptionId;
+  }
+  return 'solo';
+}
+
 function normalizeAppearanceFonts(appearance: AppearanceSettings): AppearanceSettings {
   const oldSystemFont = '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif';
+  const oldWatermelonCodeFont = '"Geist Mono Variable", ' + DEFAULT_CODE_FONT;
   const normalizePalette = (palette: ThemePalette): ThemePalette => ({
     ...palette,
     uiFontFamily: palette.uiFontFamily === oldSystemFont ? DEFAULT_UI_FONT : palette.uiFontFamily,
+    codeFontFamily: palette.codeFontFamily === oldWatermelonCodeFont ? GEIST_CODE_FONT : palette.codeFontFamily,
+    contrast: Math.max(0, Math.min(100, palette.contrast)),
   });
   return {
     ...appearance,
+    activePreset: normalizeActivePreset(appearance.activePreset),
     light: normalizePalette(appearance.light),
     dark: normalizePalette(appearance.dark),
   };
@@ -608,7 +603,7 @@ export const useSettingsStore = create<SettingsStore>()(
     })),
     {
       name: 'solo-settings',
-      version: 5,
+      version: 6,
       storage: createJSONStorage(() => localStorage),
       // Deep-merge at category level so new fields (e.g. ai.toolPermissionPolicy)
       // aren't lost when persisted state predates their addition.
@@ -673,6 +668,20 @@ export const useSettingsStore = create<SettingsStore>()(
             ai: { ...DEFAULT_SETTINGS.ai, ...v4.ai },
             terminal: { ...DEFAULT_SETTINGS.terminal, ...v4.terminal },
             voiceShortcuts: v4.voiceShortcuts ?? DEFAULT_SETTINGS.voiceShortcuts,
+          };
+        }
+        if (version === 5) {
+          const v5 = persistedState as Partial<SettingsState>;
+          return {
+            ...DEFAULT_SETTINGS,
+            general: { ...DEFAULT_SETTINGS.general, ...v5.general },
+            appearance: mergeAppearance(DEFAULT_SETTINGS.appearance, v5.appearance),
+            editor: { ...DEFAULT_SETTINGS.editor, ...v5.editor },
+            files: { ...DEFAULT_SETTINGS.files, ...v5.files },
+            shortcuts: v5.shortcuts ?? DEFAULT_SETTINGS.shortcuts,
+            ai: { ...DEFAULT_SETTINGS.ai, ...v5.ai },
+            terminal: { ...DEFAULT_SETTINGS.terminal, ...v5.terminal },
+            voiceShortcuts: v5.voiceShortcuts ?? DEFAULT_SETTINGS.voiceShortcuts,
           };
         }
         return persistedState as SettingsState;
