@@ -3,7 +3,7 @@
  * Provides callbacks for panels to update their state
  */
 
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { panelRegistry } from '@/lib/panels/registry';
 import { usePanelTabsStore } from '@/stores/panelTabsStore';
 import type { PanelInstance, PanelProps } from '@/lib/panels/types';
@@ -16,6 +16,19 @@ interface PanelWrapperProps {
 }
 
 export function PanelWrapper({ instance, isActive, className }: PanelWrapperProps) {
+  const wasActive = useRef(isActive);
+  const [isSettling, setIsSettling] = useState(false);
+
+  useEffect(() => {
+    if (isActive && !wasActive.current) {
+      setIsSettling(true);
+      const timer = window.setTimeout(() => setIsSettling(false), 90);
+      wasActive.current = isActive;
+      return () => window.clearTimeout(timer);
+    }
+    wasActive.current = isActive;
+  }, [isActive]);
+
   // Get actions directly from store to avoid selector subscription issues
   const actions = useMemo(() => {
     const state = usePanelTabsStore.getState();
@@ -98,6 +111,7 @@ export function PanelWrapper({ instance, isActive, className }: PanelWrapperProp
       className={cn(
         'h-full w-full overflow-hidden',
         !isActive && 'hidden',
+        isActive && isSettling && 'animate-in fade-in-0 zoom-in-[0.995] slide-in-from-bottom-[1px] duration-75',
         className
       )}
     >
