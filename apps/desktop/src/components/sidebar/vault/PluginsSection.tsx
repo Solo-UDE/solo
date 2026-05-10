@@ -414,8 +414,9 @@ export const PluginsSection: FC = () => {
   };
 
   return (
-    <div className="min-h-full bg-background text-foreground">
-      <div className="mx-auto flex w-full max-w-5xl flex-col px-5 pb-12 pt-3 lg:px-8">
+    <div className="flex h-full min-h-0 bg-background text-foreground">
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto flex w-full max-w-5xl flex-col px-5 pb-12 pt-3 lg:px-8">
         <div className="flex items-center gap-2">
           <div
             role="tablist"
@@ -689,6 +690,7 @@ export const PluginsSection: FC = () => {
             </div>
           )}
         </section>
+        </div>
       </div>
 
       {detailOpen && rootPath && <PluginDetailDrawer rootPath={rootPath} />}
