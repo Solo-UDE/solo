@@ -17,6 +17,7 @@ export interface MentionDropdownProps {
 	selectedIndex: number;
 	onSelect: (result: FileSearchResult) => void;
 	position: { bottom: number; left: number };
+	isLoading?: boolean;
 }
 
 // Concentric radii (border-radius.md): outer rounded-2xl minus p-1.5 ≈ rounded-xl inner.
@@ -31,6 +32,7 @@ export const MentionDropdown: FC<MentionDropdownProps> = ({
 	selectedIndex,
 	onSelect,
 	position,
+	isLoading = false,
 }) => {
 	return (
 		<div
@@ -44,7 +46,7 @@ export const MentionDropdown: FC<MentionDropdownProps> = ({
 		>
 			{results.length === 0 ? (
 				<div className="h-7 flex items-center justify-center text-[13px] text-muted-foreground">
-					No files found
+					{isLoading ? 'Indexing files...' : 'No files found'}
 				</div>
 			) : (
 				<VirtualList
