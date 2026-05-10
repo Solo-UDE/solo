@@ -3,6 +3,7 @@ import { Loader2 } from 'lucide-react';
 import { useState } from 'react';
 
 import { ExpandRegion } from '../shared/ExpandRegion';
+import { VirtualList } from '@/components/ui/virtual-list';
 
 import type { FC } from 'react';
 
@@ -46,18 +47,20 @@ export const GrepToolWidget: FC<GrepToolWidgetProps> = ({
 
       <ExpandRegion isExpanded={isExpanded}>
         {lines.length > 0 ? (
-          <div className="p-2 max-h-[300px] overflow-auto font-mono text-xs">
-            {lines.slice(0, 50).map((line, i) => (
-              <div key={`result-${String(i)}`} className="text-foreground/80 py-0.5 px-2 truncate hover:bg-accent/30">
+          <VirtualList
+            items={lines}
+            estimateSize={() => 22}
+            overscan={12}
+            measureElement={false}
+            className="max-h-[300px] p-2 font-mono text-xs"
+            getItemKey={(line, i) => `${i}:${line}`}
+            testId="legacy-grep-tool-results"
+            renderItem={(line) => (
+              <div className="text-foreground/80 py-0.5 px-2 truncate hover:bg-accent/30">
                 {line}
               </div>
-            ))}
-            {lines.length > 50 ? (
-              <div className="text-muted-foreground px-2 py-1">
-                +{lines.length - 50} more results...
-              </div>
-            ) : null}
-          </div>
+            )}
+          />
         ) : null}
       </ExpandRegion>
     </div>
