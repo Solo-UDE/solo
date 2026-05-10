@@ -242,7 +242,7 @@ export const useGitStore = create<GitState & GitActions>()(
       if (!githubRepoUrl) return;
 
       const accessToken = await githubGetToken();
-      if (!accessToken) throw new Error('Not connected to GitHub. Please connect first.');
+      if (!accessToken) throw new Error('No GitHub account is linked to this Solo sign-in.');
 
       set((state) => {
         state.isPushing = true;
@@ -271,7 +271,7 @@ export const useGitStore = create<GitState & GitActions>()(
       if (!githubRepoUrl) return;
 
       const accessToken = await githubGetToken();
-      if (!accessToken) throw new Error('Not connected to GitHub. Please connect first.');
+      if (!accessToken) throw new Error('No GitHub account is linked to this Solo sign-in.');
 
       set((state) => {
         state.isPulling = true;
@@ -400,7 +400,7 @@ export const useGitStore = create<GitState & GitActions>()(
       if (!githubRepoUrl) return;
 
       const accessToken = await githubGetToken();
-      if (!accessToken) throw new Error('Not connected to GitHub. Please connect first.');
+      if (!accessToken) throw new Error('No GitHub account is linked to this Solo sign-in.');
 
       set((state) => { state.isFetching = true; state._fetchSeq += 1; });
       try {
