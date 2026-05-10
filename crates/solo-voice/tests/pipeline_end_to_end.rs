@@ -1,29 +1,34 @@
 //! End-to-end pipeline test using MockStt + a fake ChatClient.
 //! Exercises begin → feed audio → end → formatted output.
 
+use async_trait::async_trait;
 use solo_voice::{
     audio::AudioRing,
-    formatter::{ChatClient, CloudFormatter, DictationOptions, AppContext, FormatterProvider},
+    formatter::{AppContext, ChatClient, CloudFormatter, DictationOptions, FormatterProvider},
     mode::{PipelineTarget, VoiceMode},
     pipeline::{PipelineState, VoicePipeline},
     stt::{MockStt, SttProvider},
 };
 use std::sync::{Arc, Mutex};
-use async_trait::async_trait;
 
 struct CannedChat(&'static str);
 #[async_trait]
 impl ChatClient for CannedChat {
-    async fn simple_completion(&self, _m: &str, _s: &str, _u: &str)
-        -> solo_voice::error::Result<String>
-    {
+    async fn simple_completion(
+        &self,
+        _m: &str,
+        _s: &str,
+        _u: &str,
+    ) -> solo_voice::error::Result<String> {
         Ok(self.0.to_string())
     }
 }
 
 #[tokio::test]
 async fn end_to_end_dictation() {
-    let stt: Arc<dyn SttProvider> = Arc::new(MockStt { canned: "hello world".into() });
+    let stt: Arc<dyn SttProvider> = Arc::new(MockStt {
+        canned: "hello world".into(),
+    });
     let formatter: Arc<dyn FormatterProvider> = Arc::new(CloudFormatter {
         model: "x".into(),
         client: CannedChat("Hello, world."),
@@ -68,7 +73,15 @@ async fn end_to_end_dictation() {
             PipelineState::Error(_) => "Error",
         })
         .collect();
-    assert_eq!(names, vec![
-        "Arming", "Recording", "Transcribing", "Formatting", "Emitting", "Idle"
-    ]);
+    assert_eq!(
+        names,
+        vec![
+            "Arming",
+            "Recording",
+            "Transcribing",
+            "Formatting",
+            "Emitting",
+            "Idle"
+        ]
+    );
 }
