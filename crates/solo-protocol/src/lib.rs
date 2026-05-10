@@ -139,6 +139,10 @@ pub struct DirectoryReadRequest {
     pub path: String,
     /// Depth of children to include (0 = no children, 1 = immediate children only)
     pub depth: u32,
+    /// Whether to compute the recursive total entry count.
+    /// Defaults to false because counting can dominate hot navigation paths.
+    #[serde(default)]
+    pub include_total_count: Option<bool>,
 }
 
 /// Response with directory contents
@@ -147,8 +151,8 @@ pub struct DirectoryReadRequest {
 pub struct DirectoryReadResponse {
     /// Root entry with children
     pub entry: FileTreeEntry,
-    /// Total file count (for progress indication)
-    pub total_count: u32,
+    /// Total file count when requested (for progress indication)
+    pub total_count: Option<u32>,
 }
 
 /// Request to create a file or directory
