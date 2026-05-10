@@ -36,6 +36,14 @@ function exists(targetPath) {
   return fs.existsSync(targetPath);
 }
 
+function hasCargoTauri() {
+  const result = spawnSync("cargo", ["tauri", "--version"], {
+    encoding: "utf8",
+    stdio: "ignore",
+  });
+  return result.status === 0;
+}
+
 function isManagedInstall(appPath = liveAppPath) {
   return exists(path.join(appPath, "Contents/Resources/solo-local-auth-install.json"));
 }
@@ -113,23 +121,32 @@ run(bunExecutable, ["run", "bridge:build"], {
   env: commandEnv,
 });
 
-run(
-  bunExecutable,
-  [
-    "x",
-    "tauri",
-    "build",
-    "--debug",
-    "--bundles",
-    "app",
-    "--config",
-    '{"bundle":{"createUpdaterArtifacts":false}}',
-  ],
-  {
+const tauriBuildArgs = [
+  "build",
+  "--debug",
+  "--bundles",
+  "app",
+  "--config",
+  JSON.stringify({
+    build: {
+      beforeBuildCommand:
+        "bun --bun run build:vite && cd ../.. && bun --bun run bridge:compile:mac",
+    },
+    bundle: { createUpdaterArtifacts: false },
+  }),
+];
+if (hasCargoTauri()) {
+  console.log("Using cargo tauri for app bundle build.");
+  run("cargo", ["tauri", ...tauriBuildArgs], {
     cwd: desktopDir,
     env: commandEnv,
-  },
-);
+  });
+} else {
+  run(bunExecutable, ["x", "tauri", ...tauriBuildArgs], {
+    cwd: desktopDir,
+    env: commandEnv,
+  });
+}
 
 if (!exists(builtAppPath)) {
   fail(`Expected built app bundle at ${builtAppPath}`);
