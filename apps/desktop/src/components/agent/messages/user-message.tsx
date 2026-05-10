@@ -95,7 +95,7 @@ export const UserMessage: FC<UserMessageProps> = ({
 
   return (
     <div className={`chat-surface flex justify-end ${className}`}>
-      <div className="max-w-[min(46rem,88%)] space-y-2 rounded-[12px] border border-border/80 bg-agent-user-bg px-4 py-3 text-foreground shadow-[0_16px_28px_-28px_rgba(0,0,0,0.3)]">
+      <div className="max-w-[min(46rem,88%)] space-y-2 rounded-[22px] bg-agent-user-bg px-4 py-3 text-foreground shadow-[0_18px_38px_-28px_rgba(0,0,0,0.55)]">
         <div className="text-[13px] whitespace-pre-wrap break-words leading-relaxed">
           {parts && parts.length > 0 ? (
             // Ordered rendering: chips appear exactly where the user put them.
