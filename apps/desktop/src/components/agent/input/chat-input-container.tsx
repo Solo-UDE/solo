@@ -23,6 +23,7 @@ import {
 
 import type { LexicalEditorHandle } from './lexical-editor';
 import type { FileMention, Attachment, UserContentPart } from '../../../stores/agentStore';
+import type { SkillInfo } from '../../../lib/tauri/skills';
 import { ModeSelector } from './mode-selector';
 import { ModelPicker } from './model-picker';
 import { OpenAICapabilityBanner } from './OpenAICapabilityBanner';
@@ -31,6 +32,7 @@ import { useProviderStore } from '../../../stores/provider-store';
 import { useAttachmentStore } from '../../../stores/attachmentStore';
 import { useWorktreeList } from '../../../stores/worktreeStore';
 import { useAgentStore } from '../../../stores/agentStore';
+import { useSkillStore } from '../../../stores/skillStore';
 import { DEFAULT_MODEL_ID, MODEL_OPTIONS } from '../../../lib/constants';
 import { VoiceButton } from './voice-button';
 import { toolbarButtonIconOnly } from './toolbar-button-class';
@@ -100,6 +102,23 @@ function buildSubmittedContent(content: string, selections: SelectionPill[]): st
   return blocks.join('\n\n');
 }
 
+function buildSkillEstimateContent(skillNames: string[], skills: SkillInfo[]): string {
+  if (skillNames.length === 0) return '';
+  const resolved = skillNames
+    .map((name) => skills.find((skill) => skill.name === name))
+    .filter((skill): skill is NonNullable<typeof skill> => Boolean(skill));
+  if (resolved.length === 0) return '';
+
+  const skillText = resolved
+    .map((skill) => `<skill name="${skill.name}">\n${skill.content}\n</skill>`)
+    .join('\n\n');
+  return `The user has attached the following skills as instructions for this message. Follow these skill instructions:\n\n${skillText}`;
+}
+
+function buildEstimatedDraftContent(content: string, selections: SelectionPill[], skillContent: string): string {
+  return [skillContent, buildSubmittedContent(content, selections)].filter(Boolean).join('\n\n');
+}
+
 function buildSubmittedParts(selections: SelectionPill[], editorParts: UserContentPart[]): UserContentPart[] {
   const parts = selections.map(selectionPart);
   if (parts.length > 0 && editorParts.length > 0) {
@@ -167,6 +186,7 @@ export interface ChatInputContainerHandle {
 }
 
 export interface ChatInputContainerProps {
+  sessionId?: string | null;
   onSubmit: (content: string, mode: 'planning' | 'fast', model: string, attachments?: Attachment[], mentions?: FileMention[], skills?: string[], parts?: UserContentPart[]) => void;
   /** Called instead of `onSubmit` when `isAgentRunning` is true — message should be queued, not sent. */
   onEnqueue?: (content: string, mode: 'planning' | 'fast', model: string, attachments?: Attachment[], mentions?: FileMention[], skills?: string[], parts?: UserContentPart[]) => void;
@@ -188,6 +208,7 @@ export interface ChatInputContainerProps {
 
 function ChatInputContainerInner(
   {
+    sessionId,
     onSubmit,
     onEnqueue,
     onRecallQueue,
@@ -220,16 +241,22 @@ function ChatInputContainerInner(
   const [sketchOpen, setSketchOpen] = useState(false);
   const selectedModel = useProviderStore((state) => state.selectedModel);
   const activeSessionId = useAgentStore((s) => s.activeSessionId);
+  const effectiveSessionId = sessionId ?? activeSessionId;
   const showOpenAIBanner = useMemo(() => {
     const entry = MODEL_OPTIONS.find((m) => m.value === selectedModel);
     return entry?.textOnly === true;
   }, [selectedModel]);
   const attachments = useAttachmentStore((s) => s.attachments);
   const clearAttachments = useAttachmentStore((s) => s.clear);
+  const availableSkills = useSkillStore((s) => s.available);
   const editorRef = useRef<LexicalEditorHandle>(null);
   const voiceSuggestionDismissedRef = useRef(false);
   const [showVoiceSuggestion, setShowVoiceSuggestion] = useState(false);
   const worktrees = useWorktreeList();
+  const estimatedDraftContent = useMemo(() => {
+    const skillContent = buildSkillEstimateContent(skillNames, availableSkills);
+    return buildEstimatedDraftContent(content, selectionPills, skillContent);
+  }, [availableSkills, content, selectionPills, skillNames]);
 
   // Sync mode from store state changes (plan / accept / debug overlays)
   useEffect(() => {
@@ -452,8 +479,8 @@ function ChatInputContainerInner(
       <SkillSuggestionBanner />
       <div className="mx-auto max-w-[56rem] px-4 pb-3 pt-2">
         <div className="rounded-[14px] border border-border/80 bg-card/96 shadow-[0_18px_36px_-30px_rgba(0,0,0,0.42)]">
-          {showOpenAIBanner && activeSessionId && (
-            <OpenAICapabilityBanner sessionId={activeSessionId} />
+          {showOpenAIBanner && effectiveSessionId && (
+            <OpenAICapabilityBanner sessionId={effectiveSessionId} />
           )}
 
           <AttachmentBar />
@@ -495,7 +522,12 @@ function ChatInputContainerInner(
                   onChange={(enabled) => onThinkingChange?.(enabled)}
                   disabled={isAgentRunning}
                 />
-                <ContextTracker disabled={isAgentRunning} />
+                <ContextTracker
+                  disabled={isAgentRunning}
+                  sessionId={effectiveSessionId}
+                  modelId={selectedModel ?? DEFAULT_MODEL_ID}
+                  draftContent={estimatedDraftContent}
+                />
 
                 {showWorktreeSelector && (
                   <div className="min-w-0 basis-[120px] shrink">
