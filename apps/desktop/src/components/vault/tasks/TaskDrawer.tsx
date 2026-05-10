@@ -153,7 +153,11 @@ export const TaskDrawer: FC = () => {
             </div>
           )}
 
-          {tab === 'runs' && <TaskRunsTab task={task} />}
+          {tab === 'runs' && (
+            <div className="min-h-0 flex-1">
+              <TaskRunsTab task={task} />
+            </div>
+          )}
           {tab === 'agent' && task.executor === 'agent' && <AgentConfigTab task={task} />}
           {tab === 'schedule' && <ScheduleTab task={task} />}
         </motion.aside>
