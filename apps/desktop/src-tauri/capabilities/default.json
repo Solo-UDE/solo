@@ -11,6 +11,8 @@
     "shell:allow-open",
     "dialog:allow-open",
     "dialog:default",
+    "deep-link:default",
+    "deep-link:allow-get-current",
     "clipboard-manager:allow-write-text",
     "clipboard-manager:allow-read-text",
     "macos-permissions:default",
