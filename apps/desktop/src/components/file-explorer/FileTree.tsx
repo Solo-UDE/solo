@@ -307,6 +307,9 @@ export function FileTree({ onFileOpen }: FileTreeProps) {
       ref={containerRef}
       className="h-full overflow-auto outline-none"
       tabIndex={0}
+      data-virtualized-list="file-tree"
+      data-total-items={visibleTree.length}
+      data-rendered-items={filteredVirtualizer.getVirtualItems().length}
     >
       <div
         style={{
