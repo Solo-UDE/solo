@@ -5,7 +5,7 @@ import {
   createLogger,
   setCorrelationId,
   shutdownFileLogging
-} from "./chunk-CLAVTT35.js";
+} from "./chunk-PI2SZOW3.js";
 
 // src/index.ts
 import * as readline from "readline";
@@ -4128,7 +4128,7 @@ var SessionManager = class extends Disposable {
       if (!config?.model) {
         throw new Error("OpenAI session requires a model");
       }
-      const { createOpenAISession } = await import("./openai-QGAP5HES.js");
+      const { createOpenAISession } = await import("./openai-PM43ACSB.js");
       const openaiSession = await createOpenAISession({
         model: config.model,
         credentials: config.credentials,
@@ -4164,7 +4164,7 @@ var SessionManager = class extends Disposable {
       if (!config?.model) {
         throw new Error("Gemini session requires a model");
       }
-      const { createGeminiSession } = await import("./gemini-IGHQPCMD.js");
+      const { createGeminiSession } = await import("./gemini-MBZWSO6P.js");
       const geminiSession = await createGeminiSession({
         model: config.model,
         credentials: config.credentials,
@@ -5392,3 +5392,4 @@ try {
   logger11.error({ error }, "Fatal error");
   process.exit(1);
 }
+//# sourceMappingURL=index.js.map
