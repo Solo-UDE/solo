@@ -113,15 +113,15 @@ pub struct CumulativeStats {
     pub messages: u64,
     #[serde(default)]
     pub tier: u8,
-    #[serde(default)]
+    #[serde(default, alias = "tierProgress")]
     pub tier_progress: f64,
     #[serde(default)]
     pub score: f64,
-    #[serde(default)]
+    #[serde(default, alias = "streakCurrent")]
     pub streak_current: u32,
-    #[serde(default)]
+    #[serde(default, alias = "streakLongest")]
     pub streak_longest: u32,
-    #[serde(default)]
+    #[serde(default, alias = "lastActive")]
     pub last_active: Option<DateTime<Utc>>,
 }
 
@@ -164,7 +164,7 @@ struct SyncResponse {
     tier: u8,
     /// Lambda returns this rounded to the 0–100 integer scale. Translated to
     /// the local 0–1 float scale when merged into `CumulativeStats`.
-    #[serde(default)]
+    #[serde(default, alias = "tierProgress")]
     tier_progress: f64,
     #[serde(default)]
     score: f64,
@@ -192,8 +192,7 @@ pub struct DailyActivity {
 #[derive(Debug, Deserialize)]
 struct MyStatsResponse {
     #[serde(default)]
-    #[allow(dead_code)]
-    stats: serde_json::Value,
+    stats: Option<CumulativeStats>,
     #[serde(default)]
     heatmap: Vec<DailyActivity>,
 }
@@ -271,10 +270,7 @@ impl StatsCollector {
         let day_key = today_utc_iso();
         let mut snap = self.snapshot.write().await;
         snap.pending.apply(&event);
-        snap.pending_daily
-            .entry(day_key)
-            .or_default()
-            .apply(&event);
+        snap.pending_daily.entry(day_key).or_default().apply(&event);
         self.store.save(&snap).await?;
         Ok(())
     }
@@ -327,8 +323,8 @@ impl StatsCollector {
 
         // The sync Lambda returns a narrow `{tier, tier_progress (0-100), score}`
         // response — only these three fields are authoritatively updated here.
-        // The cumulative counters are refreshed by the next `GET /v1/stats/my`
-        // call rather than round-tripped through sync.
+        // Counter totals are updated locally from the delta that just synced;
+        // cross-device totals are refreshed by `GET /v1/stats/my`.
         let resp: SyncResponse = response.json().await.map_err(StatsError::from)?;
         info!(
             tier = resp.tier,
@@ -337,13 +333,92 @@ impl StatsCollector {
         );
 
         let mut snap = self.snapshot.write().await;
+        snap.cumulative.commits = snap
+            .cumulative
+            .commits
+            .saturating_add(snapshot.pending.commits);
+        snap.cumulative.tokens = snap
+            .cumulative
+            .tokens
+            .saturating_add(snapshot.pending.tokens);
+        snap.cumulative.worktrees = snap
+            .cumulative
+            .worktrees
+            .saturating_add(snapshot.pending.worktrees);
+        snap.cumulative.sessions = snap
+            .cumulative
+            .sessions
+            .saturating_add(snapshot.pending.sessions);
+        snap.cumulative.messages = snap
+            .cumulative
+            .messages
+            .saturating_add(snapshot.pending.messages);
         snap.pending = StatsDelta::default();
         snap.pending_daily.clear();
         snap.cumulative.tier = resp.tier;
         snap.cumulative.tier_progress = resp.tier_progress / 100.0;
         snap.cumulative.score = resp.score;
+        snap.cumulative.last_active = Some(Utc::now());
         snap.last_sync_at = Some(Utc::now());
         self.store.save(&snap).await?;
+        Ok(())
+    }
+
+    /// Ensure the signed-in user has a cloud stats row even before any local
+    /// activity has accumulated. This makes fresh users visible to stats reads
+    /// and the leaderboard without turning the periodic sync loop into a
+    /// constant no-op writer.
+    pub async fn ensure_cloud_row(&self) -> Result<(), StatsError> {
+        let snapshot = self.snapshot.read().await.clone();
+        let Some(token) = self.token_provider.bearer_token().await else {
+            return Err(StatsError::NotAuthenticated);
+        };
+
+        let url = format!("{}/v1/stats/sync", self.api_base.trim_end_matches('/'));
+        let empty_daily = HashMap::new();
+        let empty_delta = StatsDelta::default();
+        let request = SyncRequest {
+            delta: &empty_delta,
+            daily: &empty_daily,
+            last_active: Some(Utc::now().to_rfc3339()),
+        };
+        let response = self
+            .client
+            .post(&url)
+            .bearer_auth(token)
+            .json(&request)
+            .send()
+            .await?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(StatsError::ApiError {
+                status: status.as_u16(),
+                body,
+            });
+        }
+
+        let resp: SyncResponse = response.json().await.map_err(StatsError::from)?;
+        let mut snap = self.snapshot.write().await;
+        snap.cumulative.tier = if resp.tier == 0 { 1 } else { resp.tier };
+        snap.cumulative.tier_progress = resp.tier_progress / 100.0;
+        snap.cumulative.score = resp.score;
+        snap.cumulative.last_active = Some(Utc::now());
+        snap.last_sync_at = snapshot.last_sync_at.or_else(|| Some(Utc::now()));
+        self.store.save(&snap).await?;
+        Ok(())
+    }
+
+    /// Refresh cumulative totals from the cloud. This hydrates a new device or
+    /// a freshly signed-in session before the Journey page reads local state.
+    pub async fn refresh_from_cloud(&self) -> Result<(), StatsError> {
+        let payload = self.fetch_my_stats().await?;
+        if let Some(stats) = payload.stats {
+            let mut snap = self.snapshot.write().await;
+            snap.cumulative = normalize_cumulative(stats);
+            self.store.save(&snap).await?;
+        }
         Ok(())
     }
 
@@ -351,6 +426,46 @@ impl StatsCollector {
     /// signed-in user. Merged with `pending_daily` so cells reflect activity
     /// that hasn't been synced yet. Returns rows sorted by date ascending.
     pub async fn fetch_heatmap(&self) -> Result<Vec<DailyActivity>, StatsError> {
+        let payload = self.fetch_my_stats().await?;
+        if let Some(stats) = payload.stats {
+            let mut snap = self.snapshot.write().await;
+            snap.cumulative = normalize_cumulative(stats);
+            self.store.save(&snap).await?;
+        }
+
+        // Collapse server rows into a map, then layer pending (unsynced) daily
+        // counters on top so the UI can reflect activity still buffered locally.
+        let mut by_date: HashMap<String, DailyActivity> = payload
+            .heatmap
+            .into_iter()
+            .map(|row| (row.date.clone(), row))
+            .collect();
+
+        let pending_daily = self.snapshot.read().await.pending_daily.clone();
+        for (date, delta) in pending_daily {
+            let entry = by_date
+                .entry(date.clone())
+                .or_insert_with(|| DailyActivity {
+                    date: date.clone(),
+                    commits: 0,
+                    tokens: 0,
+                    worktrees: 0,
+                    sessions: 0,
+                    messages: 0,
+                });
+            entry.commits += delta.commits;
+            entry.tokens += delta.tokens;
+            entry.worktrees += delta.worktrees;
+            entry.sessions += delta.sessions;
+            entry.messages += delta.messages;
+        }
+
+        let mut rows: Vec<DailyActivity> = by_date.into_values().collect();
+        rows.sort_by(|a, b| a.date.cmp(&b.date));
+        Ok(rows)
+    }
+
+    async fn fetch_my_stats(&self) -> Result<MyStatsResponse, StatsError> {
         let Some(token) = self.token_provider.bearer_token().await else {
             return Err(StatsError::NotAuthenticated);
         };
@@ -364,36 +479,7 @@ impl StatsCollector {
                 body,
             });
         }
-        let payload: MyStatsResponse = response.json().await.map_err(StatsError::from)?;
-
-        // Collapse server rows into a map, then layer pending (unsynced) daily
-        // counters on top so the UI can reflect activity still buffered locally.
-        let mut by_date: HashMap<String, DailyActivity> = payload
-            .heatmap
-            .into_iter()
-            .map(|row| (row.date.clone(), row))
-            .collect();
-
-        let pending_daily = self.snapshot.read().await.pending_daily.clone();
-        for (date, delta) in pending_daily {
-            let entry = by_date.entry(date.clone()).or_insert_with(|| DailyActivity {
-                date: date.clone(),
-                commits: 0,
-                tokens: 0,
-                worktrees: 0,
-                sessions: 0,
-                messages: 0,
-            });
-            entry.commits += delta.commits;
-            entry.tokens += delta.tokens;
-            entry.worktrees += delta.worktrees;
-            entry.sessions += delta.sessions;
-            entry.messages += delta.messages;
-        }
-
-        let mut rows: Vec<DailyActivity> = by_date.into_values().collect();
-        rows.sort_by(|a, b| a.date.cmp(&b.date));
-        Ok(rows)
+        response.json().await.map_err(StatsError::from)
     }
 
     /// Spawn a background task that periodically syncs. Returns immediately.
@@ -412,6 +498,16 @@ impl StatsCollector {
             }
         })
     }
+}
+
+fn normalize_cumulative(mut stats: CumulativeStats) -> CumulativeStats {
+    if stats.tier == 0 {
+        stats.tier = 1;
+    }
+    if stats.tier_progress > 1.0 {
+        stats.tier_progress /= 100.0;
+    }
+    stats
 }
 
 #[cfg(test)]
