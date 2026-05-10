@@ -1625,10 +1625,13 @@ impl CredentialManager {
                 ("https://api.anthropic.com/v1/messages".to_string(), r)
             }
             ProviderType::Gemini => {
-                return Err(ProviderError::AuthError(format!(
-                    "API-key validation not implemented for {}",
-                    provider.as_str()
-                )));
+                let r = client
+                    .get("https://generativelanguage.googleapis.com/v1beta/models")
+                    .query(&[("key", api_key)]);
+                (
+                    "https://generativelanguage.googleapis.com/v1beta/models".to_string(),
+                    r,
+                )
             }
         };
 
@@ -1644,7 +1647,23 @@ impl CredentialManager {
             }
         };
 
-        match resp.status().as_u16() {
+        let status = resp.status();
+        let code = status.as_u16();
+        let body = if status.is_success() {
+            String::new()
+        } else {
+            resp.text().await.unwrap_or_default()
+        };
+
+        if provider == ProviderType::Gemini
+            && (body.contains("API_KEY_INVALID") || body.contains("API key not valid"))
+        {
+            return Err(ProviderError::AuthError(
+                "API key rejected by provider (API_KEY_INVALID)".into(),
+            ));
+        }
+
+        match code {
             401 | 403 => Err(ProviderError::AuthError(
                 "API key rejected by provider (401/403)".into(),
             )),
