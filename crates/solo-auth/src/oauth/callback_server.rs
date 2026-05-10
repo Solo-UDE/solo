@@ -2,13 +2,13 @@
 //!
 //! A one-shot HTTP server that handles OAuth redirects from the browser.
 
+use bytes::Bytes;
+use http_body_util::Full;
 use hyper::body::Incoming;
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Request, Response, StatusCode};
 use hyper_util::rt::TokioIo;
-use http_body_util::Full;
-use bytes::Bytes;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::time::Duration;
@@ -141,12 +141,21 @@ fn success_html() -> &'static str {
             </svg>
         </div>
         <h1>Authentication Successful</h1>
-        <p>You can close this window and return to Solo IDE.</p>
+        <p>This window should close automatically. If it stays open, you can close it and return to Solo IDE.</p>
         <p class="logo">Solo IDE</p>
     </div>
     <script>
-        // Auto-close after 3 seconds
-        setTimeout(() => window.close(), 3000);
+        // Auto-close the browser tab/window after the desktop app receives the
+        // callback. Some browsers only allow this for app-opened tabs, so retry
+        // briefly and leave the success message visible if the browser blocks it.
+        let attempts = 0;
+        const closeWindow = () => {
+            attempts += 1;
+            window.open('', '_self');
+            window.close();
+            if (attempts < 8) setTimeout(closeWindow, 500);
+        };
+        setTimeout(closeWindow, 500);
     </script>
 </body>
 </html>"#
@@ -154,7 +163,8 @@ fn success_html() -> &'static str {
 
 /// HTML response for error
 fn error_html(error: &str) -> String {
-    format!(r#"<!DOCTYPE html>
+    format!(
+        r#"<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -235,7 +245,9 @@ fn error_html(error: &str) -> String {
         <div class="error-message">{}</div>
     </div>
 </body>
-</html>"#, error)
+</html>"#,
+        error
+    )
 }
 
 /// Handle incoming HTTP request
@@ -249,11 +261,15 @@ async fn handle_request(
 
     // Check for OAuth error
     if let Some(error) = params.get("error") {
-        let description = params.get("error_description")
+        let description = params
+            .get("error_description")
             .map(|s| s.as_str())
             .unwrap_or("Unknown error");
 
-        let _ = tx.send(Err(CallbackError::OAuthError(format!("{}: {}", error, description))));
+        let _ = tx.send(Err(CallbackError::OAuthError(format!(
+            "{}: {}",
+            error, description
+        ))));
 
         let html = error_html(description);
         return Ok(Response::builder()
@@ -334,11 +350,30 @@ pub async fn start_callback_server_on(
     timeout: Option<Duration>,
     port: u16,
 ) -> Result<CallbackResult, CallbackError> {
-    let timeout = timeout.unwrap_or(Duration::from_secs(300)); // 5 minutes default
+    let listener = bind_callback_listener_on(port).await?;
+    start_callback_server_with_listener(expected_state, timeout, listener).await
+}
 
+/// Bind the localhost callback listener without waiting for a callback.
+///
+/// This lets desktop callers fail fast before opening the browser, then hand
+/// the already-bound listener to `start_callback_server_with_listener`.
+pub async fn bind_callback_listener_on(port: u16) -> Result<TcpListener, CallbackError> {
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
-    let listener = TcpListener::bind(addr)
+    TcpListener::bind(addr)
         .await
+        .map_err(|e| CallbackError::BindError(e.to_string()))
+}
+
+/// Start a callback server using an already-bound listener.
+pub async fn start_callback_server_with_listener(
+    expected_state: &str,
+    timeout: Option<Duration>,
+    listener: TcpListener,
+) -> Result<CallbackResult, CallbackError> {
+    let timeout = timeout.unwrap_or(Duration::from_secs(300)); // 5 minutes default
+    let addr = listener
+        .local_addr()
         .map_err(|e| CallbackError::BindError(e.to_string()))?;
 
     tracing::info!("OAuth callback server listening on http://{}", addr);
@@ -374,11 +409,11 @@ pub async fn start_callback_server_on(
                     }
                 });
 
-                // Serve the connection
-                if let Err(e) = http1::Builder::new()
-                    .serve_connection(io, service)
-                    .await
-                {
+                // Serve one request and close the connection so browser keep-alive
+                // does not delay the desktop app from receiving the callback.
+                let mut builder = http1::Builder::new();
+                builder.keep_alive(false);
+                if let Err(e) = builder.serve_connection(io, service).await {
                     tracing::warn!("Error serving connection: {}", e);
                 }
             }
@@ -386,7 +421,8 @@ pub async fn start_callback_server_on(
                 tracing::error!("Failed to accept connection: {}", e);
             }
         }
-    }).await;
+    })
+    .await;
 
     // Check if we timed out
     if result.is_err() {
@@ -394,8 +430,9 @@ pub async fn start_callback_server_on(
     }
 
     // Get the result from the handler
-    let result = rx.await
-        .map_err(|_| CallbackError::ServerError("Failed to receive callback result".to_string()))??;
+    let result = rx.await.map_err(|_| {
+        CallbackError::ServerError("Failed to receive callback result".to_string())
+    })??;
 
     // Validate state parameter matches expected (CSRF protection)
     if result.state != expected_state {
@@ -437,6 +474,9 @@ mod tests {
 
     #[test]
     fn test_callback_url() {
-        assert_eq!(get_callback_url(), format!("http://127.0.0.1:{}/callback", CALLBACK_PORT));
+        assert_eq!(
+            get_callback_url(),
+            format!("http://127.0.0.1:{}/callback", CALLBACK_PORT)
+        );
     }
 }
